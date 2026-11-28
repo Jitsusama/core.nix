@@ -495,10 +495,342 @@ QtObject {
                 LookForm.poses("\u2067klaT\u2069", ["Talk"]),
                 LookForm.poses("Keep It\u200f", ["Clear It"]),
                 LookForm.poses("Keep It", ["Clear It", "Talk"]),
-                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("Clearance", ["Clear It", "Clear"]),
                 LookForm.poses("\u202etI raelC", [])],
             [true, true, true, true, true, true, true, true, true, true, true, true, true,
                 true, true, false, false, false]);
+        // Nor by borrowing another script's letters that draw as its own, a
+        // Cyrillic Es or I, a Greek Tau, or a fullwidth letter (#6562's twelfth
+        // review, F170); a name wholly in that script, drawing as no act, is
+        // outside the closed set and held back all the same.
+        expect("a choice borrowing letters that draw as an act's poses as it",
+            [LookForm.poses("\u0421lear It", ["Clear It"]),
+                LookForm.poses("Clear \u0406t", ["Clear It"]),
+                LookForm.poses("\u03a4alk", ["Talk"]),
+                LookForm.poses("\u041epen", ["Open"]),
+                LookForm.poses("\uff34alk", ["Talk"]),
+                LookForm.poses("\u0414\u0430", ["Clear It", "Talk"]),
+                LookForm.poses("\u039d\u03b1\u03b9", ["Clear It", "Talk"])],
+            [true, true, true, true, true, true, true]);
+        // Any letter from beyond Latin where an act's letter stands may draw as
+        // it, not only the ones a list names: Greek's lunate sigma, Komi's
+        // Sje, Lisu's capitals, Armenian's Oh, Cherokee's Tee, Roman numerals,
+        // a palochka, the dental click and a mathematical capital (#6562's
+        // thirteenth review, 177 to 187).
+        expect("a choice holding any letter beyond Latin where an act's stand poses as it",
+            [LookForm.poses("\u03f9lear It", ["Clear It"]),
+                LookForm.poses("\u050co To", ["Go To"]),
+                LookForm.poses("\ua4da\ua4e1\ua4f0\ua4ee\ua4e3 \ua4f2\ua4d4", ["Clear It"]),
+                LookForm.poses("\u0555pen", ["Open"]),
+                LookForm.poses("\u13a2alk", ["Talk"]),
+                LookForm.poses("Clear \u2160t", ["Clear It"]),
+                LookForm.poses("Ta\u217ck", ["Talk"]),
+                LookForm.poses("Clear \u04c0t", ["Clear It"]),
+                LookForm.poses("Clear \u01c0t", ["Clear It"]),
+                LookForm.poses("\ud835\uddb3alk", ["Talk"]),
+                LookForm.poses("\u0555pen a PR", ["Open"]),
+                LookForm.actOf(second({ act: "\u03f9lear It" }), ["Clear It"])],
+            [true, true, true, true, true, true, true, true, true, true, true, ""]);
+        // What follows a one-word act is held to the closed set too: a
+        // fullwidth letter stays wide (round 13, 176), and Greek's and
+        // Cyrillic's, once weighed as Latin's, are outside it, so each poses.
+        expect("a fullwidth, Greek or Cyrillic rest poses",
+            [LookForm.poses(`Talk ${"\uff58".repeat(12)}`, ["Talk"]),
+                LookForm.poses("Answer \u0414\u0430", ["Answer"]),
+                LookForm.poses("Talk to \u041c\u0430\u0440\u0438\u044f", ["Talk"]),
+                LookForm.poses("Open \u039d\u03b1\u03b9", ["Open"])],
+            [true, true, true, true]);
+        // A Greek or Cyrillic rest drawing as wide as Latin's widest poses
+        // where W's would (round 14, 189, 200 and 205), and one narrower too,
+        // since neither is in the closed set.
+        expect("a Greek or Cyrillic rest poses however wide it draws",
+            [LookForm.poses(`Talk ${"\u0448".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0428".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u039c".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0434".repeat(9)}`, ["Talk"])],
+            [true, true, true, true]);
+        // Latin's own letters that draw alike in a plain face read as one
+        // another, and a mark combined onto an act's letter reads as nothing,
+        // so one inside an act's face is refused as what draws as nothing
+        // there is (round 14, 198, 201 and 207; round 10, F132).
+        expect("a stem, a zero or a combined mark can't pass for an act's letter",
+            [LookForm.poses("Clear lt", ["Clear It"]),
+                LookForm.poses("CIear It", ["Clear It"]),
+                LookForm.poses("Ta1k", ["Talk"]),
+                LookForm.poses("Explain \u0131t", ["Explain It"]),
+                LookForm.poses("G0 T0", ["Go To"]),
+                LookForm.poses("Tal\u0327k", ["Talk"]),
+                LookForm.poses("Clear I\u0323t", ["Clear It"]),
+                LookForm.poses("Ope\u0331n a PR now", ["Open"]),
+                LookForm.poses("Clear at", ["Clear It"]),
+                LookForm.poses("Close It", ["Clear It"])],
+            [true, true, true, true, true, true, true, true, false, false]);
+        // A mark MARKS doesn't name, Cyrillic's, Arabic's or kana's, draws on
+        // the letter before it all the same, so it may stand for nothing
+        // between an act's letters as well as for one of them (#6562, 211);
+        // a choice wholly in another script, shorter than an act, is outside
+        // the closed set and held back too.
+        expect("a mark no list names, inside an act, can't pass for nothing",
+            [LookForm.poses("Ta\u0485lk", ["Talk"]),
+                LookForm.poses("Tal\u064bk", ["Talk"]),
+                LookForm.poses("T\u3099alk", ["Talk"]),
+                LookForm.poses("Ta\u0485lk now", ["Talk"]),
+                LookForm.poses("\u0414\u0430", ["Talk"])],
+            [true, true, true, true, true]);
+        // A verb cut short where it runs out of room shows only its first
+        // words, so one opening with an act's words poses as it, however
+        // short what follows: the line's room isn't known where it's judged
+        // (#6562's second review: Clear It and one long word drew as Clear
+        // It and an ellipsis).
+        expect("a choice opening with an act's words poses as it, whatever follows",
+            [LookForm.poses(`Clear It ${"Everything".repeat(8)}`, ["Clear It"]),
+                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("clear it, now", ["Clear It"]),
+                LookForm.poses(`Talk\u00a0${"Everything".repeat(3)}`, ["Talk"]),
+                LookForm.poses("Talk to them about it, now", ["Talk"]),
+                LookForm.poses("Keep It Clear", ["Clear It"]),
+                LookForm.poses("Clear", ["Clear It"])],
+            [true, true, true, true, true, false, false]);
+        // A one-word act begins many a choice Joel should press, so one
+        // opening with it poses only once it's long enough to be cut short
+        // to it (#6562's third review); a space no wider than one but outside
+        // the closed set, as a no-break space, holds it back all the same.
+        expect("a short choice opening with a one-word act is his to press",
+            [LookForm.poses("Open a PR", ["Open", "Clear It"]),
+                LookForm.poses("Answer Later", ["Answer"]),
+                LookForm.poses("Talk It Through", ["Talk"]),
+                LookForm.poses("Talk\u00a0to Them", ["Talk"]),
+                LookForm.poses("Open", ["Open"])],
+            [false, false, false, true, true]);
+        // Each limit at its edge: 24 characters draw whole and 25 may not, four
+        // words and five, and a digit goes on the act's word as a letter does,
+        // so Clear It2 and Talk9 open with no act (#6562's seventh review).
+        expect("a one-word act's choice is cut at 24 characters or four words, a digit joining",
+            [LookForm.poses(`Talk ${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(20)}`, ["Talk"]),
+                LookForm.poses("Talk to me a bit", ["Talk"]),
+                LookForm.poses("Talk to me now", ["Talk"]),
+                LookForm.poses("Clear It2", ["Clear It"]),
+                LookForm.poses(`Talk9${"x".repeat(25)}`, ["Talk"])],
+            [false, true, true, false, false, false]);
+        // What follows a one-word act is judged by its count only where it's
+        // plain ASCII: a wide glyph's run, or a mark drawn like a stop, may
+        // draw as the act and an ellipsis however few its characters; and a
+        // name Qt splits into variants draws as its first that fits.
+        expect("a choice whose rest a count can't measure, or split for Qt, poses as the act",
+            [LookForm.poses("Open \u65e5\u65e5\u65e5", ["Open"]),
+                LookForm.poses("Open \ufdfd", ["Open"]),
+                LookForm.poses("Talk\u2024\u2024\u2024", ["Talk"]),
+                LookForm.poses("Talk\u22ef", ["Talk"]),
+                LookForm.poses("Talk\u009cX", ["Talk"]),
+                LookForm.poses("Keep this exactly as it stands for now\u009cClear It",
+                    ["Clear It"]),
+                LookForm.actOf(second({ act: "Review\u009cIt" })),
+                LookForm.poses("Open a PR", ["Open"])],
+            [true, true, true, true, true, true, "", false]);
+        // ASCII's wide marks draw about as wide as an m, and a digit as wide
+        // as a capital, so 19 of them after a one-word act draw cut to it,
+        // where a PR's number or an ampersand among words still fits (#6562,
+        // 212).
+        expect("a one-word act's choice weighs ASCII's wide marks and digits as drawn",
+            [LookForm.poses(`Talk ${"#".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"&".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"=".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(19)}`, ["Talk"]),
+                LookForm.poses("Open PR 7282", ["Open"]),
+                LookForm.poses("Talk Sam & Kim", ["Talk"])],
+            [true, true, true, true, false, false]);
+        // A choice is read decomposed, so Qt's engine must split a precomposed
+        // letter into its letter and its mark, as the closed set's read needs.
+        expect("Qt's engine decomposes a precomposed letter into its letter and its mark",
+            ["\u00e1", "\u013c", "\u00cf"].map(one => one.normalize("NFD")),
+            ["a\u0301", "l\u0327", "I\u0308"]);
+        // Only a closed set of characters is trusted, each weighed as it draws:
+        // any other, as a tab or a caret, holds the choice back; and $ and _,
+        // once weighed as small letters so "Talk " and 19 $'s drew cut to Talk
+        // (#6562, 214), are weighed as the widest, so 19 still pose.
+        expect("a choice holding a character outside the closed set poses",
+            [LookForm.poses(`Talk ${"$".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"_".repeat(19)}`, ["Talk"]),
+                LookForm.poses("Talk ^5", ["Talk"]),
+                LookForm.poses("Keep\tIt", ["Talk"])],
+            [true, true, true, true]);
+        // The marks sessions write all the time are in the set, none drawing as
+        // an act's letter, so a choice holding one is offered (#6562, 230, 234,
+        // 241 and 247).
+        const launcherActs = ["Open", "Answer", "Clear It", "Go To", "Explain It", "Talk"];
+        expect("a choice holding a mark sessions write is offered",
+            ["Merge into `main`", "Keep feature_flag", "Ship at 50%", "Ping @sam",
+                "Not yet\u2026", "Set x = 2", "Bump *all*", "Keep [WIP]", "Keep <br>",
+                "About ~5 min", "Pay $5", "Pick a | b", "Talk $5", "Keep_It"]
+                .filter(label => LookForm.poses(label, launcherActs)), []);
+        // Those of them that may stand for a letter read as it, so the skeleton
+        // still catches a choice borrowing one: $ as an s, @ as an a, a bar as
+        // an l, and a backtick as an apostrophe.
+        expect("a mark that may stand for a letter reads as it",
+            [LookForm.poses("Cle@r It", ["Clear It"]), LookForm.poses("$ave", ["Save"]),
+                LookForm.poses("T@lk", ["Talk"]), LookForm.poses("Ta|k", ["Talk"]),
+                LookForm.poses("Don`t Merge", ["Don't Merge"]),
+                LookForm.actOf(second({ act: "Save", choices: [{ value: "s", label: "$ave" }],
+                    wants: undefined }), launcherActs)],
+            [true, true, true, true, true, ""]);
+        // A precomposed letter is read as its letter and its mark, so "Ta\u013ck"
+        // poses as "Tal\u0327k" does, where it was offered (#6562, 215), and an
+        // accent after the act is offered in either form.
+        expect("a precomposed letter poses as its letter and its mark do",
+            [LookForm.poses("Ta\u013ck", ["Talk"]), LookForm.poses("Tal\u0327k", ["Talk"]),
+                LookForm.poses("\u00c1nswer", ["Answer"]),
+                LookForm.poses("A\u0301nswer", ["Answer"]),
+                LookForm.poses("Clear \u00cft", ["Clear It"]),
+                LookForm.poses("Clear I\u0308t", ["Clear It"]),
+                LookForm.poses("Open Jos\u00e9\u2019s PR", ["Open"]),
+                LookForm.poses("Open Jose\u0301\u2019s PR", ["Open"])],
+            [true, true, true, true, true, true, false, false]);
+        // A kra draws as a k and a times sign as an x, so neither is in the
+        // set, and two v's draw as a w, r and n as an m, and c and l as a d, so
+        // each is read as the letter it draws as (#6562, 218 and 224).
+        expect("a kra, a times sign or two v's can't pass for k, x or w",
+            [LookForm.poses("Tal\u0138", ["Talk"]),
+                LookForm.poses("E\u00d7plain It", ["Explain It"]),
+                LookForm.poses("Ansvver", ["Answer"]),
+                LookForm.poses("Ansvver Later", ["Answer"]),
+                LookForm.poses("Rnerge It", ["Merge It"]),
+                LookForm.poses("Dear It", ["Clear It"])],
+            [true, true, true, true, true, true]);
+        // A label past four times WHOLE_CHOICE's code points poses at once,
+        // unread: one in another script was walked whole against every act,
+        // about (m+1)^2 a step on the shell's thread (#6562, 221).
+        const longLabel = "\u0436".repeat(20000);
+        const askedLong = Date.now();
+        const posedLong = LookForm.poses(longLabel,
+            ["Open", "Answer", "Clear It", "Go To", "Explain It", "Talk"]);
+        expect("a label past 96 code points poses at once, whatever it holds",
+            [posedLong, Date.now() - askedLong < 250,
+                LookForm.poses(`Keep ${"x".repeat(92)}`, ["Talk"]),
+                LookForm.poses(`Keep ${"x".repeat(91)}`, ["Talk"])],
+            [true, true, true, false]);
+        // Each character of the set is weighed from one table of them all,
+        // and at the edge 217 asked for: ten #'s after "Talk " pose and nine
+        // don't, thirteen 0's pose and twelve don't (#6562, 217). The marks
+        // sessions write weigh as the widest, an ellipsis among them (230).
+        const weights = [
+            ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
+            ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
+            ["mwMW&#+\u2014`_@%=*[]<>~$|\u2026", 2]];
+        expect("each character of the closed set weighs as its table says",
+            weights.reduce((wrong, [characters, width]) => wrong.concat(characters.split("")
+                .filter(one => LookForm.weighed(one) !== width)), []), []);
+        expect("and is trusted after a one-word act",
+            weights.reduce((held, [characters]) => held.concat(characters.split("")
+                .filter(one => LookForm.poses(`Keep ${one}x`, ["Talk"]))), []), []);
+        expect("a one-word act's choice poses at the weights' edge",
+            [LookForm.poses(`Talk ${"#".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"#".repeat(9)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(12)}`, ["Talk"])],
+            [true, false, true, false]);
+        // A one-word act's choice is measured as it's drawn, not as it reads:
+        // its closing stops, which reading leaves out, and its wide letters
+        // count, so 19 capital W's or 200 stops after it draw as the act and
+        // an ellipsis; and Latin's accents and typographic quotes are counted
+        // as letters, not refused (#6562's eighth review).
+        expect("a one-word act's choice is measured as drawn, its accents counted",
+            [LookForm.poses(`Talk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk x${"!".repeat(200)}`, ["Talk"]),
+                LookForm.poses(`Open x${".".repeat(200)}`, ["Open"]),
+                LookForm.actOf(second({ act: `Talk x${"!".repeat(200)}` }), ["Talk"]),
+                LookForm.poses("Open The Pull Request", ["Open"]),
+                LookForm.poses("Open Jos\u00e9\u2019s PR", ["Open"]),
+                LookForm.poses("Talk to Zo\u00eb", ["Talk"]),
+                LookForm.poses("Answer \u201cyes\u201d", ["Answer"]),
+                LookForm.poses("Talk \u2014 later", ["Talk"])],
+            [true, true, true, "", false, false, false, false, false]);
+        // Weighed only as far as its line, cut at a word, shows: the act and
+        // the word after it and an ellipsis, so a Title Case choice too long
+        // to draw whole still shows past its act and is offered. A capital
+        // weighs half again (13 X's pose, 12 don't), Ł's as A's, and W's
+        // kin Ŵ twice, as m does (10 pose); a tab, a wide space or what draws
+        // as nothing is outside the closed set, so it poses (#6562's ninth
+        // review).
+        expect("a one-word act's choice is weighed as far as its line is cut",
+            [LookForm.poses("Talk With Mom Tomorrow", ["Talk"]),
+                LookForm.poses("Answer With A Follow-Up", ["Answer"]),
+                LookForm.poses(`Talk ${"X".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"X".repeat(12)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0141".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"m".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"\u0174".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk x\t${"y".repeat(15)}`, ["Talk"]),
+                LookForm.poses(`Talk\u2003${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"x".repeat(18)}\udb40\udc01`, ["Talk"])],
+            [false, false, true, false, true, true, false, true, true, true, true]);
+        // Measured where it's drawn, never where it reads: what draws as
+        // nothing before or inside the act, or a stop or a dash after it
+        // that the cut strips, can't leave the long word after it unweighed;
+        // and an act in capitals weighs its capitals (#6562's tenth review).
+        expect("a one-word act's choice is measured from its face, its stops cut",
+            [LookForm.poses(`\u200bTalk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Ta\u00adlk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk\u200b ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk, ${"W".repeat(17)}`, ["Talk"]),
+                LookForm.poses(`Talk - ${"W".repeat(16)}`, ["Talk"]),
+                LookForm.poses(`Talk \u2013 ${"W".repeat(17)}`, ["Talk"]),
+                LookForm.poses(`ANSWER ${"X".repeat(11)}`, ["Answer"]),
+                LookForm.poses(` Talk ${"x".repeat(19)}`, ["Talk"]),
+                LookForm.poses("Talk, now", ["Talk"]),
+                LookForm.poses("Talk - x", ["Talk"])],
+            [true, true, true, true, true, true, true, true, false, false]);
+        // And a look's own act can't pass for a choice, nor a choice for it,
+        // once either is cut short; a one-word choice its short act opens
+        // with draws whole beside it, so both stay.
+        const offeringOf = labels => second({ act: "Review It",
+            choices: labels.map(label => ({ value: label, label: label })),
+            wants: { choices: labels.map(label => ({ label: label })) } });
+        expect("its act is never a choice's words, cut short either way",
+            [LookForm.actOf(offeringOf(["Review It Now"])),
+                LookForm.actOf(offeringOf(["Review"])),
+                LookForm.actOf(offeringOf(["Review It\nfor good"])),
+                LookForm.actOf(offeringOf(["Keep It", "Roll It Back"])),
+                LookForm.actOf(second({ act: "Keep It Now",
+                    choices: [{ value: "keep", label: "Keep It" }] }))],
+            ["", "Review It", "", "Review It", ""]);
+        // Only beside the choices it's offered with: one held back is never
+        // drawn beside it, so a choice holding a character outside the set no
+        // longer costs "Review It" its own words (#6562, 231).
+        expect("its act stays beside a choice held back, never drawn beside it",
+            [LookForm.actOf(offeringOf(["\u0414\u0430", "Keep It"]), launcherActs),
+                LookForm.actOf(offeringOf(["Keep\tIt"]), launcherActs),
+                LookForm.actOf(offeringOf(["Review It\nfor good"]), launcherActs),
+                LookForm.actOf(offeringOf(["Review It Now"]), launcherActs)],
+            ["Review It", "Review It", "Review It", ""]);
+        // Why a choice was held back, so its drawer says what's true of it: a
+        // character the set leaves out, a length past what's read, else its
+        // words read as an act's (#6562, 229 and 235).
+        expect("a choice held back says why",
+            [LookForm.heldFor("\u0414\u0430"), LookForm.heldFor("Clear It\nfor good"),
+                LookForm.heldFor(`Keep ${"x".repeat(92)}`),
+                LookForm.heldFor("\u0436".repeat(200)),
+                LookForm.heldFor("Cle@r It"), LookForm.heldFor("Ta\u013ck")],
+            ["character", "character", "length", "length", "worded", "worded"]);
+        // A verb draws on one line, cut short where it runs out of room, so
+        // what follows a line break, or a run of spaces past its room, never
+        // shows: a name whose words before either read as an act poses as it,
+        // and a line break is outside the closed set, so any name holding one
+        // does.
+        expect("a choice whose words before a line break or a run of spaces read as an act"
+            + " poses as it",
+            [LookForm.poses("Clear It\nfor good", ["Clear It"]),
+                LookForm.poses("Clear It\r\nnow", ["Clear It"]),
+                LookForm.poses("Talk\u2028to it", ["Talk"]),
+                LookForm.poses("Talk\nto them", ["Talk"]),
+                LookForm.poses("Open\r\nit", ["Open"]),
+                LookForm.poses(`Clear It${" ".repeat(40)}Away`, ["Clear It"]),
+                LookForm.poses("Clear It\u3000\u3000Away", ["Clear It"]),
+                LookForm.poses("Clear\u200b  It  Away", ["Clear"]),
+                LookForm.poses("Keep It\nClear It", ["Clear It"]),
+                LookForm.poses("Clear  It", ["Clear It"])],
+            [true, true, true, true, true, true, true, true, true, true]);
         // Explain It is told a terminal look's Open beside its cell's acts, by
         // the name its row shows, as that Open goes to the cell's window; any
         // other look's Open answers the look, so it is told none.
@@ -519,6 +851,12 @@ QtObject {
                 LookForm.asksBack(second({ wants: { choices: [] }, choices: undefined })),
                 LookForm.asksBack(firstly), LookForm.asksBack(choosing)],
             [true, true, true, true, false, false, false, false]);
+        // One whose every choice was held back as posing asks nothing he can
+        // give, so it doesn't say it asks; one still offering any does.
+        expect("it asks back only by the choices left to press",
+            [LookForm.asksBack(secondly, []), LookForm.asksBack(secondly, secondly.offers.slice(1)),
+                LookForm.asksBack(second({ wants: { words: true } }), [])],
+            [false, true, true]);
         const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
         expect("written back, its second form as its session wrote it",
             [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,

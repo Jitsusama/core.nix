@@ -18,13 +18,15 @@ let
   coreWords = words.value;
 
   # The kit and one of the row's tests in tests/, run in Node with the
-  # launcher's files it reads handed in by the names tests/launcher.ts reads.
+  # launcher's files it reads handed in by the names tests/launcher.ts reads,
+  # and the looks the tests read alike (tests/ask-looks.ts).
   rowTest =
     name: test: files:
     pkgs.runCommandLocal name { } ''
       cp -r ${./kit} kit
       mkdir tests
       cp ${./tests/launcher.ts} tests/launcher.ts
+      cp ${./tests/ask-looks.ts} tests/ask-looks.ts
       cp ${test} tests/${baseNameOf test}
       ${lib.concatStrings (lib.mapAttrsToList (file: path: "${file}=${path} ") files)}\
         ${lib.getExe pkgs.nodejs} --test --test-reporter=spec tests/${baseNameOf test}

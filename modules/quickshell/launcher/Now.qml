@@ -1450,8 +1450,8 @@ Provider {
     // an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
         if (Looks.awaiting(one, lookAnswers)) {
-            console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
-                + ` ${JSON.stringify(one.id)}, whose answer may still reach its session`);
+            console.warn(`Now: not sending ${Presented.quoted(choice.label)} to look`
+                + ` ${Presented.quoted(one.id)}, whose answer may still reach its session`);
             return;
         }
         answersSent += 1;
@@ -1459,9 +1459,9 @@ Provider {
         const at = Date.now();
         const told = Looks.answer(one, choice, lookCell(one), at);
         if (told === null) {
-            console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
-                + ` address ${JSON.stringify(one.address ?? null)},`
-                + ` quest ${JSON.stringify(one.quest ?? null)}`);
+            console.warn(`Now: nobody to tell the answer to look ${Presented.quoted(one.id)}:`
+                + ` address ${Presented.quoted(one.address ?? null)},`
+                + ` quest ${Presented.quoted(one.quest ?? null)}`);
             lookAnswers = Object.assign({}, lookAnswers, { [one.id]: { label: choice.label,
                 at: at, sent: sent, failed: "nobody" } });
             return;
@@ -1481,12 +1481,19 @@ Provider {
             const words = {
                 unsent: "never sent, with no node connected",
                 dropped: "sent, but the node went before saying it took it",
-                untaken: answer?.error?.message
-                    ? `not given by the node, which said ${JSON.stringify(answer.error.message)}`
+                // The node's refusal by its codes, its words said only by how
+                // many letters while reports are off, which the journal
+                // doesn't keep (#5949); one with words and no code is still
+                // a refusal that said why.
+                untaken: answer?.error
+                    ? `not given by the node, which refused it as ${ActsSaid.errorShown(
+                        answer.error, Options.reports)}`
                     : "not given by the node, which said nothing of why"
             };
-            console.warn(`Now: the answer to look ${JSON.stringify(one.id)} for`
-                + ` ${JSON.stringify(told.address)} was ${words[failed]}`);
+            // Its id and address quoted with the line ends JSON leaves raw
+            // escaped too, since a reader may split on any of them.
+            console.warn(`Now: the answer to look ${Presented.quoted(one.id)} for`
+                + ` ${Presented.quoted(told.address)} was ${words[failed]}`);
             left[one.id] = { label: choice.label, at: Date.now(), sent: sent, failed: failed };
             provider.lookAnswers = left;
         });
@@ -1534,7 +1541,19 @@ Provider {
             : [];
         const choices = followed.length > 0 ? []
             : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
+        // A choice held back is named as left out, with why, rather than
+        // gone without a word (docs/design.md, a figure shown or named as
+        // left out), each cause counted apart so each says only what's true
+        // of its own (#6562, 229 and 235): most are held for a character the
+        // launcher can't vouch for, not for their words.
+        const held = waits ? one.offers.filter(choice => !offered.includes(choice)) : [];
+        const heldSaid = [["worded", "heldBack"], ["character", "heldUnvouched"],
+            ["length", "heldLong"]].map(([cause, id]) => {
+            const count = held.filter(choice => LookForm.heldFor(choice.label) === cause).length;
+            return count > 0 ? waitingSaid(id, { count: count }) : "";
+        }).filter(part => part !== "").join(" \u00b7 ");
         const facts = followed.concat(choices, [
+            fact("heldBack", heldSaid),
             fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
@@ -1697,7 +1716,8 @@ Provider {
             return ForYou.historySide(one, say);
         const reason = ForYou.reason(lookThing(one), now, say);
         if (LookForm.secondForm(one))
-            return [LookForm.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
+            return [LookForm.asksBack(one, lookOffers(one)) ? waitingSaid("asksYou", {}) : "",
+                reason]
                 .filter(part => part !== "").join(" \u00b7 ");
         return Looks.askOf(one) || reason;
     }

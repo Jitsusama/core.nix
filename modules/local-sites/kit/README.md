@@ -7,6 +7,7 @@ a site's compiled imports land.
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
 | `ask.ts`      | a look read for its ask row, and the answers it may send      |
+| `borrowed.ts` | the closed alphabet a choice is trusted in, and its widths    |
 | `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |

@@ -20,7 +20,8 @@
 // Its choices are the first form's, each sending the value the session
 // offered exactly as written, but for one whose label poses as one of the
 // launcher's own acts, which For You hides (Now.qml's lookOffers). Its act
-// is For You's "Open" unless the second form names one LookForm.js takes.
+// is For You's "Open" unless the second form names one LookForm.js takes,
+// told apart only from the choices offered beside it.
 // The check the-ask-row-reads-as-for-you runs the launcher's own Looks.js,
 // LookForm.js and lookOffers against these over looks at each boundary,
 // and every character through how a name is read, in Node rather than in
@@ -64,6 +65,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
+import { COMBINING, MARKS, opensWith, reads, trusted, widthOf } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -250,13 +252,33 @@ function onTheWeb(target: string): string | null {
 
 /** The most words an act runs to, as LookForm.js's ACT_WORDS. */
 const ACT_WORDS = 4;
+/**
+ * The most characters a choice opening with a one-word act runs to and is
+ * still taken to draw whole, as LookForm.js's WHOLE_CHOICE.
+ */
+const WHOLE_CHOICE = 24;
+/**
+ * The longest a choice is read at, as LookForm.js's LONGEST: past it, it
+ * poses unread, since walking one against every act once cost about (m+1)^2
+ * a step (#6562, 221).
+ */
+const LONGEST = WHOLE_CHOICE * 4;
+/**
+ * Where a verb's one line stops showing what follows, as LookForm.js's
+ * CUTS: a line break, or two spaces or more.
+ */
+const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
 
 /**
  * What a name may hide in to pass for another, as LookForm.js reads it:
  * spaces, and the stops it may end in; what draws as nothing (UNSEEN,
  * UNMARKED and UNDRAWN, the last by code point here, as Qt's engine can't);
  * what draws as a space (FILLERS); and what turns the letters after it
- * around (TURNS), so "\u202etI raelC" draws as Clear It.
+ * around (TURNS), so "\u202etI raelC" draws as Clear It; what splits it
+ * into variants Qt draws only the first of (VARIANTS), so "Talk\u009cX"
+ * draws as Talk; and what a verb's line cut short strips from its end
+ * (DANGLING). A choice holding any of them but a space and a stop is
+ * outside the closed set (borrowed.ts) and poses; an act is read past them.
  */
 const SPACES = /\s+/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
@@ -266,16 +288,43 @@ const UNDRAWN =
   /\u17b4|\u17b5|[\u180b-\u180d]|\u180f|[\ufe00-\ufe0f]|[\u{1bca0}-\u{1bca3}]|[\u{1d173}-\u{1d17a}]|[\u{e0000}-\u{e0fff}]/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+const VARIANTS = /\u009c/u;
+const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
 /**
- * A name as it reads, to tell two apart, as LookForm.js's readAs: what
- * draws as nothing gone, its spaces one, its closing stops gone, small.
+ * How wide the act opening `face` draws, its first `length` characters, as
+ * LookForm.js's actWeighed: weighed, but for the first capital every act
+ * opens with.
+ */
+function actWeighed(face: string, length: number): number {
+  const act = face.slice(0, length);
+  return weighed(act.charAt(0).toLowerCase() + act.slice(1));
+}
+
+/**
+ * How wide `text` draws, in small letters, as LookForm.js's weighed: each
+ * character, by code point, as the closed set weighs it (widthOf).
+ */
+function weighed(text: string): number {
+  let width = 0;
+  for (const each of text) {
+    width += widthOf(each);
+  }
+  return width;
+}
+
+/**
+ * A name as it reads, to tell two apart, as LookForm.js's readAs:
+ * decomposed, what draws as nothing gone, its spaces one, its closing stops
+ * gone, small.
  */
 function readAs(name: string): string {
   return name
+    .normalize("NFD")
     .replace(UNDRAWN, "")
     .replace(UNSEEN, "")
     .replace(UNMARKED, "")
+    .replace(MARKS, "")
     .replace(FILLERS, " ")
     .replace(SPACES, " ")
     .replace(STOPS, "")
@@ -284,27 +333,94 @@ function readAs(name: string): string {
 }
 
 /**
- * Whether `name` reads as one of `taken`, as LookForm.js's poses: one
- * holding a turn poses as any, since it can draw as either.
+ * The words of a name before a line break or a run of spaces, as
+ * LookForm.js's headOf: all a verb drawn on one line shows once the rest
+ * is cut short.
+ */
+function headOf(name: string): string {
+  return (
+    name
+      .replace(UNDRAWN, "")
+      .replace(UNSEEN, "")
+      .replace(UNMARKED, "")
+      .replace(MARKS, "")
+      .replace(FILLERS, " ")
+      .trim()
+      .split(CUTS)[0] ?? ""
+  );
+}
+
+/**
+ * Whether `name` reads as one of `taken`, as LookForm.js's poses: one past
+ * LONGEST, or holding, once its accents are gone, a character outside the
+ * closed set (borrowed.ts), poses as any, since it may draw as either; one
+ * reading as one, its letters that draw alike as one, or as one once cut at
+ * a line break or a run of spaces, poses; and one opening with a taken
+ * name's words poses, but with a one-word name only once it's long enough
+ * to be cut short to it, past four words or 24 characters read, or with the
+ * word after it past 24 drawn, each character weighed as the set says and
+ * an ellipsis after it where more follows, since the line is cut at a word
+ * and what DANGLING names goes from the cut's end; or once the name doesn't
+ * open with the act's own letters, unaccented, since then the read's
+ * offsets miss it.
  */
 function poses(name: string, taken: readonly string[]): boolean {
-  const read = readAs(name);
-  return taken.length > 0 && (TURNS.test(name) || taken.some((each) => readAs(each) === read));
+  if (taken.length === 0) {
+    return false;
+  }
+  // Counted by halves of a pair, as LookForm.js's: a character past U+FFFF
+  // has two, and none is in the set, so a name counted too long poses anyway.
+  if (name.length > LONGEST) {
+    return true;
+  }
+  const spelled = name.normalize("NFD");
+  const bare = spelled.replace(COMBINING, "");
+  if (!trusted(bare)) {
+    return true;
+  }
+  const read = readAs(bare);
+  const head = readAs(headOf(bare));
+  const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
+  // Only its end trimmed, as LookForm.js's: one opening with a space poses.
+  const face = bare.trimEnd();
+  const drawn = (each: string): number => {
+    const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
+    const words = face.split(" ");
+    for (let count = 1; uncut > WHOLE_CHOICE && count < words.length; count += 1) {
+      const cutTo = words.slice(0, count).join(" ").replace(DANGLING, "");
+      if (readAs(cutTo).length > each.length) {
+        return actWeighed(face, each.length) + weighed(cutTo.slice(each.length)) + 1;
+      }
+    }
+    return uncut;
+  };
+  const plainly = (each: string): boolean => spelled.slice(0, each.length).toLowerCase() === each;
+  const opened = (each: string): boolean =>
+    each.includes(" ") || cut || !plainly(each) || drawn(each) > WHOLE_CHOICE;
+  return taken
+    .map(readAs)
+    .some(
+      (each) =>
+        each !== "" &&
+        (reads(read, each) || reads(head, each) || (opensWith(read, each) && opened(each))),
+    );
 }
 
 /**
  * The second form's act in its own words, as LookForm.js's actOf takes it
  * with the launcher's act names: never past four words, holding a turn,
- * or read as one of the launcher's acts or of `choices`, the look's offers
- * before any posing is dropped, as LookForm.js reads them; else "".
+ * or posing as one of the launcher's acts, or as one of `choices` a page
+ * would offer (`shown`) or one of them as it; else "". One held back is
+ * never drawn beside it, so it costs the act nothing (#6562, 231).
  */
 function actOf(act: string, choices: readonly Choice[]): string {
   const read = readAs(act);
   return read === "" ||
     read.split(" ").length > ACT_WORDS ||
     TURNS.test(act) ||
+    VARIANTS.test(act) ||
     poses(act, LAUNCHER_ACTS) ||
-    choices.some((one) => readAs(one.label) === read)
+    shown(choices).some((one) => poses(act, [one.label]) || poses(one.label, [act]))
     ? ""
     : act;
 }
@@ -332,8 +448,8 @@ function saying(happened: unknown, matters: unknown): string {
  * second form's choices of that label, two of one label sharing it, as
  * Looks.js finds it, a choice's own kept wherever it says one. What follows
  * is said only in the second form (`said`), as For You's drawer says it. A
- * page never sends a value the session didn't offer. These are what the
- * act is told apart from; `shown` drops those posing as the launcher's.
+ * page never sends a value the session didn't offer. `shown` drops those
+ * posing as the launcher's, and the act is told apart from the rest.
  */
 function choicesOf(look: Fields, wants: Fields, said: boolean): readonly Choice[] {
   const wanted = (Array.isArray(wants["choices"]) ? wants["choices"] : []).filter(isObject);

@@ -201,9 +201,9 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
   assert.deepEqual(asked(hidden, NOW)?.choices, [], "a choice hiding a space passed for Clear It");
   const asChoice = { ...posing, act: "Keep\u200b It" };
   assert.equal(asked(asChoice, NOW)?.act, OPEN, "an act reading as a choice offered showed");
-  // "Ship\u202e" holds a turn, so it isn't shown, but it's still offered:
-  // an act reading as it is refused, as For You tells the act apart from
-  // the offers before any posing is dropped.
+  // "Ship\u202e" holds a turn, so it's held back and never drawn beside
+  // the act, which For You tells apart only from the choices it offers, so
+  // an act reading as it stands (#6562, 231).
   const asDropped = {
     ...second,
     choices: [
@@ -212,7 +212,110 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
     ],
     act: "Ship",
   };
-  assert.equal(asked(asDropped, NOW)?.act, OPEN, "an act reading as a dropped choice showed");
+  assert.equal(asked(asDropped, NOW)?.act, "Ship", "a choice held back cost the act its words");
+});
+
+// A choice held back is never drawn beside the act, so one holding a
+// character outside the closed set no longer costs the act (#6562, 231).
+it("the act stays beside a choice held back, and goes beside one offered", () => {
+  const beside = (labels: readonly string[]): string | null | undefined =>
+    asked({ ...second, act: "Review It", choices: labelled(labels) }, NOW)?.act;
+  assert.equal(beside(["\u0414\u0430", "Keep It"]), "Review It", "a held choice cost the act");
+  assert.equal(beside(["Keep\tIt"]), "Review It", "a choice with a tab cost the act");
+  assert.equal(beside(["Review It Now"]), OPEN, "an act read as an offered choice showed");
+  assert.equal(
+    asked({ ...second, act: "Save", choices: labelled(["$ave"]) }, NOW)?.act,
+    OPEN,
+    "an act a choice's $ stands for a letter of showed",
+  );
+});
+
+/** The choices a look offering `labels` holds, each sending a value of its own. */
+function labelled(labels: readonly string[]): { value: string; label: string }[] {
+  return labels.map((label, at) => ({ value: `choice-${at}`, label }));
+}
+
+/** The labels a look offering `labels`, four at most, offers of them. */
+function offeredOf(labels: readonly string[]): string[] {
+  const ask = asked({ ...second, choices: labelled(labels) }, NOW);
+  return ask?.choices.map((one) => one.label) ?? [];
+}
+
+// A mark MARKS doesn't name draws on the letter before it all the same, so
+// one between an act's letters hides nothing from Joel's eye (#6562, 211).
+// Nor is any outside the closed set trusted, so a choice in another script
+// is held back too, as a look written in English rarely offers.
+it("a choice whose act holds a mark no list names poses as it", () => {
+  assert.deepEqual(offeredOf(["Ta\u0485lk", "Tal\u064bk", "T\u3099alk", "Ta\u0485lk now"]), []);
+  assert.deepEqual(offeredOf(["\u0414\u0430"]), []);
+});
+
+// ASCII's wide marks draw about as wide as an m, and a digit as a capital,
+// so a run of them after a one-word act draws cut to it (#6562, 212).
+it("a one-word act's choice weighs ASCII's wide marks and its digits as drawn", () => {
+  const rests = ["#", "&", "=", "0"].map((one) => `Talk ${one.repeat(19)}`);
+  assert.deepEqual(offeredOf(rests), []);
+  assert.deepEqual(offeredOf(["Open PR 7282", "Talk Sam & Kim"]), [
+    "Open PR 7282",
+    "Talk Sam & Kim",
+  ]);
+});
+
+// Only a closed set of characters is trusted, each weighed as it draws, so
+// a tab or a caret holds a choice back, and $ and _, once weighed as small
+// letters, are weighed as the widest, so 19 after Talk still do (#6562, 214).
+it("a choice holding a character outside the closed set is held back", () => {
+  assert.deepEqual(
+    offeredOf([`Talk ${"$".repeat(19)}`, `Talk ${"_".repeat(19)}`, "Keep\tIt", "Talk ^5"]),
+    [],
+  );
+});
+
+// The marks sessions write all the time are in the set, none drawing as an
+// act's letter, so a choice holding one is offered (#6562, 230, 234, 241
+// and 247); those that may stand for a letter still read as it.
+it("a choice holding a mark sessions write is offered, unless it reads as an act", () => {
+  const marked = [
+    ["Merge into `main`", "Keep feature_flag", "Ship at 50%", "Ping @sam"],
+    ["Not yet\u2026", "Set x = 2", "Bump *all*", "Keep [WIP]"],
+    ["Keep <br>", "About ~5 min", "Pay $5", "Pick a | b"],
+  ];
+  for (const labels of marked) {
+    assert.deepEqual(offeredOf(labels), labels, "a choice holding a mark was held back");
+  }
+  assert.deepEqual(offeredOf(["Cle@r It", "T@lk", "Ta|k", "Keep It"]), ["Keep It"]);
+});
+
+// A precomposed letter is read as its letter and its mark (#6562, 215).
+it("a precomposed letter poses as its letter and its mark do", () => {
+  assert.deepEqual(offeredOf(["Ta\u013ck", "\u00c1nswer", "Clear \u00cft", "Tal\u0327k"]), []);
+  assert.deepEqual(offeredOf(["Open Jos\u00e9\u2019s PR", "Open Jose\u0301\u2019s PR"]), [
+    "Open Jos\u00e9\u2019s PR",
+    "Open Jose\u0301\u2019s PR",
+  ]);
+});
+
+// A kra and a times sign aren't in the set, and two v's read as a w
+// (#6562, 218 and 224).
+it("a kra, a times sign or two v's can't pass for k, x or w", () => {
+  assert.deepEqual(offeredOf(["Tal\u0138", "E\u00d7plain It", "Ansvver", "Ansvver Later"]), []);
+});
+
+// A label past 96 code points is held back unread, since walking one
+// against every act cost about (m+1)^2 a step (#6562, 221).
+it("a label past 96 code points is held back at once", () => {
+  const fits = `Keep ${"x".repeat(91)}`;
+  assert.deepEqual(offeredOf([`Keep ${"x".repeat(92)}`, "\u0436".repeat(20_000), fits]), [fits]);
+});
+
+// At the edge 217 asked for: ten #'s after "Talk " pose and nine don't,
+// thirteen 0's pose and twelve don't (#6562, 217).
+it("a one-word act's choice is held back at the weights' edge", () => {
+  const rests = ["#".repeat(10), "#".repeat(9), "0".repeat(13), "0".repeat(12)];
+  assert.deepEqual(offeredOf(rests.map((rest) => `Talk ${rest}`)), [
+    `Talk ${"#".repeat(9)}`,
+    `Talk ${"0".repeat(12)}`,
+  ]);
 });
 
 it("a look of the first form reads from its why, with its question and an act for its kind", () => {
