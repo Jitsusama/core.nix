@@ -4,7 +4,7 @@
 //! moved is told from one whose contents did by comparing that blob with
 //! the index's.
 
-use super::{Cache, Paths, Settings, os};
+use super::{Cache, Lies, Paths, Settings, os};
 use crate::attrs::{self, State};
 use crate::hash::{Oid, Sha256, to_hex};
 use crate::index::Entry;
@@ -89,12 +89,15 @@ pub(super) fn conversion_of(
 fn attributes_of(path: &[u8], paths: &Paths, cache: &mut Cache) -> HashMap<String, State> {
     let mut files: Vec<(Vec<u8>, Arc<attrs::File>)> = Vec::new();
     if let Some(global) = &paths.attributes_file {
-        files.push((Vec::new(), cache.attributes_file(global, true)));
+        files.push((
+            Vec::new(),
+            cache.attributes_file(global, true, Lies::Outside),
+        ));
     }
     let mut dir: Vec<u8> = Vec::new();
     files.push((
         Vec::new(),
-        cache.attributes_file(&paths.workdir.join(".gitattributes"), true),
+        cache.attributes_file(&paths.workdir.join(".gitattributes"), true, Lies::InTheTree),
     ));
     let parts: Vec<&[u8]> = path.split(|&c| c == b'/').collect();
     for part in &parts[..parts.len().saturating_sub(1)] {
@@ -103,11 +106,14 @@ fn attributes_of(path: &[u8], paths: &Paths, cache: &mut Cache) -> HashMap<Strin
         }
         dir.extend_from_slice(part);
         let file = paths.workdir.join(os(&dir)).join(".gitattributes");
-        files.push((dir.clone(), cache.attributes_file(&file, false)));
+        files.push((
+            dir.clone(),
+            cache.attributes_file(&file, false, Lies::InTheTree),
+        ));
     }
     files.push((
         Vec::new(),
-        cache.attributes_file(&paths.common.join("info/attributes"), true),
+        cache.attributes_file(&paths.common.join("info/attributes"), true, Lies::Outside),
     ));
     let borrowed: Vec<(&[u8], &attrs::File)> = files
         .iter()

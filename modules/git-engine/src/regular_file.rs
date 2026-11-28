@@ -22,19 +22,34 @@ use std::path::Path;
 /// `O_NONBLOCK` stays set on the file returned, which changes nothing for
 /// a regular file's reads.
 pub(crate) fn open(path: &Path) -> io::Result<Option<File>> {
-    match std::fs::metadata(path) {
+    open_as(path, true)
+}
+
+/// The same, but where `follow` is false a link at `path` is refused as
+/// what isn't a file, asked of the link itself and opened with
+/// `O_NOFOLLOW`, so what it leads to is never opened.
+fn open_as(path: &Path, follow: bool) -> io::Result<Option<File>> {
+    let asked = if follow {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    };
+    match asked {
         Ok(meta) if meta.is_file() => {}
         Ok(_) => return Err(not_a_file(path)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     }
+    let unfollowed = if follow { 0 } else { libc::O_NOFOLLOW };
     let file = match OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY | unfollowed)
         .open(path)
     {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        // A link put at the path between the two is refused by the open.
+        Err(error) if error.raw_os_error() == Some(libc::ELOOP) => return Err(not_a_file(path)),
         Err(error) => return Err(error),
     };
     if file.metadata()?.is_file() {
@@ -80,9 +95,36 @@ pub(crate) fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
+/// The most bytes an ignore or attributes file is read to, as git reads
+/// one no longer (its `PATTERN_MAX_FILE_SIZE` and `ATTR_MAX_FILE_SIZE`),
+/// so one that grows without end, as a file still being written may, isn't
+/// read into memory without end.
+pub(crate) const MOST_PATTERNS: u64 = 100 << 20;
+
+/// The bytes of the regular file at `path`, or None where nothing is, as
+/// `read` answers, but where `follow` is false a link there is refused
+/// unopened, and a file past `most` bytes is refused as data that won't
+/// read, read no further than a byte past it. A file of the worktree's is
+/// read so, since whoever wrote the worktree, as a stranger's clone, may
+/// have left a link to anything the user can read; git reads it so too.
+pub(crate) fn read_capped(path: &Path, follow: bool, most: u64) -> io::Result<Option<Vec<u8>>> {
+    let Some(file) = open_as(path, follow)? else {
+        return Ok(None);
+    };
+    let mut bytes = Vec::new();
+    file.take(most.saturating_add(1)).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > most {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} holds more than {most} bytes", path.display()),
+        ));
+    }
+    Ok(Some(bytes))
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{present, read, read_present};
+    use super::{present, read, read_capped, read_present};
     use std::path::Path;
 
     /// What `work` answers, on a thread of its own, or Err where it took
@@ -216,6 +258,34 @@ pub(crate) mod tests {
         );
     }
 
+    #[test]
+    fn a_capped_read_refuses_a_file_past_its_cap_or_a_link_it_wont_follow() {
+        let folder = crate::pack_index::tests::unique("capped");
+        std::fs::create_dir_all(&folder).expect("the temp folder takes a folder");
+        let (plain, link) = (folder.join("plain"), folder.join("link"));
+        std::fs::write(&plain, b"0123456789").expect("the temp folder takes a file");
+        std::os::unix::fs::symlink(&plain, &link).expect("the temp folder takes a link");
+        let read = |path: &Path, follow: bool, most: u64| {
+            read_capped(path, follow, most).map_err(|error| error.kind())
+        };
+        let found = [
+            read(&plain, false, 10),
+            read(&plain, false, 9),
+            read(&link, true, 10),
+            read(&link, false, 10),
+        ];
+        std::fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
+        let (whole, refused) = (
+            Ok(Some(b"0123456789".to_vec())),
+            Err(std::io::ErrorKind::InvalidData),
+        );
+        assert_eq!(
+            found,
+            [whole.clone(), refused.clone(), whole, refused],
+            "a capped read refused a file at its cap, read one past it, or didn't follow a \
+             link it was told to, or followed one it wasn't"
+        );
+    }
     /// Makes a FIFO at `path`, which nothing will ever write to.
     pub(crate) fn fifo(path: &Path) {
         let folder = path.parent().expect("a FIFO is made in a folder");
