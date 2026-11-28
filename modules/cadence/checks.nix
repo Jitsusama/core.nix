@@ -132,6 +132,8 @@ onLinux {
         "cadence-day"
         "cadence-review"
         "cadence-hour"
+        "cadence-path"
+        "cadence-site"
       ];
       cadence = name: name == "cadence" || lib.hasPrefix "cadence-" name;
       problemsOf =
@@ -548,8 +550,8 @@ onLinux {
         "a cadence timer starting what isn't a service" = {
           inherit services;
           timers = timers // {
-            cadence-path = timer // {
-              Timer.Unit = "cadence-path.path";
+            cadence-watch = timer // {
+              Timer.Unit = "cadence-watch.path";
             };
           };
         };
