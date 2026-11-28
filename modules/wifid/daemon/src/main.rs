@@ -74,7 +74,6 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
@@ -107,7 +106,7 @@ use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, Join, JoinableProxy, Step, SupplicantProxy};
 use transition::{Heed, Request};
-use warned::Warned;
+use warned::{Boot, Warned};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -277,8 +276,11 @@ async fn serve(
     // A switch restarts wifid, and the hand-over below would hold a card
     // to the point it's on, so each warning still lasting is taken in
     // first: one forgotten held the card to a point about to drop it.
-    let warned = RefCell::new(Warned::kept_in(&Path::new(KEPT).join("warned")));
-    take_in_warnings(&warned.borrow(), &arrivals, &state);
+    let warned = RefCell::new(take_in_warnings(
+        &Path::new(KEPT).join("warned"),
+        &arrivals,
+        &state,
+    ));
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -1741,16 +1743,66 @@ async fn station(
     }
 }
 
-/// Takes in each warning a wifid before kept that still lasts, so the
-/// moves and the chooser keep off its point as they did then.
-fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch::Sender<State>) {
-    for (card, point, until) in warned.lasting(Instant::now(), SystemTime::now()) {
-        arrivals.borrow_mut().warned(&card, &point, until);
-        change(state, |state| state.kept_off(&card, &point, until));
-        let left = until.saturating_duration_since(Instant::now());
-        let minutes = left.as_secs().div_ceil(60);
-        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
+/// Takes in each warning a wifid before kept in that file that still
+/// lasts, so the moves and the chooser keep off its point as they did
+/// then, and says any it forgot, as a restart that forgets them would
+/// otherwise read as one that had none.
+fn take_in_warnings(
+    file: &Path,
+    arrivals: &RefCell<Arrivals>,
+    state: &watch::Sender<State>,
+) -> Warned {
+    let boot = match Boot::now() {
+        Ok(boot) => boot,
+        Err(error) => {
+            eprintln!(
+                "<4>wifid forgets the warnings it kept, as it can't read the boot clock: {error}"
+            );
+            return Warned::none(file);
+        }
+    };
+    let (warned, forgotten) = Warned::kept_in(file, boot);
+    for said in forgotten {
+        eprintln!("<4>wifid {said}");
     }
+    let mut kept_off = Vec::new();
+    change(state, |state| {
+        let now = (Instant::now(), boot);
+        kept_off = keep_off_as_warned(&warned, &mut arrivals.borrow_mut(), state, now);
+    });
+    for said in kept_off {
+        println!("<6>{said}");
+    }
+    warned
+}
+
+/// Keeps the moves and the chooser off each point whose warning a wifid
+/// before kept and that still lasts at `now`, `boot` on the boot clock,
+/// and says each for the journal: a move from there is let join what it
+/// hears (`Arrivals::drops`), and the chooser hears nothing of it
+/// (`State::warned_from`).
+fn keep_off_as_warned(
+    warned: &Warned,
+    arrivals: &mut Arrivals,
+    state: &mut State,
+    (now, boot): (Instant, Boot),
+) -> Vec<String> {
+    let mut said = Vec::new();
+    for (card, point, until) in warned.lasting(now, boot) {
+        arrivals.warned(&card, &point, until);
+        state.kept_off(&card, &point, until);
+        // Rounded up from the milliseconds, as a warning lasts until one
+        // has none left, so even its last second reads as a minute.
+        let minutes = until
+            .saturating_duration_since(now)
+            .as_millis()
+            .div_ceil(60_000);
+        let unit = if minutes == 1 { "minute" } else { "minutes" };
+        said.push(format!(
+            "{card} keeps off {point} for {minutes} more {unit}, as it warned before"
+        ));
+    }
+    said
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -3789,17 +3841,31 @@ impl Wifid<'_> {
         // moves now hold, not only for what was decided.
         if let Some(from) = from.as_deref() {
             let lasts = request.keeps_off(&followed);
-            let now = (Instant::now(), SystemTime::now());
-            let until = lasts.map(|lasts| now.0 + lasts);
+            let now = Instant::now();
+            let until = lasts.map(|lasts| now + lasts);
             self.arrivals
                 .borrow_mut()
                 .heeded(card, from, &followed, until);
             if let (Some(lasts), Some(until)) = (lasts, until) {
                 change(self.state, |state| {
-                    followed.keep_warned(state, (card, from), leaving, (now.0, until));
+                    followed.keep_warned(state, (card, from), leaving, (now, until));
                 });
-                if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
-                    eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");
+                let kept = Boot::now().and_then(|boot| {
+                    self.warned
+                        .borrow_mut()
+                        .warned(card, from, until, (now, boot))
+                });
+                match kept {
+                    Ok(forgotten) => {
+                        for said in forgotten {
+                            eprintln!("<4>wifid {said}");
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "<4>can't keep {from}'s warning to {card} past a restart: {error}"
+                        );
+                    }
                 }
                 let minutes = lasts.as_secs() / 60;
                 println!(
@@ -4110,6 +4176,64 @@ mod tests {
         assert!(
             !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
             "a join that ended between the reads was taken as landed before its signal"
+        );
+    }
+
+    #[test]
+    fn a_warning_kept_before_a_restart_keeps_the_moves_and_the_chooser_off_its_point() {
+        const DESK: &str = "02:00:00:00:01:00";
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let now = Instant::now();
+        let boot = Boot::now().expect("the boot clock");
+        let until = now + Duration::from_secs(600);
+        Warned::none(&file)
+            .warned("wlan2", DESK, until, (now, boot))
+            .expect("kept");
+        let (warned, _) = Warned::kept_in(&file, boot);
+        let (mut arrivals, mut state) = (Arrivals::default(), State::default());
+
+        let said = keep_off_as_warned(&warned, &mut arrivals, &mut state, (now, boot));
+
+        assert!(
+            arrivals.drops("wlan2", DESK, now),
+            "a move from a point that warned before a restart would go back there"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(DESK),
+            "the chooser heard a point that warned before a restart"
+        );
+        assert_eq!(
+            said,
+            vec![format!(
+                "wlan2 keeps off {DESK} for 10 more minutes, as it warned before"
+            )],
+            "a point kept off as it warned before a restart wasn't said so"
+        );
+    }
+
+    #[test]
+    fn a_warning_kept_with_under_a_second_left_says_a_minute_more() {
+        const DESK: &str = "02:00:00:00:01:00";
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let now = Instant::now();
+        let boot = Boot::now().expect("the boot clock");
+        Warned::none(&file)
+            .warned("wlan2", DESK, now + Duration::from_millis(500), (now, boot))
+            .expect("kept");
+        let (warned, _) = Warned::kept_in(&file, boot);
+        let (mut arrivals, mut state) = (Arrivals::default(), State::default());
+
+        let said = keep_off_as_warned(&warned, &mut arrivals, &mut state, (now, boot));
+
+        assert_eq!(
+            said,
+            vec![format!(
+                "wlan2 keeps off {DESK} for 1 more minute, as it warned before"
+            )],
+            "a warning with under a second left wasn't said to last a minute more"
         );
     }
 
