@@ -753,15 +753,19 @@ fn a_candidate_merges_each_rider_and_leaves_out_one_that_conflicts() {
     let git = |arguments: &[&str]| git_in(&repo, arguments);
     let apart = change(&repo, &base, "apart", "one\n");
     let clashes = change(&repo, &base, "shared", "theirs\n");
+    let rival = change(&repo, &base, "apart", "two\n");
     let main = change(&repo, &base, "shared", "mains\n");
-    let done = cut(&git, &main, &[merging(&apart, 1), merging(&clashes, 2)]).unwrap();
+    let riders = [merging(&apart, 1), merging(&clashes, 2), merging(&rival, 3)];
+    let done = cut(&git, &main, &riders).unwrap();
     assert_eq!(
         done,
         Cut {
             merged: vec![apart.clone()],
             conflicted: vec![clashes],
+            clashing: vec![rival],
         },
-        "the candidate didn't merge the rider apart and leave out the one that clashed"
+        "the candidate didn't merge the rider apart, and leave out the one that clashed with \
+         main apart from the one that clashed only with the rider before it"
     );
     assert_eq!(
         git(&["log", "-1", "--format=%P"]).unwrap(),

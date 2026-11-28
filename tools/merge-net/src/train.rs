@@ -247,16 +247,21 @@ pub struct Merging {
     pub title: String,
 }
 
-/// What cutting a candidate did: the heads it merged and those that
-/// conflicted, which it left out.
+/// What cutting a candidate did: the heads it merged, those that
+/// conflicted with main, and those that conflicted only with a rider
+/// merged before them, both of which it left out.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Cut {
     pub merged: Vec<String>,
     pub conflicted: Vec<String>,
+    pub clashing: Vec<String>,
 }
 
 /// Cut a candidate at `base` by merging each of `riders` in turn, through
-/// `git` in the train's checkout, leaving out one that conflicts.
+/// `git` in the train's checkout, leaving out one that conflicts. One that
+/// merges onto `base` alone conflicts only with a rider before it, which
+/// is no fault of its own, so it's kept apart from one that conflicts
+/// with main, which falls.
 ///
 /// # Errors
 ///
@@ -282,8 +287,14 @@ pub fn cut(
         ]);
         if merged.is_ok() {
             done.merged.push(rider.head.clone());
+            continue;
+        }
+        git(&["merge", "--abort"])?;
+        let alone = !done.merged.is_empty()
+            && git(&["merge-tree", "--write-tree", base, &rider.head]).is_ok();
+        if alone {
+            done.clashing.push(rider.head.clone());
         } else {
-            git(&["merge", "--abort"])?;
             done.conflicted.push(rider.head.clone());
         }
     }
@@ -583,6 +594,16 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
         let done = cut(&git, &base, &mergings)?;
         fall_conflicting(&root, &done.conflicted, &base);
+        for head in &done.clashing {
+            // It stays aboard: once the rider it clashes with lands, the
+            // next candidate merges it onto main, or it falls as main's.
+            println!(
+                "merge-net: {} waits for the next candidate: it conflicts with a rider merged \
+                 before it, not with main at {}",
+                short(head),
+                short(&base)
+            );
+        }
         if done.merged.is_empty() {
             continue;
         }
