@@ -174,7 +174,7 @@ in
     shell.reports = lib.mkForce false;
   };
 
-  # With reports off, a lagging key's line says an arrow whole and a step by
+  # With reports off, a lagging key's line says down and up whole and a step by
   # its arrow and the launcher's own place it took, by key, as each of
   # keyTimed's callers in Launcher.qml says its key is, a key listed without
   # an answer and the answer late count its letters, and a program's lagging
