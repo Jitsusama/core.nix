@@ -399,12 +399,66 @@ QtObject {
                 undefined)], ["no", "no"]);
         holds("but a key of no time to such an ask is let by too",
             Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        // NaN and -Infinity rule out a looser check, typeof "number" or != null, under
+        // which either time or guard falls through to a yes.
+        const untimable = [NaN, -Infinity].map(at => Confirm.asked("Close Notes?", run, run, at));
+        holds("as is a Return to an ask put at a time no clock gives, or with a guard of none",
+            untimable.map(one => Confirm.answer(one, "Return", 1400, 300))
+                .concat([Confirm.answer(ask, "Return", 1400, NaN)]), ["early", "early", "early"]);
+        holds("and a modifier alone lets no such ask go",
+            [Confirm.answer(timeless, "", 1400, 300), Confirm.answer(ask, "", 1400, NaN)],
+            ["early", "early"]);
+        // Return before its ask was early before the rule too, as its gap is
+        // under the guard; this holds it against a looser rule, one reading
+        // the gap whole (Math.abs), which would answer it yes. The Escape
+        // case after it is the one the rule turns from early to no.
+        holds("a key timed before its ask, as a clock gone back gives, holds its Return",
+            [Confirm.answer(ask, "Return", 999, 300), Confirm.answer(ask, "Return", -5000, 300)],
+            ["early", "early"]);
+        holds("while any other key still lets that ask go, Escape among them",
+            ["Escape", "y", "n"].map(key => Confirm.answer(ask, key, 999, 300)),
+            ["no", "no", "no"]);
+        holds("but a key at the ask's own time is in its guard, as one typed on from it",
+            ["Escape", "Return"].map(key => Confirm.answer(ask, key, 1000, 300)),
+            ["early", "early"]);
+        holds("a key let by says why where its Return can't answer, and only there",
+            [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
+                1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
+                Confirm.letBy(ask, "Return", 999, 300), Confirm.letBy(ask, "y", undefined, 300),
+                Confirm.letBy(timeless, "Return", undefined, 300),
+                Confirm.letBy(ask, "Return", 1000, 300)],
+            ["Return came to the ask with no time, so it was let by",
+                "the ask can't be timed, as it was put at no time, so Return was let by",
+                "the ask can't be timed, as it has no guard, so Return was let by",
+                "Return was timed before its ask, so it was let by",
+                "a key came to the ask with no time, so it was let by",
+                "Return came to the ask with no time, so it was let by",
+                // At the ask's own time it's early in its guard, as answer
+                // has it, never timed before its ask.
+                null]);
+        // Of an ask that can't be timed as of one that can, so neither reason
+        // is said of a key that answered or of a modifier alone.
+        holds("never of a key early in its guard, a modifier alone, or one that answers",
+            [Confirm.letBy(ask, "Return", 1100, 300), Confirm.letBy(ask, "", 999, 300),
+                Confirm.letBy(ask, "Escape", 999, 300), Confirm.letBy(ask, "Return", 1400,
+                    300), Confirm.letBy(timeless, "Escape", 1400, 300),
+                Confirm.letBy(ask, "y", 1400, undefined), Confirm.letBy(timeless, "", 1400,
+                    300), Confirm.letBy(ask, "", undefined, 300)],
+            [null, null, null, null, null, null, null, null]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],
             ["it was put at no time", "it has no guard", null]);
         holds("the ask takes a yes or a no, never an early key, nor one with no ask",
             ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
+        holds("an ask standing says what it says of a key, and none says nothing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "j", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)], ["yes", "early", ""]);
+        holds("and takes it only where it answers, never with no ask standing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "y", 1400, 300),
+                Confirm.said(ask, "Return", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)].map(Confirm.takes),
+            [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);
@@ -2125,6 +2179,61 @@ QtObject {
                 KeyActs.reselectHere(mode, rows, chosen), has);
     }
 
+    // What Ctrl+Y's completion does (KeyActs.completing), which the
+    // launcher both does and says first, to time it as leaving a place.
+    function completings(holds) {
+        const field = more => Object.assign({ completion: "ox", fills: false, question: "",
+            selected: true, answered: false, answer: null }, more);
+        const sum = { question: "2+2", headline: "4" };
+        // [what, how the field stands, what Ctrl+Y does]
+        const cases = [
+            ["nothing with no completion shown, a command's row or not",
+                { completion: "", fills: true }, ""],
+            ["a command's row puts its start in the field", { fills: true }, "start"],
+            // No row is both a command's and an answer's, so the two never
+            // meet in the launcher; this only holds that the start is
+            // asked first, as completing says.
+            ["a start is asked before a question only started",
+                { fills: true, question: "2+", answered: true, answer: sum }, "start"],
+            ["a question only started is finished, with no row selected",
+                { question: "2+2", selected: false, answer: sum }, "question"],
+            ["or on the answer's own row",
+                { question: "2+2", answered: true, answer: sum }, "question"],
+            ["another row finishes what's typed, with a question beside it",
+                { question: "2+2", answer: sum }, "rest"],
+            ["a row with no answer beside it finishes what's typed", {}, "rest"],
+            // An answer with a question goes the question's way, as the
+            // launcher's question is its answer's (Launcher.qml's question).
+            ["an answer alone goes in the question's place",
+                { selected: false, answer: { headline: "4" } }, "answer"],
+            ["its copy, where it has one, though it heads nothing",
+                { selected: false, answer: { headline: "", copy: "four" } }, "answer"],
+            ["nor one whose copy is empty, whatever it heads",
+                { selected: false, answer: { headline: "4", copy: "" } }, ""],
+            ["never one that does something",
+                { selected: false, answer: { headline: "Lock", run: true } }, ""],
+            ["nor one that says nothing", { selected: false, answer: { headline: "" } }, ""]
+        ];
+        for (const [what, more, does] of cases)
+            holds(`Ctrl+Y: ${what}`, KeyActs.completing(field(more)), does);
+        // The launcher's onCompleted has a case for each of completions, so
+        // a case here answering something else names an outcome it never
+        // does, and one never answered goes unproven.
+        const answered = cases.map(([, more]) => KeyActs.completing(field(more)));
+        holds("Ctrl+Y's cases answer only what the launcher does",
+            answered.filter(does => !KeyActs.completions().includes(does)), []);
+        holds("Ctrl+Y's cases reach everything the launcher does",
+            KeyActs.completions().filter(does => !answered.includes(does)), []);
+        // [what, the answer, what Ctrl+Y puts in the question's place]
+        const put = [
+            ["its copy", { headline: "4", copy: "four" }, "four"],
+            ["its headline with no copy", { headline: "4" }, "4"],
+            ["nothing with an empty copy", { headline: "4", copy: "" }, ""]
+        ];
+        for (const [what, answer, text] of put)
+            holds(`Ctrl+Y puts an answer's ${what}`, KeyActs.answerPut(answer), text);
+    }
+
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
     // 12, with groups 20 apart: so the facts after it start on the first
     // beat at least the groups' gap below a picture, never a band rounded up
@@ -3321,6 +3430,7 @@ QtObject {
         keysActing(holds);
         keysMoving(holds);
         reselectsHere(holds);
+        completings(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

@@ -210,10 +210,11 @@ mod tests {
         assert_eq!(terminal_pid(&place.scope), Some(1717));
         let windows = r#"[{"id":3,"pid":99},{"id":12,"pid":1717}]"#;
         assert_eq!(niri_window(windows, 1717), Some(12));
-        assert!(!closed(entry));
-        assert!(closed(
-            r#"{"openedAt":"2026-10-07T05:14:13Z","closedAt":"2026-10-10T18:39:44Z"}"#
-        ));
+        assert!(!closed(entry), "an entry with no closedAt should be open");
+        assert!(
+            closed(r#"{"openedAt":"2026-10-07T05:14:13Z","closedAt":"2026-10-10T18:39:44Z"}"#),
+            "an entry with a closedAt should be closed"
+        );
     }
 
     #[test]

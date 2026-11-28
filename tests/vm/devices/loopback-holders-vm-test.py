@@ -163,14 +163,19 @@ def test_a_persons_own_unit_named_as_the_relays_is_named(camera: Camera) -> None
     camera.machine.wait_for_unit(f"user@{uid}.service")
     try:
         camera.machine.succeed(
-            "systemd-run --user --machine=someone@ --unit=stand-in -p Type=exec -- "
+            "systemd-run --user --machine=someone@.host --unit=stand-in -p Type=exec -- "
             + camera.holding(camera.sleep, device)
         )
         camera.named("sleep")
         assert camera.holders() == ["sleep"]
     finally:
-        # A unit that never started can't be stopped, and the file naming nobody says it's gone.
-        camera.machine.succeed("systemctl --user --machine=someone@ stop stand-in.service || true")
+        # A unit that never started can't be stopped, and the bus it was asked through may be
+        # what failed, so whatever someone runs goes too, as the hold fixture's ending does;
+        # only then can the file naming nobody say the reader is gone.
+        camera.machine.succeed(
+            "systemctl --user --machine=someone@.host stop stand-in.service || true"
+        )
+        camera.machine.succeed("pkill -u someone || true")
     camera.nobody()
 
 

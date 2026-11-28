@@ -743,7 +743,8 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
         f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
     )
     # The launcher stays, and Google lets the meeting go, so it's found no more.
-    assert desktop.showing()["open"]
+    shown = desktop.showing()
+    assert shown["open"], f"the launcher closed on cancelling: {shown}"
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     desktop.answer("planning")
@@ -794,7 +795,8 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     machine.send_key("ret")
     machine.wait_until_succeeds(moved(asked), timeout=dt.timedelta(seconds=30))
     # The launcher stays, as it does once a meeting is cancelled.
-    assert desktop.showing()["open"]
+    shown = desktop.showing()
+    assert shown["open"], f"the launcher closed on moving: {shown}"
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 

@@ -570,10 +570,14 @@ fn the_profile_and_event_slices_hold_them_whole() {
         profile["profile"],
         serde_json::to_value(&model.profiles[1]).unwrap()
     );
-    assert!(
-        profile["devices"].is_array(),
-        "a profile's slice should list its devices, not {}",
-        profile["devices"]
+    // None of the record's own profiles holds a device on now, so one
+    // given two lists those two whole, and no other.
+    let profiled = profiled();
+    let three = json(&View::Profile("3003".into()), &profiled).unwrap();
+    let three: Value = serde_json::from_str(&three).unwrap();
+    assert_eq!(
+        three["devices"],
+        serde_json::to_value(&profiled.devices[..2]).unwrap()
     );
     let events = slice(&View::Events);
     assert_eq!(
