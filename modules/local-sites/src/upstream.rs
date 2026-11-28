@@ -219,10 +219,10 @@ fn asked(kind: &str, declared: &Kind) -> Value {
     if let Some(deep) = &declared.deep {
         asked["deep"] = json!(deep);
     }
-    // The daemon interface has a daemon pass over a field it doesn't know
-    // (docs/daemons.md), and daemon-serve's asks.rs takes a watch's fields by
-    // name, so a daemon-serve daemon that doesn't know `latest` sends every
-    // record, as before. The node lives in the mycelium repository, and
+    // docs/daemons.md says a daemon that doesn't know `latest` passes over it
+    // and tells every record, and daemon-serve's asks.rs takes a watch's
+    // fields by name, so a daemon-serve daemon that doesn't know it sends
+    // every record, as before. The node lives in the mycelium repository, and
     // nothing here checks that it passes over `latest` too: that is for its
     // own tests to say.
     if let Some(latest) = declared.latest {
