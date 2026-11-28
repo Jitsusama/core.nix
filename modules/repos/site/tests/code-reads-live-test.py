@@ -1096,6 +1096,68 @@ def test_more_contrast_sets_the_finds_placeholder_upright_beside_its_italic_word
         opened.close()
 
 
+# WCAG's least contrast for what isn't text but must be seen to be used, such
+# as the edge that shows where a field is.
+NON_TEXT = 3
+
+# The find's underline against the page behind it, as the browser paints
+# both: each ground from the root down to the find laid on a pixel, then the
+# underline over them, so a faded colour reads as it shows. The underline is
+# the colour leading the find's computed shadow, as Chromium writes it.
+UNDERLINE = """() => {
+  const find = document.querySelector("#find");
+  const shadow = getComputedStyle(find).boxShadow;
+  const colour = shadow.match(/^[a-z-]+\\([^)]*\\)|^[a-z]+/i)?.[0] ?? null;
+  const grounds = [];
+  for (let at = find; at !== null; at = at.parentElement) {
+    grounds.unshift(getComputedStyle(at).backgroundColor);
+  }
+  const pixel = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const painted = (colours) => {
+    pixel.clearRect(0, 0, 1, 1);
+    for (const each of colours) {
+      pixel.fillStyle = each;
+      pixel.fillRect(0, 0, 1, 1);
+    }
+    return [...pixel.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  };
+  const luminance = (rgb) => {
+    const [red, green, blue] = rgb.map((value) => {
+      const part = value / 255;
+      return part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const ground = painted(grounds);
+  const line = painted([...grounds, colour]);
+  const [light, dark] = [luminance(line), luminance(ground)].sort((a, b) => b - a);
+  return { shadow, colour, ground, line, ratio: (light + 0.05) / (dark + 0.05) };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_draws_the_finds_underline_where_it_can_be_seen(
+    browser: Browser, code_served: Served, look: str
+) -> None:
+    """Under more contrast the find's underline, its only edge, stands out from the page.
+
+    The kit raises the rule and the field's border under more contrast but not the edge, so an
+    underline drawn in the edge kept the theme's faint line for the reader who asked for more.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", SIZES[1], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(UNDERLINE)
+        assert said["colour"] is not None, f"the find drew no underline to measure: {said}"
+        assert said["ratio"] >= NON_TEXT, (
+            f"more contrast left the find's underline faint in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
 @pytest.mark.usefixtures("code_whole")
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)
