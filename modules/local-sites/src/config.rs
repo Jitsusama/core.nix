@@ -180,7 +180,7 @@ mod tests {
         "documents": "/home/joel/sites",
         "mounts": {"kit": "/nix/store/kit"},
         "feeds": {"node": {"socket": "mycelium/work.sock", "kinds": {
-            "machine": {"fields": null, "deep": null},
+            "machine": {"fields": null, "deep": null, "latest": null},
             "session": {"fields": ["title", "presence"], "deep": ["presence"]},
             "message": {"fields": ["at"], "latest": 20}
         }}}
@@ -219,6 +219,12 @@ mod tests {
         assert_eq!(
             kinds["session"].latest, None,
             "a kind naming none asks for every one"
+        );
+        // home.nix's Nix writes `"latest": null` for every kind but
+        // messages, so null must ask for every one, as absence does.
+        assert_eq!(
+            kinds["machine"].latest, None,
+            "a kind whose latest Nix wrote as null asks for every one"
         );
         for wrong in ["0", "-1", "2.5", "\"20\""] {
             let said = WHOLE.replace(r#""latest": 20"#, &format!(r#""latest": {wrong}"#));
