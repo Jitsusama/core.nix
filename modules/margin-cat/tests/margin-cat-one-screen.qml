@@ -9,6 +9,7 @@ import "MarginCat.js" as MarginCat
 import "MarginCatCarried.js" as Carried
 import "MarginCatPaths.js" as Paths
 import "MarginCatStacked.js" as Stacked
+import "MarginCatTiles.js" as Tiles
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -38,6 +39,7 @@ QtObject {
         backOnIt(expect);
         visitCutIt(expect);
         scrolledOffIt(expect);
+        moveTakenIt(expect);
         standsIt(expect);
         floorsIt(expect);
         for (const failure of failures)
@@ -584,10 +586,11 @@ QtObject {
             expect(`a visit cut, ${name}`, Carried.visitCut(seated, place, by, told), want);
     }
 
-    // Its window said scrolled wholly off the screen before the keys' move
+    // Its window moved while the keys give it no seat
     // (MarginCatCarried.js's scrolledOff): ridden as far across as niri
-    // scrolled it, as on the gates where niri said it at 1276 first, and
-    // never as it goes anywhere a scroll doesn't take it.
+    // scrolled it, off the screen or on it, as on the gates where niri said
+    // it wholly off at 1276 before the keys' move, and never as it goes
+    // anywhere a scroll doesn't take it.
     function scrolledOffIt(expect) {
         const sat = { id: 14, left: 644, top: 12, width: 620, height: 776, column: 3, row: 1 };
         const moved = change => Object.assign({}, sat, change);
@@ -596,10 +599,14 @@ QtObject {
                 { x: 632, y: 0 }],
             ["scrolled off the left, it rides as far", moved({ left: -632 }),
                 { x: -1276, y: 0 }],
+            ["scrolled along, still on the screen, it rides as far", moved({ left: 300 }),
+                { x: -344, y: 0 }],
+            ["moved under half a pixel, nothing carries it", moved({ left: 644.4 }), null],
             ["unmoved, nothing carries it", moved({}), null],
             ["gone fullscreen, it leaves", moved({ left: 0, top: 0, width: 1276, height: 800 }),
                 null],
             ["grown across as it moved, it leaves", moved({ left: 1276, width: 900 }), null],
+            ["shrunk down as it moved, it leaves", moved({ left: 1276, height: 380 }), null],
             ["moved down as it moved, it leaves", moved({ left: 1276, top: 40 }), null],
             ["put in another column, it leaves", moved({ left: 1276, column: 4 }), null],
             ["floating, it leaves", Object.assign({}, moved({ left: 1276 }), { column: null }),
@@ -607,11 +614,75 @@ QtObject {
             ["gone from the workspace, it leaves", undefined, null]
         ];
         for (const [name, after, want] of cases)
-            expect(`its window said off the screen first, ${name}`,
+            expect(`its window moved with no seat for the keys, ${name}`,
                 Carried.scrolledOff(sat, after), want);
-        expect("its window said off the screen first, floating before, it leaves",
+        expect("its window moved with no seat for the keys, floating before, it leaves",
             Carried.scrolledOff(Object.assign({}, sat, { column: null }),
                 Object.assign({}, sat, { left: 1276, column: null })), null);
+    }
+
+    // What follow() takes of niri's move of the cat's window A, replayed
+    // through the windows it saw as follow keeps them (Tiles.before), in
+    // both orders niri can say a key to a column C off the screen's right:
+    // A scrolled wholly off first, the keys still in A and giving no seat,
+    // then the keys in C; or the keys in C first, C still off the screen
+    // and giving no seat, then the scroll. Either way the move is taken
+    // once, as niri says it, so a walk to A is caught and a visit over A
+    // cut, never left going on to where A was, over the air
+    // (MarginCatCarried.js's moveTaken).
+    function moveTakenIt(expect) {
+        const a = { id: 14, left: 644, top: 12, width: 620, height: 776, column: 3 };
+        const c = { id: 15, left: 1924, top: 12, width: 620, height: 776, column: 4 };
+        const laid = by => [a, c].map(one => Object.assign({}, one, { left: one.left + by }));
+        const before = laid(0);
+        const after = laid(-1276);
+        const orders = [
+            ["A said off the screen first", [[after, false], [after, true]]],
+            ["the keys said in C first", [[before, false], [after, true]]]
+        ];
+        const replayed = (steps, doing) => {
+            let seenNow = before;
+            let seenOnNow = before;
+            return steps.map(([tiles, seated]) => {
+                const saw = Tiles.before(seenNow, seenOnNow, a.id);
+                seenNow = tiles;
+                seenOnNow = tiles;
+                return Carried.moveTaken(saw, tiles, Object.assign({ seated }, doing));
+            });
+        };
+        const doings = [
+            ["a walk to A is caught", { going: "", goingTo: a.id, sat: 9 },
+                { how: "catches", on: a.id, by: { x: -1276, y: 0 } }],
+            ["a visit over A is cut", { going: "puppy", goingTo: a.id, sat: a.id },
+                { how: "cuts", on: a.id, by: { x: -1276, y: 0 } }],
+            ["a cat sitting on A is carried", { going: null, goingTo: null, sat: a.id },
+                { how: "carries", on: a.id, by: { x: -1276, y: 0 } }]
+        ];
+        for (const [order, steps] of orders) {
+            for (const [name, doing, want] of doings) {
+                const taken = replayed(steps, Object.assign({ byHand: false, landed: null },
+                    doing)).filter(one => one !== null);
+                expect(`a key to C off the screen, ${order}, ${name} once`, taken, [want]);
+            }
+        }
+        const fullscreen = [Object.assign({}, a, { left: 0, top: 0, width: 1276, height: 800 })];
+        const at = more => Object.assign({ going: "", goingTo: a.id, sat: 9, byHand: false,
+            landed: null, seated: false }, more);
+        expect("with no seat for the keys, a walk to a window gone fullscreen isn't caught",
+            Carried.moveTaken([a], fullscreen, at()), null);
+        expect("with a seat for the keys, a walk to a window moved down is caught",
+            Carried.moveTaken([a], [Object.assign({}, a, { top: 40 })], at({ seated: true })),
+            { how: "catches", on: a.id, by: { x: 0, y: 28 } });
+        expect("a drop by his hand falls on as A scrolls",
+            Carried.moveTaken([a], laid(-1276), at({ going: "drop", byHand: true })), null);
+        expect("a walk his hand set off goes on as A scrolls",
+            Carried.moveTaken([a], laid(-1276), at({ byHand: true })), null);
+        expect("let go onto A, a cat is carried by A, not by the window it sat on",
+            Carried.moveTaken([a], laid(-1276), at({ going: null, sat: 9,
+                landed: { id: a.id } })), { how: "carries", on: a.id, by: { x: -1276, y: 0 } });
+        expect("on the floor, nothing carries it",
+            Carried.moveTaken([a], laid(-1276), at({ going: null, sat: a.id,
+                landed: { id: null } })), null);
     }
 
     // Caught mid-walk as the window it walks to moves, it rides that

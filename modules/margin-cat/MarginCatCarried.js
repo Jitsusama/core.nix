@@ -32,15 +32,19 @@ function carriedBy(landed, sat) {
     return landed === null ? sat : landed.id ?? null;
 }
 
-// How far niri's scroll of the strip carried the window the cat sits on,
-// `before` as the cat last heard it and `after` as it is now
-// (MarginCatTiles.js's of), as that window goes wholly off the screen with
-// the keys still in it (MarginCatScreen.qml's carriedOff). The answer is
-// across alone, the window keeping its column, size and top, since a
-// scroll moves nothing else. None comes for a floating window, for one
-// put in another column or on another workspace, or grown, shrunk or moved
-// up or down, as going fullscreen does, all of which the cat leaves rather
-// than rides; and none for a window that didn't move.
+// How far niri's scroll of the strip carried the cat's window, `before` as
+// the cat last heard it and `after` as it is now (MarginCatTiles.js's of),
+// while the keys give the cat no seat (MarginCatScreen.qml's follow): as
+// niri says that window scrolled wholly off the screen before it says the
+// keys left it, and as well with the keys on another screen or the
+// overview open, or their window gone fullscreen. The answer is any move
+// across of half a pixel or more, on the screen or off it, the window
+// keeping its column, size and top, since a scroll moves nothing else; so
+// the cat only ever goes with its own window, which is harmless wherever
+// the keys are. None comes for a floating window, for one put in another
+// column or on another workspace, or grown, shrunk or moved up or down, as
+// going fullscreen does, all of which the cat leaves rather than rides;
+// and none for a window that didn't move.
 function scrolledOff(before, after) {
     if (!before || !after || before.column === null || after.column !== before.column) {
         return null;
@@ -50,6 +54,38 @@ function scrolledOff(before, after) {
         && Math.abs(after.height - before.height) < 0.5;
     const across = after.left - before.left;
     return kept && Math.abs(across) >= 0.5 ? { x: across, y: 0 } : null;
+}
+
+// What follow() takes of how niri moved the windows from `saw`, as it last
+// heard them, to `now` (MarginCatTiles.js's of), for the cat as `at` has
+// it: `going` null while it sits, "" on a walk to `goingTo`, or the kind
+// of what else it's doing, as "puppy" for a visit over `sat`; `byHand`
+// for what his hand set off; `landed` (carriedBy); and whether the keys
+// give it a seat (`seated`). The answer is `how` it's taken, `on` which
+// window and `by` how far: "cuts" the puppy's visit, "catches" a walk not
+// his hand's, or "carries" a cat sitting; null where that window didn't
+// move, or the cat does anything else. With a seat any move counts
+// (MarginCat.carries); with none only a scroll's (scrolledOff), since a
+// window gone fullscreen leaves none either. A move is taken in the
+// layout that says it, whether or not the keys have left that window:
+// niri can say the window scrolled wholly off the screen first, and the
+// next layout's `saw` holds that move no longer, so a walk left to go on
+// rested over the air, and a visit was never cut.
+function moveTaken(saw, now, at) {
+    const tileIn = (tiles, id) => (tiles ?? []).find(one => one.id === id);
+    const by = id => id === null ? null
+        : at.seated ? MarginCat.carries(saw, now, id)
+        : scrolledOff(tileIn(saw, id), tileIn(now, id));
+    const on = at.going === null ? carriedBy(at.landed, at.sat)
+        : at.going === "puppy" ? at.sat
+        : at.going === "" && !at.byHand ? at.goingTo
+        : null;
+    const moved = by(on);
+    if (moved === null) {
+        return null;
+    }
+    const how = at.going === null ? "carries" : at.going === "puppy" ? "cuts" : "catches";
+    return { how, on, by: moved };
 }
 
 // Where the cat goes as niri carries its window away and ends the puppy's

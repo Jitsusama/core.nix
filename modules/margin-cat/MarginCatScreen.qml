@@ -371,16 +371,19 @@ PanelWindow {
                 leaving.stop();
                 floors();
             } else if (place !== null) {
-                // niri can say the window it sits on scrolled wholly off
-                // the screen before it says the keys went to the column
-                // that scroll brings in, the keys still in that window
-                // and its seat gone: it rides off with that window now,
-                // since the move is taken here and never heard again, and
-                // left, it walked to the keys from where the window had
-                // been, over the air (merge-net's gates, 2026-11-26 and
-                // 27, the window said at 1276 with the cat at 950).
-                if (going === null)
-                    carriedOff(saw);
+                // niri can say the window it sits on, walks to or visits
+                // over scrolled wholly off the screen before it says the
+                // keys went to the column that scroll brings in, the keys
+                // still in that window and its seat gone: the move is
+                // taken here, as it would be after (takeMoved), since the
+                // next layout holds it no longer. Left, it walked to the
+                // keys from where the window had been, over the air
+                // (merge-net's gates, 2026-11-26 and 27, the window said
+                // at 1276 with the cat at 950), and a walk or a visit
+                // there went on over the air. A screen going away takes
+                // nothing, since its seats read the screen.
+                if (present !== null)
+                    takeMoved(saw, false);
                 leaving.restart();
             }
             return;
@@ -452,47 +455,9 @@ PanelWindow {
             // keys rest; with no seat left on the screen, it rides that
             // window from where it's drawn (walkOnTo, Carried.caught). A
             // play plays on, as before: a key ends one (stroll), but for
-            // a puppy's visit, which the first branch ends where niri
-            // carries its window away.
-            const by = going?.kind === "puppy"
-                ? MarginCat.carries(saw, tilesOf(space?.id), sat) : null;
-            if (by !== null) {
-                // The keys gone to a column niri carries its window away
-                // for end the puppy's visit there, the puppy fading where
-                // it was, so the cat goes with its window as a seated cat
-                // does, never left standing on the air where that window
-                // was: riding niri's scroll, or there at once as a drag
-                // carries it (Carried.visitCut). A window scrolled wholly
-                // off the screen gives no seat (MarginCat.sits), so the
-                // cat goes as far as niri carries it, as carried() does.
-                tell("puppy");
-                halt();
-                // The screen read through `present`, since an event woke
-                // this; never null here, as `there` is null once it goes.
-                const cut = Carried.visitCut(seat(tile(sat)), place, by,
-                    { wide: size, across: present.width, scrolling: slides(sat) });
-                if (cut?.how === "rides")
-                    rideTo(cut.to);
-                else if (cut !== null)
-                    place = cut.to;
-            } else {
-                if (going !== null && !going.kind && !byHand
-                    && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
-                    const was = goingTo;
-                    const top = (saw ?? []).find(one => one.id === was);
-                    const caught = Carried.caught(drawnAt(), top,
-                        { wide: size, tall: size, air: cell, scrolling: scrolling() });
-                    if (caught === "holds") {
-                        halt();
-                        sat = was;
-                        heldShortOn = was;
-                    } else {
-                        walkOnTo(was, saw);
-                    }
-                }
-                if (going === null)
-                    carried(saw);
-            }
+            // a puppy's visit, which ends where niri carries its window
+            // away (takeMoved).
+            takeMoved(saw, true);
             if (going !== null || !resting.running || wanted !== waitingOn) {
                 // Its wander forgotten a moment later, outside this
                 // change of `there`, which forgetting it changes again.
@@ -503,6 +468,60 @@ PanelWindow {
         }
     }
 
+    // What niri moved of the window it sits on, walks to or visits over,
+    // from the windows it `saw`, taken as Carried.moveTaken says, the keys
+    // giving it a seat (`seated`) or none (follow). A visit cut there ends
+    // with the puppy fading where it was, and the cat goes with its window
+    // as a seated cat does, never left standing on the air where that
+    // window was: riding niri's scroll, or there at once as a drag carries
+    // it (Carried.visitCut). A window scrolled wholly off the screen gives
+    // no seat (MarginCat.sits), so the cat goes as far as niri carries it.
+    // A walk caught there holds where it's drawn, standing on that
+    // window's top as niri scrolls, or walks on to it (Carried.caught), and
+    // a cat held or sitting rides with it (carried).
+    function takeMoved(saw: var, seated: bool): void {
+        const tiles = tilesOf(space?.id);
+        const moved = Carried.moveTaken(saw, tiles, movingAs(seated));
+        if (moved?.how === "cuts") {
+            tell("puppy");
+            halt();
+            // The screen read through `present`, since an event woke
+            // this; follow takes nothing on a screen gone.
+            const cut = Carried.visitCut(seat(tile(sat)), place, moved.by,
+                { wide: size, across: present.width, scrolling: slides(sat) });
+            if (cut?.how === "rides")
+                rideTo(cut.to);
+            else if (cut !== null)
+                place = cut.to;
+            return;
+        }
+        if (moved?.how === "catches") {
+            const was = moved.on;
+            const top = (saw ?? []).find(one => one.id === was);
+            const caught = Carried.caught(drawnAt(), top,
+                { wide: size, tall: size, air: cell, scrolling: scrolling() });
+            if (caught === "holds") {
+                halt();
+                sat = was;
+                heldShortOn = was;
+            } else {
+                walkOnTo(was, saw);
+            }
+        }
+        if (going === null)
+            carried(saw, tiles, seated);
+    }
+    // What the cat is doing, as Carried.moveTaken reads it.
+    function movingAs(seated: bool): var {
+        return {
+            going: going === null ? null : going.kind || "",
+            byHand,
+            sat,
+            goingTo,
+            landed: landedOn,
+            seated
+        };
+    }
     // While it waits for the keys to rest on another column, it stays on
     // the window it sat on wherever niri moves it, as niri scrolls the
     // strip to a column off the screen's edge, never left on the air where
@@ -512,24 +531,15 @@ PanelWindow {
     // and it's drawn on niri's spring from where it was (lag), so it goes
     // with the window as niri draws it. Once the keys rest, it comes back
     // in at that edge (MarginCatStacked.js's walk). Let go, it's carried
-    // by the window it landed on, never by `sat`'s (carriedBy).
-    function carried(saw: var): void {
-        const on = Carried.carriedBy(landedOn, sat);
-        const by = on === null ? null : MarginCat.carries(saw, tilesOf(space?.id), on);
-        if (by === null || place === null)
+    // by the window it landed on, never by `sat`'s (carriedBy). With no
+    // seat for the keys, only a scroll carries it (Carried.scrolledOff),
+    // never a window gone fullscreen, resized or to another workspace,
+    // which it leaves.
+    function carried(saw: var, tiles: var, seated: bool): void {
+        const moved = Carried.moveTaken(saw, tiles, movingAs(seated));
+        if (moved?.how !== "carries" || place === null)
             return;
-        rideTo({ x: place.x + by.x, y: place.y + by.y });
-    }
-    // Carried wholly off the screen by its window, as niri scrolls the
-    // strip with the keys still in it (follow), never by one gone
-    // fullscreen, resized or to another workspace, which it leaves
-    // (Carried.scrolledOff).
-    function carriedOff(saw: var): void {
-        const on = Carried.carriedBy(landedOn, sat);
-        const by = Carried.scrolledOff((saw ?? []).find(one => one.id === on),
-            (tilesOf(space?.id) ?? []).find(one => one.id === on));
-        if (by !== null)
-            rideTo({ x: place.x + by.x, y: place.y });
+        rideTo({ x: place.x + moved.by.x, y: place.y + moved.by.y });
     }
     // Whether its place is `to` already, within half a pixel, as a cut
     // puppy visit asks of its seat.
@@ -606,12 +616,15 @@ PanelWindow {
         }
         const now = Date.now();
         // As far into the scroll, or the move of the column it's carried
-        // by, as niri says, by its latest begin rather than an old word
-        // left on another window, or a guess at how late it hears of one
-        // where niri says nothing or tells of one ended.
+        // by, as niri says, by the later begin of the two that run
+        // (Tiles.slideBegan), rather than an old word left on another
+        // window, or a guess at how late it hears of one where niri says
+        // nothing or tells of one ended.
         const carrier = Carried.carriedBy(landedOn, sat);
-        const began = scrolling() ? scrollHeard.at
-            : columnMoving(carrier) ? Tiles.heardOf(columnHeard, carrier).at : null;
+        scrolling();
+        columnsHeard();
+        const began = Tiles.slideBegan([scrollHeard, Tiles.heardOf(columnHeard, carrier)],
+            now, slideMs);
         const behind = MarginCat.behindTold(frameMs, "slide", began === null ? null
             : now - began);
         carry = Carried.rides(carry, place, to, { at: now - behind, spring });
