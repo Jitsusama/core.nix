@@ -25,7 +25,11 @@
 //! running clear holds main for as long as it keeps running; that's what
 //! keeps main still under it, since a miss happens only when main moves.
 //! Beside either, a change still merges alone when the train can't take
-//! it (`gives_way`), as before.
+//! it (`gives_way`), as before. A `ready` asked from no branch, as a merge
+//! gate asks it in a checkout on no branch, can't board one, and is
+//! refused rather than told it may merge alone: on 27 November #7011,
+//! #7195 and #7196 merged so beside a clear run of 29 riders that had
+//! passed, which then ran again.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -136,9 +140,10 @@ pub fn why(root: &Path, now: u64, going: bool) -> Option<Yields> {
 /// What `ready` says of the change at `head`, which would merge alone,
 /// while the train holds the right of way or runs with riders aboard:
 /// that it boards the train instead, so main stays where the train's run
-/// is cut; nothing while the train neither holds the way nor runs, or
-/// can't take the change, or the change waits on a run of its own, as
-/// `ready` boards none then either.
+/// is cut, or, asked on no branch, that it waits to board from its own;
+/// nothing while the train neither holds the way nor runs, or can't take
+/// the change, or the change waits on a run of its own, as `ready` boards
+/// none then either.
 #[must_use]
 pub fn gives_way(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
@@ -147,9 +152,25 @@ pub fn gives_way(head: &str) -> Option<String> {
     if crate::turn::waits_to_run(head).is_some() {
         return None;
     }
-    let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
-    let boarded = super::offer(head, (!branch.is_empty()).then_some(branch)?.as_str())?;
-    let since = match why {
+    let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
+    boards(head, &why, now, &branch, |branch| {
+        super::offer(head, branch)
+    })
+}
+
+/// What `ready` says of the change at `head`, asked from `branch`, which
+/// would merge alone while the train yields `why` at `now`: that it rides
+/// the train, as `offer` puts it on from its branch, or, asked from no
+/// branch, that it may not merge alone but rides once asked from its own;
+/// nothing when `offer` can't take it, which then merges alone.
+fn boards(
+    head: &str,
+    why: &Yields,
+    now: u64,
+    branch: &str,
+    offer: impl FnOnce(&str) -> Option<String>,
+) -> Option<String> {
+    let since = match *why {
         Yields::Held(since) => format!(
             "has held the right of way for {} minutes, since main moved beside a run of it \
              that passed",
@@ -158,6 +179,15 @@ pub fn gives_way(head: &str) -> Option<String> {
         Yields::Runs(1) => "runs with 1 rider aboard".to_owned(),
         Yields::Runs(aboard) => format!("runs with {aboard} riders aboard"),
     };
+    if branch.is_empty() {
+        return Some(format!(
+            "the merge train {since}, so {} rides it rather than merge alone and move main \
+             beside it, but this was asked on no branch, so it can't board: ask merge-net \
+             ready from a checkout on its pull request's branch",
+            crate::state::short(head)
+        ));
+    }
+    let boarded = offer(branch)?;
     Some(format!(
         "the merge train {since}, so {} rides it rather than merge alone and move main \
          beside it: {boarded}",
@@ -420,6 +450,56 @@ mod tests {
         );
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&empty);
+    }
+
+    // As on 27 November, when a merge gate asked ready in a checkout on no
+    // branch beside a clear run of 29 riders, and three changes merged
+    // alone: asked on no branch, a change is refused, offered to no train.
+    #[test]
+    fn a_change_asked_on_no_branch_beside_the_train_is_refused_not_let_merge() {
+        let head = "464ae7c55946bdf6cd961a0fc7767d029578deb9";
+        let mut offered = Vec::new();
+        let said = boards(head, &Yields::Runs(29), 1000, "", |branch| {
+            offered.push(branch.to_owned());
+            Some("aboard".to_owned())
+        });
+        assert!(
+            said.as_deref().is_some_and(|said| said.starts_with(
+                "the merge train runs with 29 riders aboard, so 464ae7c55946 rides it"
+            ) && said.ends_with(
+                "asked on no branch, so it can't board: ask merge-net ready from a checkout \
+                 on its pull request's branch"
+            )),
+            "a change asked on no branch beside the train wasn't refused: {said:?}"
+        );
+        assert!(
+            offered.is_empty(),
+            "a change on no branch was offered: {offered:?}"
+        );
+    }
+
+    // From its branch a change rides the train `offer` puts it on, and one
+    // the train can't take merges alone, as before.
+    #[test]
+    fn a_change_on_its_branch_rides_or_merges_alone_as_the_train_takes_it() {
+        let head = "464ae7c55946bdf6cd961a0fc7767d029578deb9";
+        let said = boards(head, &Yields::Held(400), 1000, "slack-rows", |branch| {
+            Some(format!("put on from {branch}"))
+        });
+        assert_eq!(
+            said.as_deref(),
+            Some(
+                "the merge train has held the right of way for 10 minutes, since main moved \
+                 beside a run of it that passed, so 464ae7c55946 rides it rather than merge \
+                 alone and move main beside it: put on from slack-rows"
+            ),
+            "a change on its branch didn't ride the train"
+        );
+        assert_eq!(
+            boards(head, &Yields::Runs(1), 1000, "slack-rows", |_| None),
+            None,
+            "a change the train couldn't take didn't merge alone"
+        );
     }
 
     #[test]
