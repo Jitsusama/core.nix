@@ -24,7 +24,9 @@
 //!
 //! With --usb, NODE is a USB camera's, and the file is FOLDER/<the camera's
 //! name>, made and removed with the camera: it's written while the camera
-//! is there and removed when its node goes or this is stopped. A program
+//! is there and removed when its node goes or this is stopped. A name a
+//! loopback claims in FOLDER/.claimed is its, so the camera's file is then
+//! FOLDER/<the name> (<its node>), said once in the log. A program
 //! holding the camera is listed only while the camera streams, since
 //! programs that only look at a camera, such as `PipeWire`'s, open it for a
 //! moment as it comes; while anyone holds it, it looks once a second, as
@@ -670,13 +672,23 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
-    let output = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
+    let named = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
         Failure::new(
             Exit::Failed,
             "loopback-holders can't name the camera's file",
         )
         .because(format!("{}: {error}", node.display()))
     })?;
+    let output = named.path;
+    // Quoted, as the record quotes a holder, since a USB camera names
+    // itself.
+    if let Some(claimed) = named.gave_way_to {
+        say(&format!(
+            "a loopback's file is called {:?}, so this camera's is {:?}",
+            claimed.to_string_lossy(),
+            output.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);

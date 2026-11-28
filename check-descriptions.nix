@@ -5880,9 +5880,9 @@
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
-    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
-    folder, never beside it, and the seat's give-back is dropped
+    loopback's holders file is named as the Brio is, its name claimed from boot, and removed
+    when the Brio goes, the shell lists the Brio only while that file is there, the Brio's own
+    watch writes in the hidden folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
