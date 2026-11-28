@@ -47,8 +47,11 @@ judgeIris() {
   [[ -r $resource ]] || unreadable "$resource can't be read"
   configure=$(between 'iris_resource_configure_main(' '}' "$resource")
   [[ -n $configure ]] || unreadable "iris_resource.c has no iris_resource_configure_main"
-  # Read as one line, so an else on the line before the branch shadows it too.
-  flat=$(tr -s '[:space:]' ' ' <<<"$configure")
+  # Read as one line without its comments, so an else on a line before the
+  # branch shadows it too, even with a comment between them as the patch
+  # puts there. Block comments go first, since one may hold a // of a link.
+  flat=$(sed -zE 's:/\*([^*]|\*+[^*/])*\*+/: :g' <<<"$configure" |
+    sed -E 's://.*$::' | tr -s '[:space:]' ' ')
   if [[ $flat == *"else if $memoryObject"* ]]; then
     broken "$shadowed"
   fi
@@ -86,7 +89,8 @@ status=0
 # shellcheck disable=SC2310 # judgeIris failing is the result sought here, and it exits on its own.
 released=$(judgeIris "$3") || status=$?
 if ((status == 0)); then
-  echo "Mesa's own iris passes too, so this check can't tell the patch is there."
+  echo "Mesa's own iris passes too, so it may carry the fix: read its" \
+    "iris_resource_configure_main, and take out the patch and this check if it does."
   exit 1
 fi
 [[ $released == "$shadowed, "* ]] || {

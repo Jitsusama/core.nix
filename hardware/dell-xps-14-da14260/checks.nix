@@ -475,7 +475,7 @@ in
   # (tests/iris-tiles-memory-objects-as-anv-does.sh). Mesa's own iris must
   # fail at that shadowing, so the check is seen to catch the bug each time
   # it runs, and its cases edit all three files as a later Mesa might, so
-  # a check that stops seeing any of its failures fails here
+  # a check that stops seeing a failure one of them makes fails here
   # (tests/iris-tiles-memory-objects-as-anv-does-cases.py).
   iris-tiles-memory-objects-as-anv-does =
     let

@@ -5,9 +5,10 @@
 Run with CHECK the check's script, RESOURCE and IMAGE the patched iris_resource.c and
 anv_image.c, and OWN Mesa's own iris_resource.c. Each case edits a copy of one of them
 the way a later Mesa, or a patch carried badly, might, and says the words the check's
-failure must hold. A case whose edit no longer changes its file is named apart, as one
-to move with Mesa here, so a moved driver can't leave a case proving nothing. The files
-as they are pass in the check this runs beside.
+failure must hold. Each edit lands only in the function the check reads from that
+file, and a case whose edit no longer changes that function is named apart, as one to
+move with Mesa here, so a moved driver can't leave a case proving nothing. The files as
+they are pass in the check this runs beside.
 """
 
 import shutil
@@ -19,6 +20,12 @@ from pathlib import Path
 RESOURCE = "iris_resource.c"
 IMAGE = "anv_image.c"
 OWN = "Mesa's own iris_resource.c"
+# The function the check reads from each file, by how its definition starts.
+FUNCTIONS = {
+    RESOURCE: "iris_resource_configure_main(",
+    IMAGE: "anv_image_init(",
+    OWN: "iris_resource_configure_main(",
+}
 MEMORY_OBJECT = "   if (!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {"
 NO_AUX = "      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;"
 PREFER_4K = "      usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;"
@@ -51,6 +58,13 @@ CASES: list[tuple[str, str, str, str, str]] = [
         RESOURCE,
         MEMORY_OBJECT,
         "   else\n" + MEMORY_OBJECT,
+        SHADOWED,
+    ),
+    (
+        "the memory object's branch an else before the comment over it",
+        RESOURCE,
+        "   /* A memory object carries no modifier",
+        "   else\n   /* A memory object carries no modifier",
         SHADOWED,
     ),
     (
@@ -98,6 +112,13 @@ CASES: list[tuple[str, str, str, str, str]] = [
         "Mesa's own iris passes too",
     ),
     (
+        "Mesa's own iris fixed without the preference",
+        OWN,
+        "   else" + MEMORY_OBJECT[2:] + "\n" + NO_AUX + "\n" + PREFER_4K,
+        MEMORY_OBJECT + "\n" + NO_AUX,
+        "failed for another reason",
+    ),
+    (
         "Mesa's own iris unreadable",
         OWN,
         "\niris_resource_configure_main(",
@@ -116,6 +137,13 @@ def answer(bash: str, check: str, files: list[Path]) -> tuple[int, str]:
     return run.returncode, run.stdout + run.stderr
 
 
+def function(text: str, starts: str) -> tuple[int, int] | None:
+    """Give where the function whose definition starts so begins and ends in the text."""
+    start = text.find("\n" + starts)
+    end = text.find("\n}", start)
+    return None if start < 0 or end < 0 else (start, end + 2)
+
+
 def judge(bash: str, check: str, sources: dict[str, str]) -> tuple[list[str], list[str]]:
     """Give the cases the check answers wrongly, and those whose edit no longer applies."""
     wrong, stale = [], []
@@ -125,10 +153,13 @@ def judge(bash: str, check: str, sources: dict[str, str]) -> tuple[list[str], li
             for key, path in sources.items():
                 shutil.copyfile(path, copies[key])
             text = copies[edits].read_text()
-            if before not in text:
-                stale.append(f"{name}: its edit no longer changes {edits}.")
+            span = function(text, FUNCTIONS[edits])
+            if span is None or before not in text[span[0] : span[1]]:
+                stale.append(f"{name}: its edit no longer changes {FUNCTIONS[edits]}) in {edits}.")
                 continue
-            copies[edits].write_text(text.replace(before, after, 1))
+            start, end = span
+            edited = text[:start] + text[start:end].replace(before, after, 1) + text[end:]
+            copies[edits].write_text(edited)
             status, said = answer(bash, check, list(copies.values()))
         if status == 0 or expected not in said:
             wrong.append(f"{name}: should fail saying {expected!r}, and said: {said.strip()}")
