@@ -659,3 +659,28 @@ fn a_check_the_tests_dont_reach_or_that_isnt_there_over_the_base_builds_nothing_
         noted_with(&stand_in, &noted);
     }
 }
+
+#[test]
+fn what_a_change_wrote_reaches_the_log_with_its_escapes_shown_never_run() {
+    let change = "A\tmodules/a/tests/new\x1b[2J.rs\nM\tmodules/a/src/lib.rs\n";
+    let stand_in = committed("red-escaped", change, "a3.drv");
+    let log = "test(a): b\x1fnever \x1b]0;owned\x07\x1f\n\x1e\n";
+    fs::write(stand_in.path("log"), log).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    let said = text(&ran.stderr);
+    assert!(ran.status.success(), "{said}");
+    assert!(
+        !said.contains('\x1b') && !said.contains('\x07'),
+        "a control character the change wrote reached the log raw: {said:?}"
+    );
+    assert!(
+        said.contains(r#""Red-first: never \u{1b}]0;owned\u{7}" doesn't read"#),
+        "the unread trailer wasn't shown with its escapes: {said}"
+    );
+    assert!(
+        said.contains(r"(modules/a/tests/new\u{1b}[2J.rs), so they'd pass without the change"),
+        "the test's path wasn't shown with its escape: {said}"
+    );
+}

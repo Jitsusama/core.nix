@@ -424,3 +424,14 @@ fn a_kept_log_is_named_by_the_check_with_what_a_file_cant_hold_dashed() {
         "a check's name was kept as a file's name it can't safely be"
     );
 }
+
+#[test]
+fn what_a_change_wrote_is_shown_with_each_control_character_escaped() {
+    let wrote = "none\u{1b}]0;owned\u{7}\u{1b}[2J a\tb\\c \"d\" caf\u{e9} \u{202e}fed";
+
+    assert_eq!(
+        shown::shown(wrote),
+        r#"none\u{1b}]0;owned\u{7}\u{1b}[2J a\tb\\c "d" café \u{202e}fed"#,
+        "a control character or a mark turning the text was shown raw, or plain text wasn't"
+    );
+}

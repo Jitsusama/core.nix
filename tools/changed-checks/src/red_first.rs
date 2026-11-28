@@ -109,6 +109,7 @@ use std::time::Instant;
 use ended::{Built, built_over};
 use laying::{git, laid_over};
 use serde_json::json;
+use shown::shown;
 pub use telling::{Apart, Change, adding, inline_tests, tests_begin};
 use verdict::Verdict;
 
@@ -271,10 +272,12 @@ pub fn judged(
     let began = std::time::Instant::now();
     let verdict = match judging(at, asked, committed, (before, after), noted) {
         Ok(verdict) => verdict,
+        // Why may name git's arguments, the change's paths among them.
         Err(why) => {
             eprintln!(
-                "changed-checks: red first couldn't judge the change ({why}), so its tests \
-                 aren't asked to fail on the base"
+                "changed-checks: red first couldn't judge the change ({}), so its tests aren't \
+                 asked to fail on the base",
+                shown(&why)
             );
             Verdict::Unjudged("couldn't judge")
         }
@@ -379,16 +382,20 @@ fn sparing(at: &At) -> Result<Option<Verdict>, String> {
         return Ok(Some(Verdict::Unjudged("merges alone")));
     }
     let (excuse, unread) = excused(&log);
+    // A commit's words reach the reader's terminal, so they're shown with
+    // any control character escaped, never run there.
     for trailer in unread {
         eprintln!(
-            "changed-checks: \"{TRAILER}: {trailer}\" doesn't read; a test that pins what was \
-             right is excused by \"{TRAILER}: none, <why>\""
+            "changed-checks: \"{TRAILER}: {}\" doesn't read; a test that pins what was right is \
+             excused by \"{TRAILER}: none, <why>\"",
+            shown(&trailer)
         );
     }
     match &excuse {
         Some(Excused::Pinned(why)) => eprintln!(
-            "changed-checks: {TRAILER}: none, {why}; so no check's tests are asked to fail on \
-             the base"
+            "changed-checks: {TRAILER}: none, {}; so no check's tests are asked to fail on the \
+             base",
+            shown(why)
         ),
         Some(Excused::Reverts) => eprintln!(
             "changed-checks: the change reverts, so its tests aren't asked to fail on the base"
@@ -527,7 +534,7 @@ fn over_the_base(
         eprintln!(
             "changed-checks: no check built reads the change's tests ({}), so none is asked \
              to fail on the base",
-            tests.join(", ")
+            shown(&tests.join(", "))
         );
     }
     // One not there over the base might have been the check running them.
@@ -631,7 +638,7 @@ fn say_over_budget(name: &str) {
 /// Say that each check built over the base passed there, none failing,
 /// and so refuse the change's `tests`.
 fn say_refused(passing: &[&str], tests: &[String]) {
-    let tests = tests.join(", ");
+    let tests = shown(&tests.join(", "));
     for name in passing {
         eprintln!(
             "changed-checks: {name} passes with the change's tests laid over the base's code \
@@ -656,8 +663,9 @@ fn said_apart(at: &At, change: &Change) -> Result<Vec<String>, String> {
     apart.extend(inline_in(at, change)?.into_iter().map(|file| {
         format!("{file} adds a test among its code, which no path tells apart from it")
     }));
+    // Each names a path of the change's, shown, never run by a terminal.
     for said in &apart {
-        eprintln!("changed-checks: {said}");
+        eprintln!("changed-checks: {}", shown(said));
     }
     if !apart.is_empty() {
         eprintln!(
@@ -773,6 +781,7 @@ fn evaluated_as(
 
 mod ended;
 mod laying;
+mod shown;
 mod telling;
 mod verdict;
 
