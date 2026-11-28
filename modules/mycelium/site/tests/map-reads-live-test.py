@@ -720,6 +720,36 @@ DRAWER_WAITING = "Still waiting on the node's latest messages."
 DRAWER_BROKEN = "Couldn't read the node's latest messages."
 
 
+def test_now_and_a_network_say_their_talk_is_still_read(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    drawer = page.locator("#panel-body")
+    # Before the messages answer, a talk line would be missing rather than
+    # saying none passed, so Now says they are still read in its place.
+    expect(drawer, "Now said nothing of talk yet to be read").to_contain_text(DRAWER_READING)
+    page.evaluate(f"location.hash = '#net={TALKED_WITH}'")
+    the_drawer_is(page, "Chart the Harbour", why=f"{TALKED_WITH}'s drawer never opened")
+    expect(drawer, "a network said nothing of talk yet to be read").to_contain_text(DRAWER_READING)
+    slow_talk_node.answer("message")
+    expect(
+        drawer.locator(".talk-line"), "a network open as messages answered said no talk"
+    ).to_be_visible(timeout=PACE_MS)
+    expect(drawer, "a network still read talk that had answered").not_to_contain_text(
+        DRAWER_READING
+    )
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now again").to_have_text("Now")
+    expect(drawer.locator(".talk-line"), "Now said no talk once it answered").to_be_visible()
+    expect(drawer, "Now still read talk that had answered").not_to_contain_text(DRAWER_READING)
+    opened.close()
+
+
 def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     browser: Browser, slow_talk_served: Served
 ) -> None:
