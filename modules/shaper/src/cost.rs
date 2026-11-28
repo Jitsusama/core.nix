@@ -15,13 +15,16 @@
 //! carry past their CAKEs' count, so what they cost the connection is the
 //! share they're held to.
 //!
-//! That cost is read over several seconds, never one. WARP sends what its
+//! That cost is never read from one second alone. WARP sends what its
 //! CAKE passed it in bursts, so in one second its own packets may run well
 //! over the count and in the next well under. Read a second at a time, and
 //! kept at its highest while it fell back slowly, those swings alone held
 //! the cost near their peaks: on 28 November WARP's CAKE stood at 5,444
 //! kbit/s, its 9,310 less 3,866 of cost, while the whole upload was about
-//! 5 Mbit/s, and the model relay's calls inside it were dropped.
+//! 5 Mbit/s, and the model relay's calls inside it were dropped. So a cost
+//! is taken up at once only once two seconds in a row both show it, as a
+//! download does from its second second and a burst never does, and
+//! otherwise as it stands over the last `WINDOW_S`.
 
 use std::collections::VecDeque;
 
@@ -34,7 +37,7 @@ pub const COUNTER: &str = "vpnout";
 
 /// How much of the gap a second closes when what the VPN costs past its
 /// count falls: it gives the rate back over about ten seconds, since a
-/// download starting again would cost it within the window.
+/// download starting again would cost it from its second second.
 const FALL: f64 = 0.9;
 
 /// The seconds over which what the VPN costs past its count is read: long
@@ -51,6 +54,8 @@ pub struct Cost {
     /// had counted, in bytes, and when, in seconds: the reads of the last
     /// `WINDOW_S`, with the one just before it.
     seen: VecDeque<(u64, u64, f64)>,
+    /// What they carried past it between the last two reads, in kbit/s.
+    last: Option<f64>,
     /// What they carry past it, smoothed.
     extra: f64,
 }
@@ -68,24 +73,40 @@ impl Cost {
                 if carried < was_carried || counted < was_counted =>
             {
                 self.seen.clear();
+                self.last = None;
             }
             _ => {}
         }
-        let last = self.seen.back().map(|&(_, _, at)| at);
+        let past = |&(was_carried, was_counted, at): &(u64, u64, f64)| {
+            let kbit = |bytes: u64| float(bytes) * 8.0 / 1_000.0 / (t - at);
+            (kbit(carried - was_carried) - kbit(counted - was_counted)).max(0.0)
+        };
+        let previous = self.seen.back().map(|read| (past(read), read.2));
         self.seen.push_back((carried, counted, t));
-        while self.seen.get(1).is_some_and(|&(_, _, at)| at <= t - WINDOW_S) {
+        let gone = |&(_, _, at): &(u64, u64, f64)| at <= t - WINDOW_S;
+        while self.seen.get(1).is_some_and(gone) {
             self.seen.pop_front();
         }
-        if let (Some(at), Some(&(first_carried, first_counted, from))) = (last, self.seen.front()) {
-            let span = t - from;
-            let kbit = |bytes: u64| float(bytes) * 8.0 / 1_000.0 / span;
-            let now = (kbit(carried - first_carried) - kbit(counted - first_counted)).max(0.0);
-            self.extra = if now >= self.extra {
-                now
-            } else {
-                now + (self.extra - now) * FALL.powf(t - at)
-            };
-        }
+        let Some((now, at)) = previous else {
+            self.last = None;
+            return whole(self.extra);
+        };
+        // Two seconds in a row, or the whole window, but never one second.
+        let held = self.last.map(|last| last.min(now));
+        let windowed = self
+            .seen
+            .front()
+            .filter(|read| read.2 <= t - WINDOW_S)
+            .map(past);
+        self.last = Some(now);
+        let Some(read) = held.into_iter().chain(windowed).reduce(f64::max) else {
+            return whole(self.extra);
+        };
+        self.extra = if read >= self.extra {
+            read
+        } else {
+            read + (self.extra - read) * FALL.powf(t - at)
+        };
         whole(self.extra)
     }
 }
@@ -175,26 +196,29 @@ mod tests {
         let mut cost = Cost::default();
         assert_eq!(cost.sample(0, 0, 0.0), 0, "nothing measured yet");
         // The CAKE counted 10 Mbit/s and the connection carried 11.5.
-        assert_eq!(cost.sample(bytes(11_500), bytes(10_000), 1.0), 1500);
+        assert_eq!(
+            cost.sample(bytes(11_500), bytes(10_000), 1.0),
+            0,
+            "one second alone is never taken up"
+        );
         assert_eq!(cost.sample(bytes(23_000), bytes(20_000), 2.0), 1500);
+        assert_eq!(cost.sample(bytes(34_500), bytes(30_000), 3.0), 1500);
     }
 
     #[test]
-    fn a_cost_that_grows_is_given_up_at_once_and_one_that_falls_slowly() {
+    fn a_cost_two_seconds_show_is_given_up_at_once_and_one_that_falls_slowly() {
         let mut cost = Cost::default();
         cost.sample(0, 0, 0.0);
-        assert_eq!(cost.sample(bytes(12_000), bytes(10_000), 1.0), 2000);
+        cost.sample(bytes(12_000), bytes(10_000), 1.0);
+        assert_eq!(cost.sample(bytes(24_000), bytes(20_000), 2.0), 2000);
         // The download ends: the connection carries what was counted.
-        let after = cost.sample(bytes(22_000), bytes(20_000), 2.0);
-        assert_eq!(
-            after, 1900,
-            "the window halves the gap and a tenth of the rest closes in a second"
-        );
+        let after = cost.sample(bytes(34_000), bytes(30_000), 3.0);
+        assert_eq!(after, 1800, "a tenth of the gap closes in a second");
         let mut last = after;
-        for second in 3..30 {
+        for second in 4..30 {
             let n = u64::try_from(second).expect("a small count");
             last = cost.sample(
-                bytes(2000 + 10_000 * n),
+                bytes(4000 + 10_000 * n),
                 bytes(10_000 * n),
                 f64::from(second),
             );
@@ -202,23 +226,37 @@ mod tests {
         assert!(last < 200, "given back within half a minute: {last}");
         // A download starting again costs 3 Mbit/s past the count.
         let mut costs = Vec::new();
-        for second in 30..36 {
+        for second in 30..32 {
             let n = u64::try_from(second - 29).expect("a small count");
             costs.push(cost.sample(
-                bytes(2000 + 290_000 + 13_000 * n),
+                bytes(4000 + 290_000 + 13_000 * n),
                 bytes(290_000 + 10_000 * n),
                 f64::from(second),
             ));
         }
-        assert!(
-            costs.windows(2).all(|pair| pair[0] < pair[1]),
-            "a download starting again costs more each second: {costs:?}"
-        );
         assert_eq!(
             costs.last(),
             Some(&3000),
-            "a download starting again costs it whole within the window: {costs:?}"
+            "a download starting again costs it whole from its second second: {costs:?}"
         );
+    }
+
+    /// What a VPN sending `sends` in turn, a second each, against 4 Mbit/s
+    /// its CAKE counts, costs at each read for 40 seconds.
+    fn bursts(sends: &[u64]) -> Vec<u64> {
+        let mut cost = Cost::default();
+        cost.sample(0, 0, 0.0);
+        let (mut carried, mut counted) = (0, 0);
+        sends
+            .iter()
+            .cycle()
+            .zip(1..40)
+            .map(|(&kbit, second)| {
+                carried += bytes(kbit);
+                counted += bytes(4000);
+                cost.sample(carried, counted, f64::from(second))
+            })
+            .collect()
     }
 
     // On 28 November WARP's CAKE stood at 5,444 kbit/s, 3,866 under its
@@ -226,20 +264,18 @@ mod tests {
     // its cost read one second at a time and kept at its peak stood near
     // the bursts' peaks.
     #[test]
-    fn a_vpn_s_bursts_cost_what_they_carry_past_the_count_on_the_whole() {
-        let mut cost = Cost::default();
-        cost.sample(0, 0, 0.0);
-        // The CAKE counts 4 Mbit/s each second, and WARP sends 2 and 7 in
-        // turn: 4.5 on the whole, half a megabit past the count.
-        let (mut carried, mut counted) = (0, 0);
-        let mut costs = Vec::new();
-        for second in 1..40 {
-            carried += bytes(if second % 2 == 1 { 2000 } else { 7000 });
-            counted += bytes(4000);
-            costs.push(cost.sample(carried, counted, f64::from(second)));
-        }
+    fn a_vpn_s_bursts_cost_about_what_they_carry_past_the_count_on_the_whole() {
+        // 2 and 7 in turn, 4.5 on the whole: half a megabit past the count.
+        let costs = bursts(&[2000, 7000]);
         assert!(
             costs.iter().all(|&kbit| kbit <= 600),
+            "bursts carrying 500 kbit/s past the count on the whole cost {costs:?}"
+        );
+        // Bursts whose turn the window doesn't divide: 4.5 on the whole
+        // again, read within twice what they carry past the count.
+        let costs = bursts(&[7000, 2000, 3000, 6000, 4500]);
+        assert!(
+            costs.iter().all(|&kbit| kbit <= 1000),
             "bursts carrying 500 kbit/s past the count on the whole cost {costs:?}"
         );
     }
@@ -255,12 +291,14 @@ mod tests {
     fn counters_made_again_start_the_count_over_and_keep_the_cost() {
         let mut cost = Cost::default();
         cost.sample(0, 0, 0.0);
-        assert_eq!(cost.sample(bytes(12_000), bytes(10_000), 1.0), 2000);
+        cost.sample(bytes(12_000), bytes(10_000), 1.0);
+        assert_eq!(cost.sample(bytes(24_000), bytes(20_000), 2.0), 2000);
         // nixos-rebuild loads the table afresh, its counter at nothing.
-        assert_eq!(cost.sample(10, bytes(20_000), 2.0), 2000);
-        assert_eq!(cost.sample(10 + bytes(12_000), bytes(30_000), 3.0), 2000);
+        assert_eq!(cost.sample(10, bytes(30_000), 3.0), 2000);
+        assert_eq!(cost.sample(10 + bytes(12_000), bytes(40_000), 4.0), 2000);
+        assert_eq!(cost.sample(10 + bytes(24_000), bytes(50_000), 5.0), 2000);
         // A VPN brought back up has a new CAKE.
-        assert_eq!(cost.sample(bytes(30_000), 5, 4.0), 2000);
+        assert_eq!(cost.sample(bytes(40_000), 5, 6.0), 2000);
     }
 
     #[test]
@@ -278,6 +316,7 @@ mod tests {
         let mut cost = Cost::default();
         cost.sample(0, 0, 0.0);
         assert_eq!(cost.sample(bytes(100), bytes(10), 0.0), 0);
-        assert_eq!(cost.sample(bytes(12_000), bytes(10_000), 1.0), 2000);
+        cost.sample(bytes(12_000), bytes(10_000), 1.0);
+        assert_eq!(cost.sample(bytes(24_000), bytes(20_000), 2.0), 2000);
     }
 }

@@ -1680,15 +1680,16 @@ fn follow_vpns(
     );
     // What the tins ahead of bulk carried: Joel's, and agents' model calls,
     // which the split counts only up to the floor's most (model calls ahead
-    // round 6's F46).
+    // round 6's F46) and the floor never under what the relay sent.
     let ahead = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
-    let joel = lanes::joel_inside(ahead, relay.map_or(0.0, float));
+    let relay = relay.map_or(0.0, float);
+    let joel = lanes::joel_inside(ahead, relay);
     let base = primary.map(|s| {
         let vpn = s.share_lanes((joel, agents), t);
         // Held under its tunnel's pace while it waits inside it, so the
         // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = lanes::vpn_held(vpn, s.vpn_share, ahead);
-        s.vpn_least = lanes::vpn_least(vpn, ahead);
+        let held = lanes::vpn_held(vpn, s.vpn_share, ahead, relay);
+        s.vpn_least = lanes::vpn_least(vpn, ahead, relay);
         (rate::whole(held), s.applied.1, s.download.straight())
     });
     let carried = sh(&words(&format!(
