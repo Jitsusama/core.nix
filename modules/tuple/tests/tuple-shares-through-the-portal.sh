@@ -12,22 +12,40 @@ set -euo pipefail
 # data folder is only text to find in its steps.
 activate=$(realpath -- "$2")
 data=$3
-# An empty one would match every step's folder and move none of them, so
-# the steps would write into the person's own Tuple folder.
-if [[ -z $data ]]; then
-  echo "the data folder to find in the steps is empty" >&2
+# An empty one would match every step's folder and move none of them, and
+# one that isn't a whole path, or ends in a slash, would match only part of
+# one, so the steps would write into the person's own Tuple folder or home.
+if [[ $data != /* || $data == */ ]]; then
+  echo "the data folder to find in the steps isn't a whole path without a slash at its end:" \
+    "\"$data\"" >&2
   exit 64
 fi
 # The library is handed in by its store path; shellcheck reads it from here.
 # shellcheck source=SCRIPTDIR/tuple-in-a-folder-of-its-own.sh
 source "$1"
 # Matched and put back as plain text, so no character of either folder's
-# name is read as a pattern.
+# name is read as a pattern, and only where the data folder starts a word,
+# after a space or a quote, so one that is only the tail of a step's folder,
+# such as /.local/share, matches nothing rather than part of it.
+starts=(' ' "'" '"')
 while IFS= read -r line; do
-  if [[ $line == "run "* && $line == *"$data/tuple/"* ]]; then
-    step=${line#run }
-    printf '%s\n' "${step//"$data"/"$XDG_DATA_HOME"}"
+  [[ $line == "run "* ]] || continue
+  moved=$line
+  for start in "${starts[@]}"; do
+    moved=${moved//"$start$data/"/"$start$XDG_DATA_HOME/"}
+  done
+  if [[ $moved == "$line" || $moved != *"$XDG_DATA_HOME/tuple/"* ]]; then
+    continue
   fi
+  # A step still naming the data folder where it starts a word would touch
+  # the person's own, so it isn't run at all.
+  for start in "${starts[@]}"; do
+    if [[ $moved == *"$start$data"* ]]; then
+      echo "a step names $data where it can't be moved: $line" >&2
+      exit 1
+    fi
+  done
+  printf '%s\n' "${moved#run }"
 done < "$activate" > steps
 if [[ ! -s steps ]]; then
   echo "the activation script has no step writing into $data/tuple/" >&2

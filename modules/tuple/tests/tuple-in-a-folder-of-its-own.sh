@@ -14,6 +14,9 @@ here=$(mktemp -d)
 export HOME=$here XDG_DATA_HOME=$here/data XDG_RUNTIME_DIR=$here/run \
   XDG_CONFIG_HOME=$here/.config XDG_CACHE_HOME=$here/.cache \
   XDG_STATE_HOME=$here/.local/state
+# Named, so the completion's editors, which run only here, can tell this
+# folder from a person's home that holds its own runtime and data folders.
+export TUPLE_FOLDER_OF_ITS_OWN=$here
 # A person's session bus and displays would lead a tuple run by hand to
 # their desktop, which a build never has.
 unset DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY
