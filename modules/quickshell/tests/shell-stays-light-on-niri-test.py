@@ -173,7 +173,7 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     resident = [
         float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
     ]
-    # It weighs the second round, the one before the last, which the third is held to.
+    # It weighs the round before the last, which the last is held to.
     room = allowance(
         started=started,
         taken=taken,
@@ -184,9 +184,9 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
         print(
-            f"resident after each round's closings, medians in MB: {resident}, letting the"
-            f" second {room.allowed:.1f} MB higher for pages taken before the third, the least of"
-            f" {room.machine:.1f} MB the machine took and {room.shell} MB the shell held"
+            f"resident after each round's closings, medians in MB: {resident}, letting the one"
+            f" before the last {room.allowed:.1f} MB higher for pages taken before the last, the"
+            f" least of {room.machine:.1f} MB the machine took and {room.shell} MB the shell held"
             " unresident",
             flush=True,
         )
@@ -204,10 +204,12 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     assert all(said >= 0 for each in residents for _, said in each), (
         f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
     )
-    assert resident[2] <= (resident[1] + room.allowed) * GROWTH, (
-        f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
-        f" round before, which the kernel could have taken {room.allowed:.1f} MB of (medians by"
-        f" round, in MB: {resident}), so the heap keeps pages it no longer uses"
+    # The rounds the allowance weighs, named as it names them, so they can't drift apart.
+    weighed, last = resident[-2], resident[-1]
+    assert last <= (weighed + room.allowed) * GROWTH, (
+        f"a round of every place held {last} MB resident against {weighed} MB the round"
+        f" before, which the kernel could have taken {room.allowed:.1f} MB of (medians by round,"
+        f" in MB: {resident}), so the heap keeps pages it no longer uses"
     )
 
 
