@@ -29,12 +29,16 @@
       Restart = "always";
       RestartSec = "5s";
       # A stop lets the model calls it lends end first, for at most the
-      # 60 s its --lends-drain-within gives, while its links carry the
-      # answers back. systemd's own control-group kill would end each
-      # link's ssh at the same moment, cutting every call it lends and
-      # charging the rooms for each retry, so the terminate goes to the
-      # node alone, which ends its links itself once the calls are in. The
-      # stop timeout is said here because the drain is sized within it.
+      # 60 s --lends-drain-within gives by default, which nothing here
+      # changes, while its links carry the answers back. systemd's own
+      # control-group kill would end each link's ssh at the same moment,
+      # cutting every call it lends and charging the rooms for each retry,
+      # so the terminate goes to the node alone, which ends its links
+      # itself once the calls are in; whatever it leaves running when it
+      # exits, or at the timeout, is killed outright. The stop timeout is
+      # said here because the drain is sized within it. A logout or reboot
+      # stops the user manager on its own, shorter clock, which bounds the
+      # drain there.
       KillMode = "mixed";
       TimeoutStopSec = "90s";
       # Each client, link and session it holds is a file, and at systemd's
