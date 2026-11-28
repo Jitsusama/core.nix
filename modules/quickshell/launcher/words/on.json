@@ -720,6 +720,11 @@
       "name": "Looks"
     },
     {
+      "id": "on:waiting:history:elsewhere",
+      "in": "on:waiting:history",
+      "name": "Elsewhere"
+    },
+    {
       "id": "on:moved",
       "in": "on",
       "name": "What Moved",

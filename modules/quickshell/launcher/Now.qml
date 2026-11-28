@@ -2027,7 +2027,9 @@ Provider {
     // many it keeps from each source, as resolvedCount counts them, For
     // You's own first, its to-dos and looks, then the mail, Slack and the
     // desktop's notices, then what other sources gave it, each named as
-    // :filter's head names it.
+    // :filter's head names it, and last those naming no source, under a
+    // word of their own: dropped as named nothing, the drawer said fewer
+    // than its row (#7188's review, finding 5).
     function historyDrawer() {
         const came = from => cameDone.filter(one => one.source === from).length;
         const gave = {};
@@ -2035,6 +2037,9 @@ Provider {
             const from = String(one.row.forYou?.source ?? "");
             gave[from] = (gave[from] ?? 0) + 1;
         }
+        const named = Object.keys(gave).filter(from => from !== "");
+        const unnamed = { name: Words.name("on:waiting:history:elsewhere"),
+            count: gave[""] ?? 0 };
         const kept = [
             { name: Words.name("for-you:kind:do"), count: doneItems.length },
             { name: Words.name("on:waiting:history:looks"), count: looks.history.length },
@@ -2042,8 +2047,8 @@ Provider {
             { name: Words.name("for-you:source:slack"),
                 count: came("slack") + pastKept("slack") },
             { name: Words.name("for-you:source:desktop"), count: pastKept("desktop") }
-        ].concat(Object.keys(gave).map(from => ({ name: Filter.sourceName(from, filterSaid),
-            count: gave[from] })));
+        ].concat(named.map(from => ({ name: Filter.sourceName(from, filterSaid),
+            count: gave[from] })), [unnamed]);
         return ForYouDrawers.historyDrawer(Words.name("on:waiting:history"), kept,
             (Words.field.drawer ?? {}).place ?? "");
     }
