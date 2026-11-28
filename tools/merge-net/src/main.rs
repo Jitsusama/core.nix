@@ -40,6 +40,12 @@
 //!
 //! `merge-net status` says where the net is.
 //!
+//! Each risk the net sees to when a pull request merges, a refusal of
+//! `ready`, a step of it that couldn't run, or a train's red or split, is
+//! told to the dates ledger as it happens, a line each (`risks.rs`). A
+//! head `ready` boards on the train, or holds for an earlier gate, ends 1
+//! too, but is no risk: it's how a head merges now.
+//!
 //! `watch --branch` follows another branch than main, and lands its reverts
 //! there, to prove the net on a throwaway branch; `MERGE_NET_STATE` then
 //! names a state folder of its own, so its hold stops no switch.
@@ -72,6 +78,7 @@ mod places;
 mod quarantine;
 mod ready;
 mod rerun;
+mod risks;
 mod rules;
 mod running;
 mod sharing;
@@ -92,6 +99,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use command::Asked;
+use risks::{Risks, boards, refuse};
 use state::{State, short};
 use watch::Round;
 use world::Real;
@@ -123,17 +131,35 @@ fn main() -> ExitCode {
             follow,
         } => watching(from, branch, once, follow),
         Asked::Needs { base } => needs::needs(&base),
-        Asked::Ready { commit } => ready(&commit),
+        Asked::Ready { commit } => {
+            let ended = ready(&commit);
+            let head =
+                git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")]).unwrap_or(commit);
+            let slug = train::slug_of(&repository());
+            let pull = |head: &str| train::pull_number(&slug, head);
+            risks::tell_of_ready(
+                &head,
+                &ended,
+                &risks::refusal(),
+                &Risks::from_env(&slug),
+                &pull,
+            );
+            ended
+        }
         Asked::Status => Ok(status()),
         Asked::RunAgain { commit } => rerun::again(&commit),
-        Asked::Ride => {
-            train::ride(&env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()))
-        }
+        Asked::Ride => train::ride(&repository()),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");
         ExitCode::FAILURE
     })
+}
+
+/// The repository the net watches: the one `MERGE_NET_REPOSITORY` names,
+/// or core's.
+fn repository() -> String {
+    env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned())
 }
 
 /// Follow `branch`, a round at a time, until stopped, or once with `once`.
@@ -156,7 +182,7 @@ fn watching(
     let world = Real {
         state: state.root.clone(),
         checkout: state.root.join("core"),
-        url: env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
+        url: repository(),
         system: SYSTEM.to_owned(),
         booted: holds::booted().unwrap_or(0),
         branch,
@@ -294,10 +320,7 @@ fn candidates_at(
 fn ready(commit: &str) -> Result<ExitCode, String> {
     let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
     if let Some(said) = train::riding(&commit) {
-        eprintln!(
-            "merge-net: {} rides the merge train: {said}",
-            short(&commit)
-        );
+        boards(&format!("{} rides the merge train: {said}", short(&commit)));
         return Ok(ExitCode::FAILURE);
     }
     git(&["fetch", "--quiet", "origin", "main"])?;
@@ -319,14 +342,14 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         if rules.is_empty() || holds(&rules, &commit) {
             return by_change(&commit, &main, &on_main);
         }
-        eprintln!(
-            "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
-             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
-             so what needs said of it can't speak for them; rebase onto origin/main, push, \
-             and merge again",
+        refuse(&format!(
+            "{} doesn't sit on origin's main as it is now, {}, and its base lacks main's \
+             newest rules for which VM tests run (must-run.txt, lock-after.txt), so what \
+             needs said of it can't speak for them; rebase onto origin/main, push, and merge \
+             again",
             short(&commit),
             short(&main)
-        );
+        ));
         return Ok(ExitCode::FAILURE);
     }
     if !ready::built_there(&ready::record(&commit), &on_main) {
@@ -363,28 +386,28 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
             .then(|| train::drafted(&branch))
             .flatten()
         {
-            eprintln!("merge-net: {said}");
+            refuse(&said);
             return ExitCode::FAILURE;
         }
         // Before the right of way, which boards the train itself, so a
         // head no round read neither boards it nor merges.
         if let Err(said) = earlier::same::read_by_a_round(commit, main, files) {
-            eprintln!("merge-net: {said}");
+            refuse(&said);
             return ExitCode::FAILURE;
         }
         if let Some(said) = train::gives_way(commit) {
-            eprintln!("merge-net: {said}");
+            boards(&said);
             return ExitCode::FAILURE;
         }
         return turn::passed(commit, passes, files, said);
     }
-    eprintln!(
-        "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
-         change on a base holding main's rules for it (must-run.txt, lock-after.txt), so no \
-         one has heard which VM tests run before it merges; run merge-net needs there, run \
-         what it names, and merge again",
+    refuse(&format!(
+        "merge-net needs wasn't asked at {}, nor at an earlier commit of the same change on \
+         a base holding main's rules for it (must-run.txt, lock-after.txt), so no one has \
+         heard which VM tests run before it merges; run merge-net needs there, run what it \
+         names, and merge again",
         short(commit)
-    );
+    ));
     ExitCode::FAILURE
 }
 
@@ -512,7 +535,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             // The train merges what it carries, so a head no round read
             // boards no more than it merges through may_merge.
             if let Err(said) = earlier::same::read_by_a_round(commit, main, &files) {
-                eprintln!("merge-net: {said}");
+                refuse(&said);
                 return Ok(ExitCode::FAILURE);
             }
             // A head behind main boards the train as one on it does
@@ -523,26 +546,35 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                     aboard::keep_regated(commit, &boarded, &shared);
                 }
                 let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
-                eprintln!("merge-net: {said}");
+                if boarded.is_ok() {
+                    boards(&said);
+                } else {
+                    refuse(&said);
+                }
                 return Ok(ExitCode::FAILURE);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
             let boarded = aboard::boards(commit, main, &checked, &files);
             aboard::keep_regated(commit, &boarded, &shared);
-            eprintln!(
-                "merge-net: the same change passed at {}, but main has since moved {}; {}",
+            let said = format!(
+                "the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
                 aboard::ride_or_run_again(commit, &boarded)
             );
+            if boarded.is_ok() {
+                boards(&said);
+            } else {
+                refuse(&said);
+            }
         }
-        ready::Before::Unchecked => eprintln!(
-            "merge-net: no changed-checks run that built what it named passed at {}, or at \
-             an earlier commit of the same change; run changed-checks there, committed so \
-             it's sent, and merge again",
+        ready::Before::Unchecked => refuse(&format!(
+            "no changed-checks run that built what it named passed at {}, or at an earlier \
+             commit of the same change; run changed-checks there, committed so it's sent, and \
+             merge again",
             short(commit)
-        ),
+        )),
     }
     Ok(ExitCode::FAILURE)
 }

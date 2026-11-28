@@ -102,23 +102,23 @@ pub fn say(
             )));
         }
         Lists::Need(need) => {
-            eprintln!(
-                "merge-net: main has since moved only lists of {} ({}); build {} there, \
-                 committed so it's sent, and merge again",
+            crate::risks::refuse(&format!(
+                "main has since moved only lists of {} ({}); build {} there, committed so \
+                 it's sent, and merge again",
                 short(commit),
                 shared.join(", "),
                 need.iter()
                     .map(|check| format!("`nix-offload there . checks.{}.{check}`", crate::SYSTEM))
                     .collect::<Vec<_>>()
                     .join(" and ")
-            );
+            ));
             keep(commit, Verdict::Regate(Rerun::Lists), shared);
         }
-        Lists::Broken(why) => eprintln!(
-            "merge-net: {} at {} no longer reads as the net's list: {why}",
+        Lists::Broken(why) => crate::risks::refuse(&format!(
+            "{} at {} no longer reads as the net's list: {why}",
             crate::world::QUARANTINE,
             short(commit)
-        ),
+        )),
         Lists::NotAll => return None,
     }
     Some(ExitCode::FAILURE)

@@ -135,7 +135,7 @@ fn pathdiff(path: &Path, from: &Path) -> PathBuf {
     relative.join(path.strip_prefix("/").unwrap())
 }
 
-fn rider(head: &str, at: u64) -> Rider {
+pub(super) fn rider(head: &str, at: u64) -> Rider {
     Rider {
         head: head.to_owned(),
         branch: format!("jitsusama/{head}"),
@@ -279,13 +279,18 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
     }
     let mut splitting = Splitting::default();
     let log = Path::new("/state/train/c.log");
-    red(&root, "c1", log, &["a1".to_owned()], &mut splitting);
+    let risks = Risks::new(Some(root.join("risks.jsonl")), "Jitsusama/core.nix");
+    let told = Told {
+        risks: &risks,
+        pulls: &[],
+    };
+    red(&root, "c1", log, &["a1".to_owned()], &mut splitting, &told);
     assert_eq!(
         riders(&root).len(),
         2,
         "the first rider to fail alone didn't fall by itself"
     );
-    red(&root, "c2", log, &["b2".to_owned()], &mut splitting);
+    red(&root, "c2", log, &["b2".to_owned()], &mut splitting, &told);
     assert!(
         riders(&root).is_empty(),
         "riders still rode a train that gave up"
@@ -748,15 +753,19 @@ fn a_candidate_merges_each_rider_and_leaves_out_one_that_conflicts() {
     let git = |arguments: &[&str]| git_in(&repo, arguments);
     let apart = change(&repo, &base, "apart", "one\n");
     let clashes = change(&repo, &base, "shared", "theirs\n");
+    let rival = change(&repo, &base, "apart", "two\n");
     let main = change(&repo, &base, "shared", "mains\n");
-    let done = cut(&git, &main, &[merging(&apart, 1), merging(&clashes, 2)]).unwrap();
+    let riders = [merging(&apart, 1), merging(&clashes, 2), merging(&rival, 3)];
+    let done = cut(&git, &main, &riders).unwrap();
     assert_eq!(
         done,
         Cut {
             merged: vec![apart.clone()],
             conflicted: vec![clashes],
+            clashing: vec![rival],
         },
-        "the candidate didn't merge the rider apart and leave out the one that clashed"
+        "the candidate didn't merge the rider apart, and leave out the one that clashed with \
+         main apart from the one that clashed only with the rider before it"
     );
     assert_eq!(
         git(&["log", "-1", "--format=%P"]).unwrap(),
