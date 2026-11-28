@@ -189,9 +189,9 @@ struct Handed {
     control: Option<std::os::unix::net::UnixListener>,
 }
 
-/// Which of `Handed`'s sockets each descriptor is, by its name, pi's going
-/// unnamed, or why the names don't say one pi's and at most one of each
-/// other.
+/// Which of `Handed`'s sockets each descriptor is, by its name, pi's named
+/// anything else or nothing, or why the names don't say one pi's and at
+/// most one of each other.
 fn sorted<'a>(named: impl Iterator<Item = (&'a str, RawFd)>) -> Result<[Option<RawFd>; 3], String> {
     let mut sorted = [None; 3];
     for (name, fd) in named {
@@ -205,7 +205,9 @@ fn sorted<'a>(named: impl Iterator<Item = (&'a str, RawFd)>) -> Result<[Option<R
         }
     }
     if sorted[0].is_none() {
-        return Err("none of them is pi's, which goes unnamed".to_owned());
+        return Err(format!(
+            "none of them is pi's, which is named neither {LEND} nor {CONTROL}"
+        ));
     }
     Ok(sorted)
 }
@@ -265,7 +267,7 @@ fn handed() -> Result<Option<Handed>, Failure> {
         .because(why)
         .try_this(format!(
             "name the lend's socket {LEND} and the hand-over's {CONTROL} with \
-             FileDescriptorName, and leave pi's unnamed"
+             FileDescriptorName, and pi's anything else or nothing"
         ))
     })?;
     // SAFETY: systemd passed these descriptors, open and listening, for
