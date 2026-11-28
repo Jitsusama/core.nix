@@ -29,12 +29,13 @@ broken() {
 }
 
 # Prints the lines from the first that starts with $1 to the first, after
-# it, that is exactly $2, as Mesa lays out a function or a block.
+# it, that starts with $2, as Mesa lays out a function or a block, so a
+# block ends at its brace even when an else follows on the same line.
 between() {
   awk -v from="$1" -v to="$2" '
-    index($0, from) == 1 { inside = 1 }
+    index($0, from) == 1 && !inside { inside = 1; print; next }
     inside { print }
-    inside && $0 == to { exit }
+    inside && index($0, to) == 1 { exit }
   ' "$3"
 }
 
@@ -42,16 +43,18 @@ between() {
 # that would leave the canvas a checkerboard. Every test exits on its own,
 # so each reads the same whether set -e holds where it's called or not.
 judgeIris() {
-  local resource=$1 configure branch
+  local resource=$1 configure flat branch
   [[ -r $resource ]] || unreadable "$resource can't be read"
   configure=$(between 'iris_resource_configure_main(' '}' "$resource")
   [[ -n $configure ]] || unreadable "iris_resource.c has no iris_resource_configure_main"
-  if grep -qF "else if $memoryObject" <<<"$configure"; then
+  # Read as one line, so an else on the line before the branch shadows it too.
+  flat=$(tr -s '[:space:]' ' ' <<<"$configure")
+  if [[ $flat == *"else if $memoryObject"* ]]; then
     broken "$shadowed"
   fi
   grep -qxF "   if $memoryObject" <<<"$configure" ||
     unreadable "iris_resource_configure_main has no branch for a memory object as it was written"
-  branch=$(grep -A3 -xF "   if $memoryObject" <<<"$configure")
+  branch=$(between "   if $memoryObject" '   }' <(echo "$configure"))
   grep -qxF '      usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;' <<<"$branch" ||
     broken "iris doesn't prefer 4K tiles for a memory object"
   grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' <<<"$branch" ||

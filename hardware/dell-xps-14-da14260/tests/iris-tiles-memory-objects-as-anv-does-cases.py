@@ -3,11 +3,11 @@
     iris-tiles-memory-objects-as-anv-does-cases BASH CHECK RESOURCE IMAGE OWN
 
 Run with CHECK the check's script, RESOURCE and IMAGE the patched iris_resource.c and
-anv_image.c, and OWN Mesa's own iris_resource.c. Each case edits a copy of one patched
-file the way a later Mesa, or a patch carried badly, might, and says the words the
-check's failure must hold. A case whose edit no longer changes its file fails by its
-name, so a moved driver can't leave a case proving nothing. The files as they are pass
-in the check this runs beside.
+anv_image.c, and OWN Mesa's own iris_resource.c. Each case edits a copy of one of them
+the way a later Mesa, or a patch carried badly, might, and says the words the check's
+failure must hold. A case whose edit no longer changes its file is named apart, as one
+to move with Mesa here, so a moved driver can't leave a case proving nothing. The files
+as they are pass in the check this runs beside.
 """
 
 import shutil
@@ -18,6 +18,7 @@ from pathlib import Path
 
 RESOURCE = "iris_resource.c"
 IMAGE = "anv_image.c"
+OWN = "Mesa's own iris_resource.c"
 MEMORY_OBJECT = "   if (!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {"
 NO_AUX = "      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;"
 PREFER_4K = "      usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;"
@@ -27,7 +28,13 @@ EXPORTED = "   if (image->vk.external_handle_types != 0 &&\n"
 # an earlier one asks for 4K tiles only for a requested alignment.
 ANV_NO_AUX = "      isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;\n"
 ANV_PREFER_4K = ANV_NO_AUX + "      isl_extra_usage_flags |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;\n"
-UNREADABLE = "can't tell how a memory object is tiled"
+SHADOWED = "only when no branch before it matched"
+# Named whole, since in the build this file runs from the store under another name.
+STALE = (
+    "These cases no longer find what they edit, which says nothing yet about the check:"
+    " move them with Mesa in hardware/dell-xps-14-da14260/tests/"
+    "iris-tiles-memory-objects-as-anv-does-cases.py."
+)
 
 # Each case: its name, the file it edits, what it replaces and with what, and the words
 # its failure must hold.
@@ -37,13 +44,27 @@ CASES: list[tuple[str, str, str, str, str]] = [
         RESOURCE,
         MEMORY_OBJECT,
         "   else" + MEMORY_OBJECT[2:],
-        "only when no branch before it matched",
+        SHADOWED,
+    ),
+    (
+        "the memory object's branch an else of the line before",
+        RESOURCE,
+        MEMORY_OBJECT,
+        "   else\n" + MEMORY_OBJECT,
+        SHADOWED,
     ),
     (
         "the memory object's preference commented out",
         RESOURCE,
         NO_AUX + "\n" + PREFER_4K,
         NO_AUX + "\n   // " + PREFER_4K.strip(),
+        "doesn't prefer 4K tiles for a memory object",
+    ),
+    (
+        "the memory object's preference moved to the branch after it",
+        RESOURCE,
+        NO_AUX + "\n" + PREFER_4K + "\n   }",
+        NO_AUX + "\n   } else if (templ->bind & PIPE_BIND_SCANOUT) {\n" + PREFER_4K + "\n   }",
         "doesn't prefer 4K tiles for a memory object",
     ),
     (
@@ -58,7 +79,7 @@ CASES: list[tuple[str, str, str, str, str]] = [
         RESOURCE,
         MEMORY_OBJECT,
         MEMORY_OBJECT.replace("external_format", "imported_format"),
-        UNREADABLE,
+        "has no branch for a memory object as it was written",
     ),
     ("the constant-bandwidth branch lost", RESOURCE, CONST_BW, "", "constant-bandwidth"),
     ("anv's preference dropped", IMAGE, ANV_PREFER_4K, ANV_NO_AUX, "anv no longer prefers 4K"),
@@ -68,6 +89,20 @@ CASES: list[tuple[str, str, str, str, str]] = [
         EXPORTED,
         EXPORTED + "       image->vk.usage == 0 &&\n",
         "no longer asks only for no modifier",
+    ),
+    (
+        "Mesa's own iris fixed",
+        OWN,
+        "   else" + MEMORY_OBJECT[2:],
+        MEMORY_OBJECT,
+        "Mesa's own iris passes too",
+    ),
+    (
+        "Mesa's own iris unreadable",
+        OWN,
+        "\niris_resource_configure_main(",
+        "\niris_resource_configure_surface(",
+        "failed for another reason",
     ),
 ]
 
@@ -81,33 +116,36 @@ def answer(bash: str, check: str, files: list[Path]) -> tuple[int, str]:
     return run.returncode, run.stdout + run.stderr
 
 
-def wrong(bash: str, check: str, resource: str, image: str, own: str) -> list[str]:
-    """Give a line for each case the check answers wrongly."""
-    lines = []
+def judge(bash: str, check: str, sources: dict[str, str]) -> tuple[list[str], list[str]]:
+    """Give the cases the check answers wrongly, and those whose edit no longer applies."""
+    wrong, stale = [], []
     for name, edits, before, after, expected in CASES:
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            copies = {RESOURCE: root / RESOURCE, IMAGE: root / IMAGE}
-            shutil.copyfile(resource, copies[RESOURCE])
-            shutil.copyfile(image, copies[IMAGE])
-            edited = copies[edits]
-            text = edited.read_text()
+            copies = {key: Path(folder) / str(index) for index, key in enumerate(sources)}
+            for key, path in sources.items():
+                shutil.copyfile(path, copies[key])
+            text = copies[edits].read_text()
             if before not in text:
-                lines.append(f"{name}: its edit no longer changes {edits}; move it with Mesa.")
+                stale.append(f"{name}: its edit no longer changes {edits}.")
                 continue
-            edited.write_text(text.replace(before, after, 1))
-            status, said = answer(bash, check, [copies[RESOURCE], copies[IMAGE], Path(own)])
+            copies[edits].write_text(text.replace(before, after, 1))
+            status, said = answer(bash, check, list(copies.values()))
         if status == 0 or expected not in said:
-            lines.append(f"{name}: should fail saying {expected!r}, and said: {said.strip()}")
-    return lines
+            wrong.append(f"{name}: should fail saying {expected!r}, and said: {said.strip()}")
+    return wrong, stale
 
 
 def main(argv: list[str]) -> None:
     """Fail, naming each case, unless the check answers every case rightly."""
     bash, check, resource, image, own = argv
-    lines = wrong(bash, check, resource, image, own)
+    wrong, stale = judge(bash, check, {RESOURCE: resource, IMAGE: image, OWN: own})
+    lines = []
+    if wrong:
+        lines += ["The iris tiling check answers these edits wrongly:", *wrong]
+    if stale:
+        lines += [STALE, *stale]
     if lines:
-        sys.exit("The iris tiling check answers these edits wrongly:\n" + "\n".join(lines))
+        sys.exit("\n".join(lines))
 
 
 if __name__ == "__main__":

@@ -1219,8 +1219,8 @@ nearby, and one that stops applying says only that Mesa changed the lines it
 touches: read Mesa's `iris_resource_configure_main`, and carry the patch onto
 it unless a memory object's branch there no longer hangs off the shared one.
 The check also reads Mesa's own iris each run, which must fail at the shadowed
-branch, so each build shows the check catches this bug, and its cases edit the
-patched files as a later Mesa might. A fix in Mesa almost always rewrites those
+branch, so each build shows the check catches this bug, and its cases edit
+every file it reads as a later Mesa might. A fix in Mesa almost always rewrites those
 lines, so it shows as the patch no longer applying; a fix made elsewhere would
 show neither there nor in the check, so read Mesa's release notes for it when
 Mesa moves.
