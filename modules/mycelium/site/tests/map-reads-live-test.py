@@ -615,6 +615,33 @@ def test_the_map_draws_before_the_node_says_what_passed(
     opened.close()
 
 
+# A node that serves no waits leaves who owes an answer to be guessed from
+# its messages (view.js), so before they answer Now says it doesn't know yet
+# rather than that nobody owes one.
+OWED_UNKNOWN = "Not known until the node's latest messages are read"
+
+
+def test_now_says_who_owes_an_answer_is_unknown_until_messages_answer(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "Now said nobody owed an answer before it could know").to_contain_text(
+        OWED_UNKNOWN
+    )
+    slow_talk_node.answer("message")
+    expect(drawer, "Now still didn't know who owed once the messages answered").not_to_contain_text(
+        OWED_UNKNOWN, timeout=PACE_MS
+    )
+    expect(drawer, "Now said owed answers where none are owed").not_to_contain_text("Answers Owed")
+    opened.close()
+
+
 # Messages that never answer leave the map drawn, and past ten seconds it
 # says it is still waiting on them rather than reading them for good. A
 # busy node took 14 s on 26 November, so a slow one is said as waited on too.
