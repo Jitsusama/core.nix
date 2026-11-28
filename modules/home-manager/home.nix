@@ -2,42 +2,17 @@
 { config, lib, ... }:
 let
   cfg = config.jitsusama.timedRuns;
-  # The unit file a service name is written as: a template's instance,
-  # such as backup@home, is written as its template, backup@. An instance
-  # the account writes as a unit of its own is still read as its template:
-  # reading the account's services to tell would make their names depend
-  # on themselves, which Nix can't evaluate. No timer in core runs one.
-  written =
-    name:
-    let
-      parts = lib.splitString "@" name;
-    in
-    if lib.length parts == 2 then "${lib.head parts}@" else name;
-  # The service each timer runs: the one its Timer section names, or the
-  # one of its own name, as systemd has it, less those a machine says the
-  # account doesn't write.
-  timed = lib.subtractLists cfg.unwritten (
-    lib.unique (
-      map (name: written (lib.removeSuffix ".service" name)) (
-        lib.filter (lib.hasSuffix ".service") (
-          lib.mapAttrsToList (name: timer: timer.Timer.Unit or "${name}.service") config.systemd.user.timers
-        )
-      )
-    )
-  );
+  runs = import ./timed.nix { inherit lib; };
+  services = config.systemd.user.services;
+  # The service each timer runs, less those a machine says the account
+  # doesn't write, as timed.nix reads them.
+  timed = runs.timed {
+    timers = config.systemd.user.timers;
+    inherit (cfg) unwritten;
+  };
   # A timed service the account doesn't write would be written here with
   # only the switch's setting, hiding the unit the timer means to run.
-  # home-manager gives every service an empty ExecStart, so an empty one is
-  # one the account doesn't write.
-  bare = lib.filter (
-    name:
-    lib.elem (config.systemd.user.services.${name}.Service.ExecStart or [ ]) [
-      [ ]
-      ""
-      null
-    ]
-  ) timed;
-  services = config.systemd.user.services;
+  bare = lib.filter (runs.bare services) timed;
   # A legacy key as sd-switch 0.6.4 reads it (its ini.rs to_bool), the
   # version nixpkgs ships, which checks.nix holds this to: written as
   # home-manager writes the value, then trimmed and lowered, so a Nix
@@ -90,23 +65,31 @@ let
     else
       "keep-old";
   oneshot = name: (services.${name}.Service.Type or "simple") == "oneshot";
-  # A timed oneshot saying no bound of its own. systemd reads TimeoutSec
-  # as the start's bound too.
+  # A timed oneshot saying no bound of its own that systemd reads, as
+  # timed.nix reads it: systemd reads TimeoutSec as the start's bound too,
+  # and drops a key it can't read, so a run saying only such a key is
+  # bounded here, the drop-in read after the unit.
   unbounded = lib.filter (
+    name: oneshot name && (runs.timeout (services.${name}.Service or { })).read == [ ]
+  ) timed;
+  # Each timed run's timeout key systemd can't read, said where the
+  # account is built, so a bound dropped for its spelling is never news
+  # first heard from a run killed at three hours.
+  unread = lib.concatMap (
     name:
-    oneshot name
-    && !(services.${name}.Service ? TimeoutStartSec)
-    && !(services.${name}.Service ? TimeoutSec)
+    let
+      service = services.${name}.Service or { };
+      inherit (runs.timeout service) given read;
+    in
+    map (
+      key:
+      "${name}'s ${key} ${builtins.toJSON service.${key}} is one systemd can't read, "
+      + "so it is dropped"
+      + lib.optionalString (lib.elem name unbounded) " and the run ends after three hours"
+    ) (lib.subtractLists read given)
   ) timed;
   # A name the machine says the account doesn't write that it does write.
-  written' = lib.filter (
-    name:
-    !(lib.elem (services.${name}.Service.ExecStart or [ ]) [
-      [ ]
-      ""
-      null
-    ])
-  ) cfg.unwritten;
+  written' = lib.filter (name: !runs.bare services name) cfg.unwritten;
 in
 {
   options.jitsusama.timedRuns.unwritten = lib.mkOption {
@@ -143,11 +126,13 @@ in
 
     # A switch no longer ends a oneshot's run that hangs, and a timer starts
     # no run while its last is still going, so a timed oneshot saying no
-    # TimeoutStartSec or TimeoutSec of its own ends its run after three
-    # hours. The longest timed run in a day of a loaded machine's journal
-    # took 28 minutes, and pi-keys, whose sample runs past an hour, says
-    # 2h30min itself, so three hours ends only a run that has stopped. A
-    # machine's oneshot running longer says its own, "infinity" for none.
+    # TimeoutStartSec or TimeoutSec of its own that systemd reads ends its
+    # run after three hours: a key misspelt is dropped by systemd, so it
+    # bounds nothing, and the build warns of it. The longest timed run in a
+    # day of a loaded machine's journal took 28 minutes, and pi-keys, whose
+    # sample runs past an hour, says 2h30min itself, so three hours ends
+    # only a run that has stopped. A machine's oneshot running longer says
+    # its own, "infinity" for none.
     #
     # The bound is a drop-in beside the unit rather than a key in its
     # [Service], since a key there can't read the section it's in: the
@@ -163,6 +148,8 @@ in
         '';
       }) unbounded
     );
+
+    warnings = unread;
 
     assertions = [
       {

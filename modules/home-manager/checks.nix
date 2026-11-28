@@ -63,6 +63,16 @@ let
   #   padded and in capitals, and no-0 to no-5 refuse a stop in each of
   #   its no spellings;
   # - timeout-probe bounds itself by TimeoutSec alone;
+  # - misspelt-probe says only a TimeoutStartSec systemd can't read, and
+  #   half-probe one it can't read beside a TimeoutSec it can;
+  #   kept-bound-probe says a TimeoutStartSec it reads beside a TimeoutSec
+  #   it can't;
+  # - list-probe, loose-probe and padded-probe say bounds systemd reads
+  #   as a list, with no whole number, and padded;
+  # - skipped-probe's list ends in a line systemd can't read, so it skips
+  #   that line and keeps the one before;
+  # - refused-probe says a span systemd's parse_time refuses, "1.h";
+  # - reset-probe's last ExecStart line clears the lines before it;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
   # - untimed-probe is a oneshot no timer runs;
@@ -127,6 +137,15 @@ let
         "kept-stop-probe"
         "one-probe"
         "timeout-probe"
+        "misspelt-probe"
+        "half-probe"
+        "kept-bound-probe"
+        "list-probe"
+        "skipped-probe"
+        "refused-probe"
+        "loose-probe"
+        "padded-probe"
+        "reset-probe"
         "probe@one"
         "stray-probe"
       ] (_: daily)
@@ -187,19 +206,49 @@ let
       };
       one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
+      misspelt-probe = oneshot { Service.TimeoutStartSec = "10 minuets"; };
+      half-probe = oneshot {
+        Service = {
+          TimeoutStartSec = "10 minuets";
+          TimeoutSec = "10min";
+        };
+      };
+      kept-bound-probe = oneshot {
+        Service = {
+          TimeoutStartSec = "1h";
+          TimeoutSec = "half an hour";
+        };
+      };
+      list-probe = oneshot { Service.TimeoutStartSec = [ "1h" ]; };
+      skipped-probe = oneshot {
+        Service.TimeoutStartSec = [
+          "1h"
+          "10 minuets"
+        ];
+      };
+      refused-probe = oneshot { Service.TimeoutStartSec = "1.h"; };
+      loose-probe = oneshot { Service.TimeoutStartSec = ".5h"; };
+      padded-probe = oneshot { Service.TimeoutStartSec = "infinity "; };
+      reset-probe = oneshot {
+        Service.ExecStart = [
+          true'
+          ""
+        ];
+      };
       unit-probe-run = oneshot { };
       "probe@" = oneshot { };
       untimed-probe = oneshot { };
     };
   };
   home = account probes;
-  # The same account naming stray-probe as one it doesn't write, and
-  # bare-probe, which it does.
+  # The same account naming stray-probe and reset-probe as ones it
+  # doesn't write, and bare-probe, which it does.
   excused = account (
     probes
     // {
       jitsusama.timedRuns.unwritten = [
         "stray-probe"
+        "reset-probe"
         "bare-probe"
       ];
     }
@@ -237,6 +286,35 @@ let
       method home "kept-stop-probe" == "keep-old";
     "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;
+    "a bound systemd can't read is no bound, so it ends after three hours" =
+      bound home "misspelt-probe" == "3h";
+    "a readable TimeoutSec bounds the start beside an unreadable TimeoutStartSec" =
+      bound home "half-probe" == null;
+    "a readable TimeoutStartSec keeps its bound beside an unreadable TimeoutSec" =
+      bound home "kept-bound-probe" == null;
+    "a bound said as a list, with no whole number, or padded, is the run's own" =
+      lib.all (name: bound home name == null)
+        [
+          "list-probe"
+          "skipped-probe"
+          "loose-probe"
+          "padded-probe"
+        ];
+    "a span systemd's parse_time refuses is no bound" = bound home "refused-probe" == "3h";
+    "a bound systemd can't read is warned of, by name and key" =
+      lib.any (lib.hasInfix "misspelt-probe's TimeoutStartSec") home.warnings
+      && lib.any (lib.hasInfix "kept-bound-probe's TimeoutSec") home.warnings
+      && lib.any (lib.hasInfix "half-probe's TimeoutStartSec") home.warnings
+      && !lib.any (lib.hasInfix "loose-probe") home.warnings
+      && !lib.any (lib.hasInfix "skipped-probe") home.warnings;
+    # Only a run left with no bound systemd reads is told it now ends at
+    # three hours: one whose other key still bounds it isn't.
+    "the warning says three hours only where the base's bound now holds" =
+      let
+        of = name: lib.filter (lib.hasInfix "${name}'s ") home.warnings;
+        hours = name: lib.any (lib.hasInfix "three hours") (of name);
+      in
+      hours "misspelt-probe" && !hours "half-probe" && !hours "kept-bound-probe";
     "a timer's Timer.Unit is the service it keeps" =
       method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
     "a template's instance keeps its run, and its bound, on the template" =
@@ -264,6 +342,9 @@ let
   unwritten = "names services the account writes";
   writes = {
     "a timer whose service nothing writes is refused, by name" = names hidden home "stray-probe";
+    "a timer whose service's last ExecStart line clears the rest is refused, by name" =
+      names hidden home
+        "reset-probe";
     "a service named in jitsusama.timedRuns.unwritten is left out" =
       refusal hidden excused == null && !(excused.systemd.user.services ? stray-probe);
     "a written service named in jitsusama.timedRuns.unwritten is refused, by name" =

@@ -171,8 +171,10 @@ told="no kitty took $class"
 # Within 5 s, so a shell stalled or starting again leaves no script behind,
 # and the shell's answerPatience holds. A shell from before the cause was
 # told has no untakenFor, and qs refuses a call of it before running
-# anything (src/io/ipccomm.cpp's EntryNotFound), so it's told the old way
-# then, within the same 5 s; never after a stall, which the cut ends, as
+# anything (src/io/ipccomm.cpp's EntryNotFound), failing only as
+# ipc-replies-whole.patch keeps what the call returned (unpatched, qs
+# exits 0 whatever it says), so it's told the old way then, within the
+# same 5 s; never after a stall, which the cut ends, as
 # the first may yet be heard. qs fails too where the shell ran the first
 # and its answer was lost (ipc-replies-whole.patch), whose repeat without
 # a cause the shell takes once (Sessions' untaken).

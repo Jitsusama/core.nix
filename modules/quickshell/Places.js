@@ -23,7 +23,7 @@ function described(output) {
 // the workspaces, putting them back in the order they had on it whenever
 // Joel moved one (P9R1KI, 2026-11-03).
 function screensOf(outputs) {
-    const screens = {};
+    const screens = byName();
     for (const [name, output] of Object.entries(outputs ?? {})) {
         if (output?.logical !== null) {
             screens[name] = described(output);
@@ -143,7 +143,7 @@ function connected(screens, workspaces) {
     const unheard = said.length === 0 ? [] : [...listed]
         .filter(name => typeof name === "string" && !heard.includes(name));
     return heard.concat(unheard)
-        .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), {});
+        .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), byName());
 }
 
 // `maps` merged with no prototype, so a name from data, even __proto__, is a key like any other.
@@ -207,7 +207,7 @@ function wayBack(one, screen, screens, claimed) {
     if (alike.includes(one.output)) {
         return one.output;
     }
-    const others = one.others ?? {};
+    const others = byName(one.others);
     const notIt = name => name in others && (others[name] === screen || others[name] === "");
     return alike.find(name => !notIt(name) && !claimed.includes(name)) ?? null;
 }

@@ -313,11 +313,15 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
             hold.commit
         ));
     }
+    // A hold that can't be told stops every update until it can, so the
+    // stop says how to let it through, as one main holds does.
     unknown.map(|why| {
         format!(
-            "{} is held, and whether main at {} holds it couldn't be told: {why}",
+            "{} is held, and whether main at {} holds it couldn't be told: {why}; \
+             `update-to-main {LIFT} {}` lets it through",
             git::short(&hold.commit),
-            git::short(head)
+            git::short(head),
+            hold.commit
         )
     })
 }
