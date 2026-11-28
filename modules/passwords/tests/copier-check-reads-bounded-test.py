@@ -332,6 +332,18 @@ def a_line_is_answered_as_the_daemon_hears_it_exactly() -> None:
     assert returned == "ready", f"'ready' ended by a carriage return was said {returned!r}"
 
 
+def a_carriage_return_ending_a_copier_with_no_newline_is_kept() -> None:
+    """said_next keeps a final carriage return that no newline follows, as the daemon does.
+
+    lines() takes one off only before a newline, so a copier ending on 'ready' and a carriage
+    return is never heard as 'ready'.
+    """
+    with copier("printf 'ready\\r'") as ending:
+        ending.wait()
+        said = CHECK.said_next(ending)
+    assert said == "ready\r", f"'ready\\r' said with no newline and ending was said {said!r}"
+
+
 def a_copier_pouring_out_one_line_is_answered_at_the_cap() -> None:
     """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come."""
     with copier("yes x | tr -d '\\n'") as pouring:
@@ -483,6 +495,7 @@ CASES = [
     a_copier_saying_two_lines_at_once_is_answered_each_in_turn,
     a_half_line_held_at_the_patience_is_finished_by_the_next_read,
     a_line_is_answered_as_the_daemon_hears_it_exactly,
+    a_carriage_return_ending_a_copier_with_no_newline_is_kept,
     a_copier_pouring_out_one_line_is_answered_at_the_cap,
     a_line_is_cut_at_the_cap_never_past_it,
     a_line_cut_at_the_cap_is_read_on_and_never_ready,
