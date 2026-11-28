@@ -375,6 +375,17 @@ impl Arrivals {
         }
     }
 
+    /// Keeps the point that warned a card off until `until` instead, if
+    /// it's still the one the card keeps off, as the machine wakes and
+    /// the warning's end is timed again (`Wifid::retime_warnings`).
+    pub fn retimed(&mut self, card: &str, from: &str, until: Instant) {
+        if let Some((point, ends)) = self.dropping.get_mut(card)
+            && point.eq_ignore_ascii_case(from)
+        {
+            *ends = until;
+        }
+    }
+
     /// Whether the point a card would move from warned it drops the card,
     /// still at `now`, so a move from there is let join what it hears
     /// rather than go back.
@@ -1151,6 +1162,25 @@ mod tests {
         assert!(
             arrivals.drops("wlan0", DESK, now),
             "a new wpa_supplicant forgot a warning the card's chooser still keeps to"
+        );
+    }
+
+    #[test]
+    fn a_warning_timed_again_as_the_machine_wakes_ends_then_for_its_own_point_alone() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.warned("wlan0", DESK, now + Duration::from_secs(600));
+
+        arrivals.retimed("wlan0", HALL, now + Duration::from_mins(20));
+        assert!(
+            !arrivals.drops("wlan0", DESK, now + Duration::from_secs(600)),
+            "another point's warning timed this one's again"
+        );
+        arrivals.retimed("wlan0", &DESK.to_uppercase(), now);
+
+        assert!(
+            !arrivals.drops("wlan0", DESK, now),
+            "a warning that ran out as the machine slept still kept the way back off"
         );
     }
 

@@ -711,12 +711,28 @@ def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_the
 ESS_DROPS_IN_MS = 30720
 
 
+def still_on_second(machine: BaseMachine, before: str) -> None:
+    """Fail saying so when the card has already left the second point.
+
+    The whole network's timer drops the card from it, and a step after that proves nothing, so
+    a run slow enough to reach the timer first is said to be, rather than failing later for
+    want of a line a card already dropped never brings.
+    """
+    status = machine.succeed("wpa_cli -i wlan2 status")
+    assert f"bssid={SECOND}" in status.splitlines(), (
+        f"the card left {SECOND} before {before}, its {ESS_DROPS_IN_MS} ms timer"
+        f" likely run out first:\n{status}"
+    )
+
+
 def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """A card warned its whole network drops it is let go of its point."""
     machine.succeed("systemctl start lantern-two")
     since = wifid.journal_now()
+    # What an earlier subtest kept, so the restart below is seen to take in this one's warning.
+    kept_before = machine.succeed("cat /run/wifid/kept/warned 2>/dev/null || true")
     try:
         warning(machine, wifid)
         station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
@@ -740,11 +756,7 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         # The hand-over below proves anything only while the card is still on the second point.
         # A run slow enough to reach its timer first is said to be, rather than failing later
         # for want of a line a card already dropped never brings.
-        status = machine.succeed("wpa_cli -i wlan2 status")
-        assert f"bssid={SECOND}" in status.splitlines(), (
-            f"the card left {SECOND} before the hand-over, its {ESS_DROPS_IN_MS} ms timer"
-            f" likely run out first:\n{status}"
-        )
+        still_on_second(machine, "the hand-over")
         since = wifid.journal_now()
         wifid.ask("Trust", {"name": "Lantern", "trusted": False})
         unheld = f"wlan2 isn't held to {SECOND}, as it warned it drops the card"
@@ -759,21 +771,31 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         # A switch stops wifid and starts it again, and the one started hands the card over as
         # it finds it, on the point that warned it. It takes in the warning kept past the stop
         # first, so the hand-over doesn't hold the card there either.
-        status = machine.succeed("wpa_cli -i wlan2 status")
-        assert f"bssid={SECOND}" in status.splitlines(), (
-            f"the card left {SECOND} before the restart, its {ESS_DROPS_IN_MS} ms timer"
-            f" likely run out first:\n{status}"
-        )
+        still_on_second(machine, "the restart")
         since = wifid.journal_now()
         machine.succeed("systemctl stop wifid")
-        machine.succeed("test -s /run/wifid/kept/warned")
+        kept_now = machine.succeed("cat /run/wifid/kept/warned")
+        assert kept_now != kept_before, f"the warning wasn't kept past the stop:\n{kept_now}"
+        assert json.loads(kept_now)["wlan2"]["point"].lower() == SECOND, (
+            f"the warning kept past the stop names another point than {SECOND}:\n{kept_now}"
+        )
+        # Where a laptop has been is kept from every other user, so the folder is wifid's alone.
+        mode = machine.succeed("stat -c %a /run/wifid/kept").strip()
+        assert mode == "700", f"the warnings kept past a stop are open to others, as {mode}"
         machine.succeed("systemctl start wifid")
         kept = f"wlan2 keeps off {SECOND} for [0-9]+ more minutes, as it warned before"
-        machine.wait_until_succeeds(
-            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxE '{kept}'"
-            f" && journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF \"{unheld}\"",
-            timeout=timedelta(seconds=10),
-        )
+        try:
+            machine.wait_until_succeeds(
+                f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxE '{kept}'"
+                f" && journalctl -o cat -u wifid --after-cursor='{since}'"
+                f' | grep -qxF "{unheld}"',
+                timeout=timedelta(seconds=10),
+            )
+        except Exception:
+            # Said first, as a card the point's timer dropped during the restart has no
+            # hand-over to log, and the bare timeout would hide why.
+            still_on_second(machine, "wifid started again")
+            raise
         said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
         assert f"keeps to {SECOND}" not in said, (
             f"started again, wifid held the card to {SECOND}:\n{said}"
@@ -782,6 +804,7 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         # A move asked now is readied without holding the card where it is, as the hand-over
         # wasn't: held to the point that warned it, a move that missed would wait there to be
         # dropped. Its answer isn't judged, since the point's timer may drop the card mid-move.
+        still_on_second(machine, "the move")
         since = wifid.journal_now()
         wifid.acting({"act": "roam", "bssid": FIRST})
         machine.wait_until_succeeds(

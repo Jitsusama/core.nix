@@ -319,6 +319,7 @@ async fn serve(
     let owner = supplicant_owner(&owners).await;
     let mut air = Air::new(state.clone(), seen, &arrivals, owner);
     air.hear_all(&bus, &supplicant).await;
+    wifid.settle_joins().await;
 
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
@@ -503,6 +504,7 @@ async fn follow(
             }
             Some(sleep) = sleeps.recv() => {
                 if sleep.args().is_ok_and(|args| !args.start) {
+                    wifid.retime_warnings();
                     networks.asked.send_modify(|asked| *asked += 1);
                 }
             }
@@ -1585,9 +1587,28 @@ fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
 /// point and failed back between the reads reads completed both times,
 /// but at two points: taken as landed at the first, the card would count
 /// as having left a point that warned it, and the landing back there
-/// would forget the warning.
+/// would forget the warning. A point that couldn't be read is none: a
+/// card landed nowhere would count as having left every point.
 fn joined_throughout(steps: [&str; 2], points: [Option<&str>; 2]) -> bool {
-    steps == ["completed"; 2] && points[0] == points[1]
+    steps == ["completed"; 2] && points[0].is_some() && points[0] == points[1]
+}
+
+/// Whether a card has landed, and the access point it's at, if any. Its
+/// step and its point are each read twice, as a move could leave for
+/// another point and fail back between two reads. The point is the later
+/// read's: where the reads disagree, the first is where the card was, and
+/// recorded or held there it would be pinned to a point it has left.
+async fn landing(interface: &InterfaceProxy<'_>) -> zbus::Result<(bool, Option<OwnedObjectPath>)> {
+    let before = interface.state().await?;
+    let first = interface.current_access_point().await.ok();
+    let after = interface.state().await?;
+    let point = interface.current_access_point().await.ok();
+    let point = point.filter(|point| joined_to(point).is_some());
+    let first = first.as_ref().and_then(|first| joined_to(first));
+    let joined = point.as_ref().map(ToString::to_string);
+    let steps = [before.as_str(), after.as_str()];
+    let landed = joined_throughout(steps, [first.as_deref(), joined.as_deref()]);
+    Ok((landed, point))
 }
 
 /// Turns every Wi-Fi radio on or off.
@@ -1752,8 +1773,10 @@ fn take_in_warnings(
     arrivals: &RefCell<Arrivals>,
     state: &watch::Sender<State>,
 ) -> Warned {
-    let boot = match Boot::now() {
-        Ok(boot) => boot,
+    // Both clocks are read together, as a warning's end is carried from
+    // one to the other by the gap between them.
+    let (now, boot) = match Boot::now() {
+        Ok(boot) => (Instant::now(), boot),
         Err(error) => {
             eprintln!(
                 "<4>wifid forgets the warnings it kept, as it can't read the boot clock: {error}"
@@ -1767,7 +1790,7 @@ fn take_in_warnings(
     }
     let mut kept_off = Vec::new();
     change(state, |state| {
-        let now = (Instant::now(), boot);
+        let now = (now, boot);
         kept_off = keep_off_as_warned(&warned, &mut arrivals.borrow_mut(), state, now);
     });
     for said in kept_off {
@@ -1791,18 +1814,21 @@ fn keep_off_as_warned(
     for (card, point, until) in warned.lasting(now, boot) {
         arrivals.warned(&card, &point, until);
         state.kept_off(&card, &point, until);
-        // Rounded up from the milliseconds, as a warning lasts until one
-        // has none left, so even its last second reads as a minute.
-        let minutes = until
-            .saturating_duration_since(now)
-            .as_millis()
-            .div_ceil(60_000);
-        let unit = if minutes == 1 { "minute" } else { "minutes" };
+        let left = minutes_more(until.saturating_duration_since(now));
         said.push(format!(
-            "{card} keeps off {point} for {minutes} more {unit}, as it warned before"
+            "{card} keeps off {point} for {left}, as it warned before"
         ));
     }
     said
+}
+
+/// The time a keep-off has left, for the journal, in minutes rounded up
+/// from the milliseconds, as a warning lasts until it has none left, so
+/// even its last second reads as a minute.
+fn minutes_more(left: Duration) -> String {
+    let minutes = left.as_millis().div_ceil(60_000);
+    let unit = if minutes == 1 { "minute" } else { "minutes" };
+    format!("{minutes} more {unit}")
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -2114,20 +2140,11 @@ impl Wifid<'_> {
         let interface = interface(self.bus, path).await?;
         // A card found partway through a join, as wifid starts mid-move,
         // hasn't left a point that warned it until that join lands, so the
-        // warning taken in from before stays if the join fails. Its step
-        // and its point are each read twice, as a move could leave for
-        // another point and fail back between two reads.
-        let before = interface.state().await?;
-        // A card kept on its network as wifid restarts says nothing of the
-        // access point it's at until it moves, so it's asked.
-        let point = interface.current_access_point().await.ok();
-        let point = point.filter(|point| joined_to(point).is_some());
+        // warning taken in from before stays if the join fails. A card kept
+        // on its network as wifid restarts says nothing of the access point
+        // it's at until it moves, so it's asked.
+        let (landed, point) = landing(&interface).await?;
         let joined = point.as_ref().map(ToString::to_string);
-        let after = interface.state().await?;
-        let again = interface.current_access_point().await.ok();
-        let again = again.as_ref().and_then(|again| joined_to(again));
-        let steps = [before.as_str(), after.as_str()];
-        let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
         change(self.state, |state| {
             if landed {
                 state.landed_at(&card.name, joined);
@@ -2173,6 +2190,59 @@ impl Wifid<'_> {
             }
         }
         Ok(interface)
+    }
+
+    /// Reads again each card still joining as wpa_supplicant's signals
+    /// are first followed: one handed over partway through a join that
+    /// landed before then says so in no signal wifid hears, and would stay
+    /// joining, its warnings never settled, until it next moved.
+    async fn settle_joins(&self) {
+        let joining = self.state.borrow().still_joining();
+        for card in joining {
+            let Ok(path) = self.supplicant.get_interface(&card).await else {
+                continue;
+            };
+            let read = match interface(self.bus, path).await {
+                Ok(interface) => landing(&interface).await,
+                Err(error) => Err(error),
+            };
+            match read {
+                Ok((true, point)) => {
+                    let point = point.as_ref().map(ToString::to_string);
+                    change(self.state, |state| state.landed_at(&card, point));
+                }
+                Ok((false, _)) => {}
+                Err(error) => eprintln!("<4>can't read how far {card} has joined: {error}"),
+            }
+        }
+    }
+
+    /// Times each keep-off again by the warning kept of it, as the machine
+    /// wakes. A point's warning runs by the point's own clock, which went
+    /// on as the laptop slept, but an `Instant` stops then, so a keep-off
+    /// timed by one outlasted the point's word by the sleep, and ended
+    /// later than the same warning read back after a restart (warned.rs).
+    /// A keep-off whose warning couldn't be kept stays as it was.
+    fn retime_warnings(&self) {
+        let (now, boot) = match Boot::now() {
+            Ok(boot) => (Instant::now(), boot),
+            Err(error) => {
+                eprintln!(
+                    "<4>can't time the keep-offs again as wifid wakes, as it can't read the boot \
+                     clock: {error}"
+                );
+                return;
+            }
+        };
+        for (card, point, until) in self.warned.borrow().ends(now, boot) {
+            self.arrivals.borrow_mut().retimed(&card, &point, until);
+            change(self.state, |state| state.retimed(&card, &point, until));
+            let left = until.saturating_duration_since(now);
+            if !left.is_zero() {
+                let left = minutes_more(left);
+                println!("<7>{card} keeps off {point} {left}, timed as it woke");
+            }
+        }
     }
 
     /// Holds a card on its network as it's handed over to the access point
@@ -2825,11 +2895,13 @@ impl Wifid<'_> {
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
                 self.picked.borrow_mut().remove(card);
+                // Forgotten before the join is answered, so whoever asked
+                // never reads the network as saved once it's told it failed.
+                if *new && let Err(error) = self.store.forget(name) {
+                    eprintln!("<4>can't forget {name} again: {error:?}");
+                }
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
-                    if let Err(error) = self.store.forget(name) {
-                        eprintln!("<4>can't forget {name} again: {error:?}");
-                    }
                     let _ = self.given_everything().await;
                 } else {
                     self.add_card_named(card).await;
@@ -3841,7 +3913,10 @@ impl Wifid<'_> {
         // moves now hold, not only for what was decided.
         if let Some(from) = from.as_deref() {
             let lasts = request.keeps_off(&followed);
+            // The boot clock is read with `now`, as the kept copy of the
+            // warning's end is carried between them by their gap.
             let now = Instant::now();
+            let boot = Boot::now();
             let until = lasts.map(|lasts| now + lasts);
             self.arrivals
                 .borrow_mut()
@@ -3850,7 +3925,7 @@ impl Wifid<'_> {
                 change(self.state, |state| {
                     followed.keep_warned(state, (card, from), leaving, (now, until));
                 });
-                let kept = Boot::now().and_then(|boot| {
+                let kept = boot.and_then(|boot| {
                     self.warned
                         .borrow_mut()
                         .warned(card, from, until, (now, boot))
@@ -4177,6 +4252,10 @@ mod tests {
             !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
             "a join that ended between the reads was taken as landed before its signal"
         );
+        assert!(
+            !joined_throughout(completed, [None, None]),
+            "a card whose point couldn't be read was taken as landed nowhere"
+        );
     }
 
     #[test]
@@ -4203,6 +4282,18 @@ mod tests {
             state.warned_from("wlan2", now),
             Some(DESK),
             "the chooser heard a point that warned before a restart"
+        );
+        // A second past its end, as the end is carried over the boot clock
+        // to the millisecond, not the instant.
+        let past = until + Duration::from_secs(1);
+        assert!(
+            !arrivals.drops("wlan2", DESK, past),
+            "a warning taken in after a restart kept the way back off past its end"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", past),
+            None,
+            "a warning taken in after a restart kept the chooser off past its end"
         );
         assert_eq!(
             said,
