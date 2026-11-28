@@ -3473,6 +3473,27 @@ fn a_hold_that_cant_be_told_says_how_to_lift_it() {
     );
 }
 
+/// A hold stops main whose inputs can't be read, as one that can't be told
+/// does, and the stop says how to let it through as that one's does, since
+/// it too stops every update until a person lifts the hold.
+#[test]
+fn a_hold_beside_a_lock_that_cant_be_read_says_how_to_lift_it() {
+    let world = following();
+    let head = world.signed("one");
+    let nobody = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {nobody}"), Some(1000));
+    let why = held::stops(&world.config, &head, &BTreeMap::new())
+        .expect("a hold beside a lock that couldn't be read let main through");
+    assert!(
+        why.contains("couldn't be read"),
+        "a hold beside a lock that couldn't be read was stopped for another reason: {why}"
+    );
+    assert!(
+        why.contains(&format!("; `update-to-main lift {nobody}` lets it through")),
+        "a hold beside a lock that couldn't be read didn't say how to lift it: {why}"
+    );
+}
+
 /// A hosted world whose account names the commit that last changed the
 /// folder with the shell command `changed` gives for the world's folder.
 fn with_changed(changed: impl Fn(&Path) -> String) -> World {
