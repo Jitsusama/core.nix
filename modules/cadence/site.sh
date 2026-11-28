@@ -39,7 +39,7 @@ EXAMPLES
 
 EXIT
   0   sampled, a failed sample written too
-  64  asked wrongly: no feed, or one that isn't ws with a port
+  64  asked wrongly: no ws feed naming its port
 EOF
     exit 0
     ;;
@@ -160,12 +160,14 @@ for kind in "${kinds[@]}"; do
               printf '%s\n' "${said}: ${why}" >"${timed}/${kind}.why"
               break
               ;;
+            # jq says no other word.
+            *) ;;
           esac
         done
         if [[ -n ${records} ]]; then
           echo $(((records - start) / 1000000)) >"${timed}/${kind}"
         fi
-      } || true
+      }
   ) &
 done
 wait
