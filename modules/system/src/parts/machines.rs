@@ -1194,6 +1194,39 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_is_called_by_the_node_s_own_name_where_it_is_shown_by_another() {
+        let machines_named = |names: &[Value]| {
+            let said: Vec<Value> = names
+                .iter()
+                .map(|name| json!({"name": name, "state": "ready"}))
+                .collect();
+            machines(&Ok(realm(&said)), &Err(String::new()), None, None)
+        };
+        let part = machines_named(&[json!("kite\u{200b}"), json!("osprey"), json!("\u{200b}")]);
+        let called: Vec<(&str, Option<&str>)> = part
+            .things
+            .iter()
+            .map(|thing| (thing.name.as_str(), thing.called.as_deref()))
+            .collect();
+        assert_eq!(
+            called,
+            [
+                ("kite", Some("kite\u{200b}")),
+                ("osprey", None),
+                ("unnamed", Some("\u{200b}")),
+            ],
+            "a machine shown by a plain name the map doesn't know is called by the node's own"
+        );
+        for nameless in [json!(""), json!(7), Value::Null] {
+            let part = machines_named(std::slice::from_ref(&nameless));
+            assert_eq!(
+                part.things[0].called, None,
+                "a machine named {nameless} gives the map no name to find it by"
+            );
+        }
+    }
+
+    #[test]
     fn the_builders_follow_the_machines_and_a_stalled_one_is_worth_a_look() {
         let mut said = realm(&[laptop(&[], "healthy")]);
         said["Ok"]["Builders"] = json!([
