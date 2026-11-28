@@ -132,9 +132,12 @@ Scope {
                 return;
             root.asked = ask.asked;
             root.refusedAt = ask.refusedAt;
+            // Drawn with the ask as Plays.ipcAsked leaves it, not `play`, so
+            // the gate holds even without the return above; a shell that
+            // reports is left asking `play`, so draws what it did before.
             if (root.coming !== null)
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
-                    root.drawsWith(play));
+                    root.drawsWith(ask.asked));
         }
 
         // How lively it may be now, so a test leaving the keys asks for a
