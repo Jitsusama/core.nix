@@ -17,7 +17,8 @@ line until it or a cell it touches opens,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
 started a cell of the other, and across machines while the cell's own
-record says so,
+record says so, draw itself in shapes alone, with no raster picture fetched,
+shown, styled, decoded or painted onto its canvases, whatever its address,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
 machines, Now and Escape closing it, the view zoomed about its middle,
@@ -50,7 +51,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
+
+    from playwright.sync_api import Request, Response
 
 HERE = Path(__file__).parent
 # The map redraws at most every 2 seconds, so a change must show well inside this.
@@ -3143,23 +3146,195 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         opened.close()
 
 
-# Every raster the page fetched, shows as an image or paints from a style, by
-# its address: a file of a raster kind, or a raster's data written inline.
+# A watch set before the page's own scripts run, since what they paint onto
+# a canvas or load off the document leaves nothing to read afterwards. It
+# notes each picture painted onto a canvas, by drawImage or as a pattern:
+# an image, a bitmap, a video, or a canvas that holds one, though a canvas
+# of paths, text and gradients alone draws freely. It notes each bitmap
+# decoded, each address an image is given, in the document or not, and
+# what each blob address made holds, which is all a blob's address says.
+WATCHING_RASTERS = r"""(() => {
+  const watch = { painted: [], decoded: [], given: [], blobs: {} };
+  watch.absolute = (address) => {
+    try {
+      return new URL(address, document.baseURI).href;
+    } catch {
+      return address;
+    }
+  };
+  // A srcset's candidates are split by commas after an address, never in
+  // one, since a data address holds commas of its own.
+  watch.candidates = (srcset) => {
+    const found = [];
+    let wanted = true;
+    for (const token of srcset.match(/\S+/gu) ?? []) {
+      if (wanted) {
+        found.push(token.replace(/,+$/u, ""));
+        wanted = token.endsWith(",");
+      } else if (token.endsWith(",")) {
+        wanted = true;
+      }
+    }
+    return found.filter(Boolean);
+  };
+  Object.defineProperty(window, "rasterWatch", { value: watch });
+  const named = (source) =>
+    `${source?.constructor?.name ?? source} ${source?.currentSrc || source?.src || ""}`.trim();
+  const holding = new WeakSet();
+  const canvases = [globalThis.HTMLCanvasElement, globalThis.OffscreenCanvas].filter(Boolean);
+  const picture = (source) =>
+    canvases.some((kind) => source instanceof kind) ? holding.has(source) : source != null;
+  const contexts = [
+    globalThis.CanvasRenderingContext2D,
+    globalThis.OffscreenCanvasRenderingContext2D,
+  ].filter(Boolean);
+  for (const context of contexts) {
+    for (const method of ["drawImage", "createPattern"]) {
+      const own = context.prototype[method];
+      context.prototype[method] = function (source, ...rest) {
+        if (picture(source)) {
+          watch.painted.push(`${method} of ${named(source)}`);
+          holding.add(this.canvas);
+        }
+        return own.call(this, source, ...rest);
+      };
+    }
+  }
+  const decode = globalThis.createImageBitmap;
+  globalThis.createImageBitmap = function (source, ...rest) {
+    watch.decoded.push(source instanceof Blob ? `Blob ${source.type}` : named(source));
+    return decode.call(this, source, ...rest);
+  };
+  const objectURL = URL.createObjectURL;
+  URL.createObjectURL = function (made) {
+    const address = objectURL.call(this, made);
+    watch.blobs[address] = made instanceof Blob ? made.type.toLowerCase() : "media";
+    return address;
+  };
+  const give = (name, value) => {
+    const said = String(value);
+    const addresses = /srcset/iu.test(name) ? watch.candidates(said) : [said];
+    watch.given.push(...addresses.filter(Boolean).map(watch.absolute));
+  };
+  for (const name of ["src", "srcset"]) {
+    const own = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, name);
+    Object.defineProperty(HTMLImageElement.prototype, name, {
+      ...own,
+      set(value) {
+        give(name, value);
+        own.set.call(this, value);
+      },
+    });
+  }
+  const setAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    if (this instanceof HTMLImageElement && /^src(set)?$/iu.test(name)) {
+      give(name, value);
+    }
+    return setAttribute.call(this, name, value);
+  };
+})();"""
+# What the watch saw, with every picture the document shows as an image and
+# every address a style paints from, on an element or its ::before and
+# ::after, in each property that takes a picture; or null when no watch was
+# set. Which of them is a raster is judged by what each address holds.
 RASTERS = r"""() => {
-  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
-  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const watch = window.rasterWatch;
+  if (watch === undefined) {
+    return null;
+  }
   const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
-    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+    .flatMap((each) => [
+      each.currentSrc,
+      each.getAttribute("src"),
+      each.getAttribute("href") ?? each.getAttribute("xlink:href"),
+      ...watch.candidates(each.getAttribute("srcset") ?? ""),
+    ])
+    .filter(Boolean)
+    .map((address) => ["shown", watch.absolute(address)]);
+  const given = watch.given.map((address) => ["given", address]);
   const url = /url\("?([^")]*)"?\)/gu;
-  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
-    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  const properties = [
+    "background-image",
+    "content",
+    "list-style-image",
+    "border-image-source",
+    "mask-image",
+    "cursor",
+  ];
+  const styled = [...document.querySelectorAll("*")].flatMap((each) =>
+    [null, "::before", "::after"].flatMap((pseudo) => {
+      const style = getComputedStyle(each, pseudo);
+      return properties.flatMap((property) =>
+        [...style.getPropertyValue(property).matchAll(url)].map((found) => [
+          `${each.localName}${pseudo ?? ""} ${property}`,
+          found[1],
+        ])
+      );
+    })
   );
   return {
-    fetched: fetched.filter((each) => raster.test(each)),
-    shown: shown.filter((each) => raster.test(each)),
-    painted: painted.filter((each) => raster.test(each)),
+    painted: watch.painted,
+    decoded: watch.decoded,
+    blobs: watch.blobs,
+    shown: [...shown, ...given],
+    styled,
   };
 }"""
+# What an SVG says it is, in its answer or its data address; every other
+# picture is a raster, and one with no answer yet can't show it isn't one.
+VECTOR = "image/svg+xml"
+UNANSWERED = "unanswered"
+
+
+class Fetched:
+    """Every file a tab asks for from when this is made, and what kind each answer says it is."""
+
+    def __init__(self, page: Page) -> None:
+        """Listen on `page` for what it asks for and what it's answered."""
+        self.asked: list[tuple[str, str]] = []
+        self.kinds: dict[str, str] = {}
+        page.on("request", self._asked)
+        page.on("response", self._answered)
+
+    def _asked(self, request: Request) -> None:
+        self.asked.append((request.url, request.resource_type))
+
+    def _answered(self, response: Response) -> None:
+        said = response.headers.get("content-type", "")
+        self.kinds[response.url] = said.split(";", 1)[0].strip().lower()
+
+
+def kind_of(address: str, kinds: Mapping[str, str]) -> str:
+    """Say what `address` holds: what its data says, else what its blob or its answer said."""
+    if address.startswith("data:"):
+        return address.removeprefix("data:").split(",", 1)[0].split(";", 1)[0].strip().lower()
+    return kinds.get(address.split("#", 1)[0], UNANSWERED)
+
+
+def rasters(page: Page, fetched: Fetched) -> dict[str, list[str]]:
+    """Say each raster the page fetched, showed, styled, decoded or painted on a canvas."""
+    seen = page.evaluate(RASTERS)
+    assert seen is not None, "no raster watch was set before the page loaded, so none was seen"
+    kinds = fetched.kinds | seen["blobs"]
+
+    def raster(address: str) -> bool:
+        return kind_of(address, kinds) != VECTOR
+
+    # A file is a picture when the browser fetched it as one, from an image
+    # or a style, or when its answer says it is, whatever its name.
+    pictures = [
+        address
+        for address, fetched_as in fetched.asked
+        if fetched_as == "image" or kinds.get(address, "").startswith("image/")
+    ]
+    return {
+        "fetched": [address for address in pictures if raster(address)],
+        "shown": [f"{how} {address}" for how, address in seen["shown"] if raster(address)],
+        "styled": [f"{where} {address}" for where, address in seen["styled"] if raster(address)],
+        "decoded": seen["decoded"],
+        "painted": seen["painted"],
+    }
 
 
 def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
@@ -3169,12 +3344,17 @@ def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
     try:
-        the_map_stands(opened.page, "live")
-        the_map_counts(opened.page, COUNTED, "the map didn't draw")
-        found = opened.page.evaluate(RASTERS)
-        assert found == {"fetched": [], "shown": [], "painted": []}, (
-            f"the map fetched, showed or painted a raster picture: {found}"
-        )
+        page = opened.page
+        # Opened loads the page as it opens, before a script can be set to
+        # run ahead of the page's own, so the page is loaded once more with
+        # the watch in place, and heard from then on.
+        fetched = Fetched(page)
+        page.add_init_script(WATCHING_RASTERS)
+        page.reload()
+        the_map_stands(page, "live")
+        the_map_counts(page, COUNTED, "the map didn't draw")
+        found = rasters(page, fetched)
+        assert not any(found.values()), f"the map fetched, showed or painted a raster: {found}"
     finally:
         opened.close()
 
