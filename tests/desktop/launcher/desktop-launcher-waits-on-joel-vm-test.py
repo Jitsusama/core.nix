@@ -44,6 +44,8 @@ JOELS_SCALES = ("1.5", "2")
 READ_ON_TWICE = dt.timedelta(seconds=30)
 # How many times a selected row reads on before it rests (Choice.qml's readings).
 READ_THROUGH = 2
+# How long a session's window takes to leave niri's list once it's asked to close.
+WINDOW_GONE = dt.timedelta(seconds=30)
 
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
@@ -263,23 +265,46 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert named in first, first
 
 
-def end_testqc(desktop: Desktop, title: str) -> None:
-    """End TESTQC's session, its presence first, whatever the case it served left.
+def window_gone(desktop: Desktop, title: str) -> None:
+    """Wait until niri lists no window under this title.
 
-    Its name doesn't start with test, since pytest collects any function
-    that does as a case of its own and errors on its title, which no
-    fixture gives.
+    A session's window is waited for by its title, since the title pi gives one now holds
+    no address, so a wait for the address in niri's list passes at once, gone or not.
+    """
+    retry(
+        lambda _: all(window["title"] != title for window in desktop.windows()),
+        timeout=WINDOW_GONE,
+    )
 
-    Nothing here reads the launcher, which can be what failed: the area's
-    launcher_closed_after closes it without asking it, and a read that raised
-    here skipped the rest (round 1 on #7104, 1, 6, 10 and 11).
+
+def session_gone(desktop: Desktop, address: str, title: str) -> None:
+    """End a session, its presence first, whatever the case it served left, and wait for it.
+
+    Nothing here reads the launcher, which can be what failed, and a read that raised here
+    skipped the rest (round 1 on #7104, 1, 6, 10 and 11). Its callers close the launcher
+    first, through session_gone_after_closing: the area's launcher_closed_after asks whether
+    it's open by a read that never raises, so a launcher too broken to say it's open reads as
+    closed and is left as it is.
     """
     try:
-        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/{address.lower()}.json")
     finally:
         windows = [w for w in desktop.windows() if w["title"] == title]
         for window in windows:
             desktop.as_account(f"niri msg action close-window --id {window['id']}")
+        window_gone(desktop, title)
+
+
+def session_gone_after_closing(desktop: Desktop, address: str, title: str) -> None:
+    """Close the launcher, then end a session as session_gone does, even if the close fails.
+
+    Closed first, the launcher never has the session's row taken from under it, which it
+    had on green runs too while it stayed open on the row.
+    """
+    try:
+        desktop.close_launcher()
+    finally:
+        session_gone(desktop, address, title)
 
 
 def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
@@ -311,7 +336,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
         )
         desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
     finally:
-        end_testqc(desktop, long)
+        session_gone_after_closing(desktop, "TESTQC", long)
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -330,62 +355,64 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
         """Replace a session's presence with this, by rename, as pi does."""
         desktop.presence_says(said, address)
 
-    present("TESTQB", {"addresses": ["TESTQB"], "busy": True})
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("agents")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
-    machine.send_key("ret")
-    # The window titled the new way is its session, named by its title, once the agents
-    # daemon has heard of it from the node, which is after the window opens.
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents"] and "Another" in shown["rows"])
-    # The later of the two, which would go first once it wants Joel.
-    both = {"Another", "A quest of its own & whole"}
-    later = [row for row in desktop.showing()["rows"] if row in both][-1]
-    desktop.down_to(later)
-    # Its address leads its drawer's eyebrow, since the row says only how
-    # it stands and what it spent.
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == later
-            and shown["drawer"]["eyebrow"].split(" \u00b7 ")[0] in {"TESTQA", "TESTQB"}
+    # Its session goes and TESTQA stops wanting Joel however this ends: left, either would
+    # wait on Joel in the cases after it, hiding this one's failure behind theirs.
+    try:
+        present("TESTQB", {"addresses": ["TESTQB"], "busy": True})
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("agents")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+        machine.send_key("ret")
+        # The window titled the new way is its session, named by its title, once the agents
+        # daemon has heard of it from the node, which is after the window opens.
+        desktop.launcher_until(
+            lambda shown: shown["held"] == ["agents"] and "Another" in shown["rows"]
         )
-    )
-    shown = desktop.showing()
-    order = shown["rows"]
-    chosen = shown["selected"]["name"]
-    address = shown["drawer"]["eyebrow"].split(" \u00b7 ")[0]
-    stays = "TESTQA" if address == "TESTQB" else "TESTQB"
-    # It comes to want Joel, a want older than the shell so no notice
-    # takes the screen, and the other stops working.
-    present(
-        address,
-        {
-            "addresses": [address],
-            "busy": False,
-            "wants": {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"},
-        },
-    )
-    present(stays, {"addresses": [stays], "busy": False})
-    desktop.launcher_until(
-        lambda shown: (
-            "needs you" in (shown["selected"] or {}).get("side", "")
-            and any("listening" in thing["reads"] for thing in shown["things"])
+        # The later of the two, which would go first once it wants Joel.
+        both = {"Another", "A quest of its own & whole"}
+        later = [row for row in desktop.showing()["rows"] if row in both][-1]
+        desktop.down_to(later)
+        # Its address leads its drawer's eyebrow, since the row says only how
+        # it stands and what it spent.
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == later
+                and shown["drawer"]["eyebrow"].split(" \u00b7 ")[0] in {"TESTQA", "TESTQB"}
+            )
         )
-    )
-    # Said in place: the same rows in the same order, the selection
-    # still on its row.
-    shown = desktop.showing()
-    assert shown["rows"] == order, "the agents moved under the selection"
-    assert shown["selected"]["name"] == chosen, "the selection left its row"
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(other)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqb.json")
-    present("TESTQA", {"addresses": ["TESTQA"], "busy": False})
-    machine.wait_until_fails(
-        desktop.in_session("niri msg --json windows | grep -q TESTQB"),
-        timeout=dt.timedelta(seconds=30),
-    )
+        shown = desktop.showing()
+        order = shown["rows"]
+        chosen = shown["selected"]["name"]
+        address = shown["drawer"]["eyebrow"].split(" \u00b7 ")[0]
+        stays = "TESTQA" if address == "TESTQB" else "TESTQB"
+        # It comes to want Joel, a want older than the shell so no notice
+        # takes the screen, and the other stops working.
+        present(
+            address,
+            {
+                "addresses": [address],
+                "busy": False,
+                "wants": {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"},
+            },
+        )
+        present(stays, {"addresses": [stays], "busy": False})
+        desktop.launcher_until(
+            lambda shown: (
+                "needs you" in (shown["selected"] or {}).get("side", "")
+                and any("listening" in thing["reads"] for thing in shown["things"])
+            )
+        )
+        # Said in place: the same rows in the same order, the selection
+        # still on its row.
+        shown = desktop.showing()
+        assert shown["rows"] == order, "the agents moved under the selection"
+        assert shown["selected"]["name"] == chosen, "the selection left its row"
+    finally:
+        try:
+            session_gone_after_closing(desktop, "TESTQB", other)
+        finally:
+            present("TESTQA", {"addresses": ["TESTQA"], "busy": False})
 
 
 def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: Desktop) -> None:
@@ -453,7 +480,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     try:
         holds_still()
     finally:
-        end_testqc(desktop, long)
+        session_gone_after_closing(desktop, "TESTQC", long)
 
 
 # Each quest keeps what only Joel can do in a file of its own, written by
