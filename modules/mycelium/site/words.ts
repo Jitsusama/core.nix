@@ -398,16 +398,24 @@ export interface Named {
   readonly carries: string;
 }
 
+/** Each network's told name, or label, by its key. */
+type Told = ReadonlyMap<string, string>;
+
 /**
  * Each network's name, told apart from the others': networks whose titles
  * share their name, as several slices of one project do, are named with
  * what each carries too, so no two read alike on the map, in the tree or in
  * Now; whole titles that repeat are told apart by their ids, the part of
  * the key after its kind, and any still alike, as a title written to read
- * as another's told name is, by their whole keys until none are.
+ * as another's told name is, by their whole keys until none are. A title
+ * that reads as one of `own`, the names the page gives its own groups, is
+ * told apart from it as from another network's; those names are kept in
+ * what it gives too, keyed as the page keys its own groups (#own.0, #own.1
+ * and on), so labelsApart tells labels from them as well.
  */
-export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
-  const names = new Map(networks.map((n) => [n.key, asDrawn(n.name)]));
+export const toldApart = (networks: readonly Named[], own: readonly string[] = []): Told => {
+  const groups = own.map((name, at) => ({ key: `#own.${at}`, name }));
+  const names = new Map([...networks, ...groups].map((n) => [n.key, asDrawn(n.name)]));
   tell(networks, names, ": ", (n) => {
     const carries = asDrawn(n.carries);
     return carries === asDrawn(n.name) ? "" : carries;
@@ -429,15 +437,18 @@ export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, strin
  * name clipped shorter with its id after it, so none read alike there
  * either. A label kept whole that reads like another's id-hinted one, as a
  * title written to does, takes its own id in turn; hinted labels still
- * alike, as two long ids clipped alike are, are numbered in order.
+ * alike, as two long ids clipped alike are, are numbered in order. `told`
+ * is as toldApart gives it, so a label clipped alike to a name it keeps for
+ * the page's own groups takes its id too, since those are counted with the
+ * rest.
  */
 export const labelsApart = (
   networks: readonly Named[],
-  told: ReadonlyMap<string, string>,
+  told: Told,
   clip: (text: string, room: number) => string,
   room: number,
-): ReadonlyMap<string, string> => {
-  const labels = new Map(networks.map((n) => [n.key, clip(told.get(n.key) ?? n.name, room)]));
+): Told => {
+  const labels = new Map([...told].map(([key, name]) => [key, clip(name, room)]));
   const hinted = new Set<string>();
   // Each pass hints at least one more network or ends, so one per network
   // bounds it.
@@ -555,9 +566,10 @@ const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
 };
 
 /**
- * Adds what `more` tells to each name that repeats or draws as nothing,
- * after `between`, and says whether any did; a network `more` has nothing
- * for keeps its name, and a blank one is its tell alone.
+ * Adds what `more` tells to each network's name that repeats among
+ * `names` or draws as nothing, after `between`, and says whether any did;
+ * a network `more` has nothing for keeps its name, and a blank one is its
+ * tell alone.
  */
 const tell = (
   networks: readonly Named[],
