@@ -648,18 +648,24 @@ mod tests {
             Ok(b"made\n".to_vec())
         );
         // What hangs is a child of its own, as cadence's git or niri msg
-        // would be, its number written down to look for after.
+        // would be, its number written down to look for after. It's written
+        // whole and then moved into place, since a redirection makes the
+        // file before echo fills it, and a read stopped in between would
+        // leave it empty, looking at no child at all (review of #6875, 152).
         let folder = std::env::temp_dir().join(format!("cadence-spec-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder for the hung child's number");
         let numbered = folder.join("hung");
         let mut hung = Command::new(&shell);
         hung.args([
             "-c",
-            &format!("sleep 30 & echo $! > {}; wait", numbered.display()),
+            &format!(
+                "sleep 30 & echo $! > {0}.part && mv {0}.part {0}; wait",
+                numbered.display()
+            ),
         ])
         .stdout(Stdio::piped());
         let started = Instant::now();
-        let stopped = within(&mut hung, Duration::from_millis(500));
+        let stopped = within(&mut hung, Duration::from_secs(1));
         assert!(
             stopped.as_ref().is_err_and(|why| why.contains("ran past")),
             "a hung cadence is said to have run past its time, not {stopped:?}"
@@ -668,8 +674,14 @@ mod tests {
             started.elapsed() < Duration::from_secs(5),
             "a hung read is stopped at its deadline, not waited out"
         );
-        let left = std::fs::read_to_string(&numbered).expect("the hung child's number");
-        let proc = format!("/proc/{}/stat", left.trim());
+        let left = std::fs::read_to_string(&numbered).unwrap_or_default();
+        let child: u32 = left.trim().parse().unwrap_or_else(|_| {
+            panic!(
+                "the hung child's number was never written before its read was stopped, so \
+                 no child would be looked at: {left:?}"
+            )
+        });
+        let proc = format!("/proc/{child}/stat");
         // Gone, or dead and waiting on whoever reaps it now.
         let ended = || match std::fs::read_to_string(&proc) {
             Err(_) => true,
