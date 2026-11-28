@@ -19,15 +19,28 @@ pub struct Keys {
 }
 
 /// A key Joel could feel: how long its search took, how long from its
-/// press until the frame that drew it, and how late after its press the
-/// shell heard it, in milliseconds. `heard` is 0 for a key heard on time
-/// and in trials kept before the launcher said it.
+/// press until the frame that drew it, how late after its press the shell
+/// heard it, and when it was pressed, from the opening's start on the clock
+/// its usable time is measured on, in milliseconds. `heard` is 0 for a key
+/// heard on time and in trials kept before the launcher said it; `pressed`
+/// is none in those, and -1 for a key the compositor didn't stamp.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Felt {
     pub searched: f64,
     pub drawn: f64,
     pub heard: f64,
+    pub pressed: Option<f64>,
+}
+
+impl Felt {
+    /// When the key was pressed, from the opening's start, where the shell
+    /// knew: a key no press made, as through IPC, or one pressed before the
+    /// opening it was timed in began, is written as a negative time, which
+    /// says nothing of when it waited.
+    pub fn press(&self) -> Option<f64> {
+        self.pressed.filter(|ms| *ms >= 0.0)
+    }
 }
 
 /// The keys the launcher timed in one opening, of which the felt ones
@@ -288,8 +301,39 @@ mod tests {
                 searched: 2.0,
                 drawn: 45.0,
                 heard: 37.0,
+                pressed: None,
             }),
             "its hearing is read beside its search and drawing"
+        );
+    }
+
+    #[test]
+    fn a_felt_key_keeps_when_it_was_pressed() {
+        let trials = read(concat!(
+            r#"{"timed":{"felt":[{"searched":2,"drawn":720,"heard":700,"pressed":200},"#,
+            r#"{"searched":2,"drawn":90,"heard":0,"pressed":-1}]}}"#
+        ));
+        let felt = trials[0]
+            .timed
+            .as_ref()
+            .map(|t| t.felt.clone())
+            .unwrap_or_default();
+        assert_eq!(
+            felt.iter().map(Felt::press).collect::<Vec<_>>(),
+            vec![Some(200.0), None],
+            "a stamped key is pressed 200 ms in, and one the shell wrote as -1 has no press: \
+             {felt:?}"
+        );
+    }
+
+    #[test]
+    fn a_felt_key_kept_before_its_press_was_said_has_none() {
+        let trials = read(r#"{"timed":{"felt":[{"searched":2,"drawn":45,"heard":37}]}}"#);
+        let pressed = trials[0].timed.as_ref().map(|t| t.felt[0].pressed);
+        assert_eq!(
+            pressed,
+            Some(None),
+            "an older trial's felt key reads with no press time"
         );
     }
 

@@ -178,6 +178,15 @@ QtObject {
             { searched: 2, drawn: 45, heard: 37 }, null).timed.felt[0];
         expect("a felt key keeps how late it was heard", heard.heard === 37
             && heard.searched === 2 && heard.drawn === 45, JSON.stringify(heard));
+        // A key keeps when it was pressed from the opening's start, so
+        // pain-points charges keys queued behind one wait it once, and -1
+        // where the shell had no press time.
+        const pressed = Trials.timed(Trials.begun(0, "today"),
+            { searched: 2, drawn: 720, heard: 700, pressed: 200 }, null).timed.felt[0];
+        expect("a felt key keeps when it was pressed", pressed.pressed === 200
+            && pressed.heard === 700, JSON.stringify(pressed));
+        expect("a felt key with no press time keeps -1", keyed.timed.felt[0].pressed === -1,
+            JSON.stringify(keyed.timed.felt));
         expect("a frame's worth isn't felt", !Trials.felt(8) && Trials.felt(9), "felt");
         let many = Trials.begun(0, "today");
         for (let key = 0; key < 30; key += 1)

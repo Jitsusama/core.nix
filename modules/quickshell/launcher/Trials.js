@@ -52,16 +52,16 @@ function felt(drawn) {
     return drawn > FELT_MS;
 }
 
-// The trial with one more key timed: `key` its search, its press to the
-// frame that drew it and how late the shell heard it, in ms ({ searched,
-// drawn, heard }, heard 0 or left out where on time), and `parts` what the
-// search spent its time on ({ lists, rows, answers }, the rows' time split
-// `within` matching, ordering, making and spots, with how many choices were
-// looked at and found) or null. Each felt key is kept with its parts and
-// hearing, the first few of an opening, so what's slow is named by Joel's
-// own use, not guessed, and a key heard late is never read as slow to draw
-// (Joel, 2026-10-25: "i felt a bit of lag btw with the launcher").
-function timed(trial, { searched, drawn, heard = 0 }, parts) {
+// The trial with one more key timed: `key` its search, its press to its frame,
+// how late it was heard and its press from the opening's start, in ms ({ searched,
+// drawn, heard, pressed }, heard 0 where on time, pressed -1 where unknown), and
+// `parts` what its search spent its time on ({ lists, rows, answers }, the rows'
+// split `within` matching, ordering, making and spots, with the choices looked at
+// and found) or null. Each felt key is kept with its parts, hearing and press, the
+// first few of an opening, so what's slow is named by Joel's own use, a key heard
+// late isn't read as slow to draw, and keys queued behind one wait are charged it
+// once (Joel, 2026-10-25: "i felt a bit of lag btw with the launcher").
+function timed(trial, { searched, drawn, heard = 0, pressed = -1 }, parts) {
     if (!trial) {
         return trial;
     }
@@ -69,7 +69,7 @@ function timed(trial, { searched, drawn, heard = 0 }, parts) {
     const kept = parts?.composing
         ? Object.assign({}, parts, { composing: showingKept(parts.composing) }) : parts ?? null;
     const keptFelt = felt(drawn) && was.felt.length < FELT_KEPT
-        ? was.felt.concat([{ searched, drawn, heard, parts: kept }]) : was.felt;
+        ? was.felt.concat([{ searched, drawn, heard, pressed, parts: kept }]) : was.felt;
     return Object.assign({}, trial, { timed: {
         count: was.count + 1,
         searched: was.searched + searched,
