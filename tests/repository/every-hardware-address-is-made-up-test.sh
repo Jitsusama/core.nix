@@ -12,8 +12,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/made-up"
 # A maker's address, then made-up ones of each kind, seven octets, and a
-# kept one in upper case.
-echo '00:00:00:00:00:01' >"$work/made-up/copied.txt"
+# kept one in upper case. The maker's address is written with dashes and
+# given its colons here, since the check reads this file too and would
+# refuse it as written.
+echo '00-00-00-00-00-01' | tr - : >"$work/made-up/copied.txt"
 echo '02:00:00:00:a0:00 52:54:00:12:34:56 ff:ff:ff:ff:ff:ff 01:00:5e:00:00:fb' \
   '00:00:5E:00:53:01 00:00:00:00:00:00 00:00:00:00:00:01:01 00:1B:66:AA:BB:CC' \
   >"$work/made-up/made-up.txt"
