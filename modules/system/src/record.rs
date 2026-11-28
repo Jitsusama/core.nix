@@ -63,6 +63,12 @@ pub struct Thing {
     /// What kind of thing it is, as VKCF3Z's home addresses name kinds.
     pub kind: &'static str,
     pub name: String,
+    /// The name the node gave it, where that isn't `name`: a reader is shown
+    /// its name made plain, but a page that finds it by the node's name, as
+    /// the map finds a builder, is led there by this one. It is never shown,
+    /// only matched, so it stays as the node wrote it. None where the two
+    /// agree, or where the node gave it no name the map could find.
+    pub called: Option<String>,
     pub health: Health,
     /// How it stands, in a short sentence's words.
     pub says: String,
@@ -204,6 +210,7 @@ impl System {
                     "says": thing.says,
                     "side": thing.side,
                     "looks": looks_json(thing),
+                    "called": thing.called,
                     "address": thing.address,
                     "ties": thing.ties,
                 })
@@ -248,6 +255,7 @@ fn part_json(part: &Part) -> Value {
             "says": thing.says,
             "side": thing.side,
             "looks": looks_json(thing),
+            "called": thing.called,
             "address": thing.address,
             "ties": thing.ties,
         })).collect::<Vec<_>>(),
@@ -295,6 +303,7 @@ mod tests {
             says: format!("{name} says so"),
             side: Vec::new(),
             looks: Vec::new(),
+            called: None,
             address: None,
             ties: Value::Null,
         }
@@ -431,6 +440,28 @@ mod tests {
             "mycelium/#machine=laptop"
         );
         assert_eq!(system.records()[2]["address"], "mycelium/#machine=laptop");
+    }
+
+    #[test]
+    fn a_thing_the_node_names_otherwise_carries_that_name_in_every_record() {
+        let mut machines = part("machines", Health::Good);
+        let mut kite = machine("kite", Health::Good);
+        kite.kind = "builder";
+        kite.called = Some("kite\u{200b}".to_owned());
+        machines.things = vec![kite, machine("laptop", Health::Good)];
+        let system = system(vec![machines]);
+        let things = &system.json()["parts"][0]["things"];
+        assert_eq!(
+            (&things[0]["called"], &things[1]["called"]),
+            (&json!("kite\u{200b}"), &Value::Null),
+            "the part's things carry the node's name where it isn't the one shown"
+        );
+        let records = system.records();
+        assert_eq!(
+            (&records[2]["called"], &records[3]["called"]),
+            (&json!("kite\u{200b}"), &Value::Null),
+            "each thing's own record carries the node's name where it isn't the one shown"
+        );
     }
 
     #[test]

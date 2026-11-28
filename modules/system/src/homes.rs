@@ -1035,6 +1035,7 @@ mod tests {
             says: String::new(),
             side: Vec::new(),
             looks: Vec::new(),
+            called: None,
             address: Some("stale/".to_owned()),
             ties: serde_json::Value::Null,
         };

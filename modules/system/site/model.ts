@@ -19,6 +19,12 @@ interface Thing {
   /** Its kind, as its key opens: machine or builder. */
   readonly kind: string;
   readonly name: string;
+  /**
+   * The name the node gave it, where the daemon shows it by another made
+   * plain: the map knows a builder by the node's own, so a link there goes
+   * by this one. Never shown.
+   */
+  readonly called?: string;
   readonly health: Health;
   readonly says: string;
   /** What in it is worth a look, worded for a side, worst first. */
@@ -209,6 +215,7 @@ function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined 
   // are a record caught between its two fields, either way round, so the side
   // says them, as the machine's health is read beside it. A side the page
   // can't read is no tear: the list is then all there is to go by.
+  const called = text(record, "called");
   const torn =
     listed !== undefined && sided !== undefined && (listed.length === 0) !== (sided.length === 0);
   const looksLost =
@@ -231,6 +238,7 @@ function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined 
   return {
     kind: kindOf(key),
     name,
+    ...(called === undefined ? {} : { called }),
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     // A side absent, null or unreadable is said from the looks listed beside it, so the

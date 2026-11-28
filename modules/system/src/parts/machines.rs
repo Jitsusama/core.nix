@@ -282,6 +282,7 @@ fn machine(
         says: line.join(", "),
         side,
         looks,
+        called: None,
         address: None,
         ties: Value::Null,
     };

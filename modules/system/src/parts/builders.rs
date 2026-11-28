@@ -36,18 +36,58 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 /// read them, since the node then writes no builders' line at all. Two
 /// builders whose names are drawn alike are one to the reader and one
 /// record, so only the worse is kept: a fine one never hides a failing one.
-/// Builders without a name are all said unnamed, so they too are one,
-/// said at its worst.
+/// Two as bad are joined, each saying its own words, so neither the node's
+/// order nor a tie decides which the reader hears of. Builders without a
+/// name are all said unnamed, so they too are one, said at its worst.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
         .and_then(Value::as_array)
         .map(|all| all.iter().map(builder).collect())
         .unwrap_or_default();
-    read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
-    let mut named = std::collections::HashSet::new();
-    read.retain(|(thing, _)| named.insert(thing.name.clone()));
-    read
+    // By what each says after its health and name, so builders drawn alike
+    // meet in an order of their own rather than the node's; one saying
+    // what another drawn alike says adds nothing to it.
+    read.sort_by(|(a, _), (b, _)| {
+        b.health
+            .cmp(&a.health)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.says.cmp(&b.says))
+    });
+    read.dedup_by(|(a, _), (b, _)| a.name == b.name && a.says == b.says);
+    let mut kept: Vec<(Thing, Vec<String>)> = Vec::new();
+    let mut at = std::collections::HashMap::new();
+    for (thing, looks) in read {
+        if let Some(&first) = at.get(&thing.name) {
+            joined(&mut kept[first], thing, looks);
+        } else {
+            at.insert(thing.name.clone(), kept.len());
+            kept.push((thing, looks));
+        }
+    }
+    kept
+}
+
+/// `first` with what `other`, a builder drawn alike after it, says, where it
+/// stands as badly: its words after the first's, and each look it raises
+/// beside the first's, or the words of one they share after the first's
+/// own. One better than the first adds nothing, so a fine builder never
+/// softens a failing one.
+fn joined(first: &mut (Thing, Vec<String>), other: Thing, words: Vec<String>) {
+    let (thing, said) = first;
+    if other.health != thing.health {
+        return;
+    }
+    thing.says = format!("{}; {}", thing.says, other.says);
+    for (look, word) in other.looks.into_iter().zip(words) {
+        if let Some(shared) = thing.side.iter().position(|side| *side == look.side) {
+            said[shared] = format!("{}; {word}", said[shared]);
+        } else {
+            thing.side.push(look.side.clone());
+            thing.looks.push(look);
+            said.push(word);
+        }
+    }
 }
 
 /// One builder: how it stands, and what in that is worth a look, as a
@@ -65,16 +105,21 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// building that this build was never told of. A look carries the node's
 /// reason whole, since what to do about a builder is in it. Its name is
 /// made plain as any text the system shows, and a state or lender's word is
-/// matched once plain, so padding never turns a known word into a look.
+/// matched in the one form a look would show it (`plain`), so no look ever
+/// names a word this build knows. The map draws a builder by the node's own
+/// name, so where the plain one differs the builder is called by that too,
+/// for the page to find it there; a name the map drops, an empty one, it is
+/// called by none.
 fn builder(said: &Value) -> (Thing, Vec<String>) {
     let name = plain_name(said);
-    let word = |key: &str| said.get(key).and_then(Value::as_str);
-    // A word as it reads, its hidden characters and padding gone.
-    let drawn = |word: &str| crate::plain::words(word).trim().to_owned();
-    let proof = word("said")
-        .map(drawn)
-        .filter(|said| PROOFS.contains(&said.as_str()));
-    let why = word("said").filter(|_| proof.is_none()).and_then(plain);
+    let called = said
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|own| !own.is_empty() && *own != name)
+        .map(str::to_owned);
+    let lender = said.get("said").and_then(Value::as_str).and_then(plain);
+    let proof = lender.as_deref().filter(|said| PROOFS.contains(said));
+    let why = lender.clone().filter(|_| proof.is_none());
     let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
     let takes = match said.get("jobs").and_then(Value::as_u64) {
@@ -93,15 +138,14 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
         None | Some(Value::Null) => "unknown".to_owned(),
         Some(state) => state
             .as_str()
-            .map(drawn)
-            .filter(|state| plain(state).is_some())
+            .and_then(plain)
             .unwrap_or_else(|| "unreadable".to_owned()),
     };
     let (health, says, look) = match state.as_str() {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
         "running" => match &why {
             Some(why) => unknown(format!("runs, its lender saying {why}")),
-            None => running(lent, &takes, proof.as_deref()),
+            None => running(lent, &takes, proof),
         },
         "not running" => (
             Health::Good,
@@ -113,10 +157,8 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
             with_why("isn't answering"),
             Some("not answering".to_owned()),
         ),
-        other => match plain(other).filter(|_| other != "unknown") {
-            Some(state) => unknown(with_why(&format!("is {state}"))),
-            None => (Health::Good, with_why("hasn't been heard from"), None),
-        },
+        "unknown" => (Health::Good, with_why("hasn't been heard from"), None),
+        other => unknown(with_why(&format!("is {other}"))),
     };
     let looks: Vec<String> = look.iter().map(|_| says.clone()).collect();
     let thing = Thing {
@@ -133,6 +175,7 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
             })
             .collect(),
         side: look.into_iter().collect(),
+        called,
         address: None,
         ties: Value::Null,
     };
@@ -191,12 +234,13 @@ fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Opt
 }
 
 /// A node's words as one plain clause of a line: the first line, made
-/// plain as every text the system shows is (`plain::words`), with no
-/// closing stop, and cut at a word past `REASON_AT_MOST`; none when
-/// nothing is left.
+/// plain as every text the system shows is (`plain::words`, which trims it
+/// too), with no closing stop, and cut at a word past `REASON_AT_MOST`;
+/// none when nothing is left. A state and a lender's word are read in this
+/// form as well as said in it, so what is matched is what a look shows.
 fn plain(said: &str) -> Option<String> {
     let line = crate::plain::words(said.lines().next().unwrap_or(""));
-    let line = line.trim().trim_end_matches(['.', ';', ':', ',', ' ']);
+    let line = line.trim_end_matches(['.', ';', ':', ',', ' ']);
     if line.is_empty() {
         return None;
     }
@@ -468,6 +512,67 @@ mod tests {
     }
 
     #[test]
+    fn a_known_word_is_matched_in_the_form_a_look_would_show_it() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "answering ." },
+            { "name": "kite", "state": "running;", "lent": true,
+              "said": " pass\u{200b}ing." },
+            { "name": "tern", "state": "unknown." },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", Health::Good, "is lent and takes builds"),
+                ("osprey", Health::Good, "answers and takes builds"),
+                ("tern", Health::Good, "hasn't been heard from"),
+            ],
+            "a state or lender's word that a look would show as a known word is that word, \
+             so no look names a word this build knows"
+        );
+    }
+
+    #[test]
+    fn a_state_and_a_lender_s_word_are_read_by_their_first_line_as_a_reason_is() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "answering\nsince noon" },
+            { "name": "kite", "state": "running", "said": "dropped\nsince noon" },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                (
+                    "kite",
+                    Health::Watch,
+                    "runs but is left out, its proofs failing"
+                ),
+                ("osprey", Health::Good, "answers and takes builds"),
+            ],
+            "a state's or a lender's second line is no part of its word, as it is none of a \
+             reason's"
+        );
+    }
+
+    #[test]
+    fn a_padded_unknown_is_unheard_as_unknown_is() {
+        for state in [" unknown ", "\u{200b}unknown\u{1b}[0m", "unknown"] {
+            let said = read(&json!([{ "name": "tern", "state": state }]));
+            assert_eq!(
+                (said[0].1, said[0].2.as_str(), said[0].3.len()),
+                (Health::Good, "hasn't been heard from", 0),
+                "{state:?} is the node's unknown, a builder unheard by design, not a look"
+            );
+        }
+    }
+
+    #[test]
     fn builders_whose_names_read_alike_are_one_said_at_its_worst() {
         let failing = json!({ "name": "kite\u{200b}", "state": "not answering" });
         let fine = json!({ "name": "kite", "state": "answering" });
@@ -482,6 +587,56 @@ mod tests {
                 vec![("kite", Health::Watch)],
                 "two builders drawn as one name are one, and a fine one never hides a failing \
                  one: {builders}"
+            );
+        }
+    }
+
+    #[test]
+    fn builders_drawn_alike_and_as_bad_are_one_whatever_the_node_s_order() {
+        let refused = json!({ "name": "kite\u{200b}", "state": "not answering",
+                              "said": "refused" });
+        let timed_out = json!({ "name": "kite", "state": "not answering",
+                                "said": "timed out" });
+        let full = json!({ "name": " kite", "state": "running", "said": "full" });
+        let answers = json!({ "name": "heron", "state": "answering" });
+        let runs = json!({ "name": "heron\u{200b}", "state": "running" });
+        let refused_says = "isn't answering (refused)";
+        let both_refused = format!("{refused_says}; isn't answering (timed out)");
+        let full_says = "runs with its store full, so it builds only when no other can";
+        for (pair, says, side, words) in [
+            (
+                [&refused, &timed_out],
+                both_refused.clone(),
+                vec!["not answering"],
+                vec![both_refused.clone()],
+            ),
+            (
+                [&refused, &full],
+                format!("{refused_says}; {full_says}"),
+                vec!["not answering", "its store full"],
+                vec![refused_says.to_owned(), full_says.to_owned()],
+            ),
+            (
+                [&answers, &runs],
+                "answers and takes builds; runs and takes builds".to_owned(),
+                vec![],
+                vec![],
+            ),
+        ] {
+            let [one, other] = pair;
+            let either = [json!([one, other]), json!([other, one])].map(|listed| {
+                builders(&json!({ "Ok": { "Builders": listed } }))
+                    .into_iter()
+                    .map(|(thing, looks)| (thing.says, thing.side, looks))
+                    .collect::<Vec<_>>()
+            });
+            let side: Vec<String> = side.into_iter().map(str::to_owned).collect();
+            let joined = vec![(says, side, words)];
+            assert_eq!(
+                either,
+                [joined.clone(), joined],
+                "two builders drawn alike and as bad are one saying both, in either order: \
+                 {one}, {other}"
             );
         }
     }
@@ -506,6 +661,35 @@ mod tests {
                 ],
                 "a builder that can't be named is still listed, and one not answering is a look \
                  as a named one is: {nameless}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_builder_is_called_by_the_node_s_own_name_where_it_is_shown_by_another() {
+        let said = builders(&json!({ "Ok": { "Builders": [
+            { "name": "kite\u{200b}", "state": "answering" },
+            { "name": "osprey", "state": "answering" },
+            { "name": "\u{200b}", "state": "not answering" },
+        ] } }));
+        let called: Vec<(&str, Option<&str>)> = said
+            .iter()
+            .map(|(thing, _)| (thing.name.as_str(), thing.called.as_deref()))
+            .collect();
+        assert_eq!(
+            called,
+            vec![
+                ("unnamed", Some("\u{200b}")),
+                ("kite", Some("kite\u{200b}")),
+                ("osprey", None),
+            ],
+            "a builder shown by a plain name the map doesn't know is called by the node's own"
+        );
+        for nameless in [json!(""), json!(7), Value::Null] {
+            let said = builders(&json!({ "Ok": { "Builders": [{ "name": nameless }] } }));
+            assert_eq!(
+                said[0].0.called, None,
+                "a builder named {nameless} gives the map no name to find it by"
             );
         }
     }
