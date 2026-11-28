@@ -140,6 +140,7 @@ fn rider(head: &str, at: u64) -> Rider {
         head: head.to_owned(),
         branch: format!("jitsusama/{head}"),
         at,
+        method: Method::Merge,
     }
 }
 
@@ -232,6 +233,34 @@ fn riders_are_read_back_in_the_order_they_boarded() {
         riders(&root),
         vec![rider("a1", 10), rider("b2", 20)],
         "the riders weren't read back first boarded first"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_rider_keeps_how_it_merges_and_one_from_before_merges_as_then() {
+    let root = root("method");
+    let squashed = Rider {
+        method: Method::Squash,
+        ..rider("a1", 10)
+    };
+    board(&root, &squashed).unwrap();
+    // A rider boarded by a build from before riders named a method.
+    fs::write(
+        riders_folder(&root).join("b2.json"),
+        r#"{"head":"b2","branch":"jitsusama/b2","at":20}"#,
+    )
+    .unwrap();
+    // One naming a method the train doesn't know isn't read as a rider.
+    fs::write(
+        riders_folder(&root).join("c3.json"),
+        r#"{"head":"c3","branch":"jitsusama/c3","at":30,"method":"rebase"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        riders(&root),
+        vec![squashed, rider("b2", 20)],
+        "a rider's method wasn't read back as it boarded"
     );
     fs::remove_dir_all(&root).unwrap();
 }
@@ -738,6 +767,7 @@ pub(super) fn merging(head: &str, number: u64) -> Merging {
         head: head.to_owned(),
         subject: subject(number, "o", head),
         title: format!("change {number}"),
+        method: Method::Merge,
     }
 }
 

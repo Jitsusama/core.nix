@@ -224,7 +224,7 @@ fn read(sha: &str, parents: &[&str]) -> Brought {
 
 #[test]
 fn only_a_pull_request_merged_into_our_trunk_as_the_merge_from_its_head_vouches() {
-    let merged = |pulls: Value| merged(&pulls, (MYCELIUM, "main"), B, C);
+    let merged = |pulls: Value| merged(&pulls, (MYCELIUM, "main"), B, Some(C));
     let mut from_d = pull(B, true, "main", MYCELIUM);
     from_d["head"] = json!(D);
     assert!(
@@ -264,27 +264,53 @@ fn only_a_pull_request_merged_into_our_trunk_as_the_merge_from_its_head_vouches(
 }
 
 #[test]
-fn only_merges_of_two_parents_lead_along_the_trunk_from_the_old_commit() {
+fn a_squash_vouches_only_as_a_pull_request_merged_from_a_head_of_its_own() {
+    let squashed = |pulls: Value| merged(&pulls, (MYCELIUM, "main"), B, None);
+    assert!(
+        squashed(json!([pull(B, true, "main", MYCELIUM)])),
+        "a pull request GitHub squashed into main as the commit didn't vouch for it"
+    );
+    let mut headless = pull(B, true, "main", MYCELIUM);
+    headless["head"] = Value::Null;
+    for (pulls, what) in [
+        (json!([]), "no pull request"),
+        (json!([pushed(B)]), "one whose head was pushed to the trunk"),
+        (
+            json!([pull(B, false, "main", MYCELIUM)]),
+            "an open one's test merge",
+        ),
+        (
+            json!([pull(B, true, "release", MYCELIUM)]),
+            "one into another base",
+        ),
+        (json!([headless]), "one whose head can't be read"),
+    ] {
+        assert!(!squashed(pulls), "{what} vouched for a squash");
+    }
+}
+
+#[test]
+fn only_merges_and_squashes_lead_along_the_trunk_from_the_old_commit() {
     let line = [read(D, &[A, C]), read(C, &[A]), read(B, &[D, C])];
     assert_eq!(
         merges(&line, A, B),
         Ok(vec![
-            (B.to_owned(), C.to_owned()),
-            (D.to_owned(), C.to_owned())
+            (B.to_owned(), Some(C.to_owned())),
+            (D.to_owned(), Some(C.to_owned()))
         ]),
         "two merges along the trunk weren't each asked after with their heads"
     );
+    // A commit of one parent may be a squash, which GitHub is asked about
+    // as a pull request's merge from a head of its own.
+    assert_eq!(
+        merges(&[read(C, &[A]), read(D, &[A, C]), read(B, &[D])], A, B),
+        Ok(vec![
+            (B.to_owned(), None),
+            (D.to_owned(), Some(C.to_owned()))
+        ]),
+        "a commit of one parent wasn't asked after as a squash"
+    );
     for (commits, says, what) in [
-        (
-            vec![read(C, &[A]), read(D, &[A, C]), read(B, &[D])],
-            "bbbbbbbbbbbb on the trunk's line is no merge",
-            "a commit pushed on top of a merge",
-        ),
-        (
-            vec![read(D, &[A]), read(C, &[D]), read(B, &[D, C])],
-            "dddddddddddd on the trunk's line is no merge",
-            "a commit pushed to the trunk before a merge carried it",
-        ),
         (
             vec![read(C, &[A]), read(B, &[D, C])],
             "aaaaaaaaaaaa isn't on bbbbbbbbbbbb's trunk line",
@@ -533,6 +559,22 @@ fn a_lock_alone_pinning_a_merged_newer_commit_needs_no_round() {
 }
 
 #[test]
+fn a_lock_alone_pinning_a_squashed_newer_commit_needs_no_round() {
+    let (repo, head) = pinned_to_b("squashed", None);
+    let asks = Fake {
+        compared: Ok(Fake::compare(&[commit(B, &[A])])),
+        ..Fake::vouching()
+    };
+    let told = ours_alone(&repo, &head, "main", &asks);
+    assert!(
+        matches!(&told, Some(Pinned::Alone(_))),
+        "a lock-only pin of a squashed mycelium commit was told {told:?}"
+    );
+    assert_eq!(asks.asked(), EVERY_ASK, "it didn't ask each in turn");
+    fs::remove_dir_all(&repo).unwrap();
+}
+
+#[test]
 fn a_pin_still_passes_once_main_moves_on_beside_it() {
     let (repo, head) = pinned_to_b("moved-on", None);
     git_in(&repo, &["checkout", "-q", "main"]);
@@ -580,14 +622,16 @@ fn a_pin_back_unmerged_or_bringing_a_push_says_so_and_asks_no_further() {
             commit(D, &[A, C]),
             commit(B, &[D]),
         ])),
+        // Pushed, so no pull request merged as it.
+        pulls: HashMap::new(),
         ..Fake::vouching()
     };
     declined(
         &repo,
         &head,
         &on_top,
-        "bbbbbbbbbbbb on the trunk's line is no merge",
-        &["compared"],
+        "merged as bbbbbbbbbbbb from a head of its own",
+        &["compared", "pulls b"],
     );
     let pushed_first = Fake {
         compared: Ok(Fake::compare(&[
@@ -601,8 +645,8 @@ fn a_pin_back_unmerged_or_bringing_a_push_says_so_and_asks_no_further() {
         &repo,
         &head,
         &pushed_first,
-        "dddddddddddd on the trunk's line is no merge",
-        &["compared"],
+        "merged as dddddddddddd from a head of its own",
+        &["compared", "pulls b", "pulls d"],
     );
     let mut from_another = Fake::vouching();
     let mut other = pull(B, true, "main", MYCELIUM);

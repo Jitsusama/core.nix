@@ -250,6 +250,7 @@ pub fn aboard(
                             head: rider.head.clone(),
                             subject: subject(pull.number, owner, &pull.branch),
                             title: pull.title,
+                            method: rider.method,
                         });
                     }
                     Err(why) => {
@@ -473,6 +474,7 @@ mod tests {
             head: head.to_owned(),
             branch: format!("jitsusama/{head}"),
             at: 10,
+            method: super::super::Method::Merge,
         }
     }
 
