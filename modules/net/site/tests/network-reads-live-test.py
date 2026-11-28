@@ -584,9 +584,11 @@ def test_the_find_says_what_it_takes_in_words_that_read(
 
 
 # The find's placeholder beside the page's text and its typed words, as the
-# browser computes them once the reader has picked a look on the page.
-PLACEHOLDER_PICKED = """(look) => {
-  document.documentElement.dataset.theme = look;
+# browser computes them once the reader has picked `look` on the page, or with
+# nothing picked when it's null, and the look the page then holds as picked.
+PLACEHOLDER_RAISED = """(look) => {
+  if (look !== null) document.documentElement.dataset.theme = look;
+  const picked = document.documentElement.dataset.theme ?? null;
   const find = document.querySelector("#find");
   const said = getComputedStyle(find, "::placeholder");
   const probe = document.createElement("span");
@@ -595,7 +597,7 @@ PLACEHOLDER_PICKED = """(look) => {
   const text = getComputedStyle(probe).color;
   probe.remove();
   const typed = getComputedStyle(find).fontStyle;
-  return { colour: said.color, style: said.fontStyle, typed, text };
+  return { colour: said.color, style: said.fontStyle, typed, text, picked };
 }"""
 
 
@@ -614,12 +616,38 @@ def test_more_contrast_raises_the_finds_words_in_a_look_picked_on_the_page(
     try:
         says_it_stands(opened.page, "live")
         opened.page.emulate_media(contrast="more")
-        said = opened.page.evaluate(PLACEHOLDER_PICKED, look)
+        said = opened.page.evaluate(PLACEHOLDER_RAISED, look)
         assert said["colour"] == said["text"], (
             f"more contrast left the find's placeholder muted in the picked {look} look: {said}"
         )
         assert said["style"] != said["typed"], (
             f"more contrast drew the find's placeholder as typed words in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
+def test_more_contrast_raises_the_finds_words_in_the_systems_light_look(
+    browser: Browser, network_served: Served
+) -> None:
+    """A reader asking for more contrast gets it in the system's light look, with nothing picked.
+
+    That look's colours stand under a rule of their own, which outranks a lone root as a picked
+    look's does, so the kit's more-contrast rule must stand above it too, or muted words stay
+    faint for whoever leaves the look to the system.
+    """
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], "light")
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(PLACEHOLDER_RAISED, None)
+        assert said["picked"] is None, f"the page picked a look the reader never did: {said}"
+        assert said["colour"] == said["text"], (
+            f"more contrast left the find's placeholder muted in the system's light look: {said}"
+        )
+        assert said["style"] == "italic", (
+            f"more contrast left the find's placeholder upright in the system's light look: {said}"
         )
     finally:
         opened.close()
