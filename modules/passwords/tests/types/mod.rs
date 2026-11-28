@@ -6,18 +6,29 @@
 //! below it, a session reached by ssh or a multiplexer below it, where
 //! it's X11's, where it's kitty and kitty says an agent or a multiplexer
 //! runs in it, names what isn't its own or can't say what does, where
-//! something named kitty isn't the kitty kitten asks, and where the keys
-//! move once the secret is read;
+//! something named kitty isn't the kitty kitten asks, where kitty's
+//! address is held by another program or by nothing, where another
+//! window may lie over kitty's, where the keys move once the secret is
+//! read, to another window or another of kitty's, and where the secret
+//! comes more than 5 s after its ask;
 //! and a journal line for each, naming the entry and the window's app id,
-//! never the secret (ISXEG8's terms for R-type-password, 2026-11-24).
+//! never the secret (ISXEG8's terms for R-type-password, 2026-11-24, and
+//! its must-closes before the place turns on, 2026-11-25).
 //! niri, the typist and kitty are stand-ins, and each window's process is
 //! one of the test's own, its forebears made as each case needs. They run
 //! in the build's sandbox: run beneath an agent, every window is refused.
+//! Long because each of ISXEG8's refusals, and each its reviews found
+//! missing, is a case here beside the stand-ins it arranges, and they
+//! change together as its terms do: a split would put every case's desk
+//! in one file and its proof in another.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixDatagram, UnixListener};
+use std::os::fd::IntoRawFd;
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixDatagram, UnixListener};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use crate::common::{KEEPING, Running, program, program_copied, until};
@@ -47,10 +58,14 @@ cat >> "$TYPED"
 
 /// A stand-in kitty's remote control: what it was asked goes to its file,
 /// and it says what its `ls` file holds, failing where there's none, as
-/// kitty does when it can't be reached.
+/// kitty does when it can't be reached. Its nth ask is answered from the
+/// file's nth copy where there's one, as when kitty's windows change
+/// between the daemon's two looks.
 const KITTEN: &str = r#"#!/bin/sh
 printf '%s\n' "$*" > "$KITTY_ASKED"
-cat "$KITTY_SAYS"
+n=$(($(cat "$KITTY_SAYS.asked" 2>/dev/null || echo 0) + 1))
+echo "$n" > "$KITTY_SAYS.asked"
+if [ -e "$KITTY_SAYS.$n" ]; then cat "$KITTY_SAYS.$n"; else cat "$KITTY_SAYS"; fi
 "#;
 
 /// A stand-in pi, which starts one process beneath it and says its id,
@@ -85,6 +100,9 @@ struct Desk {
     // says another has, as when the keys move while the secret is read.
     moves_after: Arc<Mutex<Option<usize>>>,
     started: Vec<u32>,
+    // The stand-in kitties, the test's own children, so the socket each
+    // listens on is bound in the kitty itself.
+    kitties: Vec<Child>,
 }
 
 impl Desk {
@@ -142,6 +160,7 @@ impl Desk {
             holding,
             moves_after,
             started: Vec::new(),
+            kitties: Vec::new(),
         }
     }
 
@@ -294,15 +313,52 @@ impl Desk {
     }
 
     /// A stand-in kitty, a copy of the shell in the folder kitten is in,
-    /// named as Linux names kitty, running `child` as its window's process;
-    /// answers kitty's id and the child's.
+    /// named as Linux names kitty, listening at the address kitty.conf
+    /// names by its pid, running `child` as its window's process; answers
+    /// kitty's id and the child's.
     fn kitty(&mut self, child: &str) -> (u32, u32) {
+        self.kitty_with(child, "")
+    }
+
+    /// A stand-in kitty, as `kitty` starts one, started with `words` too,
+    /// as kitty is told where to listen.
+    fn kitty_with(&mut self, child: &str, words: &str) -> (u32, u32) {
+        self.kitty_started(child, words, true)
+    }
+
+    /// A stand-in kitty, as `kitty` starts one, listening nowhere, so
+    /// nothing of its own answers at its address.
+    fn kitty_unheard(&mut self, child: &str) -> (u32, u32) {
+        self.kitty_started(child, "", false)
+    }
+
+    /// A stand-in kitty, listening at `@kitty-<pid>` where `listens`, its
+    /// own socket bound in it before it runs, as kitty binds its own.
+    fn kitty_started(&mut self, child: &str, words: &str, listens: bool) -> (u32, u32) {
         let kitty = self.copied(&format!("{KITTY_PACKAGE}/kitty"));
         let said = self.folder.join("kitty-child");
-        let pid = self.start(
-            &kitty,
-            &format!("-c '{child} & echo $! > \"{}\"; wait'", said.display()),
-        );
+        let mut command = Command::new(&kitty);
+        command
+            .arg("-c")
+            .arg(format!("{child} & echo $! > \"{}\"; wait", said.display()))
+            .args(words.split_whitespace())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(self.folder.join(STARTED_SAID))
+                    .unwrap(),
+            );
+        if listens {
+            // SAFETY: listening_as_kitty makes only system calls, and
+            // allocates nothing, between the fork and the exec.
+            unsafe { command.pre_exec(listening_as_kitty) };
+        }
+        let started = command.spawn().expect("the stand-in kitty starts");
+        let pid = started.id();
+        self.kitties.push(started);
         until("kitty is named kitty", || {
             std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| comm == "kitty\n")
         });
@@ -314,11 +370,25 @@ impl Desk {
         *self.focused.lock().unwrap() = json!({"id": id, "pid": pid, "app_id": app});
     }
 
-    /// kitty's `ls`, its focused window running these processes.
+    /// kitty's `ls`, its focused window, its first, running these
+    /// processes alone in its group.
     fn kitty_runs(&self, processes: &Value) {
-        let listed = json!([{"is_focused": true, "tabs": [{"is_focused": true, "windows": [
-            {"is_focused": true, "foreground_processes": processes}]}]}]);
-        std::fs::write(self.folder.join("kitty-says"), listed.to_string()).unwrap();
+        self.kitty_lists(None, 1, &json!([1]), processes);
+    }
+
+    /// kitty's `ls`, its focused window `window`, in a group of the tab's
+    /// holding `group`, running these processes: said to every ask, or
+    /// to its `nth` alone.
+    fn kitty_lists(&self, nth: Option<usize>, window: u64, group: &Value, processes: &Value) {
+        let listed = json!([{"is_focused": true, "tabs": [{"is_focused": true,
+            "groups": [{"id": 1, "windows": group}],
+            "windows": [{"id": window, "is_focused": true,
+                "foreground_processes": processes}]}]}]);
+        let file = nth.map_or_else(
+            || "kitty-says".to_owned(),
+            |nth| format!("kitty-says.{nth}"),
+        );
+        std::fs::write(self.folder.join(file), listed.to_string()).unwrap();
     }
 
     fn typed(&self) -> Option<String> {
@@ -336,6 +406,10 @@ impl Desk {
 
 impl Drop for Desk {
     fn drop(&mut self) {
+        for kitty in &mut self.kitties {
+            let _ = kitty.kill();
+            let _ = kitty.wait();
+        }
         for pid in &self.started {
             let _ = Command::new("/bin/sh")
                 .arg("-c")
@@ -343,6 +417,35 @@ impl Drop for Desk {
                 .status();
         }
         let _ = std::fs::remove_dir_all(&self.folder);
+    }
+}
+
+/// Binds a socket listening at `@kitty-<pid>`, its own pid, in the child
+/// about to become a stand-in kitty, kept open through the exec, as
+/// kitty.conf's `listen_on unix:@kitty-{kitty_pid}` has kitty bind one.
+/// It runs between the fork and the exec, so its name is written on the
+/// stack rather than allocated.
+fn listening_as_kitty() -> std::io::Result<()> {
+    let mut name = *b"kitty-0000000000";
+    let mut pid = std::process::id();
+    let mut digits = 0;
+    let mut left = pid;
+    while left > 0 || digits == 0 {
+        digits += 1;
+        left /= 10;
+    }
+    for at in (6..6 + digits).rev() {
+        name[at] = b'0' + u8::try_from(pid % 10).unwrap_or(0);
+        pid /= 10;
+    }
+    let listener = UnixListener::bind_addr(&SocketAddr::from_abstract_name(&name[..6 + digits])?)?;
+    let socket = listener.into_raw_fd();
+    // SAFETY: `socket` is the listener's own, given up above, and F_SETFD
+    // only clears its close-on-exec flag, so kitty's program holds it.
+    if unsafe { libc::fcntl(socket, libc::F_SETFD, 0) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
 
@@ -443,11 +546,11 @@ fn the_password_is_typed_into_the_window_on_the_typists_input_alone() {
 
 #[test]
 fn nothing_is_typed_while_the_launcher_keeps_the_keys() {
-    let mut desk = Desk::new("kept");
+    let mut desk = Desk::new("launcher-kept");
     let window = desk.plain();
     desk.focus(WINDOW, window, "firefox");
     *desk.holding.lock().unwrap() = true;
-    let (running, _journal) = running("kept", &desk, &[]);
+    let (running, _journal) = running("launcher-kept", &desk, &[]);
     let refused = type_github(&running);
     refused_reading_nothing(&running, &refused, "the launcher kept the keys");
     assert!(desk.typed().is_none(), "it was typed into the launcher");
@@ -493,6 +596,98 @@ fn nothing_is_typed_into_a_window_beneath_an_agents_command() {
     assert!(
         desk.typed().is_none(),
         "it was typed into a window an agent's command opened"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_window_whose_program_is_gone() {
+    // niri names the process that opened a window's connection, which
+    // may hand it to a child and end, leaving nothing in /proc to read.
+    let desk = Desk::new("gone");
+    let mut ended = Command::new("/bin/sh").arg("-c").arg(":").spawn().unwrap();
+    ended.wait().unwrap();
+    desk.focus(WINDOW, ended.id(), "foot");
+    let (running, _journal) = running("gone", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "is gone");
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a window nothing in /proc stands behind"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_listening_where_another_could_answer() {
+    // A socket's file can be removed and bound again by any program of
+    // Joel's, which then answers kitten's ls for kitty.
+    let mut desk = Desk::new("kitty-listens-openly");
+    let (kitty, shell) =
+        desk.kitty_with("sleep 1000", "--listen-on unix:/run/user/1000/kitty.sock");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-listens-openly", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "could answer for it");
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address another could answer: {}",
+        desk.kitty_asked()
+    );
+    assert!(desk.typed().is_none(), "it was typed past an open address");
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_whose_address_another_holds() {
+    // kitty's abstract address is named by its pid, which another program
+    // of Joel's can foretell and bind first, then answer kitten's ls.
+    let mut desk = Desk::new("kitty-address-taken");
+    let (kitty, shell) = desk.kitty_unheard("sleep 1000");
+    let name = format!("kitty-{kitty}");
+    let _taken = UnixListener::bind_addr(&SocketAddr::from_abstract_name(&name).unwrap())
+        .expect("the test binds kitty's address first");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-address-taken", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(
+        &running,
+        &refused,
+        "that kitty's address isn't held by kitty",
+    );
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address another program holds: {}",
+        desk.kitty_asked()
+    );
+    assert!(
+        desk.typed().is_none(),
+        "it was typed where another program answered for kitty"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_nothing_listens_for() {
+    // A kitty listening nowhere leaves its address free for whoever binds
+    // it while the daemon asks.
+    let mut desk = Desk::new("kitty-unheard");
+    let (kitty, shell) = desk.kitty_unheard("sleep 1000");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-unheard", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(
+        &running,
+        &refused,
+        "that kitty's address isn't held by kitty",
+    );
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address nothing of its listens on: {}",
+        desk.kitty_asked()
+    );
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a kitty that listens nowhere"
     );
 }
 
@@ -738,6 +933,103 @@ fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
     );
     let reveals = running.asked_of("keeping").matches("\"reveal\"").count();
     assert_eq!(reveals, 1, "the secret was read for the refused type too");
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_window_another_lies_over() {
+    // An overlay shares its window's group, and one put behind it still
+    // takes the keys, so a second window there refuses the type.
+    let mut desk = Desk::new("kitty-overlaid");
+    let (kitty, shell) = desk.kitty("sleep 1000");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_lists(
+        None,
+        1,
+        &json!([1, 2]),
+        &json!([{"pid": shell, "cmdline": ["-zsh"]}]),
+    );
+    let (running, _journal) = running("kitty-overlaid", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "may lie over that one");
+    assert!(desk.typed().is_none(), "it was typed under an overlay");
+}
+
+#[test]
+fn nothing_is_typed_where_kitty_changes_its_window_once_the_secret_is_read() {
+    // kitty's first look finds its first window alone, and its second
+    // another window of its, or the first with an overlay over it, as
+    // when its remote control moves the keys while the manager answers.
+    for (test, window, group, why) in [
+        (
+            "kitty-moves-after",
+            2,
+            json!([2]),
+            "another window in that kitty",
+        ),
+        (
+            "kitty-overlaid-after",
+            1,
+            json!([1, 2]),
+            "may lie over that one",
+        ),
+    ] {
+        let mut desk = Desk::new(test);
+        let (kitty, shell) = desk.kitty("sleep 1000");
+        desk.focus(WINDOW, kitty, "kitty");
+        let shell_runs = json!([{"pid": shell, "cmdline": ["-zsh"]}]);
+        desk.kitty_runs(&shell_runs);
+        desk.kitty_lists(Some(2), window, &group, &shell_runs);
+        let (running, _journal) = running(test, &desk, &[]);
+        let refused = type_github(&running);
+        assert_eq!(refused["error"]["code"], "refused", "{test}: {refused}");
+        assert!(
+            refused["error"]["message"]
+                .as_str()
+                .is_some_and(|said| said.contains(why)),
+            "{test}: the change wasn't said as {why:?}: {refused}"
+        );
+        holds_no_secret(&refused);
+        let asked = running.asked_of("keeping");
+        assert!(
+            asked.contains("\"reveal\""),
+            "{test}: the secret wasn't read, so the second look went untried: {asked}"
+        );
+        assert!(
+            desk.typed().is_none(),
+            "{test}: it was typed once kitty changed"
+        );
+    }
+}
+
+#[test]
+fn nothing_is_typed_more_than_five_seconds_after_its_return() {
+    // A manager six seconds to give the secret, as 1Password is while it
+    // asks Joel's leave: by then he may have moved on from where he
+    // pressed Return, so it's refused, and he presses it again.
+    let mut desk = Desk::new("late");
+    let window = desk.plain();
+    desk.focus(WINDOW, window, "firefox");
+    let slow = KEEPING.replace("reveal) printf", "reveal) sleep 6; printf");
+    assert_ne!(slow, KEEPING, "the manager's reveal wasn't slowed");
+    let env = desk.env();
+    let set: Vec<(&str, &str)> = env.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+    let running = Running::with_env("late", &[("keeping", &slow)], &set);
+    running
+        .client()
+        .ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = type_github(&running);
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("more than 5 s passed since Return")),
+        "the late type wasn't said so: {refused}"
+    );
+    holds_no_secret(&refused);
+    assert!(
+        desk.typed().is_none(),
+        "it was typed six seconds after Return"
+    );
 }
 
 #[test]

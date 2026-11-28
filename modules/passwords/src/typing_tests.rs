@@ -48,6 +48,87 @@ fn kitty_is_asked_where_it_was_told_to_listen_else_by_its_pid() {
 }
 
 #[test]
+fn only_a_kitty_listening_at_an_abstract_address_answers_alone() {
+    assert!(kittys_alone("unix:@kitty-9"), "kitty.conf's own address");
+    for address in [
+        "unix:/run/user/1000/pi-sessions/kitty.sock",
+        "tcp:localhost:5000",
+        "unix:",
+        "",
+    ] {
+        assert!(
+            !kittys_alone(address),
+            "{address:?} could be taken by another program"
+        );
+    }
+}
+
+#[test]
+fn only_the_process_listening_at_kittys_address_holds_it() {
+    // A squatter binds kitty's foretold name first, then a second name
+    // whose tail, written byte for byte into /proc/net/unix, forges a row
+    // naming kitty's address and a socket kitty does hold, put ahead of
+    // the squatter's own row (findings 26, 28 and 31 on #6643). Here the
+    // test is the squatter, and a shell holding one end of a socket pair
+    // is the kitty.
+    use std::os::fd::{AsRawFd, OwnedFd};
+    use std::os::linux::net::SocketAddrExt;
+    use std::os::unix::net::{SocketAddr, UnixListener};
+    let bound = |name: &str| {
+        SocketAddr::from_abstract_name(name).and_then(|at| UnixListener::bind_addr(&at))
+    };
+    let name = format!("squat-{}", std::process::id());
+    let address = format!("unix:@{name}");
+    let _squatter = bound(&name).expect("the test binds kitty's address first");
+    let (held, kept) = UnixStream::pair().unwrap();
+    let socket = std::fs::read_link(format!("/proc/self/fd/{}", held.as_raw_fd())).unwrap();
+    let inode = socket
+        .to_string_lossy()
+        .trim_start_matches("socket:[")
+        .trim_end_matches(']')
+        .to_owned();
+    // The shell reads its end until the test's goes, as the test ends.
+    let mut kitty = Command::new("/bin/sh")
+        .args(["-c", "read held"])
+        .stdin(Stdio::from(OwnedFd::from(held)))
+        .spawn()
+        .expect("the kitty starts");
+    let fake = format!("0: 2 0 10000 1 01 {inode} @{name}");
+    let _forging = (0..256)
+        .find_map(|nth| {
+            let forging = bound(&format!("f{nth}\n{fake}")).ok()?;
+            let unix = std::fs::read_to_string("/proc/net/unix").ok()?;
+            let rows: Vec<&str> = unix.lines().collect();
+            let at_forged = rows.iter().position(|at| *at == fake)?;
+            let at_squatter = rows
+                .iter()
+                .position(|at| *at != fake && at.ends_with(&format!(" @{name}")))?;
+            (at_forged < at_squatter).then_some(forging)
+        })
+        .expect("a forged row comes ahead of the squatter's");
+    let kittys = kitty_holds(kitty.id(), &address);
+    let squatters = kitty_holds(std::process::id(), &address);
+    drop(kept);
+    kitty.wait().expect("the kitty ends with its socket");
+    assert!(
+        !kittys,
+        "a forged row of the socket table was taken for kitty's listener"
+    );
+    assert!(
+        squatters,
+        "the process listening at the address wasn't found to hold it"
+    );
+    assert!(
+        !kitty_holds(std::process::id(), &format!("unix:@{name}-free")),
+        "an address nothing listens at was taken to be held"
+    );
+    assert!(
+        !kitty_holds(std::process::id(), "unix:/run/user/1000/kitty.sock"),
+        "a socket's file was taken to be held"
+    );
+}
+
+#[test]
 fn only_the_focused_windows_foreground_is_read() {
     let listed = json!([
         {"is_focused": false, "tabs": [{"is_focused": true, "windows": [
@@ -64,6 +145,44 @@ fn only_the_focused_windows_foreground_is_read() {
         Some(vec![(Some(4), vec!["-zsh".to_owned()])])
     );
     assert_eq!(foreground("[]"), None);
+}
+
+#[test]
+fn a_kitty_window_stands_alone_only_in_a_group_of_its_own() {
+    let listed = |groups: Value, window: Value| {
+        json!([{"is_focused": true, "tabs": [{"is_active": true, "groups": groups,
+            "windows": [window]}]}])
+        .to_string()
+    };
+    let focused = json!({"id": 3, "is_active": true});
+    assert_eq!(
+        kitty_window(&listed(
+            json!([{"windows": [1]}, {"windows": [3]}]),
+            focused.clone()
+        )),
+        Some((3, true))
+    );
+    // An overlay shares its window's group, in front of it or behind.
+    assert_eq!(
+        kitty_window(&listed(json!([{"windows": [3, 4]}]), focused.clone())),
+        Some((3, false))
+    );
+    assert_eq!(
+        kitty_window(&listed(json!([{"windows": [4, 3]}]), focused.clone())),
+        Some((3, false))
+    );
+    // Groups kitty doesn't name can't say it stands alone.
+    assert_eq!(
+        kitty_window(&listed(json!(null), focused)),
+        Some((3, false))
+    );
+    assert_eq!(
+        kitty_window(&listed(
+            json!([{"windows": [3]}]),
+            json!({"is_active": true})
+        )),
+        None
+    );
 }
 
 #[test]
@@ -94,7 +213,7 @@ fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
     let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
     let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
     let command = format!("{user}/jobs.slice/jobs-work.slice/pi-spawner-3820109-dc5d.scope");
-    let kittys = format!("{user}/agents.slice/kitty-4248-0.scope");
+    let kittys = format!("{user}/agents.slice/kitty-1-1.scope");
     let app = format!("{user}/app.slice/app-gio-google-chrome-2349662.scope");
     assert!(
         agents("node", &words("/nix/store/x-nodejs/bin/node"), &hosted),
@@ -121,16 +240,44 @@ fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
         "a command in the jobs' slice wasn't an agent's"
     );
     assert!(
-        !agents("zsh", &words("-zsh"), &kittys),
-        "a shell in a scope kitty made for its window was taken for an agent"
+        agents("zsh", &words("-zsh"), &kittys),
+        "a shell in a scope named as kitty's window, in the agents' slice, wasn't an agent's"
     );
     assert!(
         !agents("chrome", &words("/nix/store/x-google-chrome/chrome"), &app),
         "Joel's own Chrome was taken for an agent"
     );
     assert!(
-        agents_group(&format!("{user}/agents.slice/kitty-4248-x.scope")),
-        "a scope only named like kitty's window was let through"
+        agents_group(&format!("{user}/agents.slice/sessions-kitty.service")),
+        "the sessions' kitty's own unit in the agents' slice wasn't an agent's"
+    );
+}
+
+#[test]
+fn a_kitty_from_kittens_own_package_in_the_agents_slice_is_an_agents() {
+    // An agent can run kitty's own program from its package, or start it
+    // in the agents' slice, so a kitty there is an agent's like anything
+    // else, and nothing is typed into its windows.
+    let user = "0::/user.slice/user-1000.slice/user@1000.service";
+    let sessions_kitty = format!("{user}/agents.slice/sessions-kitty.service");
+    let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
+    let package = Path::new("/nix/store/k-kitty-0.50.0");
+    let kitty = "/nix/store/k-kitty-0.50.0/bin/.kitty-wrapped";
+    let node = "/nix/store/x-nodejs/bin/node";
+    let words = |exe: &str| vec![exe.to_owned()];
+    for group in [&sessions_kitty, &hosted] {
+        assert!(
+            kitty_believed(".kitty-wrapped", kitty, group, Some(package)),
+            "a kitty from kitten's package in {group} wasn't the one kitten would ask"
+        );
+        assert!(
+            agents(".kitty-wrapped", &words(kitty), group),
+            "a kitty from kitten's package in {group} wasn't an agent's"
+        );
+    }
+    assert!(
+        agents("kitty", &words(node), &hosted),
+        "an agent renamed kitty in the agents' slice was let through"
     );
 }
 
