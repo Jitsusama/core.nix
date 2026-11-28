@@ -718,6 +718,12 @@ TALK_PATIENCE_MS = 10_000
 DRAWER_READING = "Still reading the node's latest messages."
 DRAWER_WAITING = "Still waiting on the node's latest messages."
 DRAWER_BROKEN = "Couldn't read the node's latest messages."
+# Counts each reading handed to the drawing from here on (site.ts's mycelium:now), each of
+# which draws the whole map again.
+COUNT_READINGS = """() => {
+  window.readings = 0;
+  document.addEventListener("mycelium:now", () => { window.readings += 1; });
+}"""
 
 
 def test_now_and_a_network_say_their_talk_is_still_read(
@@ -764,6 +770,10 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     cell_opens(page, "TERN01")
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
+    # With the node still, once a reading already timed has landed, the drawer's words move
+    # with no reading handed over: one would draw the whole map again for a line of words.
+    page.wait_for_timeout(FLOOR_MS + 500)
+    page.evaluate(COUNT_READINGS)
     expect(asof, "the map still said it was reading what never answered").to_contain_text(
         WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
     )
@@ -777,6 +787,8 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     expect(drawer, "a cell's drawer said reading and waiting at once").not_to_contain_text(
         DRAWER_READING
     )
+    readings = page.evaluate("() => window.readings")
+    assert readings == 0, f"the map was drawn again {readings} times for its drawer's words"
     talk_opens(page, TIED)
     expect(drawer, "a talk's drawer was still reading what the line waits on").to_contain_text(
         DRAWER_WAITING
