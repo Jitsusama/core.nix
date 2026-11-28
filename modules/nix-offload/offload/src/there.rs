@@ -1423,7 +1423,7 @@ fn derivations_up(
         Some(0) => format!("to {}, of a size this machine couldn't read,", lent.host),
         Some(size) => format!("of {} to {}", sized(size), lent.host),
     };
-    let turn = uplink_turn(rank, &about);
+    let turn = uplink_turn(rank, &about, size);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
         .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
@@ -1492,7 +1492,7 @@ fn waited_giving_back(
         }
         if began.elapsed() >= within {
             let files = given.get_or_insert_with(|| {
-                let (files, unopened) = turn_files(&turn.folder, "uplink-given");
+                let (files, unopened) = turn_files(&turn.folder, "uplink-given", &every_turn());
                 if files.is_empty() {
                     return Err(unopened.join("; "));
                 }
@@ -1543,7 +1543,7 @@ fn waited_giving_back(
                         format!(
                             "{} already go on past theirs ({}), so it keeps it until one ends",
                             copies(files.len()),
-                            holders(&turn.folder, "uplink-given")
+                            holders(&turn.folder, "uplink-given", &every_turn())
                         )
                     }),
                 },
@@ -1644,8 +1644,10 @@ pub fn open_turn(at: &Path, make: bool) -> Result<fs::File, String> {
     Ok(file)
 }
 
-/// Who holds the turns in `folder` named `kind`, as each holder wrote it
-/// ([`holding`]), for a line saying why a copy waits on them. Only a turn
+/// Who holds the turns numbered `turns` in `folder` named `kind`, as each
+/// holder wrote it ([`holding`]), for a line saying why a copy waits on
+/// them: only those it may take, since a large copy doesn't wait on the
+/// holder of the turn kept from it. Only a turn
 /// held now is named, since one let go keeps its last holder's words, and
 /// only by a holder still running: a turn is taken before its holder
 /// writes its words, so for an instant it may hold the last holder's,
@@ -1653,9 +1655,10 @@ pub fn open_turn(at: &Path, make: bool) -> Result<fs::File, String> {
 /// holder is looked for with a shared lock, so two waiters looking at
 /// once don't take each other's look for a holder, and no turn's file
 /// that's a link is read.
-fn holders(folder: &Path, kind: &str) -> String {
+fn holders(folder: &Path, kind: &str, turns: &[u32]) -> String {
     use std::io::Read;
-    let named: Vec<String> = (1..=UPLOADS)
+    let named: Vec<String> = turns
+        .iter()
         .filter_map(|turn| {
             let mut file = open_turn(&folder.join(format!("{kind}-{turn}")), false).ok()?;
             if !matches!(file.try_lock_shared(), Err(fs::TryLockError::WouldBlock)) {
@@ -1737,6 +1740,115 @@ fn turn_within_of(
 /// their turn and then go at its whole speed, rather than all crawling.
 const UPLOADS: u32 = 3;
 
+/// The bytes a copy up holds under which it's small, so it may take the
+/// last of the [`UPLOADS`] turns, which a large copy never takes. On 27
+/// November a copy of a few megabytes waited 25 minutes behind a copy of
+/// 589.6 MB, every turn taken by large ones.
+const SMALL_UNDER: u64 = 100_000_000;
+
+/// How many of the [`UPLOADS`] turns a copy up of `bytes` may take:
+/// every one when it's small or `urgent`, and all but the last otherwise,
+/// so a small or urgent copy always has one that no large copy holds. A
+/// size unknown, or one that couldn't be read, counts as large.
+fn turns_open_to(bytes: Option<u64>, urgent: bool) -> u32 {
+    let small = bytes.is_some_and(|bytes| bytes > 0 && bytes < SMALL_UNDER);
+    if small || urgent {
+        UPLOADS
+    } else {
+        UPLOADS - 1
+    }
+}
+
+/// The turns a copy up with `open` of the [`UPLOADS`] turns open to it
+/// ([`turns_open_to`]) looks at, in the order it tries them. One open to
+/// the kept last turn tries that first, so a small or urgent copy leaves
+/// the others free for large copies, which can take only those.
+fn turn_numbers(open: u32) -> Vec<u32> {
+    if open < UPLOADS {
+        (1..=open).collect()
+    } else {
+        std::iter::once(UPLOADS).chain(1..UPLOADS).collect()
+    }
+}
+
+/// Every one of the [`UPLOADS`] turns, from the first, as the given turns
+/// are looked at, since a copy past its time gives one back for any.
+fn every_turn() -> Vec<u32> {
+    (1..=UPLOADS).collect()
+}
+
+/// Whether this run's copies up are urgent ([`urgent_of`]): marked so by
+/// `NIX_OFFLOAD_URGENT`, or sent by the cell `NIX_OFFLOAD_CELL` names at
+/// class 0 in the classes file `NIX_OFFLOAD_CLASSES` names. The classes
+/// are read only when the mark doesn't settle it, so a file that can't
+/// be read is said of only when it matters.
+fn urgent() -> bool {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let mark = std::env::var("NIX_OFFLOAD_URGENT").ok();
+    if urgent_of(mark.as_deref(), None, None) {
+        return true;
+    }
+    let classes = std::env::var_os("NIX_OFFLOAD_CLASSES").and_then(|at| {
+        let (classes, warning) = classes_at(Path::new(&at), &WARNED);
+        if let Some(warning) = warning {
+            eprintln!("nix-offload: {warning}");
+        }
+        classes
+    });
+    urgent_of(
+        None,
+        std::env::var("NIX_OFFLOAD_CELL").ok().as_deref(),
+        classes.as_deref(),
+    )
+}
+
+/// The classes in the file at `at`, and what to say of it when it can't
+/// be read and `warned` doesn't yet say so, which it then does. Every copy
+/// reads it, so a run says it once rather than once a copy; a person who
+/// named it then sees why no copy went as urgent.
+fn classes_at(
+    at: &Path,
+    warned: &std::sync::atomic::AtomicBool,
+) -> (Option<String>, Option<String>) {
+    match fs::read_to_string(at) {
+        Ok(classes) => (Some(classes), None),
+        Err(error) => {
+            let first = !warned.swap(true, std::sync::atomic::Ordering::Relaxed);
+            let warning = first.then(|| {
+                format!(
+                    "NIX_OFFLOAD_CLASSES at {} doesn't read: {error}, so this run's copies \
+                     aren't urgent",
+                    at.display()
+                )
+            });
+            (None, warning)
+        }
+    }
+}
+
+/// Whether a copy is urgent: marked so by `mark`, any word that isn't
+/// blank, or sent by the cell `cell`, spaces around it aside, whose first
+/// line in `classes` gives it class 0, the most urgent. Classes are lines
+/// of a cell and its class, `#` starting a comment; a cell unlisted is of
+/// no urgent class.
+fn urgent_of(mark: Option<&str>, cell: Option<&str>, classes: Option<&str>) -> bool {
+    if mark.is_some_and(|mark| !mark.trim().is_empty()) {
+        return true;
+    }
+    let (Some(cell), Some(classes)) = (cell.map(str::trim), classes) else {
+        return false;
+    };
+    !cell.is_empty()
+        && classes
+            .lines()
+            .filter_map(|line| {
+                let mut words = line.split('#').next()?.split_whitespace();
+                Some((words.next()?, words.next()?))
+            })
+            .find(|(listed, _)| *listed == cell)
+            .is_some_and(|(_, class)| class == "0")
+}
+
 /// A turn at sending up from this machine, had while its file is held,
 /// so one that dies frees it, and the folder its turns are kept in. The
 /// file is never read, only kept open, since its lock is the turn.
@@ -1781,15 +1893,17 @@ fn seconds_in(set: &str) -> Option<u64> {
     set.trim().parse().ok()
 }
 
-/// A turn at sending up from this machine, for the copy `about` names.
-/// A run sent first takes none, as the net's go ahead of sessions'. When
-/// none can be had, the copy goes on without one.
-fn uplink_turn(rank: Rank, about: &str) -> Option<Turn> {
+/// A turn at sending up from this machine, for the copy `about` names,
+/// of `bytes`, among those open to it ([`turns_open_to`]). A run sent
+/// first takes none, as the net's go ahead of sessions'. When none can
+/// be had, the copy goes on without one.
+fn uplink_turn(rank: Rank, about: &str, bytes: Option<u64>) -> Option<Turn> {
     if rank == Rank::First {
         return None;
     }
     let folder = turns_folder()?;
-    let held = turn_in(&folder, about, TURN_SAID_EVERY, &mut |line| {
+    let open = turns_open_to(bytes, urgent());
+    let held = turn_in(&folder, about, open, TURN_SAID_EVERY, &mut |line| {
         eprintln!("{line}");
     })?;
     Some(Turn {
@@ -1879,12 +1993,14 @@ fn turn_folder_at(folder: &Path, uid: u32) -> Result<PathBuf, String> {
     Ok(folder)
 }
 
-/// One of the [`UPLOADS`] turns in `folder`, the first free, for the copy
-/// `about` names, waited for while all are taken, `say`ing so then and
-/// again `every` ([`TURN_SAID_EVERY`]) with how long it has waited. Each is looked at
-/// in turn 10 times a second, so a waiter takes whichever frees first,
-/// rather than waiting on one while another stands free: on 22 November a
-/// system build waited on its one while another copy's had ended. No
+/// One of the `open` of the [`UPLOADS`] turns in `folder` open to the
+/// copy `about` names, the first free in the order [`turn_numbers`] gives,
+/// waited for while all are taken, `say`ing so then and again `every`
+/// ([`TURN_SAID_EVERY`]) with how long it has waited, counting and naming
+/// only the turns open to it. Each is looked at in turn 10 times a
+/// second, so a waiter takes whichever frees first, rather than waiting
+/// on one while another stands free: on 22 November a system build
+/// waited on its one while another copy's had ended. No
 /// order is kept among waiters, so one that has waited longest can lose a
 /// freed turn to one just come, as the blocking lock before let any
 /// waiter have it. A turn whose file can't be opened or locked is said
@@ -1894,10 +2010,17 @@ fn turn_folder_at(folder: &Path, uid: u32) -> Result<PathBuf, String> {
 fn turn_in(
     folder: &Path,
     about: &str,
+    open: u32,
     every: std::time::Duration,
     say: &mut dyn FnMut(String),
 ) -> Option<fs::File> {
-    let (mut turns, unopened) = turn_files(folder, "uplink");
+    let numbers = turn_numbers(open);
+    let (mut turns, unopened) = turn_files(folder, "uplink", &numbers);
+    let kept = if open < UPLOADS {
+        ", the last kept for copies under 100 MB or marked urgent"
+    } else {
+        ""
+    };
     let mut unusable = unopened;
     let began = std::time::Instant::now();
     let mut said: Option<std::time::Instant> = None;
@@ -1913,7 +2036,9 @@ fn turn_in(
                 Err(fs::TryLockError::WouldBlock) => at += 1,
                 Err(fs::TryLockError::Error(error)) => {
                     unusable.push(format!("a turn can't be locked: {error}"));
-                    drop(turns.swap_remove(at));
+                    // Removed in place, so the rest keep the order they're
+                    // tried in and the kept turn stays first for a small copy.
+                    drop(turns.remove(at));
                 }
             }
         }
@@ -1937,15 +2062,15 @@ fn turn_in(
             if said.is_none() {
                 say(format!(
                     "nix-offload: {} already go up from this machine ({}), so this waits its \
-                     turn to send",
+                     turn to send{kept}",
                     copies(turns.len()),
-                    holders(folder, "uplink")
+                    holders(folder, "uplink", &numbers)
                 ));
             } else {
                 say(format!(
                     "nix-offload: this has waited {} for a turn to send, behind {}",
                     lasting(began.elapsed()),
-                    holders(folder, "uplink")
+                    holders(folder, "uplink", &numbers)
                 ));
             }
             said = Some(std::time::Instant::now());
@@ -1959,11 +2084,12 @@ fn turn_in(
 /// quiet.
 const TURN_SAID_EVERY: std::time::Duration = std::time::Duration::from_mins(5);
 
-/// The files of the [`UPLOADS`] turns in `folder` named `kind` that open,
-/// opened once, and why each of the rest can't be ([`open_turn`]).
-fn turn_files(folder: &Path, kind: &str) -> (Vec<fs::File>, Vec<String>) {
+/// The files of the turns numbered `turns` in `folder` named `kind` that
+/// open, in that order, opened once, and why each of the rest can't be
+/// ([`open_turn`]).
+fn turn_files(folder: &Path, kind: &str, turns: &[u32]) -> (Vec<fs::File>, Vec<String>) {
     let (mut opened, mut unopened) = (Vec::new(), Vec::new());
-    for turn in 1..=UPLOADS {
+    for turn in turns {
         match open_turn(&folder.join(format!("{kind}-{turn}")), true) {
             Ok(file) => opened.push(file),
             Err(why) => unopened.push(why),
@@ -2216,7 +2342,7 @@ fn sent_held(
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
     let about = format!("of {} of held outputs to {}", sized(size), lent.host);
-    let _turn = uplink_turn(rank, &about);
+    let _turn = uplink_turn(rank, &about, Some(size));
     let mut copying = upload(nix, COPY_ALIVE);
     let ended = dies_with_run(&mut copying)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
@@ -6834,7 +6960,7 @@ mod tests {
         let elsewhere = folder.path().join("elsewhere");
         std::os::unix::fs::symlink(&elsewhere, folder.path().join("uplink-given-2"))
             .expect("a link");
-        let (opened, unopened) = turn_files(folder.path(), "uplink-given");
+        let (opened, unopened) = turn_files(folder.path(), "uplink-given", &every_turn());
         assert!(
             opened.len() == 2 && unopened.len() == 1 && unopened[0].contains("uplink-given-2"),
             "a turn's file that links elsewhere was opened, or the rest weren't: {unopened:?}"
@@ -6853,7 +6979,7 @@ mod tests {
             holding(turn, about);
         }
         drop(held.remove(1));
-        let named = holders(folder.path(), "uplink");
+        let named = holders(folder.path(), "uplink", &every_turn());
         let pid = std::process::id();
         assert_eq!(
             named,
@@ -6905,10 +7031,10 @@ mod tests {
         // files open, and holds their locks until it execs, so a turn this
         // test let go may still read as held for a moment on a busy builder.
         let began = std::time::Instant::now();
-        let mut named = holders(folder.path(), "uplink");
+        let mut named = holders(folder.path(), "uplink", &every_turn());
         while named != "none of them named" && began.elapsed() < Duration::from_secs(5) {
             std::thread::sleep(Duration::from_millis(50));
-            named = holders(folder.path(), "uplink");
+            named = holders(folder.path(), "uplink", &every_turn());
         }
         assert_eq!(
             named, "none of them named",
@@ -6952,7 +7078,7 @@ mod tests {
         let elsewhere = folder.path().join("elsewhere");
         fs::write(&elsewhere, "kept").expect("a file elsewhere");
         fs::hard_link(&elsewhere, folder.path().join("uplink-given-3")).expect("a second name");
-        let (opened, unopened) = turn_files(folder.path(), "uplink-given");
+        let (opened, unopened) = turn_files(folder.path(), "uplink-given", &every_turn());
         assert!(
             opened.len() == 1
                 && unopened.len() == 2
@@ -6966,7 +7092,7 @@ mod tests {
             "a file with a turn's second name was changed"
         );
         assert_eq!(
-            holders(folder.path(), "uplink-given"),
+            holders(folder.path(), "uplink-given", &every_turn()),
             "none of them named",
             "a FIFO or a second name was read for a holder"
         );
@@ -7051,7 +7177,7 @@ mod tests {
         holding(&held[1], "to b2");
         fs::write(folder.path().join("uplink-3"), "").expect("no words");
         assert_eq!(
-            holders(folder.path(), "uplink"),
+            holders(folder.path(), "uplink", &every_turn()),
             format!("pid {}, copying up to b2", std::process::id()),
             "an ended run, or no words, was named as a holder"
         );
@@ -7182,7 +7308,9 @@ mod tests {
         let at = folder.path().to_owned();
         let waiting = std::thread::spawn(move || {
             let mut said = Vec::new();
-            let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| said.push(line));
+            let had = turn_in(&at, "to b", UPLOADS, TURN_SAID_EVERY, &mut |line| {
+                said.push(line);
+            });
             (had.is_some(), said)
         });
         std::thread::sleep(Duration::from_millis(300));
@@ -7207,7 +7335,7 @@ mod tests {
                 .expect("a link");
         }
         let mut said = Vec::new();
-        let had = turn_in(none.path(), "to b", TURN_SAID_EVERY, &mut |line| {
+        let had = turn_in(none.path(), "to b", UPLOADS, TURN_SAID_EVERY, &mut |line| {
             said.push(line);
         });
         assert!(
@@ -7233,7 +7361,7 @@ mod tests {
         let every = Duration::from_millis(200);
         let waiting = std::thread::spawn(move || {
             let mut said = Vec::new();
-            let had = turn_in(&at, "to b", every, &mut |line| {
+            let had = turn_in(&at, "to b", UPLOADS, every, &mut |line| {
                 said.push((std::time::Instant::now(), line));
                 if said.len() == 3 {
                     let _ = thrice.send(());
@@ -7346,6 +7474,161 @@ mod tests {
         assert!(!elsewhere.exists(), "a given turn's link was followed");
     }
 
+    // The last turn is kept for copies under 100 MB or marked urgent, so
+    // a large copy, or one of a size unknown, never takes it.
+    #[test]
+    fn only_a_small_or_urgent_copy_may_take_the_last_turn() {
+        for (bytes, urgent, open) in [
+            (Some(4_200_000), false, UPLOADS),
+            (Some(SMALL_UNDER - 1), false, UPLOADS),
+            (Some(SMALL_UNDER), false, UPLOADS - 1),
+            (Some(589_600_000), false, UPLOADS - 1),
+            (Some(0), false, UPLOADS - 1),
+            (None, false, UPLOADS - 1),
+            (Some(589_600_000), true, UPLOADS),
+            (None, true, UPLOADS),
+        ] {
+            assert_eq!(
+                turns_open_to(bytes, urgent),
+                open,
+                "a copy of {bytes:?} bytes, urgent {urgent}, had the wrong turns open"
+            );
+        }
+    }
+
+    // A copy is urgent when it's marked so, or when its cell's first line
+    // in the classes gives it class 0.
+    #[test]
+    fn a_copy_is_urgent_by_its_mark_or_its_cells_class() {
+        let classes = "# some cells\ncell-a 0\ncell-b 1\ncell-b 0\ncell-c 1 # a note\n";
+        assert!(
+            urgent_of(Some("yes"), None, None),
+            "a copy marked urgent wasn't"
+        );
+        assert!(
+            !urgent_of(Some(" "), None, Some(classes)),
+            "an empty mark made a copy urgent"
+        );
+        for cell in ["cell-a", " cell-a\n"] {
+            assert!(
+                urgent_of(None, Some(cell), Some(classes)),
+                "the cell {cell:?}, of class 0, wasn't urgent"
+            );
+        }
+        for cell in ["cell-b", "cell-c", "cell-unlisted", "", " ", "#"] {
+            assert!(
+                !urgent_of(None, Some(cell), Some(classes)),
+                "the cell {cell:?}, not first listed at class 0, was urgent"
+            );
+        }
+        assert!(
+            !urgent_of(None, Some("cell-a"), None),
+            "a cell was urgent with no classes to read"
+        );
+    }
+
+    // A classes file named but unreadable is said once a run, however
+    // many copies read it, and one that reads is said of not at all.
+    #[test]
+    fn classes_that_dont_read_are_said_once() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let missing = folder.path().join("classes");
+        let warned = std::sync::atomic::AtomicBool::new(false);
+        let (classes, warning) = classes_at(&missing, &warned);
+        assert!(
+            classes.is_none()
+                && warning.as_deref().is_some_and(|warning| {
+                    warning.starts_with(&format!(
+                        "NIX_OFFLOAD_CLASSES at {} doesn't read: ",
+                        missing.display()
+                    )) && warning.ends_with(", so this run's copies aren't urgent")
+                }),
+            "classes that don't read weren't said so: {warning:?}"
+        );
+        assert_eq!(
+            classes_at(&missing, &warned),
+            (None, None),
+            "classes that don't read were said of twice in a run"
+        );
+        fs::write(&missing, "cell-a 0\n").expect("the classes");
+        assert_eq!(
+            classes_at(&missing, &warned),
+            (Some("cell-a 0\n".to_owned()), None),
+            "classes that read weren't read"
+        );
+    }
+
+    // A small or urgent copy tries the kept last turn first, so the turns
+    // large copies may take stay free for them; a large copy tries only
+    // those, from the first.
+    #[test]
+    fn a_small_copy_takes_the_kept_turn_before_the_others() {
+        assert_eq!(
+            (turn_numbers(UPLOADS), turn_numbers(UPLOADS - 1)),
+            (vec![3, 1, 2], vec![1, 2]),
+            "the turns weren't tried in the order kept for each copy"
+        );
+        let folder = tempfile::tempdir().expect("a folder");
+        let taken = |turn: u32| {
+            let file = fs::File::open(folder.path().join(format!("uplink-{turn}")))
+                .expect("a turn's file");
+            matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock))
+        };
+        let small = turn_in(folder.path(), "to b", UPLOADS, TURN_SAID_EVERY, &mut |_| {});
+        assert!(
+            small.is_some() && taken(UPLOADS) && (1..UPLOADS).all(|turn| !taken(turn)),
+            "a small copy, every turn free, didn't take the kept one"
+        );
+        let large = turn_in(
+            folder.path(),
+            "to b",
+            UPLOADS - 1,
+            TURN_SAID_EVERY,
+            &mut |_| {},
+        );
+        assert!(
+            large.is_some() && taken(1) && (2..UPLOADS).all(|turn| !taken(turn)),
+            "a large copy didn't take the first turn open to it"
+        );
+        let second = turn_in(folder.path(), "to b", UPLOADS, TURN_SAID_EVERY, &mut |_| {});
+        assert!(
+            second.is_some() && taken(2),
+            "a small copy, the kept turn held, didn't take the next free"
+        );
+    }
+
+    // A large copy waits only on the turns open to it, so its line counts
+    // and names those alone, not the small copy holding the kept one.
+    #[test]
+    fn a_large_copys_wait_names_only_the_turns_open_to_it() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        for (turn, about) in held.iter().zip(["to b1", "to b2", "to b3"]) {
+            holding(turn, about);
+        }
+        let at = folder.path().to_owned();
+        let waiting = std::thread::spawn(move || {
+            let mut said = Vec::new();
+            let had = turn_in(&at, "to b", UPLOADS - 1, TURN_SAID_EVERY, &mut |line| {
+                said.push(line);
+            });
+            (had.is_some(), said)
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        drop(held.remove(0));
+        let (had, said) = waiting.join().expect("the waiter");
+        let pid = std::process::id();
+        assert!(
+            had && said.len() == 1
+                && said[0].contains(&format!("{} already go up", copies(2)))
+                && said[0].contains(&format!(
+                    "pid {pid}, copying up to b1; pid {pid}, copying up to b2)"
+                ))
+                && !said[0].contains("to b3"),
+            "a large copy's wait counted or named a turn not open to it: {said:?}"
+        );
+    }
+
     #[test]
     fn a_knob_takes_whole_seconds_alone() {
         assert_eq!(
@@ -7400,7 +7683,7 @@ mod tests {
         let mut held = all_held(folder.path(), "uplink");
         let at = folder.path().to_owned();
         let waiting = std::thread::spawn(move || {
-            turn_in(&at, "to b", TURN_SAID_EVERY, &mut |_| {}).is_some()
+            turn_in(&at, "to b", UPLOADS, TURN_SAID_EVERY, &mut |_| {}).is_some()
         });
         // Long enough for the waiter to find every turn taken and wait.
         std::thread::sleep(Duration::from_millis(300));
