@@ -74,9 +74,13 @@ mod serve;
 mod snapshots;
 mod socket;
 mod state;
+#[cfg(target_os = "linux")]
+mod steps;
 mod store_roots;
 mod survey;
 mod survey_trees;
+#[cfg(target_os = "linux")]
+mod surveying;
 mod telling;
 mod temp;
 mod trash;

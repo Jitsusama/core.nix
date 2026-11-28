@@ -69,9 +69,11 @@ pub struct Memory {
     #[serde(default)]
     pub emptied: std::collections::BTreeMap<PathBuf, f64>,
     /// Whether builds whose owner ended, or that went an hour unused, wait
-    /// to be judged, which goes past a survey's spacing. Kept, so a guard
-    /// restarted before a pass judged them still takes them within a
-    /// minute rather than after the spacing's hours.
+    /// to be judged on some disk, which goes past a survey's spacing until
+    /// a pass there has. Kept, so a guard restarted before a pass judged
+    /// them still takes them within a minute rather than after the
+    /// spacing's hours; which disks it was isn't, so that guard judges
+    /// every disk's again.
     #[serde(default)]
     pub spent_due: bool,
     /// What a newer guard wrote that this one doesn't know.

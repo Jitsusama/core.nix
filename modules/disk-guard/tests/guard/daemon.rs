@@ -10,7 +10,7 @@ use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn wall() -> f64 {
+pub(crate) fn wall() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -18,7 +18,7 @@ fn wall() -> f64 {
 }
 
 /// A tick an hour into a boot that hasn't been suspended.
-fn tick() -> Tick {
+pub(crate) fn tick() -> Tick {
     Tick {
         wall: wall(),
         monotonic: 3600.0,
@@ -27,7 +27,7 @@ fn tick() -> Tick {
     }
 }
 
-const CALM: Senses = Senses {
+pub(crate) const CALM: Senses = Senses {
     power: Power {
         on_charger: true,
         battery: None,
@@ -53,7 +53,7 @@ const CALM: Senses = Senses {
     },
 };
 
-fn touch(path: &Path, seconds: i64) {
+pub(crate) fn touch(path: &Path, seconds: i64) {
     let at = Timespec {
         tv_sec: seconds,
         tv_nsec: 0,
@@ -65,17 +65,17 @@ fn touch(path: &Path, seconds: i64) {
     utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).unwrap();
 }
 
-struct Home {
+pub(crate) struct Home {
     _dir: tempfile::TempDir,
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 impl Home {
-    fn new() -> Home {
+    pub(crate) fn new() -> Home {
         Home::within(tempfile::tempdir().unwrap())
     }
 
-    fn within(dir: tempfile::TempDir) -> Home {
+    pub(crate) fn within(dir: tempfile::TempDir) -> Home {
         let root = fs::canonicalize(dir.path()).unwrap();
         fs::create_dir_all(root.join("state")).unwrap();
         // No processes, so nothing is in use.
@@ -84,7 +84,7 @@ impl Home {
     }
 
     /// A scratch entry nothing has written to since 2001.
-    fn cold_scratch(&self, name: &str) -> PathBuf {
+    pub(crate) fn cold_scratch(&self, name: &str) -> PathBuf {
         let entry = self.root.join("scratch").join(name);
         fs::create_dir_all(&entry).unwrap();
         fs::write(entry.join("out"), "x".repeat(8192)).unwrap();
@@ -111,7 +111,7 @@ impl Home {
     /// doesn't exist: with no system daemon answering, a user daemon
     /// collects garbage itself once nearly full, and the machine's own store
     /// is no test's to collect.
-    fn config(&self, filling: &str, target: &str) -> Config {
+    pub(crate) fn config(&self, filling: &str, target: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true,
                  "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
@@ -126,11 +126,11 @@ impl Home {
         .unwrap()
     }
 
-    fn guard(&self, config: Config) -> Guard {
+    pub(crate) fn guard(&self, config: Config) -> Guard {
         Guard::new(crate::unpaced(config), &self.places()).unwrap()
     }
 
-    fn places(&self) -> Places {
+    pub(crate) fn places(&self) -> Places {
         Places {
             state: self.root.join("state"),
             status: Some(self.root.join("status.json")),
@@ -141,7 +141,7 @@ impl Home {
     }
 
     /// A process of root's this account can't read.
-    fn hidden(&self, pid: u32, start: u64) {
+    pub(crate) fn hidden(&self, pid: u32, start: u64) {
         let proc = self.root.join("proc");
         let at = |file: &str| format!("{pid}/{file}");
         crate::procs::text(
@@ -153,7 +153,7 @@ impl Home {
         crate::procs::text(&proc, &at("cmdline"), "");
     }
 
-    fn journal(&self) -> Vec<serde_json::Value> {
+    pub(crate) fn journal(&self) -> Vec<serde_json::Value> {
         fs::read_to_string(self.root.join("state/journal.jsonl"))
             .unwrap_or_default()
             .lines()
@@ -161,7 +161,7 @@ impl Home {
             .collect()
     }
 
-    fn status(&self) -> serde_json::Value {
+    pub(crate) fn status(&self) -> serde_json::Value {
         serde_json::from_str(&fs::read_to_string(self.root.join("status.json")).unwrap()).unwrap()
     }
 }
@@ -215,7 +215,7 @@ pub(crate) fn fake_system_ending(
 /// A system daemon at `socket` that hears every heartbeat and collects
 /// nothing, but answers an ask about processes with something else, as
 /// one too busy to scan them might fail it.
-fn fake_system_vouching_nothing(socket: &Path) -> std::thread::JoinHandle<()> {
+pub(crate) fn fake_system_vouching_nothing(socket: &Path) -> std::thread::JoinHandle<()> {
     let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
     std::thread::spawn(move || {
         loop {
@@ -899,7 +899,7 @@ fn a_pass_on_a_nearly_full_disk_never_gives_way() {
     assert_eq!(pass["band"], "nearly-full");
 }
 
-fn tick_at(monotonic: f64) -> Tick {
+pub(crate) fn tick_at(monotonic: f64) -> Tick {
     Tick {
         monotonic,
         ..tick()
@@ -1091,7 +1091,7 @@ fn a_kept_hour_or_spacing_dated_ahead_of_the_clock_holds_nothing() {
 
 /// Has the guard remember a whole survey that ended at `ended` and walked
 /// `seconds`, as an earlier guard's would.
-fn surveyed_before(home: &Home, ended: f64, seconds: f64) {
+pub(crate) fn surveyed_before(home: &Home, ended: f64, seconds: f64) {
     let memory = disk_guard::state::Memory {
         surveyed: Some((ended, seconds)),
         ..Default::default()
@@ -2608,7 +2608,7 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
 
 /// A user config watching cargo builds under `trees`, each tree cut by a
 /// broker whose records are in `cut`, and a healthy disk.
-fn owned_trees(home: &Home) -> Config {
+pub(crate) fn owned_trees(home: &Home) -> Config {
     Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
              "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
@@ -2626,7 +2626,7 @@ fn owned_trees(home: &Home) -> Config {
 
 /// A tree with a cargo build in it, held by process `pid`, which runs: the
 /// build's one file.
-fn held_tree(home: &Home, pid: u32) -> PathBuf {
+pub(crate) fn held_tree(home: &Home, pid: u32) -> PathBuf {
     let tree = home.root.join("trees/app");
     fs::create_dir_all(tree.join("src")).unwrap();
     fs::write(tree.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
@@ -3227,7 +3227,7 @@ impl Home {
         }
     }
 
-    fn memory(&self) -> serde_json::Value {
+    pub(crate) fn memory(&self) -> serde_json::Value {
         serde_json::from_str(&fs::read_to_string(self.root.join("state/memory.json")).unwrap())
             .unwrap()
     }

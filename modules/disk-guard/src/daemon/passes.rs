@@ -11,7 +11,7 @@ use crate::disk_reads::{Walk, Walked};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{Journaled, Line};
 use crate::pace::{Monotonic, Pacer, Probe};
-use crate::pass::{End, pass};
+use crate::pass::{End, Goal, pass};
 use crate::pool::pool;
 use crate::survey::Offer;
 use std::cell::RefCell;
@@ -200,7 +200,28 @@ impl Guard {
             });
             seen.insert(device, watched);
         }
+        // A guard started with spent builds unjudged knows only that some
+        // disk holds them, so every disk it watches judges its own again;
+        // a disk no longer watched has none left here to judge.
+        if self.memory.spent_due && self.spent_on.is_empty() {
+            self.spent_on = seen.keys().copied().collect();
+        }
+        self.spent_on.retain(|device| seen.contains_key(device));
+        self.memory.spent_due = !self.spent_on.is_empty();
         self.watched = seen;
+    }
+
+    /// Marks every disk watched as holding spent builds no pass has judged,
+    /// since an owner's trees, or a snapshot's builds, may lie on any.
+    pub(super) fn mark_spent(&mut self) {
+        self.spent_on = self.watched.keys().copied().collect();
+        self.memory.spent_due = !self.spent_on.is_empty();
+    }
+
+    /// Notes that the pass on `device` judged what was spent there.
+    pub(super) fn judged_spent(&mut self, device: u64) {
+        self.spent_on.remove(&device);
+        self.memory.spent_due = !self.spent_on.is_empty();
     }
 
     /// The hour of rest an earlier guard gave the disk mounted at `path`,
@@ -223,7 +244,8 @@ impl Guard {
     /// the last whole survey's spacing lasts, unless a disk is worse than
     /// filling, or forecast to be within a pass, whose pass walks for them
     /// all: a forecast's pass starts early so it's done before the band
-    /// arrives, which a wait would undo. Each is due again at the next
+    /// arrives, which a wait would undo. Nor does any wait while one due
+    /// holds spent builds no pass has judged. Each is due again at the next
     /// step. The spacing is kept across restarts, as a switch restarts the
     /// guard, and a wall clock set back ends it.
     pub(super) fn space_surveys(&self, now: f64, due: &mut Vec<(u64, Decision, Thresholds)>) {
@@ -234,8 +256,13 @@ impl Guard {
             return;
         }
         // Builds an owner left go within a minute, however soon after the
-        // last survey; only upkeep that's merely due again waits.
-        if self.memory.spent_due {
+        // last survey, so a pass due on a disk holding them unjudged goes,
+        // and the survey it brings serves every disk due beside it; only
+        // upkeep that's merely due again waits.
+        if due
+            .iter()
+            .any(|(device, ..)| self.spent_on.contains(device))
+        {
             return;
         }
         let pressing = due.iter().any(|&(device, decision, _)| {
@@ -559,8 +586,10 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        let whole = surveyed.is_some();
-        self.learn_from_pass(tick, (goal, why, whole), &report, scan, started);
+        // Only `passes` hands a pass a survey of every source: a producers'
+        // or a clear's walks just their own, so it judges nothing else.
+        let whole = surveyed.is_some() && matches!(goal, Goal::Upkeep | Goal::Reach);
+        self.learn_from_pass(tick, device, (goal, why, whole), &report, scan, started);
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();

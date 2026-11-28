@@ -277,6 +277,14 @@ pub struct Guard {
     /// The pinned snapshots the last look at the owners found, so one cut
     /// since, which no survey has offered yet, times its own hour.
     snapshots_known: Option<Vec<PathBuf>>,
+    /// The disks, by device, holding builds whose owner ended or that went
+    /// an hour unused in a snapshot, which no pass there has judged since:
+    /// a pass due on one goes past a survey's spacing. Every disk watched
+    /// is marked, since what was spent may lie on any, and each is cleared
+    /// by its own pass alone, as a pass is offered only what lies on its
+    /// disk. `memory.spent_due` says whether any is marked, so a guard
+    /// restarted before they were judged marks every disk it watches.
+    spent_on: BTreeSet<u64>,
     /// When, in wall seconds, a cargo source's disk past its budget last
     /// made upkeep due, so one still past it after the pass, its builds
     /// all recent, asks again only an hour on.

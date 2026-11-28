@@ -67,9 +67,7 @@ impl Guard {
         let uses_path = state.join("uses.json");
         let mut uses: Uses = loaded(&uses_path);
         uses.forget_gone();
-        let home = matches!(config.scope, crate::config::Scope::User)
-            .then(|| std::env::var_os("HOME").map(PathBuf::from))
-            .flatten();
+        let home = user_home(&config);
         // Started again, it says what held the disks when it last measured
         // until its own first measure ends, rather than nothing for minutes.
         let measured = crate::ledger::last(state, crate::holders::places(&config));
@@ -116,6 +114,7 @@ impl Guard {
             produced: Vec::new(),
             snapshot_spends: None,
             snapshots_known: None,
+            spent_on: BTreeSet::new(),
             budget_looked: None,
             root_left: false,
             held_ended: false,
@@ -400,4 +399,11 @@ impl Guard {
             _ => BTreeSet::new(),
         };
     }
+}
+
+/// The home a user's guard runs for, or none for the system's guard.
+fn user_home(config: &Config) -> Option<PathBuf> {
+    matches!(config.scope, crate::config::Scope::User)
+        .then(|| std::env::var_os("HOME").map(PathBuf::from))
+        .flatten()
 }

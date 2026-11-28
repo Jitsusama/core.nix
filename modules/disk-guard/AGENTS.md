@@ -72,7 +72,13 @@ or launchd, and [`home.nix`][2] the account's.
   nor one forecast to be within a pass, whose pass starts early so it's
   done before the band arrives, nor the store's garbage, which needs no
   survey, nor upkeep for builds whose owner ended or that went an hour
-  unused in a snapshot, which go within a minute.
+  unused in a snapshot, which go within a minute. Those mark every disk
+  watched, and each disk's mark goes only with an upkeep or a reach there
+  after a survey of every source, since a pass is offered only what lies
+  on its own disk: a producers' or a clear's pass, which walks only its
+  own sources, a reach that met its band first, or a disk that rested or
+  was held off judges none. A guard restarted while any is marked marks
+  every disk it watches again, as which they were isn't kept.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a

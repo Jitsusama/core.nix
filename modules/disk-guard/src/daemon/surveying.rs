@@ -422,25 +422,30 @@ impl Guard {
     /// Learns what a pass that `started` teaches: how long a pass takes,
     /// from a reach that reclaimed; when upkeep was last done, from an
     /// upkeep pass after a survey that got through what was due; and that
-    /// what owners left has been judged, from any pass after a survey.
+    /// what owners left on `device` has been judged, from an upkeep or a
+    /// reach there after a survey of every source.
     pub(super) fn learn_from_pass(
         &mut self,
         tick: &Tick,
+        device: u64,
         (goal, why, surveyed): (Goal, Why, bool),
         report: &Report,
         scan: &Scan,
         started: Instant,
     ) {
-        // What owners left leads every plan, so a pass after a whole
-        // survey has judged it unless a stop cut it short, or it reached
-        // its band first, when the upkeep it brings judges the rest. Only
-        // then does the next survey wait out the spacing: a disk past
-        // healthy never gets upkeep, and would otherwise walk every step.
+        // What owners left leads every plan, so an upkeep or a reach after
+        // a whole survey has judged what lies on its own disk, unless a
+        // stop cut it short, or it reached its band first, when the upkeep
+        // it brings judges the rest. It's offered nothing on another disk,
+        // and a disk that rested or was held off judged nothing, so each
+        // disk is cleared by its own pass alone. Only then does that disk's
+        // next survey wait out the spacing: a disk past healthy never gets
+        // upkeep, and would otherwise walk every step.
         let judged_spent = surveyed
             && !matches!(report.end, End::Stopped)
             && !(goal == Goal::Reach && matches!(report.end, End::Reached));
         if judged_spent {
-            self.memory.spent_due = false;
+            self.judged_spent(device);
         }
         if teaches_pass_length(goal, why, report) {
             let seconds = started.elapsed().as_secs_f64();
