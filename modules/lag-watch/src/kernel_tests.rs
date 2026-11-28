@@ -102,7 +102,7 @@ fn a_dotted_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
     // 7.3.4 prints the bare key, but some older kernels print the stats
     // under a dotted prefix, so the wait is read there too. The wait for a
     // disk comes first, so a key read by its ending alone would take it.
-    let kept = sched_of(
+    let kept = a_sched(
         "slack",
         "7",
         "se.statistics.iowait_sum     :        900.000000\n\
@@ -113,7 +113,7 @@ fn a_dotted_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
         Some(12_250_000),
         "the wait wasn't read from its dotted line"
     );
-    let only_io = sched_of(
+    let only_io = a_sched(
         "slack",
         "7",
         "se.statistics.iowait_sum     :        900.000000\n",
@@ -360,7 +360,7 @@ fn what_is_owed_is_let_go_when_the_fair_count_goes_back() {
 
 /// A stand-in `sched` file for thread `pid` of `comm`: the header, the
 /// kernel's rule of dashes under it, then `stats`.
-pub fn sched_of(comm: &str, pid: &str, stats: &str) -> String {
+pub fn a_sched(comm: &str, pid: &str, stats: &str) -> String {
     format!("{comm} ({pid}, #threads: 9)\n{}\n{stats}", "-".repeat(67))
 }
 
