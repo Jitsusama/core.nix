@@ -36,7 +36,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, readied, serving
+from live_page import (
+    CAPPED_MS,
+    FIRST_SEEN,
+    LOOKS,
+    SIZES,
+    TABBED,
+    UNSEEN_MS,
+    Budget,
+    Opened,
+    Served,
+    readied,
+    serving,
+    shown_by_its_cap,
+    shows_at_a_tab,
+)
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -54,11 +68,6 @@ ASKED_AGAIN_MS = 20_000
 STILL = 0.01
 # How long page.ts holds the last visit's room before letting it go anyway.
 ROOM_HELD_MS = 3000
-# The longest a first visit is held unseen, as page.ts's ROOM_WAIT_MS and site.css's fallback
-# hold it. The first visit's still test passes only if the stand-in draws inside it: past it,
-# the page is shown before it has drawn, so neither its stillness nor its draw showing it is
-# what the test reads.
-UNSEEN_MS = 1000
 # What site.css makes of the body's opacity while a first visit is held, and once it is shown.
 UNSEEN = "0"
 SEEN = "1"
@@ -758,6 +767,8 @@ def test_a_first_visit_holds_the_page_still(
         assert opacity == UNSEEN, f"a first visit was at opacity {opacity} before it drew"
         shown = page.evaluate("() => globalThis.shown")
         assert shown is not None, "a first visit's mark went before the page had loaded"
+        # Only a draw inside the cap shows the page, so past it neither its stillness nor its
+        # draw showing it is what this reads.
         at = shown["at"]
         assert at < UNSEEN_MS, f"a first visit was shown at {at:.0f} ms, by the cap, not its draw"
         assert shown["drawn"], "a first visit was shown before its repositories drew"
@@ -768,6 +779,44 @@ def test_a_first_visit_holds_the_page_still(
         assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
 
     opened.first(reading)
+    opened.close()
+
+
+def test_a_tab_while_a_first_visit_waits_shows_it_and_its_ring(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(TABBED, silent=True)
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+    opened.first(lambda page: shows_at_a_tab(page, "Skip to the repositories"))
+    opened.close()
+
+
+def test_a_first_visit_whose_feeds_are_silent_is_shown_at_its_cap(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(HELD, FIRST_SEEN, silent=True)
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+
+    def reading(page: Page) -> None:
+        shown_by_its_cap(page, "#list .row", "with its feeds silent")
+        # Shown, the mark is gone too, so what reads it reads the page as it is.
+        expect(page.locator("html"), "a first visit kept its mark once shown").not_to_have_class(
+            WAITS, timeout=CAPPED_MS
+        )
+
+    opened.first(reading)
+    opened.close()
+
+
+def test_a_first_visit_whose_script_never_runs_is_shown_at_its_cap(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(HELD, FIRST_SEEN, emptied="**/code/site.js")
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+    opened.first(lambda page: shown_by_its_cap(page, "#list .row", "whose script never ran"))
     opened.close()
 
 
