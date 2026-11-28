@@ -201,8 +201,9 @@ in
   # zswap's shrinker, which writes the pool's coldest pages to disk before
   # the pool is full, is tried the same way. It boots on, for the reasons by
   # the pool above; a trial turns it off with `memory-zswap-shrinker@n`, and
-  # `@y` or the next boot turns it back on. Each unit writes its
-  # instance and only a value the rules list:
+  # `@y` or the next boot turns it back on. A resume from hibernation keeps
+  # a trial, since the setting is in the kernel's memory, which the image
+  # holds. Each unit writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
