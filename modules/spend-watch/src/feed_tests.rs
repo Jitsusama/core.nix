@@ -151,7 +151,8 @@ fn a_share_says_what_is_used_and_when_it_resets() {
         "allowance": 15000, "windowHours": 168, "warn": 0.9, "state": "ok",
         "at": "2026-11-07T10:00:00Z",
     });
-    parse(&unspent.to_string()).expect_err("a cap in dollars that says nothing spent was read");
+    parse(&unspent.to_string())
+        .expect_err("a cap in dollars that doesn't say what's spent was read");
 }
 
 // Two budgets' bills alike from one feed are two figures, not one
