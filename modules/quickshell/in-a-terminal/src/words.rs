@@ -79,12 +79,12 @@ impl Words {
             .to_string()
     }
 
-    /// The shell not answering.
+    /// The desktop not answering.
     pub fn silent(&self) -> String {
         self.word("silent", &[])
     }
 
-    /// The shell failing at the act it was asked, as a refusal naming the
+    /// The desktop failing at the act it was asked, as a refusal naming the
     /// act and where its log says why (VKCF3Z, 2026-11-08).
     pub fn failed(&self, name: &str) -> String {
         self.word("failed", &[("name", name)])
@@ -96,7 +96,7 @@ impl Words {
         self.word("unopened", &[("name", name)])
     }
 
-    /// An act the shell refused while it ran, as a yes to a secret ask
+    /// An act the desktop refused while it ran, as a yes to a secret ask
     /// it withholds without Joel's own key press, said as a refusal
     /// naming why (5GLTPH, 2026-11-16).
     pub fn refused(&self, name: &str, why: &str) -> String {
@@ -109,7 +109,7 @@ impl Words {
         self.word("unanswered", &[("name", name), ("why", why)])
     }
 
-    /// An answer from the shell this program doesn't know, never done.
+    /// An answer from the desktop this program doesn't know, never done.
     pub fn strange(&self) -> String {
         self.word("strange", &[])
     }
@@ -161,7 +161,7 @@ impl Words {
         self.word("blankStep", &[])
     }
 
-    /// A value the shell hasn't read yet, as the drawer's placeholder.
+    /// A value the desktop hasn't read yet, as the drawer's placeholder.
     pub fn waiting(&self) -> String {
         self.word("waiting", &[])
     }

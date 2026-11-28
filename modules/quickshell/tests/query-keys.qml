@@ -399,12 +399,66 @@ QtObject {
                 undefined)], ["no", "no"]);
         holds("but a key of no time to such an ask is let by too",
             Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        // NaN and -Infinity rule out a looser check, typeof "number" or != null, under
+        // which either time or guard falls through to a yes.
+        const untimable = [NaN, -Infinity].map(at => Confirm.asked("Close Notes?", run, run, at));
+        holds("as is a Return to an ask put at a time no clock gives, or with a guard of none",
+            untimable.map(one => Confirm.answer(one, "Return", 1400, 300))
+                .concat([Confirm.answer(ask, "Return", 1400, NaN)]), ["early", "early", "early"]);
+        holds("and a modifier alone lets no such ask go",
+            [Confirm.answer(timeless, "", 1400, 300), Confirm.answer(ask, "", 1400, NaN)],
+            ["early", "early"]);
+        // Return before its ask was early before the rule too, as its gap is
+        // under the guard; this holds it against a looser rule, one reading
+        // the gap whole (Math.abs), which would answer it yes. The Escape
+        // case after it is the one the rule turns from early to no.
+        holds("a key timed before its ask, as a clock gone back gives, holds its Return",
+            [Confirm.answer(ask, "Return", 999, 300), Confirm.answer(ask, "Return", -5000, 300)],
+            ["early", "early"]);
+        holds("while any other key still lets that ask go, Escape among them",
+            ["Escape", "y", "n"].map(key => Confirm.answer(ask, key, 999, 300)),
+            ["no", "no", "no"]);
+        holds("but a key at the ask's own time is in its guard, as one typed on from it",
+            ["Escape", "Return"].map(key => Confirm.answer(ask, key, 1000, 300)),
+            ["early", "early"]);
+        holds("a key let by says why where its Return can't answer, and only there",
+            [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
+                1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
+                Confirm.letBy(ask, "Return", 999, 300), Confirm.letBy(ask, "y", undefined, 300),
+                Confirm.letBy(timeless, "Return", undefined, 300),
+                Confirm.letBy(ask, "Return", 1000, 300)],
+            ["Return came to the ask with no time, so it was let by",
+                "the ask can't be timed, as it was put at no time, so Return was let by",
+                "the ask can't be timed, as it has no guard, so Return was let by",
+                "Return was timed before its ask, so it was let by",
+                "a key came to the ask with no time, so it was let by",
+                "Return came to the ask with no time, so it was let by",
+                // At the ask's own time it's early in its guard, as answer
+                // has it, never timed before its ask.
+                null]);
+        // Of an ask that can't be timed as of one that can, so neither reason
+        // is said of a key that answered or of a modifier alone.
+        holds("never of a key early in its guard, a modifier alone, or one that answers",
+            [Confirm.letBy(ask, "Return", 1100, 300), Confirm.letBy(ask, "", 999, 300),
+                Confirm.letBy(ask, "Escape", 999, 300), Confirm.letBy(ask, "Return", 1400,
+                    300), Confirm.letBy(timeless, "Escape", 1400, 300),
+                Confirm.letBy(ask, "y", 1400, undefined), Confirm.letBy(timeless, "", 1400,
+                    300), Confirm.letBy(ask, "", undefined, 300)],
+            [null, null, null, null, null, null, null, null]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],
             ["it was put at no time", "it has no guard", null]);
         holds("the ask takes a yes or a no, never an early key, nor one with no ask",
             ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
+        holds("an ask standing says what it says of a key, and none says nothing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "j", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)], ["yes", "early", ""]);
+        holds("and takes it only where it answers, never with no ask standing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "y", 1400, 300),
+                Confirm.said(ask, "Return", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)].map(Confirm.takes),
+            [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);
@@ -1143,6 +1197,14 @@ QtObject {
             `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
         holds("though another text's break still ends what's washed",
             Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
+        // Every break of a title is its space, two or more as one, and so is a line or
+        // paragraph separator its name holds, which titleBreaks keeps in a word too wide
+        // for a line, as the drawer's search reads it (DrawerLines.runsOn).
+        holds("a title's every break is washed across",
+            Search.washed("one\ntwo\nthree", "one two three", wash, true),
+            washing("one<br>two<br>three"));
+        holds("and so is a separator its name holds",
+            Search.washed("a\u2028b\u2029c", "a b c", wash, true), washing("a\u2028b\u2029c"));
         // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
@@ -2117,6 +2179,61 @@ QtObject {
                 KeyActs.reselectHere(mode, rows, chosen), has);
     }
 
+    // What Ctrl+Y's completion does (KeyActs.completing), which the
+    // launcher both does and says first, to time it as leaving a place.
+    function completings(holds) {
+        const field = more => Object.assign({ completion: "ox", fills: false, question: "",
+            selected: true, answered: false, answer: null }, more);
+        const sum = { question: "2+2", headline: "4" };
+        // [what, how the field stands, what Ctrl+Y does]
+        const cases = [
+            ["nothing with no completion shown, a command's row or not",
+                { completion: "", fills: true }, ""],
+            ["a command's row puts its start in the field", { fills: true }, "start"],
+            // No row is both a command's and an answer's, so the two never
+            // meet in the launcher; this only holds that the start is
+            // asked first, as completing says.
+            ["a start is asked before a question only started",
+                { fills: true, question: "2+", answered: true, answer: sum }, "start"],
+            ["a question only started is finished, with no row selected",
+                { question: "2+2", selected: false, answer: sum }, "question"],
+            ["or on the answer's own row",
+                { question: "2+2", answered: true, answer: sum }, "question"],
+            ["another row finishes what's typed, with a question beside it",
+                { question: "2+2", answer: sum }, "rest"],
+            ["a row with no answer beside it finishes what's typed", {}, "rest"],
+            // An answer with a question goes the question's way, as the
+            // launcher's question is its answer's (Launcher.qml's question).
+            ["an answer alone goes in the question's place",
+                { selected: false, answer: { headline: "4" } }, "answer"],
+            ["its copy, where it has one, though it heads nothing",
+                { selected: false, answer: { headline: "", copy: "four" } }, "answer"],
+            ["nor one whose copy is empty, whatever it heads",
+                { selected: false, answer: { headline: "4", copy: "" } }, ""],
+            ["never one that does something",
+                { selected: false, answer: { headline: "Lock", run: true } }, ""],
+            ["nor one that says nothing", { selected: false, answer: { headline: "" } }, ""]
+        ];
+        for (const [what, more, does] of cases)
+            holds(`Ctrl+Y: ${what}`, KeyActs.completing(field(more)), does);
+        // The launcher's onCompleted has a case for each of completions, so
+        // a case here answering something else names an outcome it never
+        // does, and one never answered goes unproven.
+        const answered = cases.map(([, more]) => KeyActs.completing(field(more)));
+        holds("Ctrl+Y's cases answer only what the launcher does",
+            answered.filter(does => !KeyActs.completions().includes(does)), []);
+        holds("Ctrl+Y's cases reach everything the launcher does",
+            KeyActs.completions().filter(does => !answered.includes(does)), []);
+        // [what, the answer, what Ctrl+Y puts in the question's place]
+        const put = [
+            ["its copy", { headline: "4", copy: "four" }, "four"],
+            ["its headline with no copy", { headline: "4" }, "4"],
+            ["nothing with an empty copy", { headline: "4", copy: "" }, ""]
+        ];
+        for (const [what, answer, text] of put)
+            holds(`Ctrl+Y puts an answer's ${what}`, KeyActs.answerPut(answer), text);
+    }
+
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
     // 12, with groups 20 apart: so the facts after it start on the first
     // beat at least the groups' gap below a picture, never a band rounded up
@@ -2268,26 +2385,32 @@ QtObject {
             Lines.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
         // What a laid line runs on into the next with (DrawerLines.runsOn),
         // from all it holds to the next line past the letters it keeps:
-        // what Qt wrapped at, or null for a break however Qt keeps it.
-        // A title's break stands for the space it was laid at, so a search
-        // runs on across it as across a wrap, as the title's wash does.
+        // what Qt wrapped at, or null for a break however Qt keeps it,
+        // except in a title. A title's break stands for the space it was
+        // laid at, so a search runs on across it as across a wrap, each
+        // space beside it kept, as the title's wash reads it.
         holds("a laid line of a title runs on with the space its break stood for",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, true), " ");
+        holds("and with each space beside the break kept",
+            Lines.runsOn("a \u2028", 1, true), "  ");
         holds("and with none at another text's break",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
         // The break those are read at is the one Qt gives: a title's "\n"
-        // goes into its reader, a rich text, as <br>, and the reader gives
-        // it back as a line separator, not a newline (Drawer.qml's words).
+        // goes into its reader, a rich text, as <br>, in the markup
+        // Drawer.qml's reader is given (Search.readerText), and the reader
+        // gives it back as a line separator, not a newline.
         const titleReader = Qt.createQmlObject(
             "import QtQuick; TextEdit { textFormat: TextEdit.RichText }", root);
-        titleReader.text = `<div style="white-space:pre-wrap">`
-            + `${Search.escaped("Drawing 2026-11-09\n10.12.03.svg")}</div>`;
-        const atBreak = titleReader.getText(0, 19);
-        holds("a title's reader gives its break back as a line separator", atBreak,
-            "Drawing 2026-11-09\u2028");
-        holds("which a search runs on across with the space it stood for",
-            Lines.runsOn(atBreak, 18, true), " ");
+        titleReader.text = Search.readerText("Drawing 2026-11-09\n10.12.03.svg");
+        holds("a title's reader gives its break back as a line separator",
+            titleReader.getText(0, 19), "Drawing 2026-11-09\u2028");
         titleReader.destroy();
+        holds("a reader's text keeps its spaces at its leading",
+            Search.readerText("a  <b>", { leading: 20 }), "<div style=\"white-space:pre-wrap;"
+                + " line-height:20px; -qt-line-height-type:fixed\">a  &lt;b&gt;</div>");
+        holds("and a styled one's links in its ink, unwashed",
+            Search.readerText("<a href=\"x\">y</a>", { styled: true, ink: "#fff", sought: "y" }),
+            "<div style=\"white-space:pre-wrap\"><a style=\"color:#fff\" href=\"x\">y</a></div>");
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
@@ -2311,6 +2434,37 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of trailing)
             holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
+        // The search and the wash read a title alike: all the search reads of it, its laid
+        // lines' letters each run on as runsOn says, and its last with what trails it, as
+        // Drawer.qml's pieces give them, sought, washes the whole title.
+        const titleInk = { ink: "ink", ground: "ground" };
+        const titleWash = words =>
+            `<span style="color:ink;background-color:ground">${words}</span>`;
+        const searchRead = title => {
+            let read = "";
+            let from = 0;
+            for (let at = 0; at <= title.length; at++) {
+                if (at < title.length && !/[\n\u2028\u2029]/.test(title[at]))
+                    continue;
+                const raw = title.slice(from, at + 1);
+                const kept = raw.replace(/\s+$/, "").length;
+                const on = at < title.length ? Lines.runsOn(raw, kept, true)
+                    : Lines.trailing(raw, kept);
+                read += raw.slice(0, kept) + on;
+                from = at + 1;
+            }
+            return read;
+        };
+        const titles = [
+            ["one at its balanced break", "Drawing 2026-11-09\n10.12.03.svg"],
+            ["one with a space before its break", "a \nb"],
+            ["one with separators its name holds", "a\u2028b\u2029c"],
+            ["one ending in spaces", "a\nb  "]
+        ];
+        for (const [what, title] of titles)
+            holds(`the search reads a title as its wash does: ${what}`,
+                Search.washed(title, searchRead(title), titleInk, true),
+                titleWash(title.replace(/\n/g, "<br>")));
         // How pieces become laid lines (DrawerLines.linesOf): those sharing
         // a baseline one line, its parts left to right, each keeping what
         // it wrapped at, which a search runs on with (DrawerPage.textsOf).
@@ -2657,9 +2811,16 @@ QtObject {
     }
 
     function run() {
+        // A value as a failure says it, with the separators JSON leaves
+        // bare spelt out, so a line separator never reads as a paragraph's.
+        function spelt(value) {
+            return String(JSON.stringify(value)).replace(/[\u2028\u2029\u200b\u2060]/g,
+                letter => `\\u${letter.charCodeAt(0).toString(16).padStart(4, "0")}`);
+        }
+
         function holds(what, got, want) {
             if (JSON.stringify(got) !== JSON.stringify(want))
-                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+                failures.push(`${what}: ${spelt(got)}, not ${spelt(want)}`);
         }
 
         // [what, the keys typed from the opening, the acts done]
@@ -3269,6 +3430,7 @@ QtObject {
         keysActing(holds);
         keysMoving(holds);
         reselectsHere(holds);
+        completings(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

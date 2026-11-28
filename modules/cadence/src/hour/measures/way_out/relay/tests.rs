@@ -18,6 +18,13 @@ const ANSWERED: &str = "model-relay: a request couldn't be carried, so pi is ans
 const ANSWERED_RESET: &str = "model-relay: a request couldn't be carried, so pi is answered 502: \
                               connection error: connection reset";
 
+/// A reset the relay answers 502 rather than sending direct, as
+/// model-relay's `said_reset` writes it: its outcome last, after a `; `.
+const RESET_ANSWERED: &str = "model-relay: the origin reset a request on connection 1.12, kept, \
+                              after 40 asked and 2 cancelled on it: http2 error: stream error \
+                              received: refused stream before processing any application logic; \
+                              pi is answered 502";
+
 const UNTAKEN: &str = "model-relay: a request reset on connection 0.272 couldn't be sent again, \
                        as no other connection would take it; pi goes directly";
 const CLOSED: &str =
@@ -41,6 +48,7 @@ fn each_line_counts_toward_what_it_says() {
         UNCARRIED_AGAIN,
         ANSWERED,
         ANSWERED_RESET,
+        RESET_ANSWERED,
         CLOSED,
         &tally(1000),
         UNTAKEN,
@@ -48,17 +56,44 @@ fn each_line_counts_toward_what_it_says() {
     ]
     .join("\n");
     let measures = relay(Some(&journal));
-    assert_eq!(by_key(&measures, RESETS).now, 2.0);
+    assert_eq!(
+        by_key(&measures, RESETS).now,
+        3.0,
+        "a reset sent direct, one sent again and one answered 502"
+    );
     assert_eq!(
         by_key(&measures, DIRECT).now,
         3.0,
         "a reset given to pi, a retry and a request no connection took"
     );
-    assert_eq!(by_key(&measures, ANSWERED_502).now, 2.0);
+    assert_eq!(
+        by_key(&measures, ANSWERED_502).now,
+        3.0,
+        "two requests carried nowhere and a reset, each answered 502"
+    );
     assert_eq!(
         by_key(&measures, SHARE).target,
         Some(SHARE_AT_MOST),
         "two tallies weigh the share"
+    );
+}
+
+#[test]
+fn a_reset_answered_502_is_counted_under_its_resets_own_error() {
+    let journal = [RESET_ANSWERED, RESET_ANSWERED].join("\n");
+    let measures = relay(Some(&journal));
+    assert_eq!(
+        by_key(&measures, ANSWERED_502).behind,
+        [
+            "2 on http2 error: stream error received: refused stream before processing any \
+          application logic"
+        ],
+        "a reset's 502 is grouped apart from its own outcome"
+    );
+    assert_eq!(
+        by_key(&measures, DIRECT).now,
+        0.0,
+        "a reset answered 502 was counted as sent direct"
     );
 }
 

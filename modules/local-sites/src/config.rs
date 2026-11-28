@@ -45,6 +45,10 @@ pub struct Kind {
     /// The fields asked of the daemon deep, so a change inside one says
     /// only what moved in it (the node's `deep`).
     pub deep: Option<Vec<String>>,
+    /// How many of the kind's records, the latest heard, the daemon is
+    /// asked to keep a page told of (the node's `latest`); every one where
+    /// none is named.
+    pub latest: Option<u64>,
 }
 
 impl Config {
@@ -133,11 +137,18 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
             let deep = said("deep").map(|deep| {
                 words(Some(deep)).ok_or_else(|| format!("feed {name}'s {kind} deep isn't names"))
             });
+            let latest = said("latest").map(|latest| {
+                latest
+                    .as_u64()
+                    .filter(|count| *count > 0)
+                    .ok_or_else(|| format!("feed {name}'s {kind} latest isn't a count"))
+            });
             Ok((
                 kind.clone(),
                 Kind {
                     fields: fields.transpose()?,
                     deep: deep.transpose()?,
+                    latest: latest.transpose()?,
                 },
             ))
         })
@@ -170,7 +181,8 @@ mod tests {
         "mounts": {"kit": "/nix/store/kit"},
         "feeds": {"node": {"socket": "mycelium/work.sock", "kinds": {
             "machine": {"fields": null, "deep": null},
-            "session": {"fields": ["title", "presence"], "deep": ["presence"]}
+            "session": {"fields": ["title", "presence"], "deep": ["presence"]},
+            "message": {"fields": ["at"], "latest": 20}
         }}}
     }"#;
 
@@ -193,6 +205,26 @@ mod tests {
             node.kinds["session"].fields.as_deref(),
             Some(&["title".to_owned(), "presence".to_owned()][..])
         );
+    }
+
+    #[test]
+    fn a_kind_asks_only_its_latest_records_where_it_names_how_many() {
+        let config = Config::from_json(WHOLE, Some(Path::new("/run"))).expect("it reads");
+        let kinds = &config.feeds["node"].kinds;
+        assert_eq!(
+            kinds["message"].latest,
+            Some(20),
+            "the message kind names 20"
+        );
+        assert_eq!(
+            kinds["session"].latest, None,
+            "a kind naming none asks for every one"
+        );
+        for wrong in ["0", "-1", "2.5", "\"20\""] {
+            let said = WHOLE.replace(r#""latest": 20"#, &format!(r#""latest": {wrong}"#));
+            let why = Config::from_json(&said, Some(Path::new("/run"))).expect_err("refused");
+            assert!(why.contains("latest isn't a count"), "{wrong} gave {why}");
+        }
     }
 
     #[test]

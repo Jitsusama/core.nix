@@ -3,7 +3,10 @@
 //! was last active list it at once, and read once however many rounds
 //! list it after, even where a repository before it is refused, and
 //! owed where its read fails, though nothing lists it again, and waiting
-//! its turn while owed, though the watch lists it every round.
+//! its turn while owed, though the watch lists it every round, yet read
+//! back to his words where it was owed from after them. A list failing is
+//! listed last the round after, and the watch rests while little of
+//! Joel's rate limit is left.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
@@ -12,7 +15,9 @@ use std::time::{Duration, Instant};
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{LOGIN, answer_with, commented, github_reader, read_lately, searches, until_asked};
+use super::{
+    LOGIN, MARK, answer_with, commented, github_reader, read_lately, searches, until_asked,
+};
 use crate::{
     Answered, PATIENCE, answering, answering_whole, decisions, each, journal, until_decided,
 };
@@ -132,8 +137,21 @@ fn github_a_list_unchanged_is_asked_with_its_tag_and_its_304_taken_as_before() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
+/// The repositories whose newest comments were listed, in the order
+/// asked.
+fn listings(asked: &[String]) -> Vec<&str> {
+    asked
+        .iter()
+        .filter_map(|line| {
+            let (_, after) = line.split_once(" /repos/")?;
+            let (repo, _) = after.split_once("/issues/comments?")?;
+            Some(repo)
+        })
+        .collect()
+}
+
 #[test]
-fn github_a_list_that_fails_is_said_and_lists_no_more_that_round() {
+fn github_a_list_that_fails_lists_no_more_that_round_and_comes_last_the_next() {
     let (origin, asked) = answering_whole(|line, now| {
         if line.contains(" /repos/example/shop/issues/comments?") {
             return Answered {
@@ -152,7 +170,11 @@ fn github_a_list_that_fails_is_said_and_lists_no_more_that_round() {
     });
     let (home, _) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    until_asked(&asked, 0, 12);
+    let began = Instant::now();
+    while listings(&asked.lock().expect("what was asked")).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never listed three times");
+        thread::sleep(Duration::from_millis(50));
+    }
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
     let said = journal(&home);
@@ -162,13 +184,69 @@ fn github_a_list_that_fails_is_said_and_lists_no_more_that_round() {
         "the failing is said, with what it costs: {said}"
     );
     let asked = asked.lock().expect("what was asked");
-    assert!(
-        !asked
-            .iter()
-            .any(|line| line.contains(" /repos/example/other/issues/comments?")),
-        "the round lists no more once one list fails, so a slow site costs one wait: {asked:?}"
+    assert_eq!(
+        listings(&asked)[..3],
+        ["example/shop", "example/other", "example/shop"],
+        "the round lists no more once one list fails, so a slow site costs one wait, and the \
+         next lists the one that failed last, so it can't keep the others unlisted: {asked:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_the_watch_rests_while_little_of_joels_rate_limit_is_left() {
+    // Only the first listing says the limit is nearly spent, until a
+    // reset a few seconds on.
+    let listed = AtomicUsize::new(0);
+    let (origin, asked) = answering_whole(move |line, now| {
+        let answered = Answered::ok(unindexed(line, now));
+        if !line.contains(" /repos/example/shop/issues/comments?")
+            || listed.fetch_add(1, Ordering::SeqCst) > 0
+        {
+            return answered;
+        }
+        Answered {
+            headers: vec![
+                ("x-ratelimit-remaining", "999".to_owned()),
+                ("x-ratelimit-reset", (now + 3).to_string()),
+            ],
+            ..answered
+        }
+    });
+    let (home, _) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while listings(&asked.lock().expect("what was asked")).len() < 2 {
+        assert!(began.elapsed() < PATIENCE, "it never listed again");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+    let asked = asked.lock().expect("what was asked").clone();
+    let at: Vec<usize> = asked
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.contains(" /repos/example/shop/issues/comments?"))
+        .map(|(place, _)| place)
+        .collect();
+    let between = &asked[at[0]..at[1]];
+    let count = |what: &str| between.iter().filter(|line| line.contains(what)).count();
+    assert!(
+        count(" /search/issues?") >= 3 && count(&format!(" /users/{LOGIN}/events?")) <= 1,
+        "rounds go on searching while the watch rests, its events unasked till the reset: \
+         {between:?}"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains("has 999 requests left this hour") && said.contains("wait on its search"),
+        "the rest is said, with what it costs: {said}"
+    );
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop-asked", "stop"],
+        "what the listing before the rest gave is still judged"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -320,6 +398,58 @@ fn github_a_thread_failing_where_joel_spoke_lately_waits_its_turn_though_listed_
         read, 3,
         "it's asked in rounds one, two and four as its wait doubles, not in each round the \
          watch lists it: {seen:?}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_an_owed_thread_the_watch_lists_is_read_back_to_joels_words() {
+    // example/shop#12 is owed from the last read, half a minute ago, and
+    // due, and Joel's stop there is two minutes old: only the watch,
+    // listing where he spoke, reaches back to it.
+    let (origin, asked) = answering_whole(|line, now| {
+        let mut his = commented(5, LOGIN, "OWNER", "pineapple override", (now, 120));
+        if line.contains(" /repos/example/shop/issues/comments?") {
+            his["issue_url"] = json!("https://api.example.com/repos/example/shop/issues/12");
+            return Answered::ok(json!([his]));
+        }
+        if line.contains(" /repos/example/shop/issues/12/comments?") {
+            return Answered::ok(json!([his]));
+        }
+        Answered::ok(unindexed(line, now))
+    });
+    let (home, last) = read_lately();
+    let owed = json!({"repo": "example/shop", "number": 12, "pull": true,
+        "from": last, "read_from": last, "at": last});
+    let seeded = json!({"since": last, "keys": [], "owed": [owed]});
+    std::fs::write(home.join("state/pineapple").join(MARK), seeded.to_string()).expect("the mark");
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let seen = asked.lock().expect("what was asked").clone();
+    let reads: Vec<String> = seen
+        .iter()
+        .filter(|line| line.contains(" /repos/example/shop/issues/12/comments?"))
+        .filter_map(|line| {
+            let since = line.split("since=").nth(1)?.split(['&', ' ']).next()?;
+            Some(since.replace("%3A", ":"))
+        })
+        .collect();
+    // Judged from later, its stop would go unjudged in that read, and the
+    // watch would list it, no longer owed, to be read again.
+    assert!(
+        reads.len() == 1 && reads[0] <= stamp(last - 90),
+        "the owed thread is read once, from where the watch reaches, before his stop: {seen:?}"
+    );
+    assert!(
+        each(&decisions(&home), "verdict").contains(&"stop"),
+        "and his stop, older than where it was owed from, is judged"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

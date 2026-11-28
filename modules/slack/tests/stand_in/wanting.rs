@@ -57,8 +57,7 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
             .count()
     };
     until("Slack wasn't asked again", || asked("client.counts") >= 4);
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     assert_eq!((asked("conversations.info"), asked("users.info")), (3, 1));
     let heard = stand_in.heard();
     assert!(
@@ -70,7 +69,6 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
                     || header == "Authorization: Bearer xoxc-mine")),
         "{heard:?}"
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -159,9 +157,7 @@ fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
     assert_eq!(post(4, "#random", "sure"), false, "a thread's reply");
     let unknown = posted(5, "#nowhere", "hi");
     assert_eq!(unknown["error"]["code"], "unknown", "{unknown}");
-    program.kill().unwrap();
-    program.wait().unwrap();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    program.stop();
     forget(&path);
 }
 
@@ -186,8 +182,8 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
         &serde_json::json!({"id": 1, "ask": "hello", "version": 1}),
     );
     assert_eq!(hello["domain"], "slack");
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
+    forget(&path);
 }
 
 #[test]
@@ -269,8 +265,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         .filter(|heard| heard.line.contains("users.info?user=U9"))
         .count();
     assert_eq!(asked_for_ada, 1, "{:?}", stand_in.heard());
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     // Still only reading.
     assert!(
         stand_in
@@ -280,6 +275,5 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         "{:?}",
         stand_in.heard()
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }

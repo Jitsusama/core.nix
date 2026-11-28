@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 
 # A JSON object as tc gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]
+# A queue on a link as (kind, parent), the root's parent said as "root".
+type Queue = tuple[str, str]
 
 # One of Meet's media servers, which takes a call on 443.
 MEET = "74.125.250.1"
@@ -88,6 +90,12 @@ def address(node_ip: str) -> str:
     return node_ip.split()[3].split("/", maxsplit=1)[0]
 
 
+def shaped(queues: list[Queue]) -> bool:
+    """Say whether a link's queues are the shaper's HTB with its lanes beneath it."""
+    lanes = {("cake", "1:3"), ("fq_codel", "1:4"), ("cake", "1:5")}
+    return ("htb", "root") in queues and lanes <= set(queues)
+
+
 @dataclass
 class Connection:
     """The client, its connection through the router to the server, and what CAKE counts on it."""
@@ -138,11 +146,9 @@ class Connection:
         index = int(self.client.succeed(f"cat /sys/class/net/{link}/ifindex"))
         return f"shaper{index:x}"
 
-    def shaped(self, link: str) -> bool:
-        """Say whether a link carries the shaper's HTB with its lanes beneath it."""
-        kinds = {(q["kind"], q.get("parent", "root")) for q in self.qdiscs(link)}
-        lanes = {("cake", "1:3"), ("fq_codel", "1:4"), ("cake", "1:5")}
-        return ("htb", "root") in kinds and lanes <= kinds
+    def queues(self, link: str) -> list[Queue]:
+        """Give a link's queues sorted, read once so a failure prints what `shaped` judged."""
+        return sorted((q["kind"], q.get("parent", "root")) for q in self.qdiscs(link))
 
     def hold(self, slice_name: str, *, system: bool = False) -> None:
         """Keep a slice open, as something always runs in one on a machine in use."""
@@ -644,10 +650,37 @@ def test_local(connection: Connection) -> None:
 
 
 def test_tunnel(tunnel: Connection) -> None:
-    """Inside a tunnel, the same classes reach its own queues, both ways."""
+    """Inside a tunnel, the same classes reach its own queues, both ways.
+
+    Agents' model relay sits in background with their bulk, but goes as best effort: held
+    inside a VPN as bulk, it waited behind agents' uploads until the origin gave its calls
+    up. The stand-in waits to send until the set holds its unit, and stays until what it
+    sent has left: its unit gone, the bytes still in its socket would match background's
+    bulk, a level above, as the relay's never do, since the relay runs on.
+    """
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
+    client = tunnel.client
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=background.slice --unit=model-relay-agents"
+        f" {BIN}/bash -c 'until [ -e /tmp/call-models ]; do {BIN}/sleep 0.1; done; {inner};"
+        f" {BIN}/touch /tmp/models-written;"
+        f" until [ -e /tmp/models-sent ]; do {BIN}/sleep 0.1; done'"
+    )
+    client.wait_until_succeeds(
+        "nft list set inet shaper models5 | grep -q model-relay-agents", timeout=HOLDING
+    )
+
+    def call_models() -> None:
+        """Let the stand-in send, and wait until what it sent has left and it's done."""
+        client.succeed("touch /tmp/call-models")
+        client.wait_until_succeeds("test -e /tmp/models-written", timeout=HOLDING)
+        tunnel.still("wg0")
+        client.succeed("touch /tmp/models-sent")
+        client.wait_until_fails("systemctl -M alice@ --user is-active model-relay-agents")
+
+    tunnel.reaches("best effort", "model-relay-agents", call_models, "wg0", LEAST_TRANSFER)
     inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
     back = tunnel.ifb("wg0")
     tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
@@ -704,7 +737,8 @@ def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
 
 def test_route_moves(on_eth2: Connection) -> None:
     """The queues follow the default route to another link."""
-    assert not on_eth2.shaped("eth1")
+    queues = on_eth2.queues("eth1")
+    assert not shaped(queues), f"eth1 kept its lanes: {queues}"
     on_eth2.client.succeed(f"! ip link show {on_eth2.ifb('eth1')}")
     on_eth2.lands("bulk", "jobs.slice", on_eth2.upload, dev="eth2")
 
@@ -735,7 +769,8 @@ def test_replug(replugged: Replugged) -> None:
     connection.client.wait_until_succeeds(
         f"tc -j qdisc show dev {replugged.plugged_ifb} | grep -q cake", timeout=SHAPING
     )
-    assert connection.shaped("eth2")
+    queues = connection.queues("eth2")
+    assert shaped(queues), f"eth2 came back unshaped: {queues}"
     connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q eth2", timeout=SHAPING
     )
@@ -775,7 +810,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     )
     client.succeed("systemctl is-active shaper.service")
     assert "bare" not in bare, "a restart left a link unshaped while it ran"
-    assert on_eth2.shaped("eth2"), "a restart left eth2 without its lanes"
+    queues = on_eth2.queues("eth2")
+    assert shaped(queues), f"a restart left eth2 without its lanes: {queues}"
     assert sent() >= before, "a restart made the queues afresh rather than keeping them"
     said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
     assert "is restarting, so its queues stay" in said, said
@@ -805,7 +841,8 @@ def test_stopping(on_eth2: Connection) -> None:
     assert status != 0, said
     client.succeed("systemctl is-active shaper.service")
     client.succeed("runuser -u bob -- systemctl stop shaper.service")
-    assert not on_eth2.shaped("eth2")
+    queues = on_eth2.queues("eth2")
+    assert not shaped(queues), f"the stop left eth2 its lanes: {queues}"
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")

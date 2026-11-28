@@ -35,9 +35,10 @@ import {
   library,
   manifest,
   open,
-  opensWhileHeld,
   pendingAfter,
   pointAt,
+  QUEUED_MS,
+  SETTLES_MS,
   scratch,
   stalledPackage,
   within,
@@ -185,11 +186,11 @@ const turnGate = gate("turn");
 const atOnce = [open("x", [turns[0]]), open("y", [turns[1]]), open("z", [turns[0]])];
 await turnGate.reached;
 // A load that didn't wait would be held at the same gate, so pending says
-// little; that it evaluated nothing of the package says it waited.
+// little; that it evaluated nothing of the package in that time says it waited.
 assert.deepEqual(
-  await Promise.all(atOnce.slice(1).map((load) => pendingAfter(load, 100))),
+  await Promise.all(atOnce.slice(1).map((load) => pendingAfter(load, QUEUED_MS))),
   [true, true],
-  "a load waiting its turn ended",
+  "a load ended while another held the turn it needs",
 );
 assert.deepEqual(evaluations(), { turn: 1 }, "a load didn't wait its turn");
 turnGate.putAway();
@@ -279,6 +280,13 @@ const throughStuck = ["hangs", "behind", "early"].map((one) =>
 );
 const releaseGate = gate("release");
 await heldUpUntil("link", throughStuck, async () => {
+  // The queued load waits at this gate too, so pending can't say it waited;
+  // it has stayed queued QUEUED_MS by now, so whether it reached the gate does.
+  assert.equal(
+    await pendingAfter(releaseGate.reached, 0),
+    true,
+    "a load behind a hung one skipped its turn",
+  );
   pointAt(stuck, join(scratch, "hung-second"));
   await within(open("link-moved", throughStuck), "a load through a moved link never ended");
   releaseGate.putAway();
@@ -342,6 +350,30 @@ await within(
   open("stalled-again", [stall.behind, stall.meanwhile]),
   "a load after loads that went on without their turn never ended",
 );
+// Has `holder`, which waits at the gate `hold`, take its package's turn,
+// then expects `kept` to open meanwhile without waiting or evaluating, as
+// a factory kept for it does, though `waiting`, which must take the turn,
+// is queued for it, and `waiting` to stay queued, evaluating nothing.
+const opensWhileHeld = async (what, holder, kept, waiting) => {
+  const holdGate = gate("hold");
+  const holding = open(`${what}-holding`, [holder]);
+  await holdGate.reached;
+  const whileHeld = evaluations();
+  const waited = open(`${what}-waited`, [waiting]);
+  const reopened = open(`${what}-reopened`, [kept]);
+  assert.equal(await pendingAfter(reopened, SETTLES_MS), false, `${what}: a kept factory waited`);
+  assert.deepEqual(evaluations(), whileHeld, `${what}: a kept factory evaluated afresh`);
+  assert.equal(
+    await pendingAfter(waited, QUEUED_MS),
+    true,
+    `${what}: a load settled, by ending or failing, while another held the turn it needs`,
+  );
+  assert.deepEqual(evaluations(), whileHeld, `${what}: a load evaluated without waiting its turn`);
+  holdGate.putAway();
+  holdGate.open();
+  const all = Promise.all([holding, reopened, waited]);
+  await within(all, `${what}: a load holding its turn never ended`);
+};
 // The held load's factory is kept too, so it opens while another load
 // holds the package's turn, and a load behind that one waits its turn
 // again.

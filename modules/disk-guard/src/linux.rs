@@ -705,7 +705,7 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
 /// link, rather than by the name the link says, which may be gone or name
 /// another mount namespace's file.
 pub fn pool(path: &Path) -> io::Result<u64> {
-    use rustix::fs::{FileType, OFlags};
+    use rustix::fs::OFlags;
     // Found without opening it, which waits for nothing, and read only
     // through what was found, so nothing swapped in between is read: a
     // reading open would break a writer's lease or meet a mode that
@@ -713,23 +713,32 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     // disk, out of every freeze.
     let none = rustix::fs::Mode::empty();
     let held = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
-    let found = rustix::fs::fstat(&held)?;
+    pool_of_held(&held, path, true)
+}
+
+/// What `pool` reads of `held`, a handle to `path` opened without reading,
+/// read through it alone. Asked whether the kernel names a file's
+/// subvolume, and told not to, it reads as a kernel before 6.10 would
+/// make it, so a case can drive that branch on any kernel.
+fn pool_of_held(held: &rustix::fd::OwnedFd, path: &Path, ask_subvolume: bool) -> io::Result<u64> {
+    use rustix::fs::FileType;
+    let found = rustix::fs::fstat(held)?;
     let device = found.st_dev;
     let kind = FileType::from_raw_mode(found.st_mode);
     if !matches!(kind, FileType::Directory | FileType::RegularFile) {
         return Ok(device);
     }
-    if !is_btrfs(&rustix::fs::fstatfs(&held)?) {
+    if !is_btrfs(&rustix::fs::fstatfs(held)?) {
         return Ok(device);
     }
     let subvolume = rustix::fs::StatxFlags::from_bits_retain(STATX_SUBVOL);
-    let read = rustix::fs::statx(&held, "", rustix::fs::AtFlags::EMPTY_PATH, subvolume)?;
-    if read.stx_mask & STATX_SUBVOL == 0 {
+    let read = rustix::fs::statx(held, "", rustix::fs::AtFlags::EMPTY_PATH, subvolume)?;
+    if !ask_subvolume || read.stx_mask & STATX_SUBVOL == 0 {
         // A kernel before 6.10 doesn't say a file's subvolume, so Btrfs
         // itself is asked, through a reading open.
-        return btrfs_id_of(&held, path).map(|id| pool_of(fsid_halves(id)));
+        return btrfs_id_of(held, path).map(|id| pool_of(fsid_halves(id)));
     }
-    let fsid = rustix::fs::fstatvfs(&held)?.f_fsid;
+    let fsid = rustix::fs::fstatvfs(held)?.f_fsid;
     Ok(pool_of(statfs_halves(fsid, read.stx_subvol)))
 }
 
@@ -1079,7 +1088,7 @@ mod tests {
                 run with --ignored and TMPDIR on a Btrfs folder"]
     fn a_folder_s_pool_read_by_statx_is_the_one_btrfs_s_ioctl_names() {
         let dir = tempfile::tempdir().unwrap();
-        on_btrfs(dir.path());
+        assert_on_btrfs(dir.path());
         // Worked out here from statx's own read, as pool works it out on
         // 6.10 and later, since pool's fallback to the ioctl would agree
         // with the ioctl whatever statx said.
@@ -1116,37 +1125,89 @@ mod tests {
     #[test]
     #[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
                 run with --ignored and TMPDIR on a Btrfs folder"]
-    fn a_pool_s_id_is_read_through_its_handle_after_its_name_is_taken() {
+    fn a_pool_is_read_through_its_handle_after_its_name_is_taken() {
         use rustix::fs::{CWD, FileType, Mode, OFlags};
         let dir = tempfile::tempdir().unwrap();
-        on_btrfs(dir.path());
+        assert_on_btrfs(dir.path());
+        let expected = pool_of(fsid_halves(super::btrfs_id(dir.path()).unwrap()));
         let name = dir.path().join("file");
         std::fs::write(&name, "").unwrap();
         let found = rustix::fs::open(&name, OFlags::PATH | OFlags::CLOEXEC, Mode::empty()).unwrap();
         // A pipe in its place, whose open asked by name would read as no
-        // Btrfs id, or wait for a writer without NONBLOCK.
+        // Btrfs pool, or wait for a writer without NONBLOCK. Any other file
+        // on the pool would read as the same pool, so only a name that
+        // reads as none tells a read by name from one through the handle.
         let pipe = dir.path().join("pipe");
         rustix::fs::mknodat(CWD, &pipe, FileType::Fifo, Mode::from_raw_mode(0o600), 0).unwrap();
         std::fs::rename(&pipe, &name).unwrap();
 
-        let read = super::btrfs_id_of(&found, &name);
+        // Both of pool's branches after its open, the one a kernel before
+        // 6.10 takes too, each within five seconds, since an open of the
+        // pipe without NONBLOCK would never end.
+        for ask_subvolume in [false, true] {
+            let read = within_five_seconds({
+                let found = found.try_clone().unwrap();
+                let name = name.clone();
+                move || super::pool_of_held(&found, &name, ask_subvolume)
+            });
+            assert_eq!(
+                read.as_ref().map(|read| read.as_ref().ok()),
+                Some(Some(&expected)),
+                "{} read through its handle, asking its subvolume: {ask_subvolume}: {read:?}",
+                name.display()
+            );
+        }
+    }
+
+    /// A file its writer holds a lease on refuses the reopen a kernel
+    /// before 6.10 needs, at once rather than once the lease is broken, so
+    /// the guard never waits on a writer. The refusal comes before Btrfs is
+    /// asked, so it shows on any filesystem.
+    #[test]
+    fn a_leased_file_refuses_the_reopen_at_once() {
+        use rustix::fs::{Mode, OFlags};
+        use std::os::fd::AsRawFd;
+        let dir = tempfile::tempdir().unwrap();
+        let name = dir.path().join("leased");
+        let held = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&name)
+            .unwrap();
+        // SAFETY: plain system calls; a broken lease signals SIGIO, whose
+        // default would end the test, so it's ignored.
+        let leased = unsafe {
+            libc::signal(libc::SIGIO, libc::SIG_IGN);
+            libc::fcntl(held.as_raw_fd(), libc::F_SETLEASE, libc::F_WRLCK)
+        };
+        assert_eq!(leased, 0, "no lease: {}", std::io::Error::last_os_error());
+        let found = rustix::fs::open(&name, OFlags::PATH | OFlags::CLOEXEC, Mode::empty()).unwrap();
+
+        let read = within_five_seconds(move || super::btrfs_id_of(&found, &name));
 
         assert_eq!(
-            read.as_ref().ok(),
-            super::btrfs_id(dir.path()).as_ref().ok(),
-            "{} read through the handle, then by its folder: {read:?}",
-            name.display()
+            read.as_ref()
+                .map(|read| read.as_ref().map_err(std::io::Error::kind)),
+            Some(Err(std::io::ErrorKind::WouldBlock)),
+            "a leased file's reopen, refused within five seconds: {read:?}"
         );
-        assert!(
-            read.is_ok(),
-            "{} read through the handle: {read:?}",
-            name.display()
-        );
+        drop(held);
+    }
+
+    /// What `read` gives, on a thread of its own, or nothing if it takes
+    /// past five seconds, so a read that waits fails its case rather than
+    /// hanging the run.
+    fn within_five_seconds<T: Send + 'static>(
+        read: impl FnOnce() -> T + Send + 'static,
+    ) -> Option<T> {
+        let (sent, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || sent.send(read()));
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok()
     }
 
     /// Fails, saying so, unless `dir` is on Btrfs, so a case run with
     /// TMPDIR elsewhere doesn't blame the kernel.
-    fn on_btrfs(dir: &std::path::Path) {
+    fn assert_on_btrfs(dir: &std::path::Path) {
         let stats = rustix::fs::statfs(dir).unwrap();
         assert!(
             super::is_btrfs(&stats),

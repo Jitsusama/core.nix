@@ -12,15 +12,17 @@ drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
-Tab reach the head's keys once, not shift as its feeds arrive on a first visit
-or a reload, nor hold room for what a reload forgets or at another width, draw a
-second's burst of records a few times rather than each, draw a thread for
-each cell joining two repositories on the map under the work and walk it by
-keys, and pass the web-design skill's page checks, its homes check and its
-walked map's check at a phone's width and a desk's in both looks. Anything
-the page logs fails it, but for the browser's own lines once the test takes
-the server away. The server, the browser and the
-tab are modules/local-sites/tests/live_page.py's.
+Tab reach the head's keys once, open on a headline and lede holding two lines,
+the lines the live ones take and those head.ts writes for counts up to 999
+repositories and for one thing worth a look of each kind but a gone folder,
+not shift as its feeds arrive on a first visit or a reload, nor hold room for what a reload
+forgets or at another width, draw a second's burst of records a few times
+rather than each, draw a thread for each cell joining two repositories on the
+map under the work and walk it by keys, and pass the web-design skill's page
+checks, its homes check and its walked map's check at a phone's width and a
+desk's in both looks. Anything the page logs fails it, but for the browser's
+own lines once the test takes the server away. The server, the browser and
+the tab are modules/local-sites/tests/live_page.py's.
 
 Long because each case is one thing the page does, on the same server, stand-ins
 and browser, and the fixtures that start them live here alone.
@@ -36,7 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import HEAD_HEIGHTS, LOOKS, SIZES, WIDE_DESK, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -83,8 +85,10 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads. One is what holds a first visit unseen until it draws.
-BUDGET = Budget(files=37, kilobytes=537, elements=276)
+# every page reads, one keeps a name with nowhere to wrap inside its stand and the find's
+# placeholder upright under more contrast, one is the head's opening words and the lines it
+# holds for its live ones, and one is what holds a first visit unseen until it draws.
+BUDGET = Budget(files=37, kilobytes=539, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -773,6 +777,106 @@ def test_a_first_visit_holds_the_page_still(
         context.close()
 
 
+# What the stand-in's grove holds worth a look, its one change failing, as the live lede says it.
+FAILING = "has 1 change whose checks fail."
+# The headlines and ledes head.ts writes for groves the stand-in's doesn't hold, by the page's
+# own modules: one repository, two, 99 and 999, and the lede with nothing worth a look, or one
+# or three cells waiting, changes failing or changes asked for, or a pile of resting trees, as
+# model.ts says them, after what grew most or a grove resting. Each grove is built of only the
+# fields headOf and worthOf read, its repository named as short as the stand-in's core or as
+# long as eight characters, each name with every kind. A tree whose folder is gone, two things
+# worth a look or a longer name are said at a length a phone gives a third line.
+HEAD_FORMS = """async () => {
+  const { headOf } = await import("./head.js");
+  const { worthOf } = await import("./model.js");
+  const named = (name, today, { waiting = 0, failing = 0, asked = 0, resting = 0 } = {}) => ({
+    name, address: `#repo=${name}`, seasons: { today, week: 0, resting, gone: 0 },
+    cells: Array.from({ length: waiting }, () => ({ standing: "needs-you" })),
+    changes: [
+      ...Array.from({ length: failing }, () => ({ checks: "failing", review: null })),
+      ...Array.from({ length: asked }, () => ({ checks: "passing", review: "changes_asked" })),
+    ] });
+  const grove = (repositories) => ({
+    machine: "", roots: [], unread: [], repositories, worth: worthOf(repositories) });
+  const many = (count, today) =>
+    Array.from({ length: count }, (_, at) => named(`r${at}`, today));
+  const counts = [
+    [named("core", 0)], [named("core", 3), named("notes", 0)],
+    [...many(87, 0), ...many(12, 1)], many(999, 1)];
+  const worth = [
+    {}, { waiting: 1 }, { waiting: 3 }, { failing: 1 }, { failing: 3 }, { asked: 1 },
+    { asked: 3 }, { resting: 12 }];
+  const ledes = [3, 0].flatMap((today) => ["core", "kelp-bed"].flatMap((name) =>
+    worth.map((each) => [named(name, today, each)])));
+  return {
+    title: counts.map((each) => headOf(grove(each)).title),
+    lede: ledes.map((each) => headOf(grove(each)).lede),
+  };
+}"""
+# The lines each part's least height holds as the page's styles give it with no room kept: its
+# room is set invalid on the part for the reading, so its fallback holds, then given back.
+HELD_LINES = """(ids) => Object.fromEntries(ids.map((id) => {
+  const part = document.getElementById(id);
+  const room = `--room-${id}`;
+  part.style.setProperty(room, "initial");
+  const style = getComputedStyle(part);
+  const lines = parseFloat(style.minBlockSize) / parseFloat(style.lineHeight);
+  part.style.removeProperty(room);
+  return [id, lines];
+}))"""
+# The lines the headline and lede open on and hold, so a browser that breaks their words
+# otherwise doesn't move the page under them: as a part of a line for the hold, and within a
+# pixel for the height laid out, which the page rounds.
+HEAD_LINES = 2
+HELD_WITHIN = 0.01
+LAID_WITHIN = 1
+
+
+@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
+def test_the_opening_words_take_the_lines_the_head_will(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    # A first visit, or one at a width not seen before, keeps no room from the last (each tab
+    # here is a fresh context, holding nothing), so the words the page opens with must take the
+    # lines its headline and lede will, or everything under them moves as the feeds arrive.
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", size, "light")
+    try:
+
+        def read_live(page: Page) -> None:
+            says_it_stands(page, "live")
+            expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+            lede = page.locator("#lede")
+            expect(lede, "the lede never said the failing change").to_contain_text(FAILING)
+
+        opened.first(read_live)
+        page = opened.page
+        held = page.evaluate(HELD_LINES, ["title", "lede"])
+        assert all(abs(lines - HEAD_LINES) < HELD_WITHIN for lines in held.values()), (
+            f"at {size} the head holds {held} lines, not {HEAD_LINES}"
+        )
+        forms = page.evaluate(HEAD_FORMS)
+        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], forms])
+        for part, said in heights.items():
+            # The words themselves take the lines, for a browser the box doesn't reach.
+            bare = {words: px for words, px in said["bare"].items() if px != said["opening"]}
+            assert not bare, f"at {size} the {part}'s words alone take {bare} px, not two lines"
+            assert abs(said["opening"] - HEAD_LINES * said["line"]) < LAID_WITHIN, (
+                f"at {size} the {part} opens {said['opening']} px, not {HEAD_LINES} lines"
+            )
+            assert said["live"] == said["opening"], (
+                f"at {size} the live {part} is {said['live']} px, not {said['opening']}"
+            )
+            grew = {
+                words: px
+                for words, px in zip(forms[part], said["forms"], strict=True)
+                if px != said["opening"]
+            }
+            assert not grew, f"at {size} these {part} forms leave {said['opening']} px: {grew}"
+    finally:
+        opened.close()
+
+
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
@@ -1003,9 +1107,35 @@ def test_a_phone_reads_every_word_code_draws(
         assert said["small"] == [], f"Code drew words under {LEAST_PX} px at a phone: {said}"
         assert said["placeholder"] == said["muted"], f"the find's words weren't muted: {said}"
         assert said["opacity"] == "1", f"the find's words were faded below muted: {said}"
-        named = opened.page.evaluate(SPILT, LONG_NAME)
-        assert named["stands"] > 0, "Code drew no stand in its grove at a phone"
-        assert named["spilt"] == [], f"a long name spilt past its stand at a phone: {named}"
+    finally:
+        opened.close()
+
+
+@pytest.mark.usefixtures("code_whole")
+@pytest.mark.parametrize("size", SIZES)
+def test_a_name_stays_inside_its_stand_at_every_width(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    """No name spills past its stand, however long, and one that fits a phone keeps one line.
+
+    A name wraps at its dots and dashes, and one with neither breaks wherever it must
+    only when it is wider than the room it has, so it is never cut and never spills.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", size, LOOKS[0])
+    try:
+        says_it_stands(opened.page, "live")
+        named = opened.page.locator(".grove .stand .nm").first
+        expect(named, "Code drew no stand's name in its grove").to_be_visible(timeout=PACE_MS)
+        opened.page.evaluate("document.fonts.ready.then(() => true)")
+        for name in (LONG_NAME, WIDER_THAN_A_PHONE):
+            said = opened.page.evaluate(SPILT, name)
+            assert said["stands"] > 0, f"Code drew no stand in its grove at {size}"
+            assert said["named"] == said["stands"], f"a stand drew no name at {size}: {said}"
+            assert said["spilt"] == [], f"{name} spilt past its stand at {size}: {said}"
+        if size == SIZES[0]:
+            said = opened.page.evaluate(SPILT, LONG_NAME)
+            assert said["lines"] == 1, f"{LONG_NAME} broke though a phone has room: {said}"
     finally:
         opened.close()
 
@@ -1013,25 +1143,68 @@ def test_a_phone_reads_every_word_code_draws(
 # The longest repository name on Joel's machine with no dot or dash to wrap
 # at, which at 12 px drew wider than a phone's stand of four to a row.
 LONG_NAME = "infrastructure"
+# A name with nowhere to wrap that is wider than a phone, so no stand can
+# hold it on one line and only breaking it keeps it inside.
+WIDER_THAN_A_PHONE = LONG_NAME * 6
 
-# Each stand's name, given `name`, drawn past the stand it names.
+# Each stand's name set to `name`, then how many stands and names there are,
+# each name drawn past its stand, and the most lines any name took.
 SPILT = """(name) => {
   const spilt = [];
   const stands = document.querySelectorAll(".grove .stand");
+  let named = 0;
+  let lines = 0;
   for (const stand of stands) {
-    const named = stand.querySelector(".nm");
-    if (!named) continue;
-    named.textContent = name;
+    const nm = stand.querySelector(".nm");
+    if (!nm) continue;
+    named += 1;
+    nm.textContent = name;
     const words = document.createRange();
-    words.selectNodeContents(named);
+    words.selectNodeContents(nm);
     const drawn = words.getBoundingClientRect();
+    const tops = new Set([...words.getClientRects()].map((line) => Math.round(line.top)));
+    lines = Math.max(lines, tops.size);
     const room = stand.getBoundingClientRect();
     if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
       spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
     }
   }
-  return { stands: stands.length, spilt };
+  return { stands: stands.length, named, lines, spilt };
 }"""
+
+
+# The find's slant and ink, typed and as its placeholder.
+SLANTS = """() => {
+  const find = document.querySelector("#find");
+  const typed = getComputedStyle(find);
+  const said = getComputedStyle(find, "::placeholder");
+  return { typed: typed.fontStyle, said: said.fontStyle, ink: typed.color, saidInk: said.color };
+}"""
+
+
+@pytest.mark.usefixtures("code_whole")
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_sets_the_finds_placeholder_upright_beside_its_italic_words(
+    browser: Browser, code_served: Served, look: str
+) -> None:
+    """Under more contrast the placeholder is drawn in the text's ink, so only a slant tells it.
+
+    The kit slants a raised placeholder, which on Code's italic find would read as typed
+    words; without more contrast the placeholder keeps its field's slant and is told by ink.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", SIZES[1], look)
+    try:
+        says_it_stands(opened.page, "live")
+        said = opened.page.evaluate(SLANTS)
+        assert said["typed"] == "italic", f"Code's find no longer types in italic: {said}"
+        assert said["said"] == said["typed"], f"the placeholder left its field's slant: {said}"
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(SLANTS)
+        assert said["saidInk"] == said["ink"], f"more contrast left the placeholder faint: {said}"
+        assert said["said"] == "normal", f"the placeholder read as typed words: {said}"
+    finally:
+        opened.close()
 
 
 @pytest.mark.usefixtures("code_whole")

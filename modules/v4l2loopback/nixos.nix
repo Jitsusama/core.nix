@@ -45,8 +45,11 @@ in
             options = {
               file = lib.mkOption {
                 # One plain name, never a path, and never hidden, since the
-                # shell and the light skip a dotted one.
-                type = lib.types.strMatching "[^./][^/]*";
+                # shell and the light skip a dotted one. Its claim in
+                # .claimed/ is a tmpfiles line, which nixpkgs quotes with no
+                # escaping and tmpfiles reads %s in, so a quote, a backslash,
+                # a % or a line end would claim some other name.
+                type = lib.types.strMatching "[^./'\\%\n][^/'\\%\n]*";
                 default = name;
                 defaultText = lib.literalMD "the camera's name in `holders`";
                 example = "MX Brio 705 for Business";
@@ -97,12 +100,26 @@ in
                 '';
               };
               ignoreUnits = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
+                # Only a service or a scope holds processes of its own, so a
+                # slice, or anything else, is refused here rather than
+                # quietly leaving nobody out. A person's manager, a session's
+                # scope and init.scope are refused here too, as the watch
+                # refuses them, so a machine that names one never builds.
+                type = lib.types.listOf (
+                  lib.types.addCheck (lib.types.strMatching "[^/]+\\.(service|scope)") (
+                    unit: builtins.match "(user@|session-).*|init\\.scope" unit == null
+                  )
+                );
                 default = [ ];
                 description = ''
-                  Units whose processes are left out, such as the relay's that
-                  fills the camera. By unit rather than by name, since a
-                  program can take any name but can't join a unit.
+                  System services or scopes whose processes are left out,
+                  such as the relay's that fills the camera. By unit rather
+                  than by name, since a program can take any name but can't
+                  join a system unit; a person's own unit of the same name
+                  doesn't count, nor does a slice. A person's manager
+                  (user@UID.service), a session's scope and init.scope hold
+                  everything their people run, so they're refused here, as
+                  the watch refuses them.
                 '';
               };
             };
@@ -139,13 +156,33 @@ in
     # The files' folder lasts the boot, so a shell watching it keeps its
     # watch however often a camera's service starts again. USB cameras'
     # holders (../usb-camera-holders) share it, so it's set by name, which
-    # the two modules' settings merge on.
+    # the two modules' settings merge on. Each loopback's file name is
+    # claimed in .claimed/ from boot, whether or not its camera is there
+    # yet, so a USB camera called the same, as a second camera of the model
+    # a relay shares, writes beside it rather than over it.
     systemd.tmpfiles.settings = lib.mkIf (cfg.holders != { }) {
-      camera-holders.${holdersDir}.d = {
-        mode = "0755";
-        user = "root";
-        group = "root";
-      };
+      camera-holders = {
+        ${holdersDir}.d = {
+          mode = "0755";
+          user = "root";
+          group = "root";
+        };
+        "${holdersDir}/.claimed".d = {
+          mode = "0755";
+          user = "root";
+          group = "root";
+        };
+      }
+      // lib.mapAttrs' (
+        _: camera:
+        lib.nameValuePair "${holdersDir}/.claimed/${camera.file}" {
+          f = {
+            mode = "0644";
+            user = "root";
+            group = "root";
+          };
+        }
+      ) cfg.holders;
     };
 
     systemd.services = lib.mapAttrs' (

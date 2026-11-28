@@ -1186,6 +1186,41 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   and no newline, so the line runs into the next one. Upstream's main still
   prints it.
 
+### WebGPU's Checkerboard
+
+On Mesa 26.3.0 every WebGPU canvas in Chrome of most sizes showed as a
+checkerboard of misplaced tiles, as did pages built on it, such as a globe
+drawn with WebGPU. Chrome draws WebGPU with Dawn on Vulkan (anv) and
+composites the page with Skia on OpenGL (iris), and hands each frame from one
+to the other as a memory object: an opaque file descriptor with no DRM
+modifier, so each driver has to pick the same tiling from the same flags. anv
+asks ISL to prefer 4K alignment for it and gets Tile4. iris means to ask the
+same in `iris_resource_configure_main`, but on Xe2 and later a memory object
+is always `PIPE_BIND_SHARED`, so the branch before it, which only turns
+compression off, matches first, and the `else if` that asks for the
+preference never runs. ISL then takes Tile64 wherever it costs under 10% more
+memory, and iris reads Tile64 from memory anv wrote as Tile4. Mesa's main has
+the same code, and the preference came in with its 9826b6081da.
+
+`programs/iris-memory-objects-prefer-4k-tiles.patch` takes the preference out
+of that chain, and the hardware file gives the graphics drivers Mesa built
+with it. Only Chrome processes started after the switch load that driver.
+`iris-tiles-memory-objects-as-anv-does` reads the patched source, so a Mesa
+that drops the patch fails it, as does an anv that stops preferring 4K tiles
+for an image it exports with no modifier. Chrome's `--enable-features=Vulkan`,
+which has Skia composite on anv too, also avoids it, but changes all of
+Chrome's drawing to get there.
+
+A patched Mesa is one nixpkgs' cache doesn't hold, so each nixpkgs update that
+moves Mesa builds all of it again rather than downloading it. The patch comes
+out, and its check with it, once Mesa's release has the fix. Since patch allows
+some fuzz in the lines around a change, it can keep applying after Mesa moves
+nearby, and one that stops applying says only that Mesa changed the lines it
+touches: read Mesa's `iris_resource_configure_main`, and carry the patch onto
+it unless a memory object's branch there no longer hangs off the shared one.
+The check reads Mesa's own source each run too, and fails once that source
+passes, which is the other sign the fix has landed.
+
 ### Fixed Here Until nixpkgs Fixes It
 
 Packages nixpkgs builds wrong for this laptop are overridden in [the hardware

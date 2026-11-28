@@ -1,10 +1,10 @@
 """The Wi-Fi test's moves area.
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
-another when an account asks, keeping its neighbours, to another when its point warns it drops the
-card, looking first for one it doesn't hear and ending a look under way, free of its point when
-the whole network drops it, and free of both when that other doesn't answer, to another at once
-when its echoes are lost during a call, back to the one it left when the one it was asked to has
+another when an account asks, keeping its neighbours, to another at once when its echoes are lost
+during a call, to another when its point warns it drops the card, looking first for one it doesn't
+hear and ending a look under way, free of its point when the whole network drops it, and free of
+both when that other doesn't answer, back to the one it left when the one it was asked to has
 gone, and free to join any network when it can't get back either; a network of another name
 forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
@@ -46,6 +46,8 @@ WENT_BACK = re.compile(r"within ([0-9]+) ms, so may join any network")
 # Lantern's access points, the first as loud as the second is quiet.
 FIRST = "02:00:00:00:00:00"
 SECOND = "02:00:00:00:05:00"
+# How long after a move wifid gives way to none during a call, as fading::BETWEEN says.
+MOVE_SETTLES = timedelta(seconds=30)
 # When Lantern's second warns it drops a card, in milliseconds: its 50 beacons of 102.4 ms.
 DROPS_IN_MS = 5120
 
@@ -368,12 +370,24 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
         timeout=timedelta(seconds=30),
     )
     machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
-    machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
+    # On trial, not yet shown: the give-way below now and then fails with status 53, or an auth
+    # timeout to the second, as the card offers it a PMKSA kept from a subtest before. Flushed
+    # here, the card keys there afresh, as one new to it would. The flush takes the first's key
+    # too, which ends the card's link there, and wpa_supplicant then joined the second
+    # (2026-11-27), so the card is held back to the first, keying it afresh as well.
+    machine.succeed("wpa_cli -i wlan2 pmksa_flush | grep -qx OK")
+    retry(lambda _: held_to(machine, wifid, FIRST), timeout=timedelta(seconds=60))
+    held = time.monotonic()
     # The looks just asked lost echoes as they took the card off its channel. wifid leaves
     # out a look's first 6 s, a whole look on a real card, but one here ran 16 s on a quiet
     # link (2026-11-23), and its later losses moved the card as the call began. The call
     # waits out its 10 s window, so what moves it is the loss below alone.
     machine.sleep(timedelta(seconds=10))
+    # wifid gives way to none within 30 s of a move (fading::BETWEEN), and holding the card
+    # back was one, so the loss waits out what's left of it.
+    left = MOVE_SETTLES - timedelta(seconds=time.monotonic() - held)
+    machine.sleep(max(timedelta(0), left))  # what's left of MOVE_SETTLES since the hold
     quiet = wifid.journal_now()
     answer = wifid.acting({"act": "calling", "on": True})
     assert answer == {"id": 1, "done": True}, answer
@@ -399,8 +413,11 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
             timeout=timedelta(seconds=30),
         )
     finally:
-        # Its caller undoes the loss and the call, whatever fails here.
-        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{quiet}'"))
+        # Its caller undoes the loss and the call, whatever fails here. Read without failing,
+        # so a journal that can't be read never hides why the give-way failed, though a read
+        # that fails says so beside what it got.
+        status, journal = machine.execute(f"journalctl -o short-precise --after-cursor='{quiet}'")
+        machine.log(journal if status == 0 else f"journalctl exited {status}:\n{journal}")
 
 
 # The eero asked the laptop to move 27 times from 15 to 20 Nov 2026, and wpa_supplicant said what
@@ -720,7 +737,14 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         )
         # The line is said before the hold is let go, so the hold is read until it goes.
         retry(lambda _: held_nowhere(machine), timeout=timedelta(seconds=10))
-        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
+        # The hand-over below proves anything only while the card is still on the second point.
+        # A run slow enough to reach its timer first is said to be, rather than failing later
+        # for want of a line a card already dropped never brings.
+        status = machine.succeed("wpa_cli -i wlan2 status")
+        assert f"bssid={SECOND}" in status.splitlines(), (
+            f"the card left {SECOND} before the hand-over, its {ESS_DROPS_IN_MS} ms timer"
+            f" likely run out first:\n{status}"
+        )
         since = wifid.journal_now()
         wifid.ask("Trust", {"name": "Lantern", "trusted": False})
         unheld = f"wlan2 isn't held to {SECOND}, as it warned it drops the card"
@@ -732,6 +756,24 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
         assert f"keeps to {SECOND}" not in said, f"wifid held the card back to {SECOND}:\n{said}"
         assert held_nowhere(machine), f"handed over again, the card was held to {held_at(machine)}"
+        # A move asked now is readied without holding the card where it is, as the hand-over
+        # wasn't: held to the point that warned it, a move that missed would wait there to be
+        # dropped. Its answer isn't judged, since the point's timer may drop the card mid-move.
+        since = wifid.journal_now()
+        wifid.acting({"act": "roam", "bssid": FIRST})
+        said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
+        assert unheld in said, f"a move was readied holding the card to {SECOND}:\n{said}"
+        # A switch restarts wifid, which takes in each warning still lasting before it hands
+        # the cards over again, so none is held back to a point that warned it.
+        since = wifid.journal_now()
+        machine.succeed("systemctl restart wifid")
+        kept = f"wlan2 keeps off {SECOND} for [0-9]+ more minutes, as it warned before"
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxE '{kept}'",
+            timeout=timedelta(seconds=10),
+        )
+        mode = machine.succeed("stat -c %a /run/wifid/kept").strip()
+        assert mode == "700", f"the points the card was warned by were readable past wifid: {mode}"
     finally:
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
         machine.succeed("systemctl stop lantern-two")

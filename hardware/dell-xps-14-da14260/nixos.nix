@@ -31,6 +31,19 @@ let
 
   npuCompiler = pkgs.callPackage ./programs/npu-compiler.nix { };
 
+  # Chrome composites a WebGPU canvas through iris from memory anv drew it
+  # in, and on Xe2 and later iris reads that memory with a different tiling
+  # from the one anv wrote, so the canvas shows as a checkerboard
+  # (iris-memory-objects-prefer-4k-tiles.patch). nixpkgs' cache holds no
+  # Mesa with it, so each update that moves Mesa builds it again. Take the
+  # patch out, with its check, once Mesa's release has the fix. A patch that
+  # stops applying only says Mesa changed the lines it touches: read its
+  # iris_resource_configure_main, and carry the patch onto the new lines
+  # unless a memory object's branch there no longer hangs off the shared one.
+  mesa = pkgs.mesa.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./programs/iris-memory-objects-prefer-4k-tiles.patch ];
+  });
+
   # Intel's microcode release of 10 November takes this chip (06-cc-02) from
   # 0x11c to 0x11d "for functional issues". Its errata (Core Ultra Series 3
   # Specification Update, PTL039) name a hang when several P-cores leave a
@@ -311,10 +324,12 @@ in
     "processor_thermal_device_pci"
   ];
 
-  # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
-  # Level Zero for compute, all on the Arc GPU; and the NPU's compiler, below.
+  # Mesa with iris's tiling fixed, above; video decoding and encoding through
+  # VA-API and oneVPL, and OpenCL and Level Zero for compute, all on the Arc
+  # GPU; and the NPU's compiler, below.
   hardware.graphics = {
     enable = true;
+    package = mesa;
     extraPackages = [
       pkgs.intel-media-driver
       pkgs.vpl-gpu-rt

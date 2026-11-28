@@ -1,4 +1,4 @@
-//! Asking the running shell what the launcher shows, and to do what it
+//! Asking the running desktop what the launcher shows, and to do what it
 //! offers, through Quickshell's `qs ipc call launcher show`, `names` and
 //! `doing`, as pi-ask's tool asks it for the catalogue.
 
@@ -13,14 +13,14 @@ use serde_json::Value;
 /// letter no name holds.
 pub const STEP: &str = "\u{203a}";
 
-/// How long the shell has to answer before it's taken as silent: a walk
+/// How long the desktop has to answer before it's taken as silent: a walk
 /// of a place takes milliseconds, and qs itself a hundred or so.
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// How often a call still running is looked at while it's waited for.
 const LOOK_AGAIN: Duration = Duration::from_millis(10);
 
-/// What the shell answered.
+/// What the desktop answered.
 #[derive(Debug, PartialEq)]
 pub enum Answer {
     /// What a place or a row shows, as launcher/Showing.js shapes it, or
@@ -39,7 +39,7 @@ pub enum Answer {
 }
 
 impl Answer {
-    /// Whether the shell said what it shows, or looked among, is still
+    /// Whether the desktop said what it shows, or looked among, is still
     /// being read.
     fn reading(&self) -> bool {
         match self {
@@ -61,10 +61,10 @@ const SETTLING: Duration = Duration::from_secs(10);
 /// How long between asking again while it settles.
 const ASK_AGAIN: Duration = Duration::from_millis(150);
 
-/// Asks as `show` does, again while the shell says what it shows is still
+/// Asks as `show` does, again while the desktop says what it shows is still
 /// being read (`reading`, a provider's daemon not yet answered), until it's
 /// read or `SETTLING` has passed, when it says what it has. A fact that's
-/// simply unknown never waits, since only the shell knows whether it's coming,
+/// simply unknown never waits, since only the desktop knows whether it's coming,
 /// and a step missed among rows still being read is asked again the same way.
 pub fn settled(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
     let began = Instant::now();
@@ -77,29 +77,29 @@ pub fn settled(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, Stri
     }
 }
 
-/// Whether the shell said what it shows is still being read.
+/// Whether the desktop said what it shows is still being read.
 pub fn still_reading(shown: &Value) -> bool {
     shown.get("reading").and_then(Value::as_bool) == Some(true)
 }
 
-/// Asks the shell through `qs` what the steps show, with each row's drawer
-/// where `drawers` asks, since the shell builds them only then. An error is
-/// the shell not answering, with what qs said where it said anything.
+/// Asks the desktop through `qs` what the steps show, with each row's drawer
+/// where `drawers` asks, since the desktop builds them only then. An error is
+/// the desktop not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
     call(qs, if drawers { "drawers" } else { "show" }, &path(steps))
 }
 
-/// Asks the shell what the steps hold for their names alone, as completion
+/// Asks the desktop what the steps hold for their names alone, as completion
 /// wants them, so nothing is read for figures a Tab never shows.
 pub fn names(qs: &str, steps: &[String]) -> Result<Answer, String> {
     call(qs, "names", &path(steps))
 }
 
-/// Asks the shell through `qs` to do what the steps name, with the words
+/// Asks the desktop through `qs` to do what the steps name, with the words
 /// an act asks for, and past its question once the terminal's sure. It
 /// answers with what it asks first (`asks`, with the steady ids of the
 /// rows it asked about, `path`), the words an act takes (`takes`), or that
-/// it's done. Given a `path`, the shell walks those ids rather than the
+/// it's done. Given a `path`, the desktop walks those ids rather than the
 /// names, so a y does the row it was asked about even where rows moved
 /// since, or nothing.
 pub fn doing(
@@ -169,7 +169,7 @@ fn read_apart(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String
     })
 }
 
-/// The path the shell is asked, each step after the mark that joins them:
+/// The path the desktop is asked, each step after the mark that joins them:
 /// qs takes no empty argument, so home is the mark alone.
 pub fn path(steps: &[String]) -> String {
     if steps.is_empty() {
@@ -183,9 +183,9 @@ pub fn path(steps: &[String]) -> String {
     path
 }
 
-/// What the shell's printed answer says, or None where it isn't one:
+/// What the desktop's printed answer says, or None where it isn't one:
 /// Quickshell's qs prints a failed call's error on stdout, in colour, and
-/// still exits 0, so anything that isn't a JSON object is the shell not
+/// still exits 0, so anything that isn't a JSON object is the desktop not
 /// answering.
 pub fn answer_of(printed: &str) -> Option<Answer> {
     let value: Value = serde_json::from_str(printed.trim()).ok()?;
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn a_place_is_still_reading_only_where_the_shell_says_so() {
+    fn a_place_is_still_reading_only_where_the_desktop_says_so() {
         let read = serde_json::json!({"reading": false,
             "rows": [{"name": "Disk", "side": null}]});
         assert!(!still_reading(&read));
@@ -370,7 +370,7 @@ mod tests {
 }
 
 /// Stand-ins for qs, each a script giving one answer whatever it's asked,
-/// so what the program does with an answer is tested without a shell.
+/// so what the program does with an answer is tested without a desktop.
 #[cfg(test)]
 pub mod stand_in {
     use std::os::unix::fs::PermissionsExt;
@@ -409,7 +409,7 @@ pub mod stand_in {
         ("done", r#"{"done":true,"in":["Programs","Godwit"]}"#),
         (
             "strange",
-            r#"{"withheld":"a word from a newer shell","in":["Asks"]}"#,
+            r#"{"withheld":"a word from a newer desktop","in":["Asks"]}"#,
         ),
     ];
 

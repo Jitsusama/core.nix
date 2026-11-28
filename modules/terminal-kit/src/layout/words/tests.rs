@@ -115,6 +115,18 @@ fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
 }
 
 #[test]
+fn items_sharing_a_hung_first_line_fill_that_line_s_room() {
+    // The first line holds 11 cells and the lines under it 9, so both
+    // items fit the first, where the hang's measure would send the
+    // second down.
+    assert_eq!(
+        hanging("aaaa \u{b7} bbbb", 0, Room::Cells(11)),
+        ["aaaa \u{b7} bbbb"],
+        "the items on the first line were measured to the hang's room"
+    );
+}
+
+#[test]
 fn an_item_too_long_for_a_line_keeps_the_dot_before_it() {
     // The second item breaks across lines, its first words sharing the
     // first line after the dot that parts it from the item before.
@@ -151,6 +163,31 @@ fn a_paragraph_keeps_its_inset_on_every_line() {
     assert_eq!(
         paragraph("one two three four", 4, Room::Unbounded),
         ["    one two three four"]
+    );
+}
+
+#[test]
+fn hung_words_wrap_at_the_room_the_lead_leaves_to_the_cell() {
+    // After a lead of 2, 17 cells leave 15. The first line's words fill
+    // those 15 exactly, so a room one cell narrower parts them. The
+    // second's with the next word come to 16, so a room one cell wider
+    // takes that word up. Each room draws its own lines, so a wrap off by
+    // one cell either way can't pass.
+    let said = "a card failed a power change and won't wake until the next boot";
+    assert_eq!(
+        hung(said, 2, Room::Cells(17)),
+        "a card failed a\n  power change\n  and won't wake\n  until the\n  next boot",
+        "hung words didn't wrap at exactly the room the lead leaves"
+    );
+    assert_eq!(
+        hung(said, 2, Room::Cells(16)),
+        "a card failed\n  a power change\n  and won't wake\n  until the\n  next boot",
+        "hung words ran a cell past the room the lead leaves"
+    );
+    assert_eq!(
+        hung(said, 2, Room::Cells(18)),
+        "a card failed a\n  power change and\n  won't wake until\n  the next boot",
+        "hung words wrapped a cell short of the room the lead leaves"
     );
 }
 

@@ -67,7 +67,11 @@ for origin in "$@"; do
       awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}') || device="no route"
   fi
   status=0
-  timed=$(curl --silent --output /dev/null --max-time "${WAIT}" \
+  # Only the head is asked, so a slow page body never ends a fast setup as
+  # a failed sample, and nothing more than a head comes every ten minutes.
+  # Each time counts from the start, the lookup and connection included,
+  # as a session waits on them too.
+  timed=$(curl --silent --head --output /dev/null --max-time "${WAIT}" \
     --write-out '%{time_connect} %{time_appconnect} %{time_starttransfer} %{http_code}' \
     "https://${origin}/") || status=$?
   if ((status == 0)); then

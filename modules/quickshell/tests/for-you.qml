@@ -1,8 +1,9 @@
 // How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
-// modules/quickshell/launcher/ForYou.js, LookForm.js, Looks.js and
-// Order.js beside this file and runs `qml -platform offscreen for-you.qml`. Each case
-// is one of the design's rules (VKCF3Z, 2026-11-08): what blocks a session
+// modules/quickshell/launcher/ForYou.js, ForYouDrawers.js, LookForm.js,
+// Looks.js and Order.js beside this file and runs
+// `qml -platform offscreen for-you.qml`. Each case is one of the design's
+// rules (VKCF3Z, 2026-11-08): what blocks a session
 // counts most, then what's due, what he can do now, its kind and how long it
 // has waited; the heaviest leads and ties keep the order they came in; a
 // to-do, or a look or a thing to try that blocks or is due, needs him now,
@@ -11,14 +12,17 @@
 // into what waits and what's history, a file that can't be read left out,
 // only one that changed parsed again, and one waiting three days gone quiet;
 // what other sources give For You, as Passwords' one to-do, is gathered into
-// what waits and what's done, and weighed beside the rest. How each stands
-// under its cell is for-you-cells.qml's. Long because a look's cases, its
+// what waits and what's done, and weighed beside the rest; and Later's
+// drawer says what each waits for and how long, and History's how many each
+// source keeps. How each stands under its cell is for-you-cells.qml's.
+// Long because a look's cases, its
 // second form's and its answers' among them, read the same records the
 // weighing cases build, in the one run of the files its check copies;
 // LookForm.js's own cases are the first to go to a file of their own if
 // it grows past this.
 import QtQuick
 import "ForYou.js" as ForYou
+import "ForYouDrawers.js" as Drawers
 import "LookForm.js" as LookForm
 import "Looks.js" as Looks
 
@@ -850,6 +854,48 @@ QtObject {
         expect("nothing to do, the heaviest look", ForYou.heaviest([], "Read the plan"),
             "Read the plan");
         expect("only things to try, none", ForYou.heaviest([], undefined), "");
+
+        // Later's and History's drawers, each a place's, saying what their
+        // row can't: Later's what each item waits for by its whole name,
+        // since its note names them and says no more, and History's how
+        // many it keeps of each source, since its side counts them all
+        // (docs/design.md, Every Row Says a Little More; seen with none on
+        // 27 Nov).
+        const waitingLater = [
+            { name: "End or restart session QTL7G8", waits: "session ended",
+                waited: "waiting 5 h" },
+            { name: "Plug in the dock", waits: "once the dock is seen", waited: "" },
+            { name: "Read the plan", waits: "", waited: "waiting 2 d" },
+            { name: "Says nothing", waits: "", waited: "" }
+        ];
+        expect("Later's drawer: what each waits for and how long, by its whole name",
+            Drawers.laterDrawer("Later", waitingLater, "place"), { eyebrow: "place", title: "Later",
+                facts: [
+                    { label: "End or restart session QTL7G8",
+                        value: "session ended \u00b7 waiting 5 h" },
+                    { label: "Plug in the dock", value: "once the dock is seen" },
+                    { label: "Read the plan", value: "waiting 2 d" }
+                ] });
+        expect("none saying what it waits for or how long, none of Later's own",
+            Drawers.laterDrawer("Later", waitingLater.slice(3), "place"), null);
+        expect("Later holding none, none", Drawers.laterDrawer("Later", undefined, "place"),
+            null);
+        const keptOf = [{ name: "To-Dos", count: 3 }, { name: "Looks", count: 0 },
+            { name: "Mail", count: 12 }, { name: "Desktop", count: 862 }];
+        expect("History's drawer: how many of each source, one keeping none left out",
+            Drawers.historyDrawer("History", keptOf, "place"), { eyebrow: "place",
+                title: "History", facts: [{ label: "To-Dos", value: "3" },
+                    { label: "Mail", value: "12" }, { label: "Desktop", value: "862" }] });
+        expect("History keeping none, none", Drawers.historyDrawer("History",
+            [{ name: "Mail", count: 0 }, { name: "Slack", count: NaN }], "place"), null);
+        // Two sources one word names, as Slack's own and its notices, are
+        // one fact where the first stands, and one named nothing says
+        // nothing.
+        expect("History's sources of one name, one fact; one named nothing, left out",
+            Drawers.historyDrawer("History", [{ name: "Slack", count: 2 },
+                { name: "Mail", count: 1 }, { name: "", count: 4 }, { name: "Slack", count: 5 }],
+            "place"), { eyebrow: "place", title: "History",
+                facts: [{ label: "Slack", value: "7" }, { label: "Mail", value: "1" }] });
 
         if (failures.length > 0) {
             for (const failure of failures)

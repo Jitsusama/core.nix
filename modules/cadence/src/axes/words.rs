@@ -55,6 +55,15 @@ impl Words {
     }
 }
 
+/// The launcher's own words in tests/words.json, which become its place
+/// files with Spec.qml and Asked.qml; the-daemons-test-the-launchers-words
+/// keeps them the same from then. Every test that words rows reads these.
+#[cfg(test)]
+pub fn tested() -> Words {
+    let text = include_str!("../../tests/words.json");
+    Words::new(&serde_json::from_str(text).expect("the test's words are JSON"))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

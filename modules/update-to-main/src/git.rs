@@ -4,6 +4,7 @@
 //! repository is one; each input that follows its own main is another.
 
 use crate::config::{Config, Follow, Signers};
+use crate::hosted;
 use crate::run::{self, Failure};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,6 +77,11 @@ impl<'a> Repo<'a> {
     /// The repository of the input the flake calls `name`.
     pub fn followed(config: &'a Config, name: &str, follow: &'a Follow) -> Repo<'a> {
         let folder = config.follows_folder();
+        // An input of an input is named by its path, core/mycelium, and its
+        // copy sits at that path, in a folder named for its parent beside
+        // the parent's own copy (core.git). A copy's path goes into a
+        // git+file URL, which Nix decodes, so an escape such as %2F in a
+        // file's name would lead Nix to a copy that isn't there.
         Repo {
             config,
             url: &follow.repository,
@@ -122,6 +128,16 @@ pub fn has(repo: &Repo, commit: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Whether `commit`'s tree has a file at `path`, told apart from a
+/// commit git can't read by asking `has` first.
+pub fn holds_file(repo: &Repo, commit: &str, path: &str) -> bool {
+    git(repo)
+        .args(["cat-file", "-e", &format!("{commit}:{path}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Fetches main into root's copy, whole, and gives its head.
 pub fn fetch(repo: &Repo) -> Result<String, Failure> {
     make_copy(repo)?;
@@ -138,6 +154,30 @@ pub fn fetch(repo: &Repo) -> Result<String, Failure> {
         &format!("reading {}", repo.called),
         ["rev-parse", "--verify", MAIN],
     )
+}
+
+/// Fetches `commit` into root's copy by its id, with its history. A lock
+/// can pin an input at a commit off its main, as one taken from a branch
+/// does, which fetching main never brings, and without it whether the
+/// input builds a held commit can't be told. Git's protocol serves a
+/// commit asked for by its whole id; anything else would be read as a
+/// ref, or a refspec that writes one, so nothing else is asked for.
+pub fn fetch_commit(repo: &Repo, commit: &str) -> Result<(), Failure> {
+    if !hosted::is_commit(commit) {
+        return Err(Failure::new(format!(
+            "what the build reads of {} isn't a whole commit id, so it wasn't fetched",
+            repo.called
+        )));
+    }
+    make_copy(repo)?;
+    retried(&FETCH_AGAIN, thread::sleep, || {
+        run::output(
+            git(repo),
+            &format!("fetching {} for {}", short(commit), repo.called),
+            ["fetch", "--quiet", "--no-tags", repo.url, commit],
+        )
+    })?;
+    Ok(())
 }
 
 /// What `attempt` gives, tried again after each of `waits` while it fails,
@@ -166,7 +206,11 @@ pub fn descends(repo: &Repo, older: &str, newer: &str) -> Result<bool, Failure> 
     if !has(repo, older) {
         return Ok(false);
     }
+    // No commit graph is read: a hosted copy borrows a checkout's objects,
+    // where its account could write a graph naming parents of its own, and
+    // git trusts a graph's parents without reading the commits they name.
     let status = git(repo)
+        .args(["-c", "core.commitGraph=false"])
         .args(["merge-base", "--is-ancestor", older, newer])
         .stderr(std::process::Stdio::null())
         .status()

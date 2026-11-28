@@ -57,7 +57,7 @@
       touch $out
     '';
 
-  # launcher's tests run as it builds: what the shell shows is laid out to
+  # launcher's tests run as it builds: what the desktop shows is laid out to
   # the terminal's width, a count and then a side giving way by whole
   # items and a name cut only at a word, inked only where the terminal
   # takes colour, and a miss said in the launcher's words.

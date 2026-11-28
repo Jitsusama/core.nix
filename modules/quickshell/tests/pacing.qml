@@ -6,8 +6,9 @@
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's
-// act is said shown by the first frame begun after its refresh; and an
-// opening says its parts slowest first, and weighs the foot's verbs only
+// act is said shown by the first frame begun after its refresh, and what
+// waits on a frame runs each in turn, one that throws said and the rest
+// run still; and an opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
 // work it ran into, each frame's rows laid out and its sync apart, and its
@@ -32,6 +33,7 @@ import "Makings.js" as Makings
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
 import "Spots.js" as Spots
+import "Thrown.js" as Thrown
 import "Thread.js" as Thread
 import "Wanted.js" as Wanted
 
@@ -289,6 +291,31 @@ QtObject {
             Collector.standingSaid(0.4, stoodAtAsk), "");
         check(failures, "nor does one with no standing read",
             Collector.standingSaid(30, null) + Collector.standingSaid(30, {}), "");
+        // Past the rooms, what the sweeps kept since set the collector.
+        const stoodPastRooms = Object.assign({}, stoodAtAsk,
+            { roomsCapAt: 310.2, collectsBy: "kept" });
+        check(failures, "a stall says where the rooms cap the chunks and what set the collector",
+            Collector.standingSaid(30, stoodPastRooms),
+            "; at the ask, chunks 300 of 322 MB (the rooms 310 MB, set by the rooms and what"
+            + " the sweeps kept since) and outside 27 of 59 MB");
+        check(failures, "Qt's own limit is said by its name",
+            Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "sweep" })),
+            " (the rooms 310 MB, set by Qt's own limit)");
+        check(failures, "as are the room and the rooms",
+            Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "room" }))
+            + Collector.limitSaid(Object.assign({}, stoodPastRooms, { collectsBy: "rooms" })),
+            " (the rooms 310 MB, set by the room past what they held)"
+            + " (the rooms 310 MB, set by the rooms)");
+        check(failures, "a heap with no room asked says so, not that it has none left",
+            Collector.limitSaid({ roomsCapAt: -1, collectsBy: "sweep" }),
+            " (no room asked, set by Qt's own limit)");
+        check(failures, "a limit it doesn't know is left unsaid, the cap kept",
+            Collector.limitSaid({ roomsCapAt: 310.2, collectsBy: "later" }),
+            " (the rooms 310 MB)");
+        check(failures, "and a cap that isn't a number says nothing",
+            Collector.limitSaid({ roomsCapAt: NaN, collectsBy: "kept" })
+            + Collector.limitSaid({ roomsCapAt: "310", collectsBy: "kept" })
+            + Collector.limitSaid(null), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, { collected: 5 }), 16, pace).collected, 5);
     }
@@ -317,6 +344,22 @@ QtObject {
             "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
         check(failures, "an opening that never stalled says nothing of it",
             Thread.said(0, { ran: 0, waited: 0 }, "the stall"), "");
+        check(failures, "a frame's drawing is said apart by its render thread's times",
+            Thread.drawingApart({ syncing: 3, rendering: 117, heard: 1 }),
+            " (3 syncing, 117 rendering, 1 before the shell heard it swapped)");
+        check(failures, "a frame whose times weren't read says nothing of them",
+            Thread.drawingApart(null), "");
+        check(failures, "nor does a split without its sync",
+            Thread.drawingApart({ rendering: 117, heard: 1 }), "");
+        check(failures, "a 0 ms sync is said",
+            Thread.drawingApart({ syncing: 0, rendering: 117, heard: 1 }),
+            " (0 syncing, 117 rendering, 1 before the shell heard it swapped)");
+        check(failures, "an opening drawn in the frame it's sized in is split by that frame",
+            Thread.drawingIsFrame(-1, 1040, 1040), true);
+        check(failures, "one a key filled while its first frame drew, sized a frame on, isn't",
+            Thread.drawingIsFrame(-1, 1040, 1057), false);
+        check(failures, "nor is one whose first frame swapped before",
+            Thread.drawingIsFrame(1052, 1040, 1040), false);
         const paging = [[16, { ran: 5, waited: 1, faulted: 3 }],
             [132, { ran: 20, waited: 2, faulted: 1206 }]];
         const pagedStall = paging.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,
@@ -774,6 +817,44 @@ QtObject {
             names(swapped.acts.waiting), "wifi");
         check(failures, "which the next frame shows",
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
+        // What waited on the frame runs each in turn, one that throws said
+        // in a line, its kind and place but never its message, which could
+        // carry what a source served, and the rest run still, as Quests'
+        // rows made ahead, queued after it, clear their wait only as they run.
+        const ran = [];
+        const said = [];
+        Thrown.runEach([() => ran.push("first"), () => {
+            throw new TypeError("joel's secret\nits second line");
+        }, () => ran.push("last")], line => said.push(line));
+        check(failures, "one that throws stops none after it", ran.join(" "), "first last");
+        check(failures, "and is said once, in one line, by its kind and where it was thrown",
+            [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
+                said[0]?.includes("secret")].join(), "1,true,false");
+        // A value thrown with no prototype to say it by is said by its type
+        // alone.
+        const unsaid = [];
+        Thrown.runEach([() => {
+            throw Object.create(null);
+        }, () => ran.push("after")], line => unsaid.push(line));
+        check(failures, "one thrown with no prototype is said by its type, the rest run still",
+            [unsaid.join(), ran[ran.length - 1]].join(" / "),
+            "Error: object thrown / after");
+    }
+
+    // Keys refreshed into one frame are all shown by it, the newest last,
+    // since Launcher.qml's keyDrawn says a frame by its newest key: two of
+    // the launcher's own arrows held in one frame still say the arrow
+    // pressed last, whole, as nobody wrote it (#6934's round).
+    function framingKeys(failures) {
+        const down = { text: "\u2193", own: true };
+        const up = { text: "\u2191", own: true };
+        const refreshed = Pacing.refreshedActs(Pacing.unframed(), [down, up]);
+        const shown = Pacing.frameSwapped(Pacing.frameBegun(refreshed)).shown;
+        check(failures, "one frame shows both keys refreshed into it",
+            shown.map(key => key.text).join(" "), "\u2193 \u2191");
+        const newest = shown[shown.length - 1];
+        check(failures, "and the newest, said by its frame, says its arrow whole",
+            Presented.timedShown(newest.text, "", newest.own), '"\u2191"');
     }
 
     // A daemon's changes are timed from the first line the draw shows,
@@ -1950,6 +2031,7 @@ QtObject {
 
         costing(failures);
         framing(failures);
+        framingKeys(failures);
         presenting(failures);
         wanting(failures);
         waking(failures);

@@ -38,6 +38,16 @@ pub const ANSWERED_502_AT_MOST: f64 = 50.0;
 /// How many of each count's causes the card shows behind it.
 const CAUSES_SHOWN: usize = 3;
 
+/// What an hour the relay logged nothing in says, as when it is stopped:
+/// it carried nothing, so its asks are settled (owing.rs) rather than held
+/// for a count no one can make.
+pub const QUIET: &str = ": no line from the relay this hour, so it carried nothing";
+
+/// How the relay's line ends where it gave a request back for pi to make
+/// itself, and where it answered pi 502.
+const THEN_DIRECT: &str = "pi goes directly";
+const THEN_502: &str = "pi is answered 502";
+
 /// The most of a cause the card and the keeper's ask carry. A cause is
 /// the error text another machine sent, so it is cut short rather than
 /// carried whole into a request an agent reads.
@@ -116,9 +126,7 @@ struct Tally {
 pub fn relay(journal: Option<&str>) -> Vec<Measure> {
     let why = match journal {
         None => ": the relay's journal unread",
-        Some(journal) if journal.trim().is_empty() => {
-            ": no line from the relay this hour, so it carried nothing"
-        }
+        Some(journal) if journal.trim().is_empty() => QUIET,
         Some(_) => "",
     };
     let Some(journal) = journal.filter(|_| why.is_empty()) else {
@@ -245,11 +253,11 @@ fn tallied(journal: &str) -> Tally {
                 });
             *tally.reset_why.entry(cause.to_owned()).or_default() += 1;
         }
-        if let Some(cause) = direct(line) {
+        if let Some(cause) = given(line, THEN_DIRECT) {
             tally.direct += 1;
             *tally.direct_why.entry(cause.to_owned()).or_default() += 1;
         }
-        if let Some((_, cause)) = line.split_once("so pi is answered 502: ") {
+        if let Some(cause) = given(line, THEN_502) {
             tally.answered_502 += 1;
             *tally.answered_why.entry(cause.to_owned()).or_default() += 1;
         }
@@ -270,14 +278,14 @@ fn tallied(journal: &str) -> Tally {
     tally
 }
 
-/// Why a request went back to pi, where the line says it did: the error
-/// after `so pi goes directly: `, or a reset's own error before its `; pi
-/// goes directly`.
-fn direct(line: &str) -> Option<&str> {
-    if let Some((_, cause)) = line.split_once("so pi goes directly: ") {
+/// Why a request went back to pi as `then` says it did, sent direct or
+/// answered 502: the error after `so {then}: `, or a reset's own error
+/// before its `; {then}`, as the relay says a reset's outcome last.
+fn given<'a>(line: &'a str, then: &str) -> Option<&'a str> {
+    if let Some((_, cause)) = line.split_once(&format!("so {then}: ")) {
         return Some(cause);
     }
-    let before = line.strip_suffix("; pi goes directly")?;
+    let before = line.strip_suffix(then)?.strip_suffix("; ")?;
     // A reset's error follows "on it: "; a request no connection would
     // take says why after its connection, which is left out so the same
     // cause groups whichever connection it was.

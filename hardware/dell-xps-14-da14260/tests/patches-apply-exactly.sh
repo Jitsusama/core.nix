@@ -3,14 +3,21 @@
 # offset or fuzz, after every patch the build applies before them. A patch
 # taken from elsewhere onto a kernel that drifted under it can still apply
 # at an offset, or with fuzz, to code it was never tested against, and the
-# build says nothing of it.
-# usage: patches-apply-exactly.sh <source> <patch list> <exact list> <out>
+# build says nothing of it. The files are taken by core's kernel's
+# kernel-source-files.sh, handed in first.
+# usage: patches-apply-exactly.sh <kernel-source-files.sh> <source> <patch list> <exact list> <out>
 set -euo pipefail
+# A failure inside a command substitution, such as one of the library's,
+# stops the check too, rather than passing an empty value along.
+shopt -s inherit_errexit
 
-source=$1
-patches=$2
-exact=$3
-out=$4
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/../../../modules/kernel/tests/kernel-source-files.sh
+source "$1"
+source=$2
+patches=$3
+exact=$4
+out=$5
 
 if ! [ -s "$exact" ]; then
   echo "No patch was given to hold exactly."
@@ -21,34 +28,7 @@ fi
 listed=$(xargs lsdiff --strip=1 --no-filename <"$exact")
 sorted=$(sort -u <<<"$listed")
 mapfile -t files <<<"$sorted"
-# A file some patch creates may be missing from the source: that patch
-# makes it. One the source has too is taken all the same, so a patch that
-# would create a file the kernel now has is named, as the build would
-# refuse it.
-statuses=$(xargs lsdiff --status --strip=1 --no-filename <"$patches")
-created=$(sed -n 's/^+ //p' <<<"$statuses")
-mkdir -p "$out"
-if [ -d "$source" ]; then
-  for file in "${files[@]}"; do
-    if [ -e "$source/$file" ]; then
-      install -D -m 644 "$source/$file" "$out/$file"
-    fi
-  done
-  said=""
-else
-  wanted=()
-  for file in "${files[@]}"; do
-    wanted+=("*/$file")
-  done
-  said=$(tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}" 2>&1) || true
-fi
-for file in "${files[@]}"; do
-  if ! [ -e "$out/$file" ] && ! grep -q -x -F "$file" <<<"$created"; then
-    echo "$file isn't in the kernel's source, and no patch creates it."
-    echo "$said"
-    exit 1
-  fi
-done
+take_kernel_files "$source" "$patches" "$out" "${files[@]}"
 
 only=()
 for file in "${files[@]}"; do
@@ -59,9 +39,7 @@ failed=0
 while IFS= read -r patch; do
   [ -n "$patch" ] || continue
   if grep -q -x -F "$patch" "$exact"; then
-    # Its name as it was written, without the store's hash before it.
-    name=${patch##*/}
-    name=${name#*-}
+    name=$(patch_name "$patch")
     # Applied whole, as the build does, but held to its hunks' own lines.
     said=$(patch -p1 --forward --batch --fuzz=0 <"$patch" 2>&1) || {
       echo "$name no longer applies with no fuzz, after the patches before it:"

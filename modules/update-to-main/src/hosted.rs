@@ -208,42 +208,105 @@ pub fn folder(config: &Config, hosted: &Hosted, commit: &str) -> Option<String> 
         .or_else(|| read::found(config, commit).map(|found| found.folder))
 }
 
-/// Whether `newer` descends from `older`: by root's copy when it holds
-/// `newer`, and otherwise by the host's word when the folder was read from
-/// it with `older` the commit last switched to.
+/// Whether `newer` descends from `older`: by root's copy when it shows
+/// so, by the host's word when the folder was read from it with `older`
+/// the commit last switched to, and otherwise by asking the host.
 pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failure> {
     // A commit descends from itself, as git's merge-base says: main where it
     // was, with a followed input moved on, is that.
     if older == newer {
         return Ok(true);
     }
+    // A copy that can't walk between the two, as one missing history between
+    // commits it holds, settles nothing either, so its error asks the host.
     let main = Repo::main(config);
-    if git::has(&main, newer) {
-        return git::descends(&main, older, newer);
+    let copied = git::has(&main, newer).then(|| git::descends(&main, older, newer));
+    if matches!(copied, Some(Ok(true))) {
+        return Ok(true);
     }
-    match read::found(config, newer) {
-        Some(found) if found.from.as_deref() == Some(older) => Ok(found.descends),
+    // A copy holding both that walked between them and found no way is the
+    // answer, since a commit missing between them fails the walk instead: a
+    // rewritten main is refused, not turned into a failure by a host that
+    // can't be asked.
+    if matches!(copied, Some(Ok(false))) && git::has(&main, older) {
+        return Ok(false);
+    }
+    // With no host to ask, that error is the answer: a no would say main
+    // went another way, when the copy only couldn't tell.
+    let unasked = || match copied {
+        Some(Err(failure)) => Err(failure),
         _ => Ok(false),
+    };
+    if let Some(found) = read::found(config, newer)
+        && found.from.as_deref() == Some(older)
+    {
+        return Ok(found.descends);
     }
+    // The account's checkout holds only part of main's history: a commit
+    // last switched to by a read from the host may never have reached it.
+    // On 26 November one such refused every update, saying a main that
+    // descended from it didn't. So a copy that can't show it asks the host
+    // before refusing, and only a host that says no, or none to ask, does.
+    let Some(hosted) = &config.hosted else {
+        return unasked();
+    };
+    let Some(api) = &hosted.api else {
+        return unasked();
+    };
+    let account = run::account(&hosted.user)?;
+    let token = token(hosted, &account)?;
+    // Main at `newer` holding `older` is `newer` descending from it, asked
+    // as a hold is, so a token that sees nothing is said as that rather
+    // than as the host's word on the two.
+    read::holds(config, api, &token, older, newer)
 }
 
 /// Whether main at `head` holds `commit`: by root's copy when it has
-/// `head`, whose history it then has whole, and otherwise by the host's
-/// word.
+/// both, and otherwise by the host's word. The copy borrows a checkout
+/// that may be shallow, holding only part of main's history, so one with
+/// `head` may still lack `commit`, and that proves nothing: with no host to
+/// ask, it can't be told, which stops the update as any hold nobody can see
+/// does. A checkout fetched whole lacking it shows main doesn't hold it. A copy
+/// with both that can't walk between them asks the host too, where there
+/// is one.
 pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
     let main = Repo::main(config);
-    if git::has(&main, head) {
-        return git::descends(&main, commit, head);
+    let in_copy = git::has(&main, head);
+    if in_copy && git::has(&main, commit) {
+        match git::descends(&main, commit, head) {
+            Err(_) if hosted.api.is_some() => {}
+            said => return said,
+        }
     }
     let Some(api) = &hosted.api else {
+        // A checkout fetched whole holds every commit before a head it has,
+        // so one lacking `commit` shows main doesn't hold it; only a shallow
+        // one, cut off below some commit, can't say.
+        if in_copy && !shallow(hosted)? {
+            return Ok(false);
+        }
         return Err(Failure::new(format!(
             "root's copy hasn't got {}, and no host's API is configured to ask",
-            git::short(head)
+            git::short(if in_copy { commit } else { head })
         )));
     };
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
-    read::descends(config, api, &token, commit, head)
+    read::holds(config, api, &token, commit, head)
+}
+
+/// Whether the checkout holds only part of main's history, cut off below
+/// some commit by a shallow fetch.
+fn shallow(hosted: &Hosted) -> Result<bool, Failure> {
+    let account = run::account(&hosted.user)?;
+    let mut command = run::command_as("git".as_ref(), &account, &hosted.path, &hosted.checkout);
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    let said = run::output(
+        command,
+        "asking whether the checkout is shallow",
+        ["rev-parse", "--is-shallow-repository"],
+    )?;
+    Ok(said != "false")
 }
 
 /// The file at `path` in the folder at `commit`, or none.
@@ -504,19 +567,23 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
     Ok(folder)
 }
 
-/// An input's lock, by its name among the flake's own inputs.
+/// An input's lock, by its name among the flake's own inputs, or by its
+/// path through them, as Nix's `--override-input` takes one: `core/mycelium`
+/// is core's own mycelium. An input that follows another isn't found, since
+/// it has no lock of its own.
 pub fn locked<'a>(lock: &'a Value, name: &str) -> Result<&'a Value, Failure> {
-    let missing = || Failure::new(format!("the flake's lock has no input {name}"));
-    let root = lock["root"].as_str().ok_or_else(missing)?;
-    let node = lock["nodes"][root]["inputs"][name]
-        .as_str()
-        .ok_or_else(missing)?;
-    let locked = &lock["nodes"][node]["locked"];
-    if locked.is_object() {
-        Ok(locked)
-    } else {
-        Err(missing())
+    found(lock, name).ok_or_else(|| Failure::new(format!("the flake's lock has no input {name}")))
+}
+
+/// An input's lock as `locked` finds it, or none where the lock has no
+/// such input.
+pub fn found<'a>(lock: &'a Value, name: &str) -> Option<&'a Value> {
+    let mut node = lock["root"].as_str()?;
+    for own in name.split('/') {
+        node = lock["nodes"][node]["inputs"][own].as_str()?;
     }
+    let locked = &lock["nodes"][node]["locked"];
+    locked.is_object().then_some(locked)
 }
 
 /// Puts an input in the store as the account, by its lock: a path already
@@ -584,7 +651,11 @@ mod tests {
             "root": "root",
             "nodes": {
                 "root": { "inputs": { "private": "private_2", "followed": ["a", "b"] } },
-                "private_2": { "locked": { "type": "git", "url": "https://example.com/p", "rev": "abc" } },
+                "private_2": {
+                    "inputs": { "inner": "inner_3", "along": ["private"] },
+                    "locked": { "type": "git", "url": "https://example.com/p", "rev": "abc" },
+                },
+                "inner_3": { "locked": { "type": "github", "rev": "def" } },
             },
             "version": 7,
         })
@@ -602,8 +673,21 @@ mod tests {
     #[test]
     fn an_input_that_follows_another_or_isnt_there_isnt_found() {
         let lock = lock();
-        assert!(locked(&lock, "followed").is_err());
-        assert!(locked(&lock, "nowhere").is_err());
+        for name in [
+            "followed",
+            "nowhere",
+            "private/along",
+            "private/nowhere",
+            "nowhere/inner",
+        ] {
+            assert!(locked(&lock, name).is_err(), "{name} was found");
+        }
+    }
+
+    #[test]
+    fn an_inputs_own_input_is_found_by_its_path_through_them() {
+        let lock = lock();
+        assert_eq!(locked(&lock, "private/inner").unwrap()["rev"], "def");
     }
 
     #[test]

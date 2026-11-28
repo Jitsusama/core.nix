@@ -33,7 +33,7 @@ pub fn typed(name: &str) -> String {
         .join("-")
 }
 
-/// The rows the shell showed, then a thing's own acts, which a step names
+/// The rows the desktop showed, then a thing's own acts, which a step names
 /// as it names a row, a line each as zsh's `_describe` reads it: the step,
 /// its colons escaped, and what the row says after a colon.
 pub fn for_zsh(shown: &Value) -> String {

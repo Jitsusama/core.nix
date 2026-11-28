@@ -18,7 +18,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
+#include <fcntl.h>
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
@@ -60,15 +62,158 @@ bool expect(const char *what, bool holds, double ago) {
 
 // How long the thread spins, by the monotonic clock, for each reading.
 constexpr double SPUN_MS = 200;
+// How far two reads of one count may differ for being turned into
+// milliseconds two ways, far less than a clock in seconds or a wait read
+// from the run figure would be off by.
+constexpr double ROUNDED_MS = 1;
+// How long a thread beside another on its CPU waits at least, an eighth
+// of the spin where it waits about half, and the most a spin alone may
+// wait for that bound to be told from what other builds made it wait.
+constexpr double TURNS_MS = SPUN_MS / 8;
 
-// Keeps the calling thread busy for SPUN_MS, and gives how much more
-// `read` says after than before.
-double spun(const KeyTimes &times, double (KeyTimes::*read)() const) {
-    const double before = (times.*read)();
-    const double until = monotonicNow() + SPUN_MS;
+// How long a virtual machine's host has taken from a CPU so far, by the
+// kernel's count in /proc/stat (its eighth figure, in clock ticks), or -1
+// where it can't be read, so a failed read is never taken for the count.
+// A spinning thread is neither running nor waiting while it's taken, so
+// the thread's own clocks can't count it.
+double stolenFrom(int cpu) {
+    std::FILE *stat = std::fopen("/proc/stat", "re");
+    if (stat == nullptr)
+        return -1;
+    char name[16];
+    std::snprintf(name, sizeof name, "cpu%d ", cpu);
+    const std::size_t named = std::strlen(name);
+    char line[512];
+    unsigned long long ticks = 0;
+    bool found = false;
+    while (!found && std::fgets(line, sizeof line, stat) != nullptr) {
+        unsigned long long skipped = 0;
+        found = std::strncmp(line, name, named) == 0
+            && std::sscanf(line + named, "%llu %llu %llu %llu %llu %llu %llu %llu", &skipped,
+                           &skipped, &skipped, &skipped, &skipped, &skipped, &skipped, &ticks)
+                == 8;
+    }
+    std::fclose(stat);
+    return found ? static_cast<double>(ticks) * 1000.0 / static_cast<double>(sysconf(_SC_CLK_TCK))
+                 : -1;
+}
+
+// The calling thread's schedstat, read apart from KeyTimes::waited() and
+// for both its first figures: how long the thread has run, the count its
+// CPU clock keeps too, and how long it has waited on a run queue, each in
+// milliseconds, or -1 for both where it can't be read.
+struct Sched {
+    double run;
+    double wait;
+};
+
+Sched schedNow() {
+    const Sched unread{-1, -1};
+    const int file = open("/proc/thread-self/schedstat", O_RDONLY | O_CLOEXEC);
+    if (file < 0)
+        return unread;
+    char text[96];
+    const ssize_t got = read(file, text, sizeof text - 1);
+    close(file);
+    if (got <= 0)
+        return unread;
+    text[got] = '\0';
+    unsigned long long run = 0;
+    unsigned long long wait = 0;
+    if (std::sscanf(text, "%llu %llu", &run, &wait) != 2)
+        return unread;
+    return {static_cast<double>(run) / 1e6, static_cast<double>(wait) / 1e6};
+}
+
+// The calling thread's voluntary context switches so far, one each time
+// it slept, or -1 where they can't be read.
+long voluntarySwitches() {
+    rusage usage{};
+    if (getrusage(RUSAGE_THREAD, &usage) != 0)
+        return -1;
+    return usage.ru_nvcsw;
+}
+
+// What KeyTimes's clocks say at one moment, the thread's schedstat read
+// just before and just after them, and its CPU's stolen count.
+struct Reading {
+    double ran;
+    double waited;
+    Sched before;
+    Sched after;
+    double stolen;
+};
+
+Reading readAt(const KeyTimes &times, int cpu) {
+    const Sched before = schedNow();
+    const double ran = times.ran();
+    const double waited = times.waited();
+    const Sched after = schedNow();
+    return {ran, waited, before, after, stolenFrom(cpu)};
+}
+
+// How much more the thread's clocks and its CPU's stolen count say after a
+// spin than before it, the stolen count 0 unless both its reads worked;
+// how long the spin took by the monotonic clock, which is past SPUN_MS
+// when the thread is held off as it ends; how many times it slept, or -1
+// where that can't be read; and the readings either side.
+struct Spin {
+    double ran;
+    double waited;
+    double stolen;
+    double took;
+    long slept;
+    Reading first;
+    Reading last;
+};
+
+// Keeps the calling thread, held to cpu, busy for SPUN_MS, and gives how
+// much more each clock says after than before. The monotonic clock is
+// read first and last, so `took` holds every other reading, and a wait
+// while they're read counts in it as it does in `waited`. Its voluntary
+// switches are read outside even that, so a sleep in any read is seen.
+Spin spun(const KeyTimes &times, int cpu) {
+    const long switchedBefore = voluntarySwitches();
+    const double began = monotonicNow();
+    const Reading first = readAt(times, cpu);
+    const double until = began + SPUN_MS;
     while (monotonicNow() < until) {
     }
-    return (times.*read)() - before;
+    const Reading last = readAt(times, cpu);
+    const double took = monotonicNow() - began;
+    const long switchedAfter = voluntarySwitches();
+    const bool stolenRead = first.stolen >= 0 && last.stolen >= 0;
+    const long slept =
+        switchedBefore < 0 || switchedAfter < 0 ? -1 : switchedAfter - switchedBefore;
+    return {last.ran - first.ran,
+            last.waited - first.waited,
+            stolenRead ? last.stolen - first.stolen : 0,
+            took,
+            slept,
+            first,
+            last};
+}
+
+// Whether a reading's clocks lie between the schedstat read either side of
+// them. The CPU clock brings the thread's run figure up to date as it's
+// read, and the wait figure only grows, so each lies between its figure
+// before and after, to the rounding. Read as totals since the thread
+// began, a clock in seconds or a wait read from the run figure is far off
+// at any load, where over one spin a wait about as long as the run would
+// hide it.
+bool betweenSchedstat(const char *when, const Reading &reading) {
+    const auto within = [](double value, double low, double high) {
+        return low >= 0 && value >= low - ROUNDED_MS && value <= high + ROUNDED_MS;
+    };
+    const bool holds = within(reading.ran, reading.before.run, reading.after.run)
+        && within(reading.waited, reading.before.wait, reading.after.wait);
+    if (!holds)
+        std::fprintf(stderr, "FAIL a thread's clocks agree with its schedstat %s: ran %.3f"
+                     " between %.3f and %.3f, waited %.3f between %.3f and %.3f ms, -1 where"
+                     " schedstat couldn't be read\n", when, reading.ran, reading.before.run,
+                     reading.after.run, reading.waited, reading.before.wait,
+                     reading.after.wait);
+    return holds;
 }
 
 // Holds a thread to one CPU, so two held to it take turns.
@@ -79,34 +224,92 @@ void holdTo(pthread_t thread, int cpu) {
     pthread_setaffinity_np(thread, sizeof one, &one);
 }
 
-bool expectMs(const char *what, bool holds, double ms) {
+// Says what a spin read when a bound on it doesn't hold: the bound, every
+// clock, and the wall time the bounds are judged against.
+bool expectSpin(const char *what, const char *bound, bool holds, const Spin &spin) {
     if (!holds)
-        std::fprintf(stderr, "FAIL %s: read %.0f ms over %.0f ms spun\n", what, ms, SPUN_MS);
+        std::fprintf(stderr, "FAIL %s, %s: ran %.0f, waited %.0f, stolen %.0f in %.0f ms\n",
+                     what, bound, spin.ran, spin.waited, spin.stolen, spin.took);
     return holds;
 }
 
-// What the thread's clocks say while it spins alone, then beside another
-// thread spinning on its CPU, which the scheduler takes turns with: alone
-// it runs nearly all the time, and beside the other it waits about half.
+// How far a stolen count may fall short, a clock tick at each end.
+double tickMs() {
+    return 2 * 1000.0 / static_cast<double>(sysconf(_SC_CLK_TCK));
+}
+
+// Whether a spin's clocks cover most of it, and never more than it took. A
+// spinning thread is only running, waiting for its CPU, or taken by a
+// virtual machine's host, so the three together cover the spin. How they
+// share it isn't held: on a builder other builds run on the same CPU,
+// and a spin held to it by itself ran 78 ms of 200 there. Only most,
+// since the stolen count is kept in whole ticks and the kernel's own work
+// is in none of them. Stolen is left out of the most they may say: taken
+// while another thread held the CPU, it's in this one's wait too. The run
+// has no most of its own: it's in what the two say, and the wait beside
+// it, pinned to schedstat's (betweenSchedstat), is never below none.
+bool covers(const char *what, const Spin &spin) {
+    const double spent = spin.ran + spin.waited;
+    const bool ran = expectSpin(what, "too little, it ran none of it", spin.ran > 0, spin);
+    const bool most = expectSpin(what, "too little, under half of it with stolen and two ticks",
+                                 spent + spin.stolen + tickMs() > spin.took / 2, spin);
+    char past[64];
+    std::snprintf(past, sizeof past, "too much, ran and waited past it by over %.0f ms",
+                  SLACK_MS);
+    const bool within = expectSpin(what, past, spent <= spin.took + SLACK_MS, spin);
+    return ran && most && within;
+}
+
+// What the thread's clocks say while it spins, then beside another thread
+// spinning on its CPU, which the scheduler takes turns with. Each reading
+// lies between the schedstat read either side of it (betweenSchedstat),
+// which a clock in the wrong unit or a wait read from the run figure fails
+// at any load. Each spin is covered by its clocks (covers), which a clock
+// counted twice fails. Beside the other it waits about half the spin, so
+// over an eighth (TURNS_MS) fails a spin with no thread beside it. That's
+// told apart only where the spin alone waited less, since other builds
+// can make a thread wait as long with none beside it; elsewhere it's
+// untried. A bound judged against the wait alone would fail whenever the
+// load fell between the two spins, so the thread beside is judged only
+// where the load can't stand in for it. A spin that slept, as one whose
+// read of /proc blocks under memory pressure does, spent the sleep in
+// none of its clocks, so its bounds are untried rather than failed.
 bool threadTimed(const KeyTimes &times) {
     const int cpu = sched_getcpu();
     holdTo(pthread_self(), cpu);
-    const double ranAlone = spun(times, &KeyTimes::ran);
+    const Spin alone = spun(times, cpu);
     std::atomic<bool> going{true};
     std::thread other([&going] {
         while (going.load(std::memory_order_relaxed)) {
         }
     });
     holdTo(other.native_handle(), cpu);
-    const double waitedBeside = spun(times, &KeyTimes::waited);
+    const Spin beside = spun(times, cpu);
     going = false;
     other.join();
-    const bool ran = expectMs("a thread spinning alone is said to have run most of it",
-                              ranAlone > SPUN_MS / 2 && ranAlone <= SPUN_MS + SLACK_MS, ranAlone);
-    const bool waited = expectMs("a thread taking turns with another is said to have waited",
-                                 waitedBeside > SPUN_MS / 4 && waitedBeside < SPUN_MS,
-                                 waitedBeside);
-    return ran && waited;
+    const bool setOff = betweenSchedstat("as it sets off alone", alone.first);
+    const bool done = betweenSchedstat("once it's spun alone", alone.last);
+    const bool turns = betweenSchedstat("as it sets off taking turns", beside.first);
+    const bool turned = betweenSchedstat("once it's taken turns", beside.last);
+    const bool agree = setOff && done && turns && turned;
+    if (alone.slept > 0 || beside.slept > 0) {
+        std::fprintf(stderr, "a thread's clocks over its spins: untried, load came first, it"
+                     " slept %ld times alone and %ld taking turns\n", alone.slept,
+                     beside.slept);
+        return agree;
+    }
+    const bool whole = covers("a thread spinning alone is said to have spent it all", alone);
+    const bool shared = covers("a thread taking turns is said to have spent it all", beside);
+    const char *turnsWaited = "a thread taking turns with another is said to have waited";
+    if (alone.waited >= TURNS_MS) {
+        std::fprintf(stderr, "%s: untried, load came first, alone it waited %.0f of %.0f ms\n",
+                     turnsWaited, alone.waited, alone.took);
+        return agree && whole && shared;
+    }
+    char least[64];
+    std::snprintf(least, sizeof least, "too little, %.0f ms or under", TURNS_MS);
+    const bool waited = expectSpin(turnsWaited, least, beside.waited > TURNS_MS, beside);
+    return agree && whole && shared && waited;
 }
 
 // How many fresh pages the thread touches, each a minor fault: a page

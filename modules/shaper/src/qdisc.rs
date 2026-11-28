@@ -494,7 +494,11 @@ mod tests {
 
     #[test]
     fn an_ifbs_name_fits_the_kernels_limit() {
-        assert!(ifb(4_000_000_000).len() <= 15);
+        let name = ifb(4_000_000_000);
+        assert!(
+            name.len() <= 15,
+            "{name} is longer than the kernel's 15 bytes"
+        );
     }
 
     #[test]
@@ -620,14 +624,16 @@ mod tests {
                 &"tc qdisc replace dev shaper9 root handle 2: \
               cake bandwidth 45000kbit diffserv4 nat ingress fwmark 0x7000000 overhead 80"
                     .to_string()
-            )
+            ),
+            "shaper9 gets a 45000kbit CAKE sorting by the VPN's class marks: {all:#?}"
         );
         assert!(
             all.iter()
                 .any(|c| c.starts_with("tc filter replace dev wg0 parent ffff:")
                     && c.ends_with(
                         "ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper9"
-                    ))
+                    )),
+            "wg0's ingress restores each mark and redirects to shaper9: {all:#?}"
         );
         assert_eq!(
             vpn_ingress_change("shaper9", 40_000).join(" "),
@@ -643,19 +649,36 @@ mod tests {
             "tc qdisc replace dev wg0 root handle 2: \
              cake bandwidth 9000kbit diffserv4 ack-filter overhead 80"
         );
-        assert!(vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#));
-        assert!(!vpn_ours(
-            r#"[{"kind":"mq","handle":"0:","root":true},{"kind":"fq_codel","parent":":1"}]"#
-        ));
-        assert!(!vpn_ours(
-            r#"[{"kind":"cake","handle":"2:","parent":"1:2"}]"#
-        ));
+        assert!(
+            vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#),
+            "a CAKE at the root with handle 2: wasn't taken as ours though it's the shaper's"
+        );
+        assert!(
+            !vpn_ours(
+                r#"[{"kind":"mq","handle":"0:","root":true},{"kind":"fq_codel","parent":":1"}]"#
+            ),
+            "the kernel's own mq at the root was taken as ours though it has no CAKE"
+        );
+        assert!(
+            !vpn_ours(r#"[{"kind":"cake","handle":"2:","parent":"1:2"}]"#),
+            "a CAKE under 1:2 was taken as a VPN's though a VPN's sits at the root"
+        );
+        assert!(
+            !vpn_ours(r#"[{"kind":"cake","handle":"8001:","root":true}]"#),
+            "a root CAKE of handle 8001: was taken as ours though the shaper's has handle 2:"
+        );
     }
 
     #[test]
     fn the_kernels_own_queue_isnt_ours() {
-        assert!(!ours(r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#));
-        assert!(!ours(r#"[{"kind":"noqueue","handle":"0:","root":true}]"#));
+        assert!(
+            !ours(r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#),
+            "the kernel's fq_codel at the root was taken as ours though it has no HTB"
+        );
+        assert!(
+            !ours(r#"[{"kind":"noqueue","handle":"0:","root":true}]"#),
+            "the kernel's noqueue at the root was taken as ours though it has no HTB"
+        );
     }
 
     #[test]
@@ -664,8 +687,25 @@ mod tests {
                       {"kind":"fq_codel","handle":"10:","parent":"1:1"},
                       {"kind":"cake","handle":"2:","parent":"1:2"},
                       {"kind":"ingress","handle":"ffff:","parent":"ffff:fff1"}]"#;
-        assert!(ours(json));
-        assert!(turned(json));
+        assert!(
+            ours(json),
+            "an HTB at the root with CAKE under 1:2 wasn't taken as ours though it's the shaper's"
+        );
+        assert!(
+            turned(json),
+            "a link with an ingress queue wasn't taken as turned to the IFB"
+        );
+    }
+
+    #[test]
+    fn an_htb_without_cake_beneath_isnt_ours() {
+        let json = r#"[{"kind":"htb","handle":"1:","root":true},
+                      {"kind":"fq_codel","handle":"10:","parent":"1:1"},
+                      {"kind":"fq_codel","handle":"20:","parent":"1:2"}]"#;
+        assert!(
+            !ours(json),
+            "an HTB at the root was taken as ours though no CAKE sits under 1:2"
+        );
     }
 
     #[test]

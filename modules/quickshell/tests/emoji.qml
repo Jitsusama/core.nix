@@ -10,8 +10,10 @@ pragma ComponentBehavior: Bound
 // undrawn as a place that never sets them. Lost again and the history back
 // a while on, each is asked again at its hello, and the answer to what was
 // typed in the group isn't taken as its key's own (foundMore's fresh), so
-// Emoji keeps its rows where they are. It exits 0 once every case holds,
-// and otherwise 1, saying which didn't.
+// Emoji keeps its rows where they are. An emoji's row is keyed by its
+// thing, kept under `row:` where that claims the launcher's own kind, and
+// by its key where it has none. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import "Expect.js" as Expect

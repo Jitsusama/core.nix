@@ -7,6 +7,19 @@
 # its own to change.
 completion=$1
 here=$PWD
+# Each Tab runs the real tuple with these folders, so run anywhere but the
+# folder of its own tuple-completes-in-zsh.sh makes, it would reach a
+# person's daemon and data. A person's home holding its own runtime and
+# data folders looks like that folder, so only the folder's own name for
+# itself, and its own folders exactly, let it through.
+if [[ $TUPLE_FOLDER_OF_ITS_OWN != "$here" || $HOME != "$here" ||
+  $XDG_RUNTIME_DIR != "$here/run" || $XDG_DATA_HOME != "$here/data" ]]; then
+  print -ru2 -- "tuple-completion.zsh runs only in the folder of its own" \
+    "tuple-completes-in-zsh.sh makes, from $here, not with" \
+    "TUPLE_FOLDER_OF_ITS_OWN=${TUPLE_FOLDER_OF_ITS_OWN-} HOME=$HOME" \
+    "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR-} XDG_DATA_HOME=${XDG_DATA_HOME-}"
+  exit 64
+fi
 mkdir -p dot
 cp $completion _tuple
 cat > dot/.zshrc <<EOF
@@ -39,8 +52,9 @@ EOF
 zmodload zsh/zpty
 integer failed=0
 # What typing the words and Tab offers, one match to a line. Each editor
-# gets the build's runtime and data folders, so a daemon its tuple starts
-# keeps everything where tuple-completes-in-zsh.sh's stop finds it.
+# gets the home, runtime and data folders of tuple-completes-in-zsh.sh's
+# folder of its own, so a daemon its tuple starts keeps everything where
+# that script's stop finds it.
 offered() {
   local line said
   zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH \

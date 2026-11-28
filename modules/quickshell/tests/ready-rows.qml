@@ -711,6 +711,13 @@ QtObject {
             Presented.keyMade({}, "collection:Harbour"), "row:collection:Harbour");
         Expect.same("or a category", Presented.keyMade({ thing: "category:x" }, "k"),
             "row:category:x");
+        // A row made from its daemon's key alone, as Timers', Runs' and
+        // OnSelection's are, whose `thing` is no key, is made the same way.
+        Expect.same("a served key is kept as its daemon wrote it",
+            Presented.keyServed("timer:7"), "timer:7");
+        for (const kind of ["place", "category", "collection"])
+            Expect.same(`but one claiming a ${kind} is kept under row:`,
+                Presented.keyServed(`${kind}:x`), `row:${kind}:x`);
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");

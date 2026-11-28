@@ -17,14 +17,17 @@ let
     kernel
     ipu7-drivers
     ;
+  # What takes a few files of a kernel's source, shared with core's kernel.
+  library = ../../modules/kernel/tests/kernel-source-files.sh;
   # A few files of a source, with each patch given applied to them, as the
   # machine builds them (core's kernel's tests/patched-kernel-source.sh).
   patched =
     source: patches: files:
     pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      ${lib.getExe pkgs.bash} ${../../modules/kernel/tests/patched-kernel-source.sh} ${source} ${
-        pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
-      } $out ${lib.escapeShellArgs files}
+      ${lib.getExe pkgs.bash} ${../../modules/kernel/tests/patched-kernel-source.sh} \
+        ${library} ${source} ${
+          pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
+        } $out ${lib.escapeShellArgs files}
     '';
   # Every patch the XPS 14's kernel is built with, in the order it applies them.
   kernelPatches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
@@ -269,8 +272,10 @@ in
   # takes the driver off the chip for it any more, so its thaw must be the
   # plain wake the kernel has made it since 7.3.6, and every reset in the
   # wake it shares must sit under a test a thaw can't meet. The driver's C
-  # is read as tests and blocks, not as words, so an else, a second reset,
-  # a braceless if or an early return is judged too
+  # is read as tests and blocks, not as words, past its comments, strings
+  # and preprocessor lines, so an else, a second reset, a braceless if, a
+  # loop, a switch's case or an early return is judged too, and a call
+  # asking after a reset or cancelling one is not a reset
   # (tests/thaw-is-a-plain-wake.py). Its cases edit this driver as a later
   # kernel might, so a reader that stops seeing one fails here
   # (tests/thaw-is-a-plain-wake-cases.py).
@@ -307,7 +312,7 @@ in
     pkgs.runCommandLocal "the-patches-from-linux-next-apply-exactly"
       { nativeBuildInputs = [ pkgs.patchutils ]; }
       ''
-        ${lib.getExe pkgs.bash} ${./tests/patches-apply-exactly.sh} ${kernel.src} \
+        ${lib.getExe pkgs.bash} ${./tests/patches-apply-exactly.sh} ${library} ${kernel.src} \
           ${list kernelPatches} ${list fromNext} "$TMPDIR/source"
         touch $out
       '';
@@ -335,8 +340,10 @@ in
   # queue, an order-5 block that fragmented memory refused four times in
   # a day, each refusal leaving the link without aggregation. So it may
   # come from vmalloc (wifi-reorder-buffer-falls-back-to-vmalloc), and as
-  # kfree() on vmalloc's memory corrupts the slab, no file that handles
-  # the session frees it that way (tests/every-reorder-buffer-may-be-vmalloc.sh).
+  # kfree() or kfree_sensitive() on vmalloc's memory corrupts the slab, no
+  # file that handles the session frees it that way, however the call is
+  # spaced, cast or broken over lines
+  # (tests/every-reorder-buffer-may-be-vmalloc.sh).
   wifi-sessions-survive-fragmented-memory =
     let
       mld = "drivers/net/wireless/intel/iwlwifi/mld";
@@ -457,6 +464,34 @@ in
         [ -e ${drivers}/lib/$f ] ||
           { echo "The graphics drivers lack $f, so the NPU can't compile a model." >&2; exit 1; }
       done
+      touch $out
+    '';
+
+  # Chrome's WebGPU canvases showed as a checkerboard while iris, on Xe2
+  # and later, never asked for the 4K tiles anv draws a memory object in.
+  # Read from the source of the Mesa the XPS 14's graphics drivers are,
+  # with its patches, that preference no longer hangs off the branch every
+  # memory object takes first, and anv still prefers those tiles
+  # (tests/iris-tiles-memory-objects-as-anv-does.sh). The same read of
+  # Mesa's own source must fail, so the check is seen to catch the bug
+  # each time it runs, not only once by hand.
+  iris-tiles-memory-objects-as-anv-does =
+    let
+      mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
+      resource = "src/gallium/drivers/iris/iris_resource.c";
+      image = "src/intel/vulkan/anv_image.c";
+      source = patched mesa.src mesa.patches [
+        resource
+        image
+      ];
+    in
+    pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
+      check=${./tests/iris-tiles-memory-objects-as-anv-does.sh}
+      ${lib.getExe pkgs.bash} "$check" ${source}/${resource} ${source}/${image}
+      if ${lib.getExe pkgs.bash} "$check" ${mesa.src}/${resource} ${mesa.src}/${image}; then
+        echo "The check passes on Mesa's own source, so it can't tell the patch is there." >&2
+        exit 1
+      fi
       touch $out
     '';
 
