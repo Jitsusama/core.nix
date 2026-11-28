@@ -12,9 +12,19 @@ Item {
     // A tenth of a meter's: 150 ms once seen, and 1 s at most.
     readonly property int lasts: 150
     readonly property int atMost: 1000
-    // How far either side of its time a spending may come, a busy builder's
-    // timers firing late.
-    readonly property int slack: 60
+    // How far before its time a spending may come, and how far after. A QML
+    // Timer is stepped by the animation driver's ticks, about 16 ms apart
+    // offscreen, and starts from the last one, so it can end up to a tick
+    // early by the wall clock this reads. A busy builder's timers fire late
+    // by however long its thread is held, as the first case's did by 68 ms
+    // (2026-11-27), so late gets more room. That room would pass a meter
+    // lasting up to 400 ms rather than 150, but no case guards against that:
+    // each wrong rule they do guard against (timed from showing or the
+    // change, never restarted, kept seen once hidden) spends 100 ms or more
+    // earlier than right, or at the 1 s cap, at least 100 ms past the late
+    // room. Each case's span outlasts its time and the late room both.
+    readonly property int early: 60
+    readonly property int late: 250
 
     // Each case: what's done when, in ms from showing, and when it's spent,
     // or -1 for never within the case's span, with whether it was seen.
@@ -73,8 +83,9 @@ Item {
                 Expect.expect(one.name, heard === null, `spent at ${heard?.after} ms`);
             else {
                 Expect.expect(one.name, heard !== null, "never spent");
-                const off = Math.abs(heard.after - one.spent);
-                Expect.expect(one.name, off <= slack, `spent at ${heard.after} ms`);
+                const off = heard.after - one.spent;
+                Expect.expect(one.name, off >= -early && off <= late,
+                    `spent at ${heard.after} ms`);
                 Expect.same(`${one.name}, seen`, heard.seen, one.seen);
             }
         } catch (error) {
