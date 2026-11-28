@@ -381,9 +381,13 @@ function headline(forages: readonly Forage[]): Headline {
   return { cells, without, lead, turn: `${grouped(without)} without purpose.` };
 }
 
-/** `cells` named in a sentence, at most three by name and the rest counted. */
+/**
+ * `cells` named in a sentence, at most two by name and the rest counted.
+ * Two keeps the longest lede to four lines on a phone, the box site.css
+ * holds for it; a third name took it to five.
+ */
 function named(cells: readonly string[]): string {
-  const most = 3;
+  const most = 2;
   if (cells.length <= most) {
     return and(cells);
   }
@@ -421,8 +425,7 @@ function waited(forages: readonly Forage[]): string {
     return "";
   }
   const cells = forages.filter((each) => each.waits.length > 0).map((each) => each.cell);
-  const count =
-    things.size === 1 ? "One thing waits on you" : `${grouped(things.size)} things wait on you`;
+  const count = things.size === 1 ? "One waits on you" : `${grouped(things.size)} wait on you`;
   return `${count}, from ${named(cells)}. `;
 }
 
