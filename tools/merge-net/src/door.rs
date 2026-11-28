@@ -495,14 +495,22 @@ mod tests {
                 base: "next".to_owned()
             })
         );
-        assert!(refused.unwrap_err().to_string().contains("next"));
+        let said = refused.unwrap_err().to_string();
+        assert!(
+            said.contains("next"),
+            "the refusal didn't name the base it was into: {said}"
+        );
     }
 
     #[test]
     fn a_draft_is_refused() {
         let refused = judged(&[("isDraft", true.into())]);
         assert_eq!(refused, Err(Refusal::Draft));
-        assert!(refused.unwrap_err().to_string().contains("isDraft"));
+        let said = refused.unwrap_err().to_string();
+        assert!(
+            said.contains("isDraft"),
+            "the refusal didn't say what GitHub said made it a draft: {said}"
+        );
     }
 
     #[test]
@@ -514,11 +522,10 @@ mod tests {
                 branch: "jitsusama/way-holds-detached-asks".to_owned()
             })
         );
+        let said = refused.unwrap_err().to_string();
         assert!(
-            refused
-                .unwrap_err()
-                .to_string()
-                .contains("isCrossRepository")
+            said.contains("isCrossRepository"),
+            "the refusal didn't say what GitHub said made it a fork's: {said}"
         );
     }
 
@@ -532,7 +539,8 @@ mod tests {
                 .is_err_and(|why| why.contains("isCrossRepository")),
             "an answer with no isCrossRepository was read as {read:?}"
         );
-        assert!(pull_of("not json").is_err());
+        let read = pull_of("not json");
+        assert!(read.is_err(), "an answer not JSON was read as {read:?}");
     }
 
     #[test]
