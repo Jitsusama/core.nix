@@ -80,6 +80,29 @@ QtObject {
             Presented.chordBefore(1000, 5040, readFirst(5070), readFirst(1070)), 50);
     }
 
+    // An opening is timed to niri's answer for its own frame, kept if it
+    // came before the shell heard that frame swapped, and to the next only
+    // where niri dropped it (Presented.shownFirst), never to a later frame
+    // for one the thread was too busy to ask about (2026-11-27, 14:54).
+    function openingShownFirst(failures) {
+        const kept = [{ frame: 40, at: 990 }, { frame: 41, at: 1006.7 },
+            { frame: 42, at: 1023.3 }];
+        check(failures, "its own frame's answer is taken, though it came first",
+            Presented.shownFirst(kept, 41)?.at, 1006.7);
+        check(failures, "its frame dropped, the next one niri showed is taken",
+            Presented.shownFirst([kept[0], kept[2]], 41)?.frame, 42);
+        check(failures, "an earlier frame is never taken for it",
+            Presented.shownFirst(kept.slice(0, 1), 41), null);
+        check(failures, "with none answered, none is taken",
+            Presented.shownFirst([], 41), null);
+        let answers = [];
+        for (let frame = 1; frame <= 12; frame += 1)
+            answers = Presented.answersWith(answers, { frame, at: frame * 16 });
+        check(failures, "only the newest answers are kept", answers.length, 8);
+        check(failures, "the newest kept is the last answered", answers[7].frame, 12);
+        check(failures, "the oldest kept is the eighth from the end", answers[0].frame, 5);
+    }
+
     // An opening says what its own work went on, slowest first, so the
     // line Joel's slow opening left names its cause (2026-11-10).
     function opening(failures) {
@@ -1914,6 +1937,7 @@ QtObject {
         const every = 250;
         drawers(failures);
         chordBefore(failures);
+        openingShownFirst(failures);
 
         const first = Pacing.heard(Pacing.rested(), 1000, every);
         check(failures, "the first change is taken at once", first.now, true);

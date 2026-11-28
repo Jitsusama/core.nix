@@ -145,6 +145,25 @@ function shownSaid(times, at) {
         + ` (swapped ${tenths(times.swapped)}, shown ${tenths(at)} monotonic ms)`;
 }
 
+// The first of niri's answers, each `{frame, at}` in the order niri gave them, for `frame` or a
+// frame after it, or null: the frame an opening is first drawn at its size in. Niri answers
+// frames in order, so a frame it dropped is shown by the next. The opening's frame is known only
+// once the shell hears it swapped, and niri's answer for it can come first, so the answers are
+// kept until then (answered). Asked once and again on each answer, the frame was missed when the
+// shell's thread was busy after its sync, and the next one timed: Joel's 14:54 opening said
+// 269 ms from his chord by the drawer's frame, swapped 87 ms after its own (2026-11-27).
+function shownFirst(answers, frame) {
+    return answers.find(one => one.frame >= frame) ?? null;
+}
+
+// `answers` with `answer` after them, the newest `answersKept`. The shell's thread syncs every
+// frame the window draws, so it hears an opening's frame swapped before more than a frame or two
+// after it are answered, and a few are enough.
+const answersKept = 8;
+function answersWith(answers, answer) {
+    return answers.concat([answer]).slice(-answersKept);
+}
+
 // When each key was pressed, its frame swapped and niri showed it, in CLOCK_MONOTONIC ms as
 // KeyTimes and frame-presentation.patch read them, in the order pressed, or "" for no keys. The
 // line the keys' medians make can't be lined up with niri's own log of each frame it asked for: on

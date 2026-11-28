@@ -13367,10 +13367,12 @@ Scope {
     // first frame niri presented that was the opening's first frame or
     // after it, as frame-presentation.patch says (Joel, 2026-11-10: "we
     // need 50ms launch ... that is time from trigger to visible on the
-    // screen"). Each frame from the ask asks again, so the frame the
-    // opening drew is told even when the thread is busy after it; the
-    // answer is niri's own time, however late the thread reads it. It asks
-    // only while an opening waits to be shown, never while shut.
+    // screen"). Every frame from the ask is followed (the surface's
+    // FramePresentation.following), so the frame the opening drew is told
+    // even when the thread is busy after it, as asking again on each
+    // answer missed it (Presented.shownFirst); the answer is niri's own
+    // time, however late the thread reads it. It follows only while an
+    // opening waits to be shown, never while shut.
     property real presentedFrom: -1
     property bool presentedFromChord: false
     property int presentedFrame: -1
@@ -13382,6 +13384,9 @@ Scope {
     // it waited after its swap (Presented.shownSaid).
     property int presentedShown: -1
     property bool presentedTimed: false
+    // Niri's answers before the opening's frame is known, each
+    // `{frame, at}`, which may hold that frame's (Presented.answersWith).
+    property var presentedAnswers: []
     // Whether the journal has said niri gives no presentation times, said
     // once a shell: without them no opening, key or change says when niri
     // showed it, and nothing fails silently (Y2YBTS, 2026-11-11).
@@ -13405,13 +13410,25 @@ Scope {
         presentedAt = -1;
         presentedShown = -1;
         presentedTimed = false;
+        presentedAnswers = [];
         surface.FramePresentation.ask();
     }
     // The frame begun with the card first drawn at its size, numbered as
     // the window counts them.
     function presentedSized(frame) {
         if (presentedFrom >= 0 && presentedFrame < 0 && typeof frame === "number")
-            presentedFrame = frame;
+            presentedFrameIs(frame);
+    }
+    // The opening's frame known, niri's answer for it, or for the first
+    // after it, is taken if it came first.
+    function presentedFrameIs(frame) {
+        presentedFrame = frame;
+        const shown = Presented.shownFirst(presentedAnswers, frame);
+        presentedAnswers = [];
+        if (shown === null)
+            return;
+        presentedAt = shown.at;
+        presentedShown = shown.frame;
     }
     function presentedDrawn(from, fromChord, frame) {
         if (presentedFrom < 0)
@@ -13420,8 +13437,8 @@ Scope {
         presentedFromChord = fromChord;
         presentedTimed = true;
         if (presentedFrame < 0)
-            presentedFrame = typeof frame === "number" ? frame
-                : surface.FramePresentation.framesBegun;
+            presentedFrameIs(typeof frame === "number" ? frame
+                : surface.FramePresentation.framesBegun);
         if (presentedAt >= 0)
             presentedSaid(Math.round(presentedAt - presentedFrom));
     }
@@ -13435,10 +13452,13 @@ Scope {
             presentedSaid(-1);
             return;
         }
-        if (presentedFrame < 0 || frame < presentedFrame) {
-            surface.FramePresentation.ask();
+        if (presentedFrame < 0) {
+            presentedAnswers = Presented.answersWith(presentedAnswers, { frame, at });
             return;
         }
+        // Taken once, by the first at or after the opening's frame.
+        if (frame < presentedFrame || presentedAt >= 0)
+            return;
         presentedAt = at;
         presentedShown = frame;
         if (!presentedTimed)
@@ -13462,6 +13482,7 @@ Scope {
     function presentedSaid(ms) {
         const from = presentedFromChord ? "the chord" : "the ask";
         presentedFrom = -1;
+        presentedAnswers = [];
         const last = openingsTimed[openingsTimed.length - 1];
         if (last)
             openingsTimed = openingsTimed.slice(0, -1)
@@ -14194,6 +14215,7 @@ Scope {
             : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
         // When niri showed an opening's frames (presentedBegin).
+        FramePresentation.following: root.presentedFrom >= 0
         FramePresentation.onPresented: (frame, at) => root.framePresented(frame, at)
         FramePresentation.onDiscarded: frame => root.frameDiscarded(frame)
 
