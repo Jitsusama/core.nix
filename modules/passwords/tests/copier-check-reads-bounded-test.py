@@ -448,6 +448,21 @@ def a_read_that_raised_fails_saying_so() -> None:
     assert "ValueError('no pipe')" in failed, f"a read that raised failed as {failed!r}"
 
 
+def a_case_that_raised_fails_by_what_it_raised_and_the_run_goes_on() -> None:
+    """Check failure fails a case that raised, as one calling said_next may, by what it raised.
+
+    Its failure is answered rather than raised, so the cases after it still run.
+    """
+
+    def raising() -> None:
+        why = "no pipe"
+        raise ValueError(why)
+
+    failed = failure(raising)
+    wanted = "it raised ValueError('no pipe')"
+    assert failed == wanted, f"a case that raised failed as {failed!r}, not {wanted!r}"
+
+
 def what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended() -> None:
     """ended_within's standard output begins with what said_next read but didn't answer.
 
@@ -501,22 +516,37 @@ CASES = [
     a_line_cut_at_the_cap_is_read_on_and_never_ready,
     a_copier_with_no_pipe_to_read_is_refused_by_name,
     a_read_that_raised_fails_saying_so,
+    a_case_that_raised_fails_by_what_it_raised_and_the_run_goes_on,
     what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,
     what_said_next_read_past_its_line_is_dropped_for_a_refusal,
 ]
+
+
+def failure(case: Callable[[], None]) -> str | None:
+    """Run `case`, answering how it failed, or None if it held.
+
+    A case that raised fails saying what it raised, as answered_in_time fails a read, so one
+    calling said_next itself fails by its name and the cases after it still run.
+    """
+    try:
+        case()
+    except AssertionError as wrong:
+        return str(wrong)
+    except Exception as wrong:  # noqa: BLE001 - whatever it raised is its case's failure
+        return f"it raised {wrong!r}"
+    return None
 
 
 def main() -> None:
     """Run every case, and fail naming each that didn't hold."""
     failed: list[str] = []
     for case in CASES:
-        try:
-            case()
-        except AssertionError as wrong:
+        wrong = failure(case)
+        if wrong is None:
+            print(f"{case.__name__}: held")
+        else:
             failed.append(case.__name__)
             print(f"{case.__name__}: {wrong}", file=sys.stderr)
-        else:
-            print(f"{case.__name__}: held")
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)
         sys.exit(1)
