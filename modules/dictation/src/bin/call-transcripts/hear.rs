@@ -248,6 +248,8 @@ pub fn hear(
     me: &str,
 ) {
     let mut speech: Option<Parakeet> = None;
+    // Whether Parakeet has heard a take since it was loaded.
+    let mut speech_heard = false;
     let mut speakers = Speakers::default();
     let mut calls: HashMap<String, Writing> = HashMap::new();
     let mut ended: Vec<(String, Writing)> = Vec::new();
@@ -279,6 +281,8 @@ pub fn hear(
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
                 let take = start..start + samples.len();
+                // A model let go, or never loaded, has heard nothing yet.
+                speech_heard &= speech.is_some();
                 let parakeet = match loaded(settings, &mut speech) {
                     Ok(parakeet) => parakeet,
                     Err(why) => {
@@ -290,10 +294,15 @@ pub fn hear(
                 };
                 let heard = transcribe_take(parakeet, start, &samples);
                 let ((text, words), failed) = heard_or_left_out(heard);
-                if let Some(why) = failed {
-                    let notice = || notices::not_all_heard(&title_of(book, &key), &why);
+                if let Some(why) = &failed {
+                    let notice = || notices::not_all_heard(&title_of(book, &key), why);
                     shown(not_heard(book, &key, writing, me, take, &mut told, notice));
                 }
+                // What's told is as ever: the call's first take not heard,
+                // whichever way, is told once, so a model loaded afresh that
+                // fails again is counted as not heard and told only if the
+                // call wasn't told already.
+                speech_heard = heard_since_load(&mut speech, speech_heard, failed.is_some());
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -393,6 +402,30 @@ fn heard_or_left_out(
             ((None, Vec::new()), Some(why))
         }
     }
+}
+
+/// Whether the speech model is kept for the next take once one is heard
+/// through it or `failed`, by whether it has heard a take since it was
+/// loaded (`heard_since_load`). A lost device, as the NPU's, fails every
+/// take until its model is let go, so one that heard and then fails is
+/// let go to be loaded afresh; one that never heard is kept, since one
+/// broken from its load would otherwise be loaded again for every take,
+/// only to fail it.
+fn kept(heard_since_load: bool, failed: bool) -> bool {
+    !(heard_since_load && failed)
+}
+
+/// Whether the speech model (Parakeet, or a case's stand-in) has heard a
+/// take since it was loaded, once a take was heard through it or
+/// `failed`, `heard` saying whether it had before; let go first when it
+/// isn't `kept`, so the next take loads it.
+fn heard_since_load<T>(speech: &mut Option<T>, heard: bool, failed: bool) -> bool {
+    if !kept(heard, failed) {
+        *speech = None;
+        eprintln!("call-transcripts: Parakeet let go, to be loaded afresh");
+        return false;
+    }
+    heard || !failed
 }
 
 /// A take of `key`'s call that wasn't heard, spanning the samples of the
