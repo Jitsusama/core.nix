@@ -34,8 +34,8 @@
 // page, a video's frame, a file's first lines or a folder's first items)
 // and its facts, which draw at once, the preview coming once file-preview
 // has said, one file asked at a time, the latest wanted next (VKCF3Z,
-// 2026-11-03), of the one file-preview kept for the ask, so nothing is
-// started for each file selected (Y2YBTS, 2026-11-03).
+// 2026-11-03), of the one file-preview kept for the ask (FilePreview.qml),
+// so nothing is started for each file selected (Y2YBTS, 2026-11-03).
 //
 // Other providers give it places kept elsewhere, as Google's Drive is
 // (modules/google), by `chooserPlaces(chooser)`: asked once as an ask is
@@ -64,6 +64,15 @@
 // the paths picked, the filter in use and the option of each choice, or an
 // empty line for none. Asks wait their turn, oldest first, as OpenWith.qml's
 // do, each known by its socket.
+//
+// Long because what's left is one provider's state, the ask and what it
+// has read, which every row, command and pick here reads and changes: the
+// folders listed, the files marked, the places kept elsewhere and what's
+// fetched from them, and the name a save is given, each made into rows by
+// the same few functions, and a fetch answered with the files here in one
+// pick. What stands apart sits beside it: file-preview and what it said,
+// state of its own (FilePreview.qml), and how a filter is matched by the
+// desktop's kinds of file, logic over their table (FileKinds.js).
 pragma ComponentBehavior: Bound
 
 import qs
@@ -73,6 +82,7 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../FileFacts.js" as FileFacts
+import "FileKinds.js" as FileKinds
 import "Recents.js" as Recents
 
 Provider {
@@ -112,26 +122,13 @@ Provider {
     // size, modified }, and each of those by its own path.
     property var listed: ({})
     property var known: ({})
-    // How many items each folder read holds shows, by its path, and what
-    // file-preview said of each file or folder selected (false where it
-    // couldn't), with the change time it was asked at.
-    property var counts: ({})
-    property var previews: ({})
-    property var askedAt: ({})
-    // The file whose preview is wanted next, while another is asked, the
-    // folders still to count, and what file-preview is answering now.
-    property string previewNext: ""
-    property var toCount: []
-    property var outstanding: null
-    // How long counts heard while more are still to come are held before
-    // they're said, in ms. Each folder read is counted in one answer, and
-    // each change makes every row afresh, so opening a folder four deep
-    // remade its rows once for each folder's counts on the way; now the
-    // counts of the folders read together are said once they're all
-    // heard, or this long after the first where it takes longer.
-    property int countsHeldFor: 200
-    // Whether counts heard are held, waiting on more; read by its checks.
-    readonly property bool holdingCounts: countsHeld.running
+    // What the one file-preview kept for the ask said and is asked
+    // (FilePreview.qml), which its checks read and set here.
+    property alias previews: previewer.previews
+    property alias toCount: previewer.toCount
+    property alias outstanding: previewer.outstanding
+    property alias countsHeldFor: previewer.countsHeldFor
+    readonly property bool holdingCounts: previewer.holdingCounts
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
     // A ]b or [b waiting on the folder holding the one it was pressed in to
@@ -174,7 +171,8 @@ Provider {
     // Whether a folder lists its hidden files, as :set hidden says, until
     // :set nohidden.
     property bool showsHidden: false
-    // Each kind of file by how it's named, and the kinds each is one of.
+    // Each kind of file by how it's named, and the kinds each is one of
+    // (FileKinds.js).
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
     collection: asking === null ? null : ({
@@ -250,8 +248,8 @@ Provider {
         const hidden = entry => !showsHidden && entry.name.startsWith(".")
             && !held.includes(`folder:${entry.path}`)
             && !(start === entry.path || start.startsWith(`${entry.path}/`));
-        const shown = FileFacts.ordered(all.filter(entry => !hidden(entry)), order, counts,
-            reversed);
+        const shown = FileFacts.ordered(all.filter(entry => !hidden(entry)), order,
+            previewer.counts, reversed);
         const own = shown.filter(entry => entry.folder).map(entry => folderRow(entry.path))
             .concat(folders ? [] : shown.filter(entry => !entry.folder && passes(entry.name))
                 .map(entry => fileRow(entry.path)));
@@ -370,7 +368,7 @@ Provider {
             Object.defineProperty(made, "side", {
                 get: () => {
                     const entry = provider.known[path];
-                    return entry ? FileFacts.side(entry, provider.counts[path], Date.now(),
+                    return entry ? FileFacts.side(entry, previewer.counts[path], Date.now(),
                         provider.factWords)
                         : Files.within(path);
                 },
@@ -390,141 +388,27 @@ Provider {
     // One that changed since it was asked is asked again.
     function plateOf(path) {
         const entry = known[path] ?? null;
-        const said = previews[path];
-        if (settings.preview && (said === undefined || entry && askedAt[path] !== entry.modified))
-            Qt.callLater(provider.preview, path);
+        const said = previewer.shown(path);
         const file = { path: path, name: Files.named(path, true), where: Files.within(path),
             entry: entry };
         return FileFacts.plate(file, said || null, factWords);
     }
 
-    // Wants file-preview's word on a file, asked once it's answered what
-    // it's asked now, in place of any wanted before it.
-    function preview(path) {
-        const entry = known[path] ?? null;
-        if (asking === null || path in previews && (!entry || askedAt[path] === entry.modified))
-            return;
-        previewNext = path;
-        askNext();
-    }
-
     // Wants what each folder inside one just read shows counted, so a
     // folder's row can say it.
     function count(path) {
-        if (!settings.preview || asking === null || toCount.includes(path))
-            return;
-        toCount = toCount.concat([path]);
-        askNext();
+        previewer.count(path);
     }
 
-    // Asks file-preview one thing at a time, the file wanted first, then
-    // the folders to count, starting it again if it's stopped. A path
-    // with a line end in it can't be asked as a line, so it's said to
-    // have nothing to show.
-    function askNext() {
-        if (!settings.preview || asking === null || outstanding !== null)
-            return;
-        if (!previewer.ready) {
-            previewer.running = true;
-            return;
-        }
-        if (previewNext !== "") {
-            const path = previewNext;
-            previewNext = "";
-            askedAt = Object.assign({}, askedAt, { [path]: known[path]?.modified });
-            put("show", path);
-        } else if (toCount.length > 0) {
-            const path = toCount[0];
-            toCount = toCount.slice(1);
-            put("items", path);
-        }
-    }
-
-    function put(verb, path) {
-        outstanding = { verb: verb, path: path };
-        if (path.includes("\n"))
-            Qt.callLater(provider.previewerSaid, "");
-        else
-            previewer.write(`${verb} ${path}\n`);
-    }
-
-    // file-preview's answer to what it was asked, nothing where it
-    // couldn't say, then the next thing to ask.
-    function previewerSaid(line) {
-        const was = outstanding;
-        outstanding = null;
-        if (was === null || asking === null)
-            return;
-        let said = false;
-        try {
-            said = JSON.parse(line);
-        } catch (error) {
-            said = false;
-        }
-        if (said && "error" in said)
-            said = false;
-        if (was.verb === "show") {
-            previews = Object.assign({}, previews, { [was.path]: said });
-        } else if (said || countsHeld.running) {
-            // A last answer that says nothing still says what was held.
-            if (said)
-                counts = Object.assign({}, counts, said);
-            if (toCount.length === 0) {
-                countsHeld.stop();
-                changed();
-            } else if (!countsHeld.running) {
-                countsHeld.start();
-            }
-        }
-        Qt.callLater(provider.askNext);
-    }
-
-    // Says the counts heard so far, once a batch has been held long
-    // enough.
-    Timer {
-        id: countsHeld
-
-        interval: provider.countsHeldFor
-        onTriggered: provider.changed()
-    }
-
-    // One file-preview for an ask, started as the first thing is wanted of
-    // it, its folders read as it waits, and stopped as the ask ends
-    // (forget), asked a line at a time, so nothing is started for each
-    // file selected or folder read.
-    // One that stops is started again for what's wanted next; one that
-    // stops before answering anything is given up on for what's wanted,
-    // so a file-preview that can't start isn't started again and again.
-    Process {
+    // The one file-preview for an ask, which says each file's preview and
+    // each folder's count, every folder held made again as counts are said.
+    FilePreview {
         id: previewer
 
-        property bool ready: false
-        property bool answered: false
-
-        command: (provider.settings.preview ?? []).concat(["serve"])
-        stdinEnabled: true
-        stdout: SplitParser {
-            onRead: line => {
-                previewer.answered = true;
-                provider.previewerSaid(line);
-            }
-        }
-        onStarted: {
-            ready = true;
-            answered = false;
-            Qt.callLater(provider.askNext);
-        }
-        onExited: {
-            const gaveUp = !answered;
-            ready = false;
-            if (provider.outstanding !== null)
-                provider.previewerSaid("");
-            if (gaveUp) {
-                provider.previewNext = "";
-                provider.toCount = [];
-            }
-            Qt.callLater(provider.askNext);
-        }
+        asking: provider.asking !== null
+        known: provider.known
+        program: provider.settings.preview ?? null
+        onCounted: provider.changed()
     }
 
     // What every folder held says, the one held deepest: a folder here by
@@ -1057,7 +941,7 @@ Provider {
     }
 
     // Whether the filter in use passes a file by its name: by a glob, or by
-    // its kind, as the desktop's kinds name files.
+    // its kind, as the desktop's kinds name files (FileKinds.js).
     function passes(name) {
         return wants(name, "");
     }
@@ -1065,72 +949,7 @@ Provider {
     // The same, for a file whose kind is said (`mime`), as one kept
     // elsewhere is, else known by its name.
     function wants(name, mime) {
-        if (inUse < 0)
-            return true;
-        const filter = filters[inUse];
-        const kind = mime || kindOf(name);
-        return (filter.globs ?? []).some(glob => globbed(glob).test(name))
-            || kind !== "" && (filter.kinds ?? []).some(wanted => isKind(kind, wanted, 0));
-    }
-
-    function globbed(glob) {
-        const said = glob.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
-        return new RegExp(`^${said}$`, "i");
-    }
-
-    // A file's kind, by its whole name, else by its longest ending.
-    function kindOf(name) {
-        const lower = name.toLowerCase();
-        if (kinds.names[name] || kinds.names[lower])
-            return kinds.names[name] ?? kinds.names[lower];
-        for (let at = lower.indexOf("."); at >= 0; at = lower.indexOf(".", at + 1)) {
-            const kind = kinds.endings[lower.slice(at)];
-            if (kind)
-                return kind;
-        }
-        return "";
-    }
-
-    // Whether a kind is the one wanted, a kind of it ("image/*" holds
-    // image/png), or one the desktop says it's a kind of (text/markdown is
-    // text/plain).
-    function isKind(kind, wanted, depth) {
-        if (kind === wanted || wanted.endsWith("/*") && kind.startsWith(wanted.slice(0, -1)))
-            return true;
-        return depth < 8 && (kinds.broader[kind] ?? []).some(each => isKind(each, wanted, depth + 1));
-    }
-
-    // The desktop's kinds of file (shared-mime-info's globs2, each line a
-    // weight, a kind and a glob, the heaviest first), by a whole name or an
-    // ending.
-    function kindsFrom(text) {
-        const names = {};
-        const endings = {};
-        for (const line of text.split("\n")) {
-            if (line.startsWith("#"))
-                continue;
-            const [, kind, glob] = line.split(":");
-            if (!kind || !glob)
-                continue;
-            // The first a name or an ending is given is the heaviest.
-            const ending = glob.slice(1).toLowerCase();
-            if (/^\*\.[^*?[]+$/.test(glob) && !(ending in endings))
-                endings[ending] = kind;
-            else if (!/[*?[]/.test(glob) && !(glob in names))
-                names[glob] = kind;
-        }
-        return Object.assign({}, kinds, { names: names, endings: endings });
-    }
-
-    // The kinds each kind is one of: a line a kind, then the broader one.
-    function broaderFrom(text) {
-        const broader = {};
-        for (const line of text.split("\n")) {
-            const [kind, wider] = line.trim().split(/\s+/);
-            if (kind && wider)
-                broader[kind] = (broader[kind] ?? []).concat([wider]);
-        }
-        return Object.assign({}, kinds, { broader: broader });
+        return FileKinds.wants(kinds, inUse < 0 ? null : filters[inUse], name, mime);
     }
 
     // A folder whose rows were asked for is read, if it isn't already.
@@ -1180,7 +999,7 @@ Provider {
         }
         const around = FileFacts.ordered(listed[parent].filter(entry => entry.folder
             && (entry.path === path || showsHidden || !entry.name.startsWith("."))), order,
-            counts, reversed).map(entry => entry.path);
+            previewer.counts, reversed).map(entry => entry.path);
         const at = around.indexOf(path);
         if (at < 0 || around.length < 2)
             return;
@@ -1301,7 +1120,7 @@ Provider {
         // What each folder read said of its files, and what file-preview
         // said, go with the folders read (forget), since those are read
         // while an ask waits, before it's shown.
-        previewNext = "";
+        previewer.previewNext = "";
         places = placesFor();
         listing.running = (settings.recent ?? []).length > 0;
         // Walked inside its opening, the folders on the way passed through,
@@ -1438,14 +1257,14 @@ Provider {
         path: provider.asking === null || !provider.settings.kinds ? ""
             : `${provider.settings.kinds}/globs2`
         printErrors: false
-        onLoaded: provider.kinds = provider.kindsFrom(text())
+        onLoaded: provider.kinds = FileKinds.kindsFrom(provider.kinds, text())
     }
 
     FileView {
         path: provider.asking === null || !provider.settings.kinds ? ""
             : `${provider.settings.kinds}/subclasses`
         printErrors: false
-        onLoaded: provider.kinds = provider.broaderFrom(text())
+        onLoaded: provider.kinds = FileKinds.broaderFrom(provider.kinds, text())
     }
 
     // Closing the launcher on an ask, or leaving it for something else,
@@ -1494,13 +1313,7 @@ Provider {
     function forget() {
         listed = {};
         known = {};
-        counts = {};
-        previews = {};
-        askedAt = {};
-        toCount = [];
-        outstanding = null;
-        countsHeld.stop();
-        previewer.running = false;
+        previewer.forget();
     }
 
     // Lists every folder in an order, turned round or not, as :sort and

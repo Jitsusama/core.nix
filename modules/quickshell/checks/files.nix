@@ -85,6 +85,8 @@
         "launcher/words.json"
       ]}
       cp ${../../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${../../open-with/FilePreview.qml} launcher/FilePreview.qml
+      cp ${../../open-with/FileKinds.js} launcher/FileKinds.js
       cp ${../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
