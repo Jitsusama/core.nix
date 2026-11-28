@@ -1771,6 +1771,8 @@ fn in_the_nets(cgroup: &str) -> bool {
 /// sent first is.
 fn the_nets(rank: Rank) -> bool {
     rank == Rank::First
+        // No cgroup file to read, as on a Mac, puts this in no unit at all,
+        // so it isn't the net's unless it was sent first.
         || fs::read_to_string("/proc/self/cgroup").is_ok_and(|cgroup| in_the_nets(&cgroup))
 }
 
