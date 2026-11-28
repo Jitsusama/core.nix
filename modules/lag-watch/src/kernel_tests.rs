@@ -79,6 +79,7 @@ fn a_sched_file_gives_the_time_blocked_only_while_it_is_kept() {
 #[test]
 fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
     let kept = "slack (7, #threads: 30)\n\
+                ----------------------------------------\n\
                 iowait_sum                   :        900.000000\n\
                 wait_sum                     :         12.250000\n";
     assert_eq!(
@@ -87,6 +88,7 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
         "the wait wasn't read from its line"
     );
     let only_io = "slack (7, #threads: 30)\n\
+                   ----------------------------------------\n\
                    iowait_sum                   :        900.000000\n";
     assert_eq!(
         waited(only_io),
@@ -96,12 +98,48 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
 }
 
 #[test]
+fn a_thread_s_name_can_t_forge_its_fair_count() {
+    // The kernel prints the name a thread gave itself as it was given,
+    // newlines and all, so this one's header spans three lines, the second
+    // a wait of its own; as 7.3.4 printed it on 27 November.
+    let forged = "\nwait_sum:9e9\n (7, #threads: 30)\n\
+                  -------------------------------------------------------------------\n\
+                  wait_sum                     :         12.250000\n";
+    assert_eq!(
+        waited(forged),
+        Some(12_250_000),
+        "a wait was read from the thread's name"
+    );
+    // Nor while schedstats are off and the kernel prints no wait at all.
+    let unkept = "\nwait_sum:9e9\n (7, #threads: 30)\n\
+                  -------------------------------------------------------------------\n\
+                  se.sum_exec_runtime          :          1.019739\n";
+    assert_eq!(
+        waited(unkept),
+        None,
+        "a wait was read from the thread's name"
+    );
+    // Nor with a rule of its own, which is shorter than the kernel's.
+    let ruled = "\n-\nwait_sum:1\n (7, #threads: 30)\n\
+                 -------------------------------------------------------------------\n\
+                 se.sum_exec_runtime          :          1.019739\n";
+    assert_eq!(
+        waited(ruled),
+        None,
+        "a wait was read past the name's own rule"
+    );
+}
+
+#[test]
 fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
     let root = std::env::temp_dir().join(format!("lag-watch-wait-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let kept = root.join("7/task/7/schedstat");
     write(&kept, "5000000 999000000 40\n");
-    write(&kept.with_file_name("sched"), "wait_sum : 2.000000\n");
+    write(
+        &kept.with_file_name("sched"),
+        "slack (7, #threads: 1)\n----------------\nwait_sum : 2.000000\n",
+    );
     assert_eq!(
         read_sched(&kept),
         Some(Sched {
@@ -235,6 +273,60 @@ fn a_sleep_one_count_booked_lends_the_other_s_excess_only_beside_it() {
         ]),
         [20, 40, 30, 20, 20],
         "the fair count's excess went on being counted after a sleep"
+    );
+}
+
+#[test]
+fn a_wait_queued_at_two_reads_loses_what_the_schedstat_booked_before_them() {
+    // Reads at 0, 10, 20 and 30 s, and a thread queued from 9 s to 21 s
+    // that moved CPUs at 9.5 s: the schedstat books 500 ms at the move,
+    // let go at the read at 20 s, and 11 500 at the end; the fair count
+    // books all 12 000 at the end. This loss is the price the comment on
+    // `waited_since` owns; a change to how long what's owed is kept
+    // shows here.
+    assert_eq!(
+        windows(&[(0, 0), (500, 0), (500, 0), (12_000, 12_000)]),
+        [0, 0, 11_500],
+        "what the schedstat booked two reads before a wait ended wasn't let go"
+    );
+    // Two waits in a row, each moved while queued: one of 500 ms moved
+    // 200 in, ending in the second window; one of 600 ms moved 300 in,
+    // ending in the third. The fair count's 200 of the first pairs with
+    // the second's early 300, so the first's early 200 is never paid.
+    assert_eq!(
+        windows(&[(0, 0), (200, 0), (800, 500), (1_100, 1_100)]),
+        [0, 500, 400],
+        "the lesser early part of two waits in a row wasn't lost"
+    );
+}
+
+#[test]
+fn growth_that_paid_the_other_count_s_debt_isn_t_owed_again() {
+    // The fair count books 10 a window before the schedstat does; the
+    // schedstat's 10 pays it, then the fair count runs 10 ahead with
+    // nothing to pair with. Owing the 10 that paid would count 20 where
+    // each count grew by 10 in all.
+    assert_eq!(
+        windows(&[(0, 0), (0, 10), (10, 10), (10, 20)]),
+        [0, 10, 0],
+        "the schedstat's growth that paid the fair count was owed again"
+    );
+    assert_eq!(
+        windows(&[(0, 0), (10, 0), (10, 10), (20, 10)]),
+        [0, 10, 0],
+        "the fair count's growth that paid the schedstat was owed again"
+    );
+}
+
+#[test]
+fn what_is_owed_is_let_go_when_the_fair_count_goes_back() {
+    // A 4 s sleep the schedstat books, then the fair count goes back, as
+    // when schedstats are turned off and on, then a sleeper the fair count
+    // books: the 4 s owed before mustn't pair with it.
+    assert_eq!(
+        windows(&[(0, 0), (4_000, 10), (4_010, 5), (4_020, 505)]),
+        [10, 10, 10],
+        "what was owed before the fair count went back was kept past it"
     );
 }
 

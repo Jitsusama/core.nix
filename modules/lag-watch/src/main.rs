@@ -706,7 +706,9 @@ mod tests {
             fs::write(at.join("stat"), &stat).unwrap();
             fs::write(dir.join(pid).join("stat"), &stat).unwrap();
             if let Some(ms) = blocked {
-                let sched = format!("slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n");
+                let rule = "-".repeat(67);
+                let sched =
+                    format!("slack ({pid}, #threads: 9)\n{rule}\nstats.sum_block_runtime : {ms}\n");
                 fs::write(at.join("sched"), sched).unwrap();
             }
             kernel::Thread {
