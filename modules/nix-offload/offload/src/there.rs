@@ -1879,18 +1879,28 @@ fn turn_folder_at(folder: &Path, uid: u32) -> Result<PathBuf, String> {
     Ok(folder)
 }
 
-/// One of the [`UPLOADS`] turns in `folder`, the first free, for the copy
-/// `about` names, waited for while all are taken, `say`ing so then and
-/// again `every` ([`TURN_SAID_EVERY`]) with how long it has waited. Each is looked at
-/// in turn 10 times a second, so a waiter takes whichever frees first,
-/// rather than waiting on one while another stands free: on 22 November a
-/// system build waited on its one while another copy's had ended. No
-/// order is kept among waiters, so one that has waited longest can lose a
-/// freed turn to one just come, as the blocking lock before let any
-/// waiter have it. A turn whose file can't be opened or locked is said
-/// once and left out, so the copy waits on the rest; none when no turn's
-/// file can be opened or locked at all, which is said too, so a copy then
-/// goes on without one rather than waiting for ever.
+/// One of the [`UPLOADS`] turns in `folder`, for the copy `about` names,
+/// waited for while none is this copy's to take, `say`ing so then and
+/// again `every` ([`TURN_SAID_EVERY`]) with how long it has waited and its
+/// place among the waiters. Waiters take freed turns in the order they
+/// came. Before, whichever waiter looked first after a turn freed took it,
+/// so one that had waited longest could lose a freed turn to one just
+/// come: on 27 November a batch copying 971 derivations had waited 55
+/// minutes and never had a turn, while batches that came 20 to 25 minutes
+/// after it were already sending. Now a copy that finds no turn it may
+/// take keeps a ticket in the folder ([`Waiters`]), and takes a free turn
+/// only while fewer live waiters came before it than turns stand free, so
+/// the k oldest waiters take k freed turns, and a copy just come takes a
+/// free turn at once only where no live waiter came before it. Each turn
+/// is looked at 10 times a second, so a waiter takes whichever frees
+/// first, rather than waiting on one while another stands free: on 22
+/// November a system build waited on its one while another copy's had
+/// ended. Where the waiters can't be kept in order, which is said, a copy
+/// takes whichever turn frees first, as before, rather than not sending.
+/// A turn whose file can't be opened or locked is said once and left out,
+/// so the copy waits on the rest; none when no turn's file can be opened
+/// or locked at all, which is said too, so a copy then goes on without
+/// one rather than waiting for ever.
 fn turn_in(
     folder: &Path,
     about: &str,
@@ -1899,23 +1909,33 @@ fn turn_in(
 ) -> Option<fs::File> {
     let (mut turns, unopened) = turn_files(folder, "uplink");
     let mut unusable = unopened;
+    let mut waiters = Waiters::at(folder)
+        .map_err(|why| say(unordered(folder, &why)))
+        .ok();
     let began = std::time::Instant::now();
     let mut said: Option<std::time::Instant> = None;
+    let mut place = None;
     loop {
-        let mut at = 0;
-        while at < turns.len() {
-            match turns[at].try_lock() {
-                Ok(()) => {
-                    let turn = turns.swap_remove(at);
-                    holding(&turn, about);
-                    return Some(turn);
-                }
-                Err(fs::TryLockError::WouldBlock) => at += 1,
-                Err(fs::TryLockError::Error(error)) => {
-                    unusable.push(format!("a turn can't be locked: {error}"));
-                    drop(turns.swap_remove(at));
-                }
+        let looked = match waiters.as_mut() {
+            Some(waiters) => waiters.look(&mut turns, &mut unusable, say),
+            None => Ok(Look::Looked(turn_for(&mut turns, 0, &mut unusable), None)),
+        };
+        let taken = match looked {
+            Ok(Look::Looked(taken, at)) => {
+                place = at;
+                taken
             }
+            // Another waiter is looking, so this one looks again next time.
+            Ok(Look::Busy) => None,
+            Err(why) => {
+                say(unordered(folder, &why));
+                waiters = None;
+                continue;
+            }
+        };
+        if let Some(turn) = taken {
+            holding(&turn, about);
+            return Some(turn);
         }
         if !unusable.is_empty() {
             let rest = match turns.len() {
@@ -1934,16 +1954,18 @@ fn turn_in(
             return None;
         }
         if said.is_none_or(|at| at.elapsed() >= every) {
+            let standing = place.map(|place: Place| format!(", {}", place.words()));
+            let standing = standing.unwrap_or_default();
             if said.is_none() {
                 say(format!(
                     "nix-offload: {} already go up from this machine ({}), so this waits its \
-                     turn to send",
+                     turn to send{standing}",
                     copies(turns.len()),
                     holders(folder, "uplink")
                 ));
             } else {
                 say(format!(
-                    "nix-offload: this has waited {} for a turn to send, behind {}",
+                    "nix-offload: this has waited {} for a turn to send{standing}, behind {}",
                     lasting(began.elapsed()),
                     holders(folder, "uplink")
                 ));
@@ -1951,6 +1973,304 @@ fn turn_in(
             said = Some(std::time::Instant::now());
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// What a copy says when the uplink's waiters in `folder` can't be kept
+/// in order, `why`, so it takes whichever turn frees first.
+fn unordered(folder: &Path, why: &str) -> String {
+    format!(
+        "nix-offload: the uplink's waiters in {} can't be kept in order ({why}), so this copy \
+         takes whichever turn frees first",
+        folder.display()
+    )
+}
+
+/// One of `turns` that's free, held, for a waiter before whom `ahead`
+/// live waiters came: taken only while more stand free than came before
+/// it, so no turn is taken from under a waiter that came earlier. Those
+/// found free and not taken are let go at once. One that can't be locked
+/// at all is taken out of them, why added to `unusable`, and the rest are
+/// still looked at, so one bad file doesn't keep a copy from a turn free
+/// beside it.
+fn turn_for(
+    turns: &mut Vec<fs::File>,
+    ahead: usize,
+    unusable: &mut Vec<String>,
+) -> Option<fs::File> {
+    let mut free = Vec::new();
+    let mut at = 0;
+    while at < turns.len() {
+        match turns[at].try_lock() {
+            Ok(()) => {
+                free.push(at);
+                at += 1;
+            }
+            Err(fs::TryLockError::WouldBlock) => at += 1,
+            // The last turn takes its place, and it's yet to be looked at,
+            // so the places of those found free before it still hold.
+            Err(fs::TryLockError::Error(error)) => {
+                unusable.push(format!("a turn can't be locked: {error}"));
+                drop(turns.swap_remove(at));
+            }
+        }
+    }
+    let taking = free.len() > ahead;
+    for &at in free.iter().skip(usize::from(taking)) {
+        let _ = turns[at].unlock();
+    }
+    free.first()
+        .filter(|_| taking)
+        .map(|&at| turns.swap_remove(at))
+}
+
+/// The start of a waiter's ticket's name in the folder of turns, followed
+/// by the nanoseconds since the epoch it was made at and its pid, each
+/// zero-padded so the names sort in the order the tickets were made.
+const TICKET: &str = "uplink-wait-";
+
+/// The copies waiting for an uplink turn in a folder, kept in the order
+/// they came by a ticket each ([`TICKET`]). A waiter holds its ticket's
+/// lock for as long as it waits, as a turn's is held, so one that dies
+/// frees it, and a ticket whose lock another waiter can take is a dead
+/// waiter's, which that waiter removes. Tickets are made, looked at and
+/// removed, and turns taken, only while the folder's `uplink-order` file
+/// is held, so no ticket is taken for a dead waiter's between being made
+/// and being locked, and no two waiters take turns on the same count.
+struct Waiters {
+    folder: PathBuf,
+    /// Held while a waiter looks at the tickets and the turns.
+    order: fs::File,
+    /// This copy's ticket, once it has had to wait.
+    ticket: Option<Ticket>,
+    /// Whether this copy couldn't make its ticket, said once, so it
+    /// waits behind every waiter that has one rather than trying again.
+    ticketless: bool,
+    /// The tickets refused already, so each is said once.
+    refused: BTreeSet<String>,
+}
+
+/// What a waiter found when it looked: another waiter looking, or the
+/// turn it took, if any, and its place among the waiters.
+enum Look {
+    Busy,
+    Looked(Option<fs::File>, Option<Place>),
+}
+
+/// Where a waiter stands: how many live waiters came before it, and how
+/// many wait, it among them.
+#[derive(Clone, Copy)]
+struct Place {
+    ahead: usize,
+    waiting: usize,
+}
+
+impl Place {
+    /// Where the waiter stands, in words: "2nd of 5 waiting".
+    fn words(self) -> String {
+        format!("{} of {} waiting", ordinal(self.ahead + 1), self.waiting)
+    }
+}
+
+/// `count` as an ordinal: 1st, 2nd, 3rd, 4th, 11th, 21st.
+fn ordinal(count: usize) -> String {
+    let suffix = match (count % 10, count % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{count}{suffix}")
+}
+
+/// A waiter's ticket, held while it waits.
+struct Ticket {
+    name: String,
+    path: PathBuf,
+    held: fs::File,
+}
+
+impl Drop for Ticket {
+    // Its name goes before its lock is let go, as the file closes after
+    // this, so no other waiter finds it free and takes it for a dead
+    // waiter's, though that would remove it all the same.
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+impl Waiters {
+    /// The waiters in `folder`, or why they can't be kept in order: their
+    /// `uplink-order` file can't be opened, or isn't a plain file of this
+    /// account's alone ([`open_turn`]).
+    fn at(folder: &Path) -> Result<Self, String> {
+        Ok(Self {
+            folder: folder.to_owned(),
+            order: open_turn(&folder.join("uplink-order"), true)?,
+            ticket: None,
+            ticketless: false,
+            refused: BTreeSet::new(),
+        })
+    }
+
+    /// A look at the waiters and `turns`, holding the order, taking a turn
+    /// where this copy's place allows ([`turn_for`]) and giving up its
+    /// ticket then, or making one where it has none, so its place is kept
+    /// from the first look that finds no turn it may take. Why not when the
+    /// order can't be locked or the folder can't be listed.
+    fn look(
+        &mut self,
+        turns: &mut Vec<fs::File>,
+        unusable: &mut Vec<String>,
+        say: &mut dyn FnMut(String),
+    ) -> Result<Look, String> {
+        match self.order.try_lock() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => return Ok(Look::Busy),
+            Err(fs::TryLockError::Error(error)) => {
+                return Err(format!("its order can't be locked: {error}"));
+            }
+        }
+        let looked = self.looked(turns, unusable, say);
+        let _ = self.order.unlock();
+        looked
+    }
+
+    /// [`Waiters::look`], with the order held.
+    fn looked(
+        &mut self,
+        turns: &mut Vec<fs::File>,
+        unusable: &mut Vec<String>,
+        say: &mut dyn FnMut(String),
+    ) -> Result<Look, String> {
+        let (place, newest) = self.place(say)?;
+        let taken = turn_for(turns, place.ahead, unusable);
+        if taken.is_some() {
+            self.ticket = None;
+        } else if self.ticket.is_none() && !self.ticketless && !turns.is_empty() {
+            match self.ticket_after(newest) {
+                Ok(ticket) => self.ticket = Some(ticket),
+                Err(why) => {
+                    self.ticketless = true;
+                    say(format!(
+                        "nix-offload: this copy can't keep a place among the uplink's waiters \
+                         ({why}), so it waits behind every one that has"
+                    ));
+                }
+            }
+        }
+        Ok(Look::Looked(taken, Some(place)))
+    }
+
+    /// Where this copy stands among the live waiters, and the newest
+    /// ticket's stamp. Every other live ticket is ahead of a copy with
+    /// none, so one just come never takes a turn before a waiter. A dead
+    /// waiter's ticket is removed and not counted, and one that's refused
+    /// ([`waits`]) isn't counted, said once each. Why not when the folder
+    /// can't be listed.
+    fn place(&mut self, say: &mut dyn FnMut(String)) -> Result<(Place, u128), String> {
+        let listed = fs::read_dir(&self.folder)
+            .map_err(|error| format!("{} can't be listed: {error}", self.folder.display()))?;
+        let mine = self.ticket.as_ref().map(|ticket| ticket.name.as_str());
+        let (mut ahead, mut others, mut newest) = (0, 0, 0);
+        for entry in listed.flatten() {
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            let Some(stamped) = name.strip_prefix(TICKET) else {
+                continue;
+            };
+            if mine == Some(name.as_str()) {
+                continue;
+            }
+            let stamp = stamped
+                .split('-')
+                .next()
+                .and_then(|stamp| stamp.parse().ok());
+            newest = newest.max(stamp.unwrap_or(0));
+            match waits(&entry.path()) {
+                Ok(true) => {
+                    others += 1;
+                    if mine.is_none_or(|mine| name.as_str() < mine) {
+                        ahead += 1;
+                    }
+                }
+                Ok(false) => {}
+                Err(why) => {
+                    if self.refused.insert(name) {
+                        say(format!(
+                            "nix-offload: a waiter's ticket among the uplink's turns is refused \
+                             ({why}), so it keeps no place"
+                        ));
+                    }
+                }
+            }
+        }
+        let waiting = others + 1;
+        Ok((Place { ahead, waiting }, newest))
+    }
+
+    /// A ticket for this copy, made and locked, stamped now or, where the
+    /// clock reads earlier, just after `newest`, the newest ticket's
+    /// stamp, so it sorts after every one there. It's made only where its
+    /// name is free, with no link followed, for this account alone. Why
+    /// not when it can't be made or locked.
+    fn ticket_after(&self, newest: u128) -> Result<Ticket, String> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos());
+        let mut stamp = now.max(newest + 1);
+        // A name already there is a ticket refused or made in the same
+        // nanosecond, so the next few are tried before giving up.
+        let mut tried = 0;
+        loop {
+            tried += 1;
+            let name = format!("{TICKET}{stamp:020}-{:010}", std::process::id());
+            let path = self.folder.join(&name);
+            let made = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&path);
+            match made {
+                Ok(held) => {
+                    let ticket = Ticket { name, path, held };
+                    ticket
+                        .held
+                        .try_lock()
+                        .map_err(|error| format!("{}: {error}", ticket.path.display()))?;
+                    return Ok(ticket);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && tried < 3 => {
+                    stamp += 1;
+                }
+                Err(error) => return Err(format!("{}: {error}", path.display())),
+            }
+        }
+    }
+}
+
+/// Whether the ticket at `path` is a live waiter's, its lock held. One
+/// whose lock this takes is a dead waiter's and is removed, and one gone
+/// already is no waiter's. Why when it isn't a plain file of this
+/// account's alone, as a turn's must be ([`open_turn`]), so a link isn't
+/// followed and a FIFO isn't waited on, or it can't be locked.
+fn waits(path: &Path) -> Result<bool, String> {
+    let ticket = match open_turn(path, false) {
+        Ok(ticket) => ticket,
+        Err(_) if fs::symlink_metadata(path).is_err() => return Ok(false),
+        Err(why) => return Err(why),
+    };
+    match ticket.try_lock() {
+        Ok(()) => {
+            let _ = fs::remove_file(path);
+            Ok(false)
+        }
+        Err(fs::TryLockError::WouldBlock) => Ok(true),
+        Err(fs::TryLockError::Error(error)) => Err(format!("{}: {error}", path.display())),
     }
 }
 
@@ -7255,8 +7575,9 @@ mod tests {
                 && lines[1..]
                     .iter()
                     .all(|line| line.contains("this has waited"))
-                && lines.iter().all(|line| line.contains(&named)),
-            "the wait wasn't said again, naming its holders: {lines:?}"
+                && lines.iter().all(|line| line.contains(&named))
+                && lines.iter().all(|line| line.contains("1st of 1 waiting")),
+            "the wait wasn't said again, naming its holders and its place: {lines:?}"
         );
         // A look comes every tenth of a second, so lines said on every
         // look, rather than every while, come closer than this.
@@ -7417,6 +7738,257 @@ mod tests {
             other + 1
         );
         assert!(waiting.join().expect("the waiter"), "it took no turn");
+    }
+
+    /// The waiters' tickets in `folder`, by name, oldest first.
+    fn tickets(folder: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(folder)
+            .expect("the folder, listed")
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .filter(|name| name.starts_with(TICKET))
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Whether `folder` comes to hold `count` tickets within 5 s, so a
+    /// test knows its waiters came in the order it started them.
+    fn tickets_reach(folder: &Path, count: usize) -> bool {
+        let began = std::time::Instant::now();
+        while tickets(folder).len() < count && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        tickets(folder).len() == count
+    }
+
+    /// A waiter for a turn in `folder`, in a thread of its own, sending
+    /// `which` once it has one, and keeping it until it's joined.
+    fn waiter(
+        folder: &Path,
+        which: usize,
+        took: mpsc::Sender<usize>,
+    ) -> std::thread::JoinHandle<Option<fs::File>> {
+        let at = folder.to_owned();
+        std::thread::spawn(move || {
+            let turn = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |_| {});
+            let _ = took.send(which);
+            turn
+        })
+    }
+
+    /// Waiters for a turn in `folder`, `count` of them, each started once
+    /// the one before keeps its ticket, sending which they are, from 0,
+    /// on `took` as they take one.
+    fn waiters_in_order(
+        folder: &Path,
+        count: usize,
+        took: &mpsc::Sender<usize>,
+    ) -> Vec<std::thread::JoinHandle<Option<fs::File>>> {
+        (0..count)
+            .map(|which| {
+                let waiting = waiter(folder, which, took.clone());
+                assert!(
+                    tickets_reach(folder, which + 1),
+                    "waiter {which} kept no ticket: {:?}",
+                    tickets(folder)
+                );
+                waiting
+            })
+            .collect()
+    }
+
+    /// The name of a ticket made at `stamp` by this process, in `folder`.
+    fn ticket_at(folder: &Path, stamp: u128) -> PathBuf {
+        folder.join(format!("{TICKET}{stamp:020}-{:010}", std::process::id()))
+    }
+
+    // On 27 November a batch had waited 55 minutes for a turn while
+    // batches come 20 to 25 minutes after it sent.
+    #[test]
+    fn waiters_take_freed_turns_in_the_order_they_came() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        let (took, taken) = mpsc::channel();
+        let waiting = waiters_in_order(folder.path(), 3, &took);
+        for which in 0..3 {
+            drop(held.remove(0));
+            assert_eq!(
+                taken.recv_timeout(Duration::from_secs(5)),
+                Ok(which),
+                "a freed turn didn't go to the waiter that came first"
+            );
+        }
+        for waiting in waiting {
+            assert!(
+                waiting.join().expect("a waiter").is_some(),
+                "a waiter said it took a turn but has none"
+            );
+        }
+        assert_eq!(
+            tickets(folder.path()),
+            Vec::<String>::new(),
+            "a waiter that took a turn left its ticket"
+        );
+    }
+
+    // An older waiter is a ticket the test holds, so it waits for as long
+    // as the test likes; once let go, it's a dead waiter's.
+    #[test]
+    fn a_waiter_that_came_later_takes_no_turn_before_an_older_one() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        let older = ticket_at(folder.path(), 1);
+        let ticket = fs::File::create(&older).expect("an older ticket");
+        ticket.try_lock().expect("the older ticket, free");
+        let (took, taken) = mpsc::channel();
+        let later = waiter(folder.path(), 1, took);
+        assert!(
+            tickets_reach(folder.path(), 2),
+            "the later waiter kept no ticket: {:?}",
+            tickets(folder.path())
+        );
+        drop(held.remove(0));
+        assert!(
+            taken.recv_timeout(Duration::from_millis(500)).is_err(),
+            "a later waiter took a turn freed while an older one waited"
+        );
+        drop(ticket);
+        assert_eq!(
+            taken.recv_timeout(Duration::from_secs(5)),
+            Ok(1),
+            "the later waiter took no turn once the older one was gone"
+        );
+        assert!(
+            later.join().expect("the later waiter").is_some(),
+            "the later waiter said it took a turn but has none"
+        );
+        assert!(!older.exists(), "a gone waiter's ticket was left");
+    }
+
+    #[test]
+    fn a_dead_waiters_ticket_is_removed_and_holds_no_one_back() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        drop(held.remove(0));
+        let dead = ticket_at(folder.path(), 1);
+        fs::write(&dead, "").expect("a dead waiter's ticket");
+        let (took, taken) = mpsc::channel();
+        let newcomer = waiter(folder.path(), 0, took);
+        assert_eq!(
+            taken.recv_timeout(Duration::from_secs(5)),
+            Ok(0),
+            "a dead waiter's ticket kept a newcomer from a free turn"
+        );
+        assert!(
+            newcomer.join().expect("the newcomer").is_some(),
+            "the newcomer said it took a turn but has none"
+        );
+        assert!(!dead.exists(), "a dead waiter's ticket wasn't removed");
+    }
+
+    #[test]
+    fn two_turns_freed_at_once_go_to_the_two_oldest_waiters() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        let (took, taken) = mpsc::channel();
+        let waiting = waiters_in_order(folder.path(), 3, &took);
+        held.truncate(1);
+        let mut first = [0, 1].map(|_| taken.recv_timeout(Duration::from_secs(5)).ok());
+        first.sort_unstable();
+        assert_eq!(
+            first,
+            [Some(0), Some(1)],
+            "two turns freed at once didn't go to the two oldest waiters"
+        );
+        assert!(
+            taken.recv_timeout(Duration::from_millis(500)).is_err(),
+            "the third waiter took a turn while two came before it"
+        );
+        drop(held);
+        assert_eq!(
+            taken.recv_timeout(Duration::from_secs(5)),
+            Ok(2),
+            "the third waiter took no turn once one freed"
+        );
+        for waiting in waiting {
+            assert!(
+                waiting.join().expect("a waiter").is_some(),
+                "a waiter said it took a turn but has none"
+            );
+        }
+    }
+
+    // A ticket's name that's a link isn't followed, so it can't lend a
+    // held file elsewhere for a waiter, and a FIFO isn't waited on; each
+    // is said and left, and keeps no place. The waiter is in a thread of
+    // its own, so one hung on a FIFO fails the test rather than hanging
+    // it.
+    #[test]
+    fn a_tickets_name_that_is_a_link_or_a_fifo_is_refused() {
+        use std::os::unix::ffi::OsStrExt;
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        drop(held.remove(0));
+        let elsewhere = folder.path().join("elsewhere");
+        let kept = fs::File::create(&elsewhere).expect("a file elsewhere");
+        kept.try_lock().expect("the file elsewhere, free");
+        let link = ticket_at(folder.path(), 1);
+        std::os::unix::fs::symlink(&elsewhere, &link).expect("a link");
+        let fifo = ticket_at(folder.path(), 2);
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).expect("its name");
+        // SAFETY: the name is a valid C string that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "a FIFO");
+        let at = folder.path().to_owned();
+        let (done, finished) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut said = Vec::new();
+            let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| said.push(line));
+            let _ = done.send((had.is_some(), said));
+        });
+        let (had, said) = finished
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a turn taken past a link and a FIFO for tickets");
+        let named = |path: &Path| {
+            let path = path.display().to_string();
+            said.iter()
+                .any(|line| line.contains(&path) && line.contains("refused"))
+        };
+        assert!(
+            had && said.len() == 2 && named(&link) && named(&fifo),
+            "a link or a FIFO for a ticket wasn't refused, said once each: {said:?}"
+        );
+        assert!(
+            fs::symlink_metadata(&link).is_ok() && fs::symlink_metadata(&fifo).is_ok(),
+            "a refused ticket was removed"
+        );
+        assert!(elsewhere.exists(), "a ticket's link was followed");
+    }
+
+    #[test]
+    fn a_place_among_waiters_reads_as_an_ordinal() {
+        let places = [
+            (0, 1),
+            (1, 5),
+            (2, 3),
+            (3, 4),
+            (10, 12),
+            (20, 21),
+            (111, 112),
+        ]
+        .map(|(ahead, waiting)| Place { ahead, waiting }.words());
+        assert_eq!(
+            places,
+            [
+                "1st of 1 waiting",
+                "2nd of 5 waiting",
+                "3rd of 3 waiting",
+                "4th of 4 waiting",
+                "11th of 12 waiting",
+                "21st of 21 waiting",
+                "112th of 112 waiting",
+            ],
+            "a waiter's place was said wrong"
+        );
     }
 
     #[test]
