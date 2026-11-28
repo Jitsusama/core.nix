@@ -29,6 +29,7 @@ import math
 import os
 import struct
 import time
+import warnings
 import zlib
 from collections import Counter
 from datetime import timedelta
@@ -697,12 +698,15 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     rode = [at for at in back_on if abs(at["drawn"]["x"] - at["x"]) >= 1]
     if not rode:
         # Every walk set off before the keys came back leaves no ride to read, and the run still
-        # passes on the seat alone, so it says so for whoever reads the log, without failing.
+        # passes on the seat alone, so it says so for whoever reads the log, without failing:
+        # as a warning, which pytest's summary shows on a passing run, where a print is
+        # captured and dropped.
         departed = [at for at in places if at is not None and at.get("departing")]
         if departed:
-            print(
+            warnings.warn(
                 f"no ride back was seen: {len(departed)} report(s) of a walk set off before the"
-                " keys came back, so only the seat was checked"
+                " keys came back, so only the seat was checked",
+                stacklevel=1,
             )
         seated_as_heard_late(back_on, held, sent)
         return

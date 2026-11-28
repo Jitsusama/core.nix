@@ -113,10 +113,13 @@ function heardOf(heard, on) {
 
 // When the slide under the cat began, on the clock `now` is read from:
 // the later begin of the motions `heard` (hears, heardOf) that still run
-// `now` (runs), null where none does. niri says only each tile's latest
-// begun motion, so a column's move begun inside a scroll's spring is the
-// one niri draws its window by; taking the scroll's earlier begin would
-// draw the cat ahead of that window by the time between them.
+// `now` (runs), null where none does. niri draws a window by every motion
+// still running, the view's scroll and its column's move together, but
+// says only each tile's latest begun one, and the cat rides one spring.
+// From the later begin, a column's move begun inside a scroll's spring is
+// ridden as niri draws it and the scroll's rest late, by the time between
+// them; from the earlier, the move would be ridden early, the cat ahead of
+// its window, which reads as the cat leaving it.
 function slideBegan(heard, now, lasts) {
     const running = heard.filter(one => runs(one, now, lasts)).map(one => one.at);
     return running.length === 0 ? null : Math.max(...running);
