@@ -5152,8 +5152,11 @@
     Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
-    own, which Return steps into and typing still finds each in; and a look's choice in For You
-    steers its answer to the session that left it and, once taken, moves to History saying it
+    own, which Return steps into and typing still finds each in; a look's choice in For You
+    steers its answer to the session that left it and, once taken, moves to History saying it;
+    and a look link followed before For You has heard its looks walks to the look once they're
+    heard, keeping beside it what was told while shut, and walks nowhere once a key took the
+    cursor
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
