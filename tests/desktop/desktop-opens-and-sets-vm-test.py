@@ -6,6 +6,9 @@ power profile, displays, Wi-Fi, the addresses, Joel's timers and the VMs virsh l
 tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
+
+Long because it is already one area, split from the desktop test as AGENTS.md asks, and holds no
+more than the twenty tests an area may before it splits again.
 """
 
 from __future__ import annotations

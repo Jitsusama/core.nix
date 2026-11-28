@@ -33,6 +33,10 @@
 # The root's checks.nix names each area, or the checks.nix of its area of
 # tests/vm/ once it has moved there.
 #
+# Long because every desktop area's VM test boots this one machine, so the
+# stand-ins each area needs, and which areas bring them, are declared here
+# beside it.
+#
 # The pictures it takes for a person to look at, which `shots-changed`
 # compares, are taken only by an area's gallery, `.gallery`, the same test
 # with them on: proving a change needs none, and each waits for the screen
