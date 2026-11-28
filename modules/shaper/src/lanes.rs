@@ -561,7 +561,25 @@ const AHEAD_MOST: f64 = 4_000.0;
 /// about one model call in five failed from 14:10.
 pub fn vpn_held(lane: f64, share: f64, carried: f64) -> f64 {
     let whole = lane * VPN_HELD;
-    (whole * share).max(need(carried).min(AHEAD_MOST).min(whole))
+    (whole * share).max(ahead_floor(whole, carried))
+}
+
+/// The share of its lane at or under which `vpn_held` keeps the VPN's
+/// CAKE at its floor, so the VPN's own hold cutting under it lowers
+/// nothing (src/tunnel.rs).
+pub fn vpn_least(lane: f64, carried: f64) -> f64 {
+    let whole = lane * VPN_HELD;
+    if whole > 0.0 {
+        ahead_floor(whole, carried) / whole
+    } else {
+        0.0
+    }
+}
+
+/// What the VPN's CAKE is never held under, of its `whole`, for what its
+/// tins ahead of bulk carried, in kbit/s.
+fn ahead_floor(whole: f64, carried: f64) -> f64 {
+    need(carried).min(AHEAD_MOST).min(whole)
 }
 
 /// Agents' lane's class, under which their CAKE stands.

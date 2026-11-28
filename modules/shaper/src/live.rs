@@ -536,6 +536,12 @@ impl Live {
         self.follow.controller.tunnel_share()
     }
 
+    /// Tells the VPN's own hold the share at or under which the VPN's CAKE
+    /// stays at its floor (src/lanes.rs's `vpn_least`), for its next step.
+    pub fn vpn_floor(&mut self, least: f64) {
+        self.follow.controller.tunnel_floor(least);
+    }
+
     /// The share of their split agents straight on the link are held to
     /// (src/oneway.rs), judged as the VPN's share is.
     pub fn agents_share(&self, now: SystemTime) -> f64 {
