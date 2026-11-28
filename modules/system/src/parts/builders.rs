@@ -543,6 +543,56 @@ mod tests {
     }
 
     #[test]
+    fn builders_drawn_alike_and_as_bad_are_one_whatever_the_node_s_order() {
+        let refused = json!({ "name": "kite\u{200b}", "state": "not answering",
+                              "said": "refused" });
+        let timed_out = json!({ "name": "kite", "state": "not answering",
+                                "said": "timed out" });
+        let full = json!({ "name": " kite", "state": "running", "said": "full" });
+        let answers = json!({ "name": "heron", "state": "answering" });
+        let runs = json!({ "name": "heron\u{200b}", "state": "running" });
+        let refused_says = "isn't answering (refused)";
+        let both_refused = format!("{refused_says}; isn't answering (timed out)");
+        let full_says = "runs with its store full, so it builds only when no other can";
+        for (pair, says, side, words) in [
+            (
+                [&refused, &timed_out],
+                both_refused.clone(),
+                vec!["not answering"],
+                vec![both_refused.clone()],
+            ),
+            (
+                [&refused, &full],
+                format!("{refused_says}; {full_says}"),
+                vec!["not answering", "its store full"],
+                vec![refused_says.to_owned(), full_says.to_owned()],
+            ),
+            (
+                [&answers, &runs],
+                "answers and takes builds; runs and takes builds".to_owned(),
+                vec![],
+                vec![],
+            ),
+        ] {
+            let [one, other] = pair;
+            let either = [json!([one, other]), json!([other, one])].map(|listed| {
+                builders(&json!({ "Ok": { "Builders": listed } }))
+                    .into_iter()
+                    .map(|(thing, looks)| (thing.says, thing.side, looks))
+                    .collect::<Vec<_>>()
+            });
+            let side: Vec<String> = side.into_iter().map(str::to_owned).collect();
+            let joined = vec![(says, side, words)];
+            assert_eq!(
+                either,
+                [joined.clone(), joined],
+                "two builders drawn alike and as bad are one saying both, in either order: \
+                 {one}, {other}"
+            );
+        }
+    }
+
+    #[test]
     fn a_builder_without_a_name_is_kept_and_said_unnamed() {
         for nameless in [
             json!({ "name": "\u{200b}", "state": "not answering" }),
