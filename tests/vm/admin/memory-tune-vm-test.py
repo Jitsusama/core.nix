@@ -2,10 +2,10 @@
 
 memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
-swappiness, swap's read-ahead, proactive compaction, the free memory floor, defrag_mode and
-zswap's shrinker to a listed value, as an agent measuring them under load would, outside any
-session. An account outside wheel can't, and an administrator can't set a value the rules
-don't list.
+swappiness, swap's read-ahead, proactive compaction, the free memory floor, defrag_mode,
+zswap's shrinker and huge pages' defrag to a listed value, as an agent measuring them under load
+would, outside any session. An account outside wheel can't, and an administrator can't set a value
+the rules don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
 
@@ -29,6 +29,7 @@ COMPACTION = "/proc/sys/vm/compaction_proactiveness"
 MIN_FREE = "/proc/sys/vm/min_free_kbytes"
 DEFRAG = "/proc/sys/vm/defrag_mode"
 ZSWAP_SHRINKER = "/sys/module/zswap/parameters/shrinker_enabled"
+HUGEPAGES_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
 
 
 def start(machine: BaseMachine, account: str, unit: str) -> tuple[int, str]:
@@ -59,7 +60,9 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
     min_free = read(machine, MIN_FREE)
     defrag = read(machine, DEFRAG)
     zswap_shrinker = read(machine, ZSWAP_SHRINKER)
+    hugepages_defrag = chosen(read(machine, HUGEPAGES_DEFRAG))
     yield machine
+    machine.succeed(f"echo {hugepages_defrag} > {HUGEPAGES_DEFRAG}")
     machine.succeed(f"echo {zswap_shrinker} > {ZSWAP_SHRINKER}")
     machine.succeed(f"sysctl -w vm.defrag_mode={defrag}")
     machine.succeed(f"sysctl -w vm.min_free_kbytes={min_free}")
@@ -155,11 +158,27 @@ def test_an_administrator_turns_zswaps_shrinker_on_and_off_without_a_password(
         assert shrinker == said_back, f"zswap's shrinker read {shrinker} after {given}"
 
 
+def test_an_administrator_sets_huge_pages_defrag_without_a_password(
+    reverted: BaseMachine,
+) -> None:
+    # defer+madvise reaches systemd as defer\x2bmadvise, which the unit has to unescape.
+    for defrag in ("never", "defer+madvise"):
+        status, said = start(reverted, "someone", f"memory-thp-defrag@{defrag}")
+        assert status == 0, said
+        chose = chosen(read(reverted, HUGEPAGES_DEFRAG))
+        assert chose == defrag, f"huge pages' defrag read {chose} after {defrag}"
+
+
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
     before = read(reverted, SCALE)
     status, said = start(reverted, "other", "memory-watermarks@100")
     assert status != 0, said
     assert read(reverted, SCALE) == before
+    # Huge pages' defrag boots at madvise, so a never written through would read back changed.
+    before = read(reverted, HUGEPAGES_DEFRAG)
+    status, said = start(reverted, "other", "memory-thp-defrag@never")
+    assert status != 0, said
+    assert read(reverted, HUGEPAGES_DEFRAG) == before, "huge pages' defrag was written"
 
 
 def test_a_value_the_rules_dont_list_needs_a_password(reverted: BaseMachine) -> None:
@@ -184,3 +203,12 @@ def test_a_zswap_shrinker_value_the_rules_dont_list_needs_a_password(
     status, said = start(reverted, "someone", "memory-zswap-shrinker@0")
     assert status != 0, said
     assert read(reverted, ZSWAP_SHRINKER) == before, "an unlisted shrinker value was written"
+
+
+def test_a_huge_pages_defrag_the_rules_dont_list_needs_a_password(
+    reverted: BaseMachine,
+) -> None:
+    before = read(reverted, HUGEPAGES_DEFRAG)
+    status, said = start(reverted, "someone", "memory-thp-defrag@sometimes")
+    assert status != 0, said
+    assert read(reverted, HUGEPAGES_DEFRAG) == before, "an unlisted defrag was written"
