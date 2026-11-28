@@ -302,14 +302,19 @@ impl Working {
     /// reads every placed process's memory; what a reading read goes
     /// unsaid once it's `old`. Once it's dropped, the thread ends at its
     /// next wake, or at the end of the reading it's in, should that wake
-    /// come while one is held up.
+    /// come while one is held up. The real pair it hands on, the walk's
+    /// own holder and the journal, is reached by no case below the
+    /// machine, as only a real `/proc` held up sets the one and only the
+    /// unit's journal reads the other, so it's proven only on the machine.
     fn start(
         pace: Duration,
         old: Duration,
         folders: Vec<PathBuf>,
         sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
     ) -> Self {
-        Self::start_saying(pace, old, folders, sample, using::reading, journal)
+        Self::start_saying(pace, old, folders, sample, using::reading, |said| {
+            journal(&said);
+        })
     }
 
     /// Starts as [`Working::start`] does, asking `reading` which process
@@ -681,18 +686,12 @@ fn ready(took: Duration) -> String {
     format!("repos: ready in {ms} ms, every repository read and the socket listening")
 }
 
-/// A line of the readings as the journal is told it: every line the daemon
-/// journals opens with its name, as `ready`'s does, so one read out of the
-/// journal alone still says whose it is.
-fn journalled(mut said: String) -> String {
-    said.insert_str(0, "repos: ");
-    said
-}
-
 /// Tells the journal a line of the readings, on standard error, which the
-/// journal reads.
-fn journal(said: String) {
-    eprintln!("{}", journalled(said));
+/// journal reads. Every line the daemon journals opens with its name, as
+/// `ready`'s does, so one read out of the journal alone still says whose
+/// it is.
+fn journal(said: &str) {
+    eprintln!("repos: {said}");
 }
 
 /// What `reading` gives, saying how long it took for health.
