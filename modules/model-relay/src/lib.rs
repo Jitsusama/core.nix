@@ -2096,13 +2096,8 @@ impl Relay {
                         };
                         return Err(NotCarried::Answered(Box::new(said)));
                     };
-                    // The lend's met an origin it can't carry to on the
-                    // way again, which alone would meet too, so it's a 502
-                    // now, counted as a reset request that failed.
                     if lends && matches!(why, Unreachable::Unfit) {
-                        self.counts.failed.fetch_add(1, Ordering::Relaxed);
-                        self.counts.reset.fetch_add(1, Ordering::Relaxed);
-                        return Err(NotCarried::Answered(Box::new(why.said_to_the_lend())));
+                        return Err(self.unfit_again());
                     }
                     return Err(self.not_sent_again(was, left_out, direct, lends));
                 }
@@ -2182,6 +2177,15 @@ impl Relay {
             }
         };
         answered.map_err(|why| self.not_carried(&why, &down, reset_on, direct, lends))
+    }
+
+    /// What the lend is answered for a request reset that met an origin it
+    /// can't carry to on its way again: a 502 now, since alone it would meet
+    /// the same, counted as a reset request that failed.
+    fn unfit_again(&self) -> NotCarried {
+        self.counts.failed.fetch_add(1, Ordering::Relaxed);
+        self.counts.reset.fetch_add(1, Ordering::Relaxed);
+        NotCarried::Answered(Box::new(Unreachable::Unfit.said_to_the_lend()))
     }
 
     /// What pi is answered for a request first failed on slot `was_at`'s
