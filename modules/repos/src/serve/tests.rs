@@ -9,18 +9,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use repos::read;
 
 use serde_json::{Value, json};
 
-use repos::using::{LONGEST as LONGEST_SHARE, Process, Sample};
+use repos::using::{LONGEST as LONGEST_SHARE, Process, Read, Sample};
 
 use super::{
     Disk, Journal, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health,
-    journalled, measures, ready, settle,
+    measures, ready, settle,
 };
 
 fn of(name: &str) -> Of {
@@ -370,7 +371,12 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 8));
             Sample::default()
         },
-        || Some(4_242),
+        || {
+            Some(Read {
+                pid: 4_242,
+                begun: 1,
+            })
+        },
         move |said| {
             let _ = tell.send(said);
         },
@@ -497,7 +503,7 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         },
         move || {
             let pid = held.load(std::sync::atomic::Ordering::Relaxed);
-            (pid != 0).then_some(pid)
+            (pid != 0).then_some(Read { pid, begun: 1 })
         },
         move |said| {
             let _ = tell.send(said);
@@ -543,97 +549,272 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     );
 }
 
+/// A walk's holder as a case sets it, for a stand-in of `using::reading`
+/// to find: the process, and how many reads had begun.
+#[derive(Clone, Default)]
+struct Holder(Arc<Mutex<Option<Read>>>);
+
+impl Holder {
+    /// The walk found in read `begun`, of process `pid`, or in none.
+    fn set(&self, held: Option<(u32, u64)>) {
+        *self.0.lock().expect("the holder") = held.map(|(pid, begun)| Read { pid, begun });
+    }
+
+    /// A stand-in of `using::reading` that finds what was last set.
+    fn reading(&self) -> impl Fn() -> Option<Read> + Send + Sync + 'static {
+        let held = self.clone();
+        move || *held.0.lock().expect("the holder")
+    }
+}
+
+/// A spell of late readings a case drives: the first walk answers at once,
+/// and each after it is held until the case frees it, saying when it
+/// began, so a case can let a walk grow old and land it.
+struct Spell {
+    working: Working,
+    old: Duration,
+    folders: Vec<PathBuf>,
+    told: mpsc::Receiver<String>,
+    walked: mpsc::Receiver<Instant>,
+    free: Option<mpsc::Sender<()>>,
+    /// Every line of the reading's age heard so far, as `take` says them.
+    heard: Vec<String>,
+}
+
+impl Spell {
+    /// Starts readings that grow late at `old`, asking `reading` what
+    /// holds a walk up, and takes until the first walk answers.
+    fn start(old: Duration, reading: impl Fn() -> Option<Read> + Send + Sync + 'static) -> Self {
+        let (walking, walked) = mpsc::channel();
+        let (free, freed) = mpsc::channel::<()>();
+        let (tell, told) = mpsc::channel();
+        let mut calls = 0_u32;
+        let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+        let working = Working::start_saying(
+            BRISK,
+            old,
+            folders.clone(),
+            move |_: &[PathBuf]| {
+                calls += 1;
+                if calls > 1 {
+                    let _ = walking.send(Instant::now());
+                    let _ = freed.recv_timeout(SAMPLED * 8);
+                }
+                Sample::default()
+            },
+            reading,
+            move |said| {
+                let _ = tell.send(said);
+            },
+        );
+        let mut spell = Self {
+            working,
+            old,
+            folders,
+            told,
+            walked,
+            free: Some(free),
+            heard: Vec::new(),
+        };
+        let until = Instant::now() + LATE;
+        spell.take();
+        while spell.working.unread() && Instant::now() < until {
+            std::thread::sleep(BRISK);
+            spell.take();
+        }
+        assert!(!spell.working.unread(), "the first walk never answered");
+        spell
+    }
+
+    /// Takes once, as the daemon's loop does, keeping what it says of the
+    /// reading's age.
+    fn take(&mut self) {
+        self.working.take(self.folders.clone());
+        self.heard
+            .extend(self.told.try_iter().filter(|said| of_the_reading(said)));
+    }
+
+    /// Takes `times` times, a pace apart.
+    fn takes(&mut self, times: usize) {
+        for _ in 0..times {
+            self.take();
+            std::thread::sleep(BRISK);
+        }
+    }
+
+    /// Waits for the next walk to begin, saying when it did.
+    fn walk(&self) -> Instant {
+        self.walked
+            .recv_timeout(LATE)
+            .expect("the next walk never began")
+    }
+
+    /// Waits until the walk that `began` is old.
+    fn grow_old(&self, began: Instant) {
+        std::thread::sleep(self.old.saturating_sub(began.elapsed()) + BRISK);
+    }
+
+    /// Frees the walk held and waits for the next to begin, by when the
+    /// freed one has landed, saying when the next began.
+    fn free(&self) -> Instant {
+        let free = self.free.as_ref().expect("walks still held");
+        free.send(()).expect("the walking thread ended");
+        self.walk()
+    }
+
+    /// Frees every walk, and takes until the reading answers.
+    fn answer(&mut self) {
+        self.free = None;
+        let until = Instant::now() + LATE;
+        while !self.heard.iter().any(|said| said == ANSWERS_AGAIN) && Instant::now() < until {
+            std::thread::sleep(BRISK);
+            self.take();
+        }
+    }
+}
+
+/// What the journal says as a reading answers after one was late.
+const ANSWERS_AGAIN: &str = "the reading of /proc answers again";
+
+/// Whether `said` is the late line of a reading that once answered, its
+/// age in whole seconds, naming `holder` or none.
+fn late(said: &str, holder: Option<u32>) -> bool {
+    let held = holder.map_or(String::new(), |pid| {
+        format!(", held up reading the memory of process {pid}")
+    });
+    let rest = format!("{held}, so what works in each repository is said unread until it answers");
+    said.strip_prefix("the reading of /proc is ")
+        .and_then(|said| said.strip_suffix(rest.as_str()))
+        .and_then(|said| said.strip_suffix(" s old with none newer"))
+        .is_some_and(|seconds| seconds.parse::<u64>().is_ok())
+}
+
+/// The line naming `pid` as holding the reading up, after the late line.
+fn named(pid: u32) -> String {
+    format!("the reading of /proc is held up reading the memory of process {pid}")
+}
+
+/// How old a reading may grow in a case of a spell: the walk freed a few
+/// paces after it began lands young however late a wake comes, as this
+/// leaves two whole late wakes of room.
+const SPELL: Duration = LATE.saturating_mul(3);
+
 #[test]
 fn a_holder_found_after_the_late_line_is_named_once() {
     // A walk that lands old is held up by nothing, so its late line names
     // no process; when the walk after it is then stuck on one, as a
     // restart or a slow disk leaves it, that process is named on its own
-    // line, once, and not again before the reading answers. The first
-    // walk answers at once, the second is held past `old` and freed
-    // between two takes, and the third holds until the case frees it.
-    // The third, freed a few paces after it began, lands young however
-    // late a wake comes, as `old` leaves it two whole late wakes of room.
-    let old = LATE * 3;
-    let holder = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-    let held = std::sync::Arc::clone(&holder);
-    let (walking, walked) = mpsc::channel::<Instant>();
-    let (free, freed) = mpsc::channel::<()>();
-    let (again, freed_again) = mpsc::channel::<()>();
-    let (landed, heard_landed) = mpsc::channel::<()>();
-    let mut calls = 0_u32;
-    let (tell, told) = mpsc::channel();
-    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
-    let mut working = Working::start_saying(
-        BRISK,
-        old,
-        folders.clone(),
-        move |_: &[PathBuf]| {
-            calls += 1;
-            if calls == 2 {
-                let _ = walking.send(Instant::now());
-                let _ = freed.recv_timeout(SAMPLED * 8);
-            } else if calls == 3 {
-                let _ = landed.send(());
-                let _ = freed_again.recv_timeout(SAMPLED * 8);
-            }
-            Sample::default()
-        },
-        move || {
-            let pid = held.load(std::sync::atomic::Ordering::Relaxed);
-            (pid != 0).then_some(pid)
-        },
-        move |said| {
-            let _ = tell.send(said);
-        },
+    // line, once, and not again before the reading answers. Takes that
+    // find no holder say nothing, and a holder is named only on the
+    // second take that finds the walk on the same read of it, since a
+    // healthy walk is inside some read at most takes.
+    let holder = Holder::default();
+    let mut spell = Spell::start(SPELL, holder.reading());
+    let held = spell.walk();
+    spell.grow_old(held);
+    spell.free();
+    spell.takes(3);
+    assert!(
+        spell.heard.len() == 1 && late(&spell.heard[0], None),
+        "takes with no holder after the late line said more: {:?}",
+        spell.heard
     );
-    let until = Instant::now() + LATE;
-    working.take(folders.clone());
-    while working.unread() && Instant::now() < until {
-        std::thread::sleep(BRISK);
-        working.take(folders.clone());
-    }
-    assert!(!working.unread(), "the first walk never answered");
-    let began = walked
-        .recv_timeout(LATE)
-        .expect("the second walk never began");
-    std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
-    drop(free);
-    heard_landed
-        .recv_timeout(LATE)
-        .expect("the second walk never landed");
-    let mut heard: Vec<String> = Vec::new();
-    working.take(folders.clone());
-    heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
-
-    // Stuck on a process the late line couldn't name, and still so over
-    // the takes after the one that names it.
-    holder.store(4_242, std::sync::atomic::Ordering::Relaxed);
-    for _ in 0..4 {
-        working.take(folders.clone());
-        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
-        std::thread::sleep(BRISK);
-    }
-
-    holder.store(0, std::sync::atomic::Ordering::Relaxed);
-    drop(again);
-    let until = Instant::now() + LATE;
-    let answers = |said: &String| said.starts_with("the reading of /proc answers");
-    while !heard.iter().any(answers) && Instant::now() < until {
-        std::thread::sleep(BRISK);
-        working.take(folders.clone());
-        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
-    }
-    let stale = concat!(
-        " s old with none newer,",
-        " so what works in each repository is said unread until it answers",
+    holder.set(Some((4_242, 7)));
+    spell.take();
+    assert_eq!(
+        spell.heard.len(),
+        1,
+        "a holder found once was named: {:?}",
+        spell.heard
     );
+    spell.takes(4);
+    holder.set(None);
+    spell.answer();
+    let heard = &spell.heard;
     assert!(
         heard.len() == 3
-            && heard[0].starts_with("the reading of /proc is ")
-            && heard[0].ends_with(stale)
-            && heard[1] == "the reading of /proc is held up reading the memory of process 4242"
-            && heard[2] == "the reading of /proc answers again",
+            && late(&heard[0], None)
+            && heard[1..] == [named(4_242), ANSWERS_AGAIN.into()],
         "a holder found after the late line wasn't named once before the answer: {heard:?}"
+    );
+}
+
+#[test]
+fn a_walk_that_moves_on_to_another_holder_names_that_one_once() {
+    // The walk is stuck on one process, then on another, in one spell: the
+    // journal's last word must name the second, or it blames one holding
+    // nothing. Each is a new read, so its count moves too.
+    let holder = Holder::default();
+    let mut spell = Spell::start(SPELL, holder.reading());
+    let held = spell.walk();
+    spell.grow_old(held);
+    spell.free();
+    spell.take();
+    holder.set(Some((4_242, 7)));
+    spell.takes(3);
+    holder.set(Some((4_243, 8)));
+    spell.takes(3);
+    holder.set(None);
+    spell.answer();
+    let heard = &spell.heard;
+    assert!(
+        heard.len() == 4
+            && late(&heard[0], None)
+            && heard[1..] == [named(4_242), named(4_243), ANSWERS_AGAIN.into()],
+        "a second holder in a spell wasn't named once: {heard:?}"
+    );
+}
+
+#[test]
+fn each_walk_stuck_after_one_lands_old_names_its_holder_once() {
+    // The late line names the process its walk is stuck on; that walk then
+    // lands old and the next sticks on another, which is named once. That
+    // walk lands old in turn, and the next sticks on the same process
+    // again, which is named again, since a landing ends the walk a name
+    // was about and says nothing of its own.
+    let holder = Holder::default();
+    let mut spell = Spell::start(SPELL, holder.reading());
+    let held = spell.walk();
+    holder.set(Some((4_242, 1)));
+    spell.grow_old(held);
+    spell.takes(2);
+    let held = spell.free();
+    holder.set(Some((4_343, 2)));
+    spell.takes(3);
+    spell.grow_old(held);
+    spell.free();
+    holder.set(Some((4_343, 3)));
+    spell.takes(3);
+    holder.set(None);
+    spell.answer();
+    let heard = &spell.heard;
+    assert!(
+        heard.len() == 4
+            && late(&heard[0], Some(4_242))
+            && heard[1..] == [named(4_343), named(4_343), ANSWERS_AGAIN.into()],
+        "a holder after a walk that landed old wasn't named once: {heard:?}"
+    );
+}
+
+#[test]
+fn a_walk_only_passing_through_a_process_names_none() {
+    // A healthy walk is inside some read at most takes, but a new one at
+    // each, so a stand-in whose count of reads moves at every call is
+    // never named after the late line.
+    let reads = Arc::new(AtomicU64::new(0));
+    let mut spell = Spell::start(SPELL, move || {
+        let begun = reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Some(Read { pid: 4_242, begun })
+    });
+    let held = spell.walk();
+    spell.grow_old(held);
+    spell.free();
+    spell.takes(5);
+    spell.answer();
+    let heard = &spell.heard;
+    assert!(
+        heard.len() == 2 && late(&heard[0], None) && heard[1] == ANSWERS_AGAIN,
+        "a process the walk only passed through was named: {heard:?}"
     );
 }
 
@@ -1154,11 +1335,6 @@ fn it_says_how_long_it_took_to_be_ready_in_the_words_health_times() {
         ready(Duration::from_micros(1_234_567)),
         "repos: ready in 1234 ms, every repository read and the socket listening"
     );
-}
-
-#[test]
-fn each_line_of_the_readings_is_journalled_after_the_daemons_name() {
-    assert_eq!(journalled("x".to_owned()), "repos: x");
 }
 
 #[test]
