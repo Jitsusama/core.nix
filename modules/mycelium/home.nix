@@ -358,6 +358,15 @@ let
       # realm's node down for seven minutes.
       Restart = "always";
       RestartSec = "5s";
+      # A stop lets the model calls it lends end first, for at most the
+      # 60 s its --lends-drain-within gives, while its links carry the
+      # answers back. systemd's own control-group kill would end each
+      # link's ssh at the same moment, cutting every call it lends and
+      # charging the rooms for each retry, so the terminate goes to the
+      # node alone, which ends its links itself once the calls are in. The
+      # stop timeout is said here because the drain is sized within it.
+      KillMode = "mixed";
+      TimeoutStopSec = "90s";
       # Each client, link and session it holds is a file, and at systemd's
       # 1024 a failed accept once ended the node (mycelium #372). A bare
       # number would set the hard limit too, so the hard limit is named
