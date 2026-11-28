@@ -200,6 +200,7 @@ struct Slow;
 
 impl Reclaimer for Slow {
     fn reclaim(&mut self, _: &Candidate) -> Outcome {
+        // A tenth of a second over each candidate, as a big folder takes hours.
         std::thread::sleep(std::time::Duration::from_millis(100));
         Outcome::Reclaimed
     }
