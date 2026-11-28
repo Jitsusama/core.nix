@@ -113,7 +113,7 @@ pub use telling::{Apart, Change, adding, inline_tests, tests_begin};
 use verdict::Verdict;
 
 use crate::checks::Derivations;
-use crate::evaluating::evaluated;
+use crate::evaluating::evaluated_aside;
 use crate::runs::Run;
 
 /// The trailer a commit excuses its change's tests from failing on the
@@ -757,7 +757,8 @@ fn by_their_files(
 }
 
 /// Evaluate these checks of the flake, noting it in the run as over the
-/// base.
+/// base. Nix's words are kept out of the run's log, as a build's there are,
+/// and a failure says nix's last error, so the line saying so says why.
 fn evaluated_as(
     flake: &str,
     system: &str,
@@ -765,7 +766,7 @@ fn evaluated_as(
     noted: &mut Run,
 ) -> Result<Derivations, String> {
     let mut evaluation = Run::evaluating("over base");
-    let found = evaluated(flake, system, names, &mut evaluation)?;
+    let found = evaluated_aside(flake, system, names, &mut evaluation, ended::reason)?;
     noted.evaluated(evaluation);
     Ok(found)
 }

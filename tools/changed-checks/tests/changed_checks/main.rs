@@ -140,7 +140,8 @@ esac
 /// alone. Every evaluation and build must be pure and take no flake's
 /// config, since a fenced session's flake is evaluated on a lent builder.
 /// The flake's source is `source`, and evaluated from it as a plain path
-/// it gives the base's checks.
+/// it gives the base's checks. A side with no derivations written fails to
+/// evaluate, saying `SIDE.said` as nix's words, once a test writes it.
 const NIX: &str = r#"#!/bin/sh
 case " $* " in
   *" --impure "*) echo "evaluated impurely" >&2; exit 1 ;;
@@ -213,7 +214,7 @@ case "$5" in
           done ;;
       esac
     fi
-    cat "$STAND_IN/$side.json" ;;
+    cat "$STAND_IN/$side.json" 2>/dev/null || { cat "$STAND_IN/$side.said" >&2; exit 1; } ;;
 esac
 "#;
 

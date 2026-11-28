@@ -469,15 +469,29 @@ fn a_check_mains_quarantine_holds_is_not_asked_over_the_base() {
 fn tests_that_stop_the_evaluation_over_the_base_are_said_and_refuse_nothing() {
     let stand_in = committed("red-unevaluable", CHANGE, "a3.drv");
     fs::remove_file(stand_in.path("over.json")).expect("removed");
+    // Nix's last error, past the 200 characters a reason holds, after its
+    // trace of what it was evaluating.
+    let missing = format!(
+        "error: path '/nix/store/x-source/{}new.nix' does not exist",
+        "d/".repeat(99)
+    );
+    let nix_said = format!("warning: a\n  ... while evaluating the attribute 'a'\n{missing}\n");
+    fs::write(stand_in.path("over.said"), nix_said).expect("written");
 
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
 
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let said = text(&ran.stderr);
+    assert!(ran.status.success(), "{said}");
+    let cut: String = missing.chars().take(200).collect();
     assert!(
-        text(&ran.stderr)
-            .contains("the checks don't evaluate with the change's tests laid over the base ("),
-        "{}",
-        text(&ran.stderr)
+        said.contains(&format!(
+            "the checks don't evaluate with the change's tests laid over the base ({cut}), "
+        )),
+        "the line saying so didn't hold nix's last error, cut to a reason: {said}"
+    );
+    assert!(
+        !said.contains("while evaluating the attribute"),
+        "nix's words for the evaluation over the base reached the run's log: {said}"
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
     noted_with(&stand_in, &json!({ "why": "unevaluated" }));
