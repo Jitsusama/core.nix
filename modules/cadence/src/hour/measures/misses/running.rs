@@ -522,7 +522,7 @@ pub(super) fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, Str
         .find_map(|line| serde_json::from_str::<Value>(line).ok());
     let mut revs = last
         .as_ref()
-        .filter(|last| still_runs(last["generation"].as_u64(), &system_profile()))
+        .filter(|last| still_runs(last["generation"].as_u64(), &system_profile(Path::new("/"))))
         .map(switched)
         .unwrap_or_default();
     let core = revs.get("core").cloned();
@@ -564,10 +564,11 @@ pub(in crate::hour::measures) fn holds(
     carries(&repos.get(repo)?.to_string_lossy(), merge, &rev)
 }
 
-/// The system generation running here, while the system profile is what
-/// runs; `None` otherwise, as after a boot into an older generation.
-pub(in crate::hour::measures) fn running_generation() -> Option<u64> {
-    let (generation, same) = system_profile();
+/// The system generation running on the machine whose root is `root`,
+/// while the system profile is what runs; `None` otherwise, as after a
+/// boot into an older generation.
+pub(in crate::hour::measures) fn running_generation(root: &Path) -> Option<u64> {
+    let (generation, same) = system_profile(root);
     generation.filter(|_| same)
 }
 
@@ -586,19 +587,20 @@ fn switched(switch: &Value) -> BTreeMap<String, String> {
         .unwrap_or_default()
 }
 
-/// The system profile's generation, and whether the running system is it.
-fn system_profile() -> (Option<u64>, bool) {
-    let profile = Path::new("/nix/var/nix/profiles/system");
-    let generation = std::fs::read_link(profile).ok().and_then(|link| {
+/// The system profile's generation under `root`, and whether the running
+/// system there is it.
+fn system_profile(root: &Path) -> (Option<u64>, bool) {
+    let profile = root.join("nix/var/nix/profiles/system");
+    let generation = std::fs::read_link(&profile).ok().and_then(|link| {
         link.to_str()?
             .strip_prefix("system-")?
             .strip_suffix("-link")?
             .parse()
             .ok()
     });
-    let same = std::fs::canonicalize(profile)
+    let same = std::fs::canonicalize(&profile)
         .ok()
-        .zip(std::fs::canonicalize("/run/current-system").ok())
+        .zip(std::fs::canonicalize(root.join("run/current-system")).ok())
         .is_some_and(|(profile, current)| profile == current);
     (generation, same)
 }

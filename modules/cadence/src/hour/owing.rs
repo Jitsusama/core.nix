@@ -647,15 +647,15 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
 /// line's state moves. A bare `--done`, which says no why, holds nothing;
 /// nor does a close the hour made as its line went, or one whose line has
 /// gone since (`unheld`), so a pass then the same failure is asked again;
-/// nor does the measure's figure, which moves with every other ask.
+/// nor does the measure's figure, which moves with every other ask, nor
+/// cadence's note that it can't tell what runs now (`own_state`).
 fn held(ledger: &[Entry], one: &Filed) -> bool {
-    let own = |says: &str| says.split_once(", yours: ").map(|(_, own)| own.to_owned());
     ledger
         .iter()
         .rev()
         .find(|e| e.key == one.key)
         .is_some_and(|e| {
-            let (was, now) = (own(&e.words), own(&one.says));
+            let (was, now) = (own_state(&e.words), own_state(&one.says));
             // The keeper's count of asks naming no probe holds while it
             // isn't past what its why was given against, since one falling
             // is a probe written or the clock.
@@ -684,10 +684,24 @@ fn adopted(ledger: &mut [Entry], one: &Filed, now: i64) -> bool {
     let since =
         !entry.open && entry.fixed.is_some() && entry.closed.is_some_and(|at| at > entry.last_to);
     if since {
-        one.says.clone_into(&mut entry.words);
+        // A move only cadence's sight made keeps the state the why was
+        // given on.
+        if own_state(&entry.words) != own_state(&one.says) {
+            one.says.clone_into(&mut entry.words);
+        }
         entry.last_to = now;
     }
     since
+}
+
+/// The state of an ask unproven that `says` holds as its cell's own, after
+/// `, yours: `, with cadence's note that it can't tell whether the switch
+/// running now carries it taken off: that note comes and goes with the
+/// hour's sight, never with the ask, so a why given on the state holds
+/// through it.
+fn own_state(says: &str) -> Option<&str> {
+    let (_, own) = says.split_once(", yours: ")?;
+    Some(own.strip_suffix(unproven::THOUGH).unwrap_or(own))
 }
 
 /// How many of the week's asks name no probe, when `says` is the keeper's
@@ -2250,6 +2264,113 @@ mod tests {
             hour(&mut ledger, "failed after switch 1201", 11800).len(),
             1,
             "a move after the why was taken was held too"
+        );
+    }
+
+    #[test]
+    fn a_why_holds_through_cadences_note_that_it_cant_tell_what_runs_now() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
+        let hour = |ledger: &mut Vec<Entry>, state: &str, at: i64| {
+            let mut m = measure(unproven::KEY, Class::Functional, 1.0, Some(0.0));
+            m.behind = vec![format!("{card}; its probe {state} · 1JQPPC")];
+            file(ledger, &[m], "2026-11-26", at)
+        };
+        let mut ledger = Vec::new();
+        let failed = "failed after switch 6";
+        assert_eq!(hour(&mut ledger, failed, 1000).len(), 1, "it wasn't asked");
+        let why = owe::done(&mut ledger, &key, Some("needs his login"), 2000).map_err(|f| f.exit);
+        assert!(why.is_ok(), "its cell couldn't close it: {why:?}");
+        // Cadence loses sight of what runs, then has it back, then loses it
+        // again: the state its why was given on never moved.
+        let though = format!("{failed}{}", unproven::THOUGH);
+        let told = [
+            hour(&mut ledger, &though, 4600),
+            hour(&mut ledger, failed, 8200),
+            hour(&mut ledger, &though, 11800),
+        ];
+        assert!(
+            told.iter().all(Vec::is_empty),
+            "cadence's note on what runs moved the state its cell's why was given on: {told:?}"
+        );
+        let own = ledger.iter().find(|e| e.key == key);
+        assert!(
+            own.is_some_and(|e| !e.open && e.fixed.as_deref() == Some("needs his login")),
+            "the why its cell gave wasn't kept: {own:?}"
+        );
+    }
+
+    #[test]
+    fn a_judged_hour_between_filing_and_a_blind_one_leaves_only_the_blind_time_added() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let key = format!("hour:{}:1JQPPC:{card}", unproven::KEY);
+        // Another cell's line beside it keeps the card judged.
+        let other = "fix the bar, asked 2026-11-26T10:00:00Z; its probe failed · B";
+        let hour = |ledger: &mut Vec<Entry>, state: &str, at: i64| {
+            let mut m = measure(unproven::KEY, Class::Functional, 2.0, Some(0.0));
+            m.behind = vec![
+                format!("{card}; its probe {state} · 1JQPPC"),
+                other.to_owned(),
+            ];
+            file(ledger, &[m], "2026-11-26", at)
+        };
+        let mut ledger = Vec::new();
+        let failed = "failed after switch 1200";
+        assert_eq!(
+            hour(&mut ledger, failed, 1000).len(),
+            2,
+            "both cells weren't asked"
+        );
+        hour(&mut ledger, failed, 4600);
+        let blind = format!("passed on a switch cadence can't judge{}", unproven::BLIND);
+        hour(&mut ledger, &blind, 8200);
+        let own = ledger.iter().find(|e| e.key == key);
+        assert_eq!(
+            own.map(|e| (e.open, e.due)),
+            Some((true, 1000 + DAY + 3600)),
+            "its clock stopped for more than the blind hour, or not for it: {own:?}"
+        );
+    }
+
+    #[test]
+    fn a_sightless_measure_of_an_asks_list_not_read_whole_keeps_every_open_ask_open() {
+        let card = "show the card, asked 2026-11-26T09:00:00Z";
+        let bar = "fix the bar, asked 2026-11-26T10:00:00Z";
+        let mut both = measure(unproven::KEY, Class::Functional, 2.0, Some(0.0));
+        both.behind = vec![
+            format!("{card}; its probe failed · 1JQPPC"),
+            format!("{bar}; its probe failed · B"),
+        ];
+        let mut ledger = Vec::new();
+        assert_eq!(
+            file(&mut ledger, &[both], "2026-11-26", 1000).len(),
+            2,
+            "both cells weren't asked"
+        );
+        // The card's line is gone and only cadence's sight holds the bar's,
+        // but the list wasn't read whole, so a line gone isn't known gone.
+        let mut left = measure(unproven::KEY, Class::Functional, 0.0, None);
+        left.says = "his asks (cadence can't tell whether 1 of them are live)".to_owned();
+        let blind = format!("passed on a switch cadence can't judge{}", unproven::BLIND);
+        left.behind = vec![format!("{bar}; its probe {blind} · B")];
+        assert!(unproven::sightless(&left), "the stand-in isn't sightless");
+        let mut all = [left];
+        super::super::ledger::unless_whole(&mut all, Some("it holds 3 asks"));
+        assert!(
+            !unproven::sightless(&all[0]),
+            "a measure of a list not read whole read as knowing which lines are gone: {}",
+            all[0].says
+        );
+        file(&mut ledger, &all, "2026-11-26", 4600);
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open.len(),
+            2,
+            "an ask was let go while the asks list couldn't be read whole: {ledger:?}"
         );
     }
 

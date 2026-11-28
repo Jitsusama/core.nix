@@ -285,7 +285,7 @@ fn took_main(fetch_head: &str) -> bool {
 
 /// When the checkout at `path` last fetched main, by its `FETCH_HEAD`'s
 /// time where that fetch took main.
-fn fetched(path: &str) -> Option<i64> {
+pub(super) fn fetched(path: &str) -> Option<i64> {
     let head = command(
         "git",
         &["-C", path, "rev-parse", "--git-path", "FETCH_HEAD"],
