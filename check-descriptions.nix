@@ -3317,6 +3317,11 @@
     passwords completes in zsh with keys, help and keys' --json, and none of the commands that
     reached an entry or a secret before the daemon answered the shell alone
   '';
+  passwords-copier-check-reads-are-bounded = ''
+    the copier check's reads of how a copier ended each answer within its patience, a child
+    holding the copier's standard error open, a copier never ending, a reader never reading and
+    a copier saying nothing included, and each says how the copier ended and what it said
+  '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
@@ -3324,8 +3329,8 @@
     in locked memory as the secret is long, says it's ready only once it can't be read and held
     once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
     locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
-    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
-    held either, and refuses to say ready or held for a copy that isn't sensitive
+    MiB, which stays locked, refuses a standard input it can't read or one a byte past that cap,
+    never saying it held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one

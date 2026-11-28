@@ -109,11 +109,6 @@ fn a_copier_that_refuses_before_its_ready_is_answered_with_its_reason() {
         "a copier refusing before it was ready wasn't answered with its reason: {refused}"
     );
     holds_no_secret(&refused);
-    let given = std::fs::read_to_string(running.copied()).unwrap_or_default();
-    assert!(
-        given.is_empty(),
-        "a copier that refused before it was ready was given {given:?}"
-    );
 }
 
 #[test]

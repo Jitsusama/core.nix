@@ -36,9 +36,11 @@ the cat then running the real one so a copier that leans on it still holds its c
 14. Told to say it holds a copy that isn't sensitive, it ends saying so, never ready or held,
     making nothing under TMPDIR and running nothing, as only a sensitive copy says either.
 
-Every case is checked and reported before it fails. Cases 7 and 13 lock past 2 MiB at once, as
-the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
-and one too low for them fails naming it rather than as a refusal or a paste that never came.
+Every case is checked and reported before it fails. Where a copy in case 1, 8 or 13 never
+pastes, a copier that ended is failed with how it ended and what it said. Cases 7 and 13 lock
+past 2 MiB at once, as the copier grows its buffer, so the limit on locked memory is raised to
+its hard limit first, and one too low for them fails naming it rather than as a refusal or a
+paste that never came.
 
 usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 """
@@ -167,12 +169,16 @@ class Cases:
         given(writing, held)
         try:
             said = said_next(copier)
+            # Pasted the moment it says held, before any other step, so a held said early has
+            # the least time to catch up. What this can't see is a held said a moment before
+            # the display has the copy, if the copier takes it before the paste asks for it.
+            once = pasted_now(held) if said == "held" else "it never said held"
             unheld = None if said == "held" else f"it said {said!r} rather than held"
             self.check("it says it holds the copy", unheld)
-            once = None if unheld else pasted_now(held)
             self.check("once it says it's held, one paste has it", once)
-            pasted = pasted_once_held(held)
-            self.check("the secret pastes whole", None if pasted else "it never pasted")
+            pasted = pasted_once_held(held, copier)
+            never = None if pasted else refused_instead(copier) or "it never pasted"
+            self.check("the secret pastes whole", never)
             self.check("it's offered marked secret", ended(copier) or unmarked())
             self.check("nothing is made under TMPDIR", self.anything_made())
             self.check("nothing on PATH runs", self.anything_ran())
@@ -191,8 +197,9 @@ class Cases:
         os.close(reading)
         given(writing, held)
         try:
-            pasted = pasted_once_held(held)
-            self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
+            pasted = pasted_once_held(held, copier)
+            never = None if pasted else refused_instead(copier) or "it never pasted"
+            self.check("a 64 KiB secret pastes whole", never)
             self.check("a 64 KiB secret makes nothing under TMPDIR", self.anything_made())
             self.check("a 64 KiB secret runs nothing", self.anything_ran())
             locked = ended(copier) or unlocked(copier.pid, len(held))
@@ -209,7 +216,7 @@ class Cases:
         os.close(reading)
         given(writing, held)
         try:
-            pasted = pasted_once_held(held)
+            pasted = pasted_once_held(held, copier)
             never = None if pasted else refused_instead(copier) or "it never pasted"
             self.check("a secret of exactly the cap pastes whole", never)
             self.check("a secret of exactly the cap makes nothing", self.anything_made())
@@ -263,30 +270,40 @@ class Cases:
         self.check("a copy not sensitive is never said ready or held", quiet)
 
 
+def paste() -> subprocess.CompletedProcess[bytes] | None:
+    """Paste once on Joel's display, answering None if wl-paste hadn't ended in time."""
+    try:
+        pasted = subprocess.run(
+            ["wl-paste", "--no-newline", "--type", TEXT],
+            capture_output=True,
+            check=False,
+            timeout=PATIENCE,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    return pasted
+
+
 def pasted_now(held: str) -> str | None:
     """Say what one paste on Joel's display gave in place of the secret, if not the secret."""
-    pasted = subprocess.run(
-        ["wl-paste", "--no-newline", "--type", TEXT],
-        capture_output=True,
-        check=False,
-    )
+    pasted = paste()
+    if pasted is None:
+        return f"the paste hadn't ended in {PATIENCE:g} s"
     if pasted.stdout == held.encode():
         return None
     why = pasted.stderr.decode(errors="replace").strip()
     return f"it pasted {len(pasted.stdout)} other bytes, exiting {pasted.returncode}: {why!r}"
 
 
-def pasted_once_held(held: str) -> bool:
-    """Answer whether Joel's display pastes the secret, waiting for the copier to hold it."""
+def pasted_once_held(held: str, copier: subprocess.Popen[bytes]) -> bool:
+    """Answer whether Joel's display pastes the secret, waiting while the copier runs."""
     until = time.monotonic() + PATIENCE
     while time.monotonic() < until:
-        pasted = subprocess.run(
-            ["wl-paste", "--no-newline", "--type", TEXT],
-            capture_output=True,
-            check=False,
-        )
-        if pasted.stdout == held.encode():
+        pasted = paste()
+        if pasted is not None and pasted.stdout == held.encode():
             return True
+        if copier.poll() is not None:
+            return False
         time.sleep(0.2)
     return False
 
@@ -355,12 +372,27 @@ def ended(copier: subprocess.Popen[bytes]) -> str | None:
 
 
 def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
-    """Say how a copier that should hold its copy ended instead, and why, if it ended."""
+    """Say how a copier that should hold its copy ended instead, and why, if it ended.
+
+    What it said is read as ended_within reads it, for as long as PATIENCE, since a child it
+    left behind could hold its standard error open past its end.
+    """
     code = copier.poll()
-    if code is None or copier.stderr is None:
+    if code is None:
         return None
-    said = copier.stderr.read().decode(errors="replace").strip()
-    return f"it ended with {code}, saying {said!r}"
+    try:
+        _, said = copier.communicate(timeout=PATIENCE)
+    except subprocess.TimeoutExpired as held_open:
+        copier.kill()
+        heard = (held_open.stderr or b"").decode(errors="replace").strip()
+        return (
+            f"it ended with {code}, its standard error still open after {PATIENCE:g} s, "
+            f"having said {heard!r}"
+        )
+    if code == 0:
+        return "it ended with 0, as if it had copied, yet nothing pasted"
+    reason = said.decode(errors="replace").strip()
+    return f"it ended with {code}, saying {reason!r}"
 
 
 def readable(pid: int) -> str | None:
