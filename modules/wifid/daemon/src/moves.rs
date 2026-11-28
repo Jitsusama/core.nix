@@ -1751,6 +1751,10 @@ mod tests {
         };
         let mut resumed = Arrivals::default();
         resumed.asked("wlan2", Some(hall), desk, start);
+        let mut toward = Arrivals::default();
+        toward.asked("wlan2", Some(desk), hall, start);
+        let mut back = Arrivals::default();
+        back.back("wlan2", hall, start);
 
         assert_eq!(
             refused(&Arrivals::default()),
@@ -1761,6 +1765,16 @@ mod tests {
             refused(&resumed),
             None,
             "a call raced a move still under way after the warned one was refused"
+        );
+        assert_eq!(
+            refused(&toward),
+            Some(Next::Move(desk.into())),
+            "a call waited on a move resumed onto the point that warned"
+        );
+        assert_eq!(
+            refused(&back),
+            Some(Next::Move(desk.into())),
+            "a call waited on a way back onto the point that warned"
         );
     }
 

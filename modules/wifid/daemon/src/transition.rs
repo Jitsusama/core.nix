@@ -202,12 +202,14 @@ impl Heed {
     /// Ends the wait a warned move's heed set (`keep_warned`) once wifid's
     /// move off `from` was refused, so a call's give-way doesn't wait on a
     /// move that isn't under way (`State::heed_ended`). A move of the
-    /// card's still followed after the refusal keeps it: one already under
-    /// way, put back as it stood, or a way back the warned move was
-    /// refused for, still moves the card off its point, so a call waits on
-    /// it as on this heed, for no longer than `fading::BETWEEN`.
+    /// card's still followed elsewhere after the refusal keeps it: one
+    /// already under way, put back as it stood, or a way back the warned
+    /// move was refused for, still moves the card off its point, so a call
+    /// waits on it as on this heed, for no longer than `fading::BETWEEN`.
+    /// One headed to `from` itself moves the card onto the point that
+    /// warned, so the call doesn't wait on it (`Arrivals::moving_off`).
     pub fn move_refused(state: &mut State, arrivals: &Arrivals, (card, from): (&str, &str)) {
-        if !arrivals.moving(card) {
+        if !arrivals.moving_off(card, from) {
             state.heed_ended(card, from);
         }
     }
