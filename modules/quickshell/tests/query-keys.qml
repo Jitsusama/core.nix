@@ -655,6 +655,16 @@ QtObject {
         holds("a view rests on the top of the row it cut", Headings.rested(142, view), 160);
         holds("and stays where a row's top already is", Headings.rested(160, view), 160);
         holds("past the last row's top it stays", Headings.rested(340, view), 340);
+        // The wheel or a flick rests the way it went, so a turn up of less
+        // than a row moves the view rather than resting back where it began
+        // (XY9H5C [3ac04a1c]).
+        holds("a turn up of less than a row rests on the row above",
+            Headings.rested(142, view, 160), 112);
+        holds("a turn down rests on the row below, as a step does",
+            Headings.rested(142, view, 112), 160);
+        holds("a turn up ending on a row's top stays there", Headings.rested(112, view, 160),
+            112);
+        holds("a turn up from near the top rests at the top", Headings.rested(10, view, 16), 0);
         const span = (each, inset = 0) => each >= tops.length ? null
             : { from: tops[each] + inset, to: tops[each] + talls[each] - inset };
         const drawn = (each, from, inset = 0) => Headings.drawn({

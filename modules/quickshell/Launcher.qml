@@ -15457,11 +15457,15 @@ Scope {
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
                             // Where the wheel or a flick leaves a list that
-                            // rests whole, it rests on a row's top, as a
-                            // step does (Headings.rested).
+                            // rests whole, it rests on a row's top, the way
+                            // it went from where it began, so a turn up of
+                            // less than a row isn't undone (Headings.rested).
+                            property real movedFrom: 0
+                            onMovementStarted: list.movedFrom = list.contentY
                             onMovementEnded: {
                                 if (root.restsWhole)
-                                    list.contentY = Headings.rested(list.contentY, list.headed());
+                                    list.contentY = Headings.rested(list.contentY, list.headed(),
+                                        list.movedFrom);
                             }
                             // A row built past the view each way, so the
                             // next an arrow reaches is drawn before it's
