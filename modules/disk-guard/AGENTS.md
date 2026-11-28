@@ -83,6 +83,24 @@ or launchd, and [`home.nix`][2] the account's.
   retry ten minutes after one the system daemon went unheard for, the
   retry after one left unfinished and a builds disk's hourly upkeep past
   its budget each come once the spacing ends.
+- **Sizing.** A survey walks a candidate to size it only when its stamp
+  moved since an earlier survey sized it: the newest change time of the
+  entry and of its folders one and two levels down, a plain file's own.
+  A file made, renamed or deleted in any of them moves it, so a target
+  cargo builds in again moves by its profiles' `deps`, `build`,
+  `incremental` and `.fingerprint`. A write to a file already there, or
+  anything three levels down, doesn't: a new incremental session, made
+  in `incremental/<crate>/`, leaves its target's stamp where it was, as
+  a small crate built on Linux showed. On 27 November seven whole
+  surveys walked every candidate afresh for 136 GB. A size known this
+  way adds nothing to the survey's shared blocks, nothing about idleness
+  or use comes from it, and a walk a stop cut short keeps no size. The
+  record is kept in `sizes.json` after each whole survey, so a restart
+  walks only what changed while the guard was down; a file of another
+  version, or one that can't be read, starts it empty. A size walked more
+  than six hours ago is walked again, oldest first, a tenth of the record
+  or a minute of walking per survey at most, which is what counts a
+  change deeper than the stamp reads.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -643,6 +661,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/survey/`             | what builds and every other kind of source offer         |
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
+| `src/sizes.rs`            | what surveys sized, by each entry's stamp, kept on disk  |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |

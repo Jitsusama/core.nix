@@ -6,8 +6,9 @@ use disk_guard::config::Config;
 use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
 use disk_guard::replaced::Uses;
+use disk_guard::sizes::Sizes;
 use disk_guard::snapshots::Boot;
-use disk_guard::survey::{Action, Offer, Sizes, World, survey};
+use disk_guard::survey::{Action, Offer, World, survey};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
@@ -137,6 +138,51 @@ pub fn surveyed_pinned(
     uses: &Uses,
     (at, sizes, awake): (f64, Sizes, &Awake),
 ) -> (Vec<Offer>, usize, Sizes) {
+    surveyed_asking(
+        config,
+        processes,
+        finished,
+        pinned,
+        ran,
+        uses,
+        (at, sizes, awake, &|| false),
+    )
+}
+
+/// What a survey at `at` offers after earlier ones sized what `sizes`
+/// holds, asking `stop` as it walks, and what it leaves sized for the next.
+pub fn offers_stopping(
+    config: &Config,
+    at: f64,
+    sizes: Sizes,
+    stop: &dyn Fn() -> bool,
+) -> (Vec<Offer>, Sizes) {
+    let none = BTreeMap::new();
+    let (found, _, sizes) = surveyed_asking(
+        config,
+        &[],
+        &|_| false,
+        &|_| false,
+        &none,
+        &Uses::default(),
+        (at, sizes, &Awake::default(), stop),
+    );
+    (found, sizes)
+}
+
+/// As `surveyed_pinned`, asking `stop` as the survey walks.
+fn surveyed_asking(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+    pinned: &dyn Fn(&Path) -> bool,
+    ran: &BTreeMap<String, f64>,
+    uses: &Uses,
+    (at, sizes, awake, stop): (f64, Sizes, &Awake, &dyn Fn() -> bool),
+) -> (Vec<Offer>, usize, Sizes) {
+    // As the daemon does before each survey.
+    let mut sizes = sizes;
+    sizes.began(at);
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
     let mut world = World {
@@ -156,14 +202,16 @@ pub fn surveyed_pinned(
         counted: std::cell::RefCell::default(),
         sizes: std::cell::RefCell::new(sizes),
         walked: 0,
-        stop: &|| false,
+        stop,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
     let walked = world.walked;
-    // As the daemon does after each whole survey.
+    // As the daemon does after each whole survey a stop didn't cut short.
     let mut sizes = world.sizes.take();
-    sizes.ended();
+    if !stop() {
+        sizes.ended();
+    }
     (found, walked, sizes)
 }
 

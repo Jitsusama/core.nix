@@ -309,6 +309,7 @@ impl Guard {
                 finished::ask(predicate, dir, &checkout)
             })
         };
+        self.sizes.began(tick.wall);
         let mut world = World {
             processes: &processes,
             me,

@@ -342,6 +342,11 @@ impl Guard {
         if let Err(error) = crate::surveyed::save(self.state(), &kept) {
             say!("disk-guard: keeping the survey: {error}");
         }
+        // Kept for the guard after a restart; one that can't be kept only
+        // means its first survey walks everything again.
+        if let Err(error) = self.sizes.save(self.state()) {
+            say!("disk-guard: keeping the survey's sizes: {error}");
+        }
         Ok((scan, offers, walked))
     }
 

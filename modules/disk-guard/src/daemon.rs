@@ -346,9 +346,9 @@ pub struct Guard {
     /// clear would take now; none before the first survey, which a disk
     /// well under its budget may not make for six hours.
     offered: Option<crate::holders::Offers>,
-    /// What surveys sized of quest workspaces, so the next sizes again
-    /// only what was written since.
-    sizes: crate::survey::Sizes,
+    /// What surveys sized, so the next sizes again only what changed
+    /// since.
+    sizes: crate::sizes::Sizes,
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
