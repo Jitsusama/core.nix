@@ -27,7 +27,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
@@ -165,9 +165,13 @@ fn keyring(home: &Path) -> PathBuf {
 
 /// Waits until the stand-in has been asked `more` requests beyond `from`.
 fn until_asked(asked: &Mutex<Vec<String>>, from: usize, more: usize) {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while asked.lock().expect("what was asked").len() < from + more {
-        assert!(began.elapsed() < PATIENCE, "the reader asked nothing more");
+        assert!(
+            began.within(PATIENCE),
+            "the reader asked nothing more: it {}",
+            began.said(PATIENCE)
+        );
         // It asks every tenth of a second, so a short wait sees each round.
         thread::sleep(Duration::from_millis(50));
     }
@@ -461,9 +465,13 @@ fn github_an_incomplete_search_is_searched_again_from_as_far_back() {
     });
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 2 {
-        assert!(began.elapsed() < PATIENCE, "it never searched twice");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched twice: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -526,7 +534,7 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
     until_decided(&home, 4);
     // Its round marks the site read only once it has decided, so the
     // reader stops once the mark is there, not at the last decision.
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     loop {
         let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
             .arg("--json")
@@ -538,8 +546,9 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
             break;
         }
         assert!(
-            began.elapsed() < PATIENCE,
-            "it never says when the site was read: {read}"
+            began.within(PATIENCE),
+            "it never says when the site was read: it {}; it answered {read}",
+            began.said(PATIENCE)
         );
         thread::sleep(Duration::from_millis(50));
     }
@@ -625,8 +634,8 @@ fn named_as_itself(said: &str, failed: &str) {
 fn journal_once(origin: &str, more: &[&str], failed: &str) -> String {
     let home = home();
     let mut reading = github_reader(&home, origin, more);
-    let began = Instant::now();
-    while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !journal(&home).contains(failed) && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -732,12 +741,12 @@ fn github_more_repositories_than_a_sites_searches_allow_are_refused() {
     let site: Vec<&str> = site.iter().map(String::as_str).collect();
     // A reader that took them would run on, so it is waited on only so long.
     let mut reading = github_reader(&home, &origin, &site);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let status = loop {
         if let Some(status) = reading.try_wait().expect("the reader is asked") {
             break Some(status);
         }
-        if began.elapsed() > PATIENCE {
+        if !began.within(PATIENCE) {
             reading.kill().expect("the reader stops");
             reading.wait().expect("the reader is gone");
             break None;
@@ -769,9 +778,13 @@ fn github_joels_resume_ends_only_shadow_stops_even_let_go_live() {
     a_stop(&home, "live", "pr:example/shop#12", false, 120);
     let mut reading = github_reader(&home, &origin, &["--live"]);
     until_decided(&home, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while resumed(&home, "named").is_null() {
-        assert!(began.elapsed() < PATIENCE, "Joel's resume ended nothing");
+        assert!(
+            began.within(PATIENCE),
+            "Joel's resume ended nothing: it {}",
+            began.said(PATIENCE)
+        );
         // As above, a short wait sees it land without spinning.
         thread::sleep(Duration::from_millis(50));
     }

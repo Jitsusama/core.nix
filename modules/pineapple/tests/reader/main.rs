@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -481,11 +481,12 @@ fn marked(home: &Path, mark: &str) -> Option<u64> {
 /// judges that round again when it restarts.
 fn until_marked_anew(home: &Path, mark: &str) {
     let was = marked(home, mark);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while marked(home, mark).is_none_or(|at| Some(at) == was) {
         assert!(
-            began.elapsed() < PATIENCE,
-            "{mark} was never marked anew past {was:?}; it holds {:?}",
+            began.within(PATIENCE),
+            "{mark} was never marked anew past {was:?}: it {}; it holds {:?}",
+            began.said(PATIENCE),
             std::fs::read_to_string(home.join("state/pineapple").join(mark))
         );
         thread::sleep(Duration::from_millis(50));
@@ -499,12 +500,13 @@ fn until_decided(home: &Path, count: usize) {
 
 /// As [`until_decided`], for a reader keeping to `state`.
 fn until_decided_in(state: &Path, count: usize) {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while decisions_in(state).len() < count {
         assert!(
-            began.elapsed() < PATIENCE,
-            "the reader wrote {} decisions, not {count}",
-            decisions_in(state).len()
+            began.within(PATIENCE),
+            "the reader wrote {} decisions, not {count}: it {}",
+            decisions_in(state).len(),
+            began.said(PATIENCE)
         );
         // The reader searches every tenth of a second, so a short wait
         // sees each round without spinning.
@@ -576,11 +578,12 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
 
     let mut again = reader(&home, &origin);
     let rounds = asked.lock().expect("what was asked").len();
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while asked.lock().expect("what was asked").len() < rounds + 6 {
         assert!(
-            began.elapsed() < PATIENCE,
-            "the restarted reader asked nothing"
+            began.within(PATIENCE),
+            "the restarted reader asked nothing: it {}",
+            began.said(PATIENCE)
         );
         // As above, a short wait sees each round without spinning.
         thread::sleep(Duration::from_millis(50));

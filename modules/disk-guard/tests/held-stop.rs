@@ -31,10 +31,10 @@ fn main() {
         said.read_line(&mut line).unwrap() > 0,
         "the guard never stepped"
     );
-    // Held short of the five seconds the system's unit gives a stop before
-    // it kills the guard (nixos.nix's TimeoutStopSec), which a stop slower
-    // than that would never reach.
-    let told = test_pace::Timed::start().short_of(Duration::from_secs(5));
+    // Held short of the one second the account's unit gives a stop before
+    // it kills the guard (home.nix's TimeoutStopSec, the shorter of the
+    // two), which a stop slower than that would never reach.
+    let told = test_pace::Timed::start().short_of(Duration::from_secs(1));
     let pid = libc::pid_t::try_from(child.id()).unwrap();
     // SAFETY: kill takes a pid and a signal and touches no memory.
     assert_eq!(
@@ -61,9 +61,9 @@ fn main() {
         "it ended otherwise: {ended:?}"
     );
     assert!(
-        told.within(Duration::from_secs(2)),
+        told.within(Duration::from_millis(750)),
         "stopping {}",
-        told.said(Duration::from_secs(2))
+        told.said(Duration::from_millis(750))
     );
 }
 

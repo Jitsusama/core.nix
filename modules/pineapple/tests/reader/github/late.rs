@@ -13,7 +13,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
@@ -140,11 +140,12 @@ fn github_joels_stop_older_than_the_hour_stops_nothing_and_is_told_of_once() {
     let (home, _) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
     until_decided(&home, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 3 {
         assert!(
-            began.elapsed() < PATIENCE,
-            "it never read the busy thread thrice"
+            began.within(PATIENCE),
+            "it never read the busy thread thrice: it {}",
+            began.said(PATIENCE)
         );
         // It asks every tenth of a second, so a short wait sees each round.
         thread::sleep(Duration::from_millis(50));
@@ -274,9 +275,13 @@ fn github_a_search_that_keeps_failing_keeps_its_hour_across_a_restart() {
     });
     let (home, last) = read_lately();
     let searched_twice = |from: usize| {
-        let began = Instant::now();
+        let began = test_pace::Timed::start();
         while searches(&asked).len() < from + 2 {
-            assert!(began.elapsed() < PATIENCE, "it never searched twice");
+            assert!(
+                began.within(PATIENCE),
+                "it never searched twice: it {}",
+                began.said(PATIENCE)
+            );
             thread::sleep(Duration::from_millis(50));
         }
     };
@@ -441,11 +446,15 @@ fn github_a_search_cut_short_reads_what_changed_before_its_oldest_and_moves_on()
     let (origin, asked) = answering(cut_once);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // Two searches a round, so the fifth begins the third round, once the
     // second has read what it found.
     while searches(&asked).len() < 5 {
-        assert!(began.elapsed() < PATIENCE, "it never searched five times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched five times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -484,9 +493,13 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
     let (origin, asked) = answering(cut_twice);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched three times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -524,11 +537,15 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
     let (origin, asked) = answering(cut_twice_told);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // Two searches a round, so the fifth begins the third round, once two
     // have each left the oldest unread.
     while searches(&asked).len() < 5 {
-        assert!(began.elapsed() < PATIENCE, "it never searched five times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched five times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -584,9 +601,13 @@ fn github_a_search_cut_short_twice_on_a_first_start_names_its_floor_as_the_next_
     // look back, is later than an hour before any round in this case.
     let home = home();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched three times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -614,9 +635,13 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
     let (origin, asked) = answering(cut_then_failing);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched three times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -655,11 +680,15 @@ fn github_a_cut_search_in_a_round_that_cant_read_a_thread_moves_on_owing_it() {
     let (origin, asked) = answering_whole(cut_twice_unread);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // Two searches a round, so the fifth begins the round after the second
     // read of what it owes.
     while searches(&asked).len() < 5 {
-        assert!(began.elapsed() < PATIENCE, "it never searched five times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched five times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -690,9 +719,13 @@ fn github_a_cut_search_of_whats_older_giving_none_it_can_read_moves_on() {
     let (origin, asked) = answering(cut_then_empty);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched three times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -723,9 +756,13 @@ fn github_a_search_cut_short_giving_none_it_can_read_holds_its_reach() {
     let (origin, asked) = answering(cut_unreadable);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 2 {
-        assert!(began.elapsed() < PATIENCE, "it never searched twice");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched twice: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -753,13 +790,17 @@ fn github_a_site_read_by_what_joel_opened_keeps_no_reach_of_a_search() {
     let home = home();
     let mut reading = github_reader(&home, &origin, &CODE_SITE);
     let mark = home.join("state/pineapple/judged-code.json");
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     let kept: Value = loop {
         let kept = std::fs::read_to_string(&mark).ok();
         if let Some(kept) = kept.and_then(|kept| serde_json::from_str(&kept).ok()) {
             break kept;
         }
-        assert!(began.elapsed() < PATIENCE, "it never kept how far it read");
+        assert!(
+            began.within(PATIENCE),
+            "it never kept how far it read: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     };
     reading.kill().expect("the reader stops");

@@ -131,6 +131,13 @@ const OPENED_LOOKED_FOR_EVERY: Duration = Duration::from_millis(50);
 const CUT_AFTER: Duration = Duration::from_millis(100);
 /// How long the tests wait for the relay to listen.
 const LISTENS_WITHIN: Duration = Duration::from_secs(10);
+/// How long hyper's server gives a connection to say its next request's
+/// head, its `header_read_timeout` as the relay leaves it, after which it
+/// closes a connection kept open saying nothing.
+const HEAD_READ_WITHIN: Duration = Duration::from_secs(30);
+/// How long after an attempt to open a connection failed before the relay
+/// opens one behind others again, as its own constant has it.
+const OPEN_BEHIND_AGAIN_AFTER: Duration = Duration::from_secs(30);
 /// How long the relay is given to hear the origin's goodbye on a
 /// connection before it's asked again, as a relay sent one moments ago is.
 const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
@@ -628,12 +635,12 @@ impl Relay {
             .stderr(Stdio::piped())
             .spawn()
             .expect("the relay starts");
-        let started = Instant::now();
+        let started = test_pace::Timed::start();
         // A socket left behind refuses, so only the relay's own answers. Its
         // inode can't tell the two apart, as a filesystem may give the new
         // socket the number the old one freed.
         while let Err(why) = std::os::unix::net::UnixStream::connect(&socket) {
-            if started.elapsed() >= LISTENS_WITHIN {
+            if !started.within(LISTENS_WITHIN) {
                 let state = match child.try_wait() {
                     Ok(Some(status)) => format!("it left with {status}"),
                     Ok(None) => "it was still running, so it's stopped".to_owned(),
@@ -647,8 +654,9 @@ impl Relay {
                     let _ = stderr.read_to_string(&mut said);
                 }
                 panic!(
-                    "the relay never listened at {}: {why}; {state}, saying: {said}",
-                    socket.display()
+                    "the relay never listened at {}: {why}; it {}; {state}, saying: {said}",
+                    socket.display(),
+                    started.said(LISTENS_WITHIN)
                 );
             }
             std::thread::sleep(Duration::from_millis(20));
@@ -719,8 +727,18 @@ impl Relay {
 
     /// Whether the relay left on its own, and how, within `within`.
     fn left_within(&mut self, within: Duration) -> Option<std::process::ExitStatus> {
-        let started = Instant::now();
-        while started.elapsed() < within {
+        self.left_within_of(test_pace::Timed::start(), within)
+    }
+
+    /// Whether the relay left on its own, and how, within `within` of
+    /// when `step` began, for a step begun before what it waits on, or held
+    /// short of a wrong path's time.
+    fn left_within_of(
+        &mut self,
+        step: test_pace::Timed,
+        within: Duration,
+    ) -> Option<std::process::ExitStatus> {
+        while step.within(within) {
             if let Some(status) = self.left() {
                 return Some(status);
             }
@@ -1149,11 +1167,12 @@ async fn a_connection_the_origin_lets_go_is_opened_again() {
         ask(&relay.socket, request(&host, "/bye", b"")).await.status,
         StatusCode::OK
     );
-    let said_bye = Instant::now();
+    let said_bye = test_pace::Timed::start();
     while origin.ended.load(Ordering::SeqCst) == 0 {
         assert!(
-            said_bye.elapsed() < LISTENS_WITHIN,
-            "the origin's connection never ended"
+            said_bye.within(LISTENS_WITHIN),
+            "the origin's connection never ended: it {}",
+            said_bye.said(LISTENS_WITHIN)
         );
         tokio::time::sleep(LOOK_EVERY).await;
     }
@@ -1484,8 +1503,8 @@ async fn a_reset_on_a_connection_kept_goes_once_more_on_another_open() {
 /// is carried on the first's connection while the other is opened behind
 /// it, and it's open once a request is answered on it.
 async fn warm_both(relay: &Relay, host: &str) {
-    let asked = Instant::now();
-    while asked.elapsed() < LISTENS_WITHIN {
+    let asked = test_pace::Timed::start();
+    while asked.within(LISTENS_WITHIN) {
         let warm = ask(&relay.socket, request(host, "/echo", b"")).await;
         assert_eq!(warm.status, StatusCode::CREATED, "a request to open them");
         if warm.headers["x-origin-connection"] == "1" {
@@ -1493,7 +1512,10 @@ async fn warm_both(relay: &Relay, host: &str) {
         }
         tokio::time::sleep(LOOK_EVERY).await;
     }
-    panic!("the relay's second connection never took a request");
+    panic!(
+        "the relay's second connection never took a request: it {}",
+        asked.said(LISTENS_WITHIN)
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2886,9 +2908,12 @@ async fn a_relay_stopped_again_leaves_at_once() {
         "a request between the stops wasn't sent direct"
     );
     tokio::time::sleep(HEARD_WITHIN).await;
+    // Held short of the few seconds it gives those it sends direct, which a
+    // relay deaf to the second stop would wait out on the silent one.
+    let stopped_again = test_pace::Timed::start().short_of(SAYS_GO_DIRECT_WITHIN);
     relay.stop();
 
-    let left = relay.left_within(Duration::from_secs(3));
+    let left = relay.left_within_of(stopped_again, Duration::from_secs(3));
     assert!(
         left.is_some_and(|status| status.success()),
         "the relay didn't leave at once when stopped again: {left:?}"
@@ -2945,13 +2970,17 @@ async fn a_relay_stopped_twice_as_it_leaves_idle_leaves_at_once() {
     let origin = origin().await;
     let (mut relay, silent) = leaving_idle_held_by_a_silent_pi(&origin).await;
 
+    // Held short of the few seconds the first stop gives the silent pi,
+    // which a relay deaf to the second would wait out; so timed from the
+    // first, a second apart and two more for leaving.
+    let stopped = test_pace::Timed::start().short_of(SAYS_GO_DIRECT_WITHIN);
     relay.stop();
     // Apart, so the relay has begun giving the silent pi its few seconds
     // before the second comes, rather than taking both as one.
     tokio::time::sleep(Duration::from_secs(1)).await;
     relay.stop();
 
-    let left = relay.left_within(Duration::from_secs(2));
+    let left = relay.left_within_of(stopped, Duration::from_secs(1 + 2));
     assert!(
         left.is_some_and(|status| status.success()),
         "a relay stopped again as it left idle didn't leave at once: {left:?}"
@@ -3052,7 +3081,9 @@ async fn an_answer_streams_as_it_comes() {
         .await
         .expect("an HTTP/1.1 connection");
     tokio::spawn(connection);
-    let asked = Instant::now();
+    // Held short of the gap between the halves, which a relay holding the
+    // answer until it had it whole would wait out.
+    let asked = test_pace::Timed::start().short_of(STREAM_GAP);
 
     let response = sender
         .send_request(request(&host, "/stream", b""))
@@ -3068,9 +3099,9 @@ async fn an_answer_streams_as_it_comes() {
 
     assert_eq!(&first[..], b"first\n");
     assert!(
-        asked.elapsed() < STREAM_GAP,
-        "the first half waited {:?}, for the second",
-        asked.elapsed()
+        asked.within(STREAM_GAP),
+        "the first half waited for the second: it {}",
+        asked.said(STREAM_GAP)
     );
     let rest = body.collect().await.expect("the rest").to_bytes();
     assert_eq!(&rest[..], b"second\n");
@@ -3148,6 +3179,10 @@ async fn a_failure_lasts_no_longer_than_the_origin_is_away() {
     let tls = tls();
     let relay = Relay::start(&format!("https://{host}"), &tls.roots, 2);
 
+    // Held short of the time after a failed attempt that the relay opens
+    // one behind others again, which a failure still on record waits out;
+    // so timed from before the failure.
+    let failed = test_pace::Timed::start().short_of(OPEN_BEHIND_AGAIN_AFTER);
     let while_away = ask(&relay.socket, request(&host, "/echo", b"")).await;
     let back = origin_on(
         TcpListener::bind(address).await.expect("the port again"),
@@ -3158,8 +3193,7 @@ async fn a_failure_lasts_no_longer_than_the_origin_is_away() {
     let second = ask(&relay.socket, request(&host, "/echo", b"")).await;
     // The second is carried on the first's connection while another is
     // opened behind it, which a failure still on record would stop.
-    let asked = Instant::now();
-    while back.connections.load(Ordering::SeqCst) < 2 && asked.elapsed() < LISTENS_WITHIN / 5 {
+    while back.connections.load(Ordering::SeqCst) < 2 && failed.within(LISTENS_WITHIN / 5) {
         tokio::time::sleep(LOOK_EVERY).await;
     }
 
@@ -3224,10 +3258,10 @@ async fn a_relay_refusing_other_hosts_still_leaves_once_idle() {
         1,
         &["--idle-exit", "1"],
     );
-    let asked = Instant::now();
+    let asked = test_pace::Timed::start();
 
     // A pi naming another origin is refused, and is no reason to stay.
-    while relay.left().is_none() && asked.elapsed() < Duration::from_secs(5) {
+    while relay.left().is_none() && asked.within(Duration::from_secs(5)) {
         if let Ok(stream) = UnixStream::connect(&relay.socket).await
             && let Ok((mut sender, connection)) =
                 hyper::client::conn::http1::handshake(TokioIo::new(stream)).await
@@ -3265,13 +3299,13 @@ async fn its_socket_is_the_accounts_alone_and_kept_while_it_answers() {
     let folder = relay.socket.parent().expect("its folder");
     // It answers once its socket is linked, and only then clears the
     // folder it made it in, so that has a moment to go.
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     let held = loop {
         let held: Vec<_> = std::fs::read_dir(folder)
             .expect("the folder")
             .map(|entry| entry.expect("an entry").file_name())
             .collect();
-        if held == ["agents.sock"] || started.elapsed() >= LISTENS_WITHIN {
+        if held == ["agents.sock"] || !started.within(LISTENS_WITHIN) {
             break held;
         }
         std::thread::sleep(LOOK_EVERY);
@@ -3443,6 +3477,10 @@ async fn a_connection_pi_keeps_open_doesnt_keep_the_relay() {
         .await
         .expect("an HTTP/1.1 connection");
     let kept = tokio::spawn(connection);
+    // Held short of the time hyper gives a kept connection to say its next
+    // request, after which it closes it and a relay held by it would leave;
+    // so timed from before the first request, before that clock starts.
+    let asked = test_pace::Timed::start().short_of(HEAD_READ_WITHIN);
     let first = sender
         .send_request(request(&host, "/echo", b""))
         .await
@@ -3451,7 +3489,7 @@ async fn a_connection_pi_keeps_open_doesnt_keep_the_relay() {
 
     // The sender is kept, so the connection stays open as pi's keep-alive
     // would, until the relay closes it.
-    let left = relay.left_within(Duration::from_secs(5));
+    let left = relay.left_within_of(asked, Duration::from_secs(5));
     let closed = tokio::time::timeout(Duration::from_secs(1), kept).await;
 
     assert!(

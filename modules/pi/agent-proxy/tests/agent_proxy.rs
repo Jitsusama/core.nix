@@ -20,7 +20,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use signature::{Signer, Verifier};
 use ssh_key::private::{Ed25519Keypair, KeypairData};
@@ -35,6 +35,9 @@ const SIGN_REQUEST: u8 = 13;
 const SIGN_RESPONSE: u8 = 14;
 const ADD_IDENTITY: u8 = 17;
 const EXTENSION: u8 = 27;
+/// How long a client waits on an answer before the test is failed rather
+/// than held.
+const CLIENT_WAITS: Duration = Duration::from_secs(10);
 
 /// The key the fake agent holds, as a wire blob.
 const LOGIN_KEY: &[u8] =
@@ -244,11 +247,12 @@ impl Proxy {
         // The OS Login key is written once the socket is bound, so a
         // proxy asked for one is ready once both are there.
         let ready = || socket.exists() && (known.is_none() || dir.join("os-login.pub").exists());
-        let started = Instant::now();
+        let started = test_pace::Timed::start();
         while !ready() {
             assert!(
-                started.elapsed() < Duration::from_secs(10),
-                "the proxy never bound its socket, or never wrote its OS Login key"
+                started.within(Duration::from_secs(10)),
+                "the proxy never bound its socket, or never wrote its OS Login key: it {}",
+                started.said(Duration::from_secs(10))
             );
             // A short poll for the socket the proxy binds as it starts.
             thread::sleep(Duration::from_millis(5));
@@ -266,7 +270,7 @@ impl Proxy {
     fn client(&self) -> UnixStream {
         let client = UnixStream::connect(&self.socket).expect("a client reaches the proxy");
         client
-            .set_read_timeout(Some(Duration::from_secs(10)))
+            .set_read_timeout(Some(CLIENT_WAITS))
             .expect("a read timeout is set");
         client
     }
@@ -694,11 +698,12 @@ fn answers_only_so_many_clients_at_once() {
     );
 
     drop(held.pop());
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while !answered(&mut proxy.client()) {
         assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "a client that went never gave its place back"
+            started.within(Duration::from_secs(10)),
+            "a client that went never gave its place back: it {}",
+            started.said(Duration::from_secs(10))
         );
         // A short poll while the proxy sees the client that went close.
         thread::sleep(Duration::from_millis(5));
@@ -1024,15 +1029,15 @@ fn lists_the_builders_key_though_the_agent_behind_never_answers() {
     let (builder, _) = host(3);
     let proxy = Proxy::stalled("stalled", &builders, &machine("nix-offload", &builder));
     let mut client = proxy.client();
-    let asked = Instant::now();
+    let asked = test_pace::Timed::start();
 
     send(&mut client, &[REQUEST_IDENTITIES]);
     let answer = receive(&mut client).expect("an answer");
 
     assert!(
-        asked.elapsed() < Duration::from_secs(8),
-        "the agent behind is given up on after 5 s, not waited on: {:?}",
-        asked.elapsed()
+        asked.within(Duration::from_secs(8)),
+        "the agent behind is given up on after 5 s, not waited on: it {}",
+        asked.said(Duration::from_secs(8))
     );
     let mut expected = vec![IDENTITIES_ANSWER];
     expected.extend_from_slice(&1u32.to_be_bytes());
@@ -1424,7 +1429,9 @@ fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
         .write_all(line.as_bytes())
         .expect("the host's line waits in the fifo");
 
-    let started = Instant::now();
+    // Held short of the time a client waits on its answer, after which a
+    // binding held open on the fifo would read as refused all the same.
+    let started = test_pace::Timed::start().short_of(CLIENT_WAITS);
     let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
 
     assert!(
@@ -1432,8 +1439,9 @@ fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
         "a fifo names no OS Login host, even holding its line"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "and the binding isn't held open waiting on a writer"
+        started.within(Duration::from_secs(5)),
+        "and the binding isn't held open waiting on a writer: it {}",
+        started.said(Duration::from_secs(5))
     );
 }
 
@@ -1474,16 +1482,19 @@ fn ended(name: &str, args: &[&str]) -> (bool, String, bool) {
         ))
         .spawn()
         .expect("the proxy starts");
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     let status = loop {
         if let Some(status) = child.try_wait().expect("the proxy is waited on") {
             break status;
         }
-        if started.elapsed() > Duration::from_secs(10) {
+        if !started.within(Duration::from_secs(10)) {
             let _ = child.kill();
             let _ = child.wait();
             let _ = fs::remove_dir_all(&dir);
-            panic!("the proxy ran on where it should have ended");
+            panic!(
+                "the proxy ran on where it should have ended: it {}",
+                started.said(Duration::from_secs(10))
+            );
         }
         // A short poll for a proxy that should end as it starts.
         thread::sleep(Duration::from_millis(5));
@@ -1632,14 +1643,15 @@ fn takes_away_a_previous_key_when_it_cant_make_its_own() {
         ))
         .spawn()
         .expect("the proxy starts");
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while !fs::read_to_string(dir.join("said"))
         .unwrap_or_default()
         .contains("so it signs no OS Login logins")
     {
         assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "the proxy never said it goes on without its key"
+            started.within(Duration::from_secs(10)),
+            "the proxy never said it goes on without its key: it {}",
+            started.said(Duration::from_secs(10))
         );
         // A short poll for the line the proxy says as it starts.
         thread::sleep(Duration::from_millis(5));
@@ -1682,11 +1694,12 @@ fn goes_on_without_an_os_login_key_it_cant_write() {
         ))
         .spawn()
         .expect("the proxy starts");
-    let started = Instant::now();
+    let started = test_pace::Timed::start();
     while !socket.exists() {
         assert!(
-            started.elapsed() < Duration::from_secs(10),
-            "the proxy never bound its socket, so a key it couldn't write stopped it"
+            started.within(Duration::from_secs(10)),
+            "the proxy never bound its socket, so a key it couldn't write stopped it: it {}",
+            started.said(Duration::from_secs(10))
         );
         // A short poll for the socket the proxy binds as it starts.
         thread::sleep(Duration::from_millis(5));

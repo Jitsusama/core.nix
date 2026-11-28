@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -25,8 +25,8 @@ fn waiting(home: &Path) -> PathBuf {
 
 /// Whether `file` comes to exist (`exists`) or goes within the patience.
 fn until(file: &Path, exists: bool) -> bool {
-    let began = Instant::now();
-    while file.exists() != exists && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while file.exists() != exists && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     file.exists() == exists
@@ -236,8 +236,8 @@ fn a_slack_failing_in_ways_signing_in_cant_mend_isnt_told_as_deaf() {
         let home = home();
         let mut reader = reader(&home, &origin);
         // Three rounds of both searches, more than the two rounds that tell.
-        let began = Instant::now();
-        while asked.load(Ordering::SeqCst) < 6 && began.elapsed() < PATIENCE {
+        let began = test_pace::Timed::start();
+        while asked.load(Ordering::SeqCst) < 6 && began.within(PATIENCE) {
             thread::sleep(Duration::from_millis(20));
         }
         let searches = asked.load(Ordering::SeqCst);
@@ -265,8 +265,8 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
     std::fs::write(&blocked, "in the way").expect("in the way");
     let named = blocked.join("pineapple.json");
     let mut reader = reading(&home, &origin, &[], Some(&named));
-    let began = Instant::now();
-    while !journal(&home).contains("couldn't write Joel's row in ") && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while !journal(&home).contains("couldn't write Joel's row in ") && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     // Checked before the way is cleared, so a write that never fails fails
@@ -314,9 +314,8 @@ fn a_stop_the_phrase_finds_is_judged_while_slack_rate_limits_the_tag_search() {
     };
     // Rounds past those a row waits for, so one told wrongly would show.
     let rounds = || TAGGED.load(Ordering::SeqCst);
-    let began = Instant::now();
-    while (rounds() < 4 || !kept()["newest"]["pineapple"].is_string()) && began.elapsed() < PATIENCE
-    {
+    let began = test_pace::Timed::start();
+    while (rounds() < 4 || !kept()["newest"]["pineapple"].is_string()) && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");

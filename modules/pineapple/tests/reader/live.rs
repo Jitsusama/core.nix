@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -80,9 +80,13 @@ fn decoded(text: &str) -> String {
 
 /// Waits until `path` is there, or says what never came.
 fn until_there(path: &Path, what: &str) {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while !path.exists() {
-        assert!(began.elapsed() < PATIENCE, "{what}");
+        assert!(
+            began.within(PATIENCE),
+            "{what}: it {}",
+            began.said(PATIENCE)
+        );
         // The reader goes round every tenth of a second.
         thread::sleep(Duration::from_millis(50));
     }
@@ -197,9 +201,13 @@ fn let_go_live_joels_slack_resume_still_ends_no_live_stop() {
     a_stop(&home, "live", "pr:example/shop#12", false, 120);
     let mut reading = reader_with(&home, &origin, &["--live"]);
     until_decided(&home, 1);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while resumed(&home, "named").is_null() {
-        assert!(began.elapsed() < PATIENCE, "Joel's resume ended nothing");
+        assert!(
+            began.within(PATIENCE),
+            "Joel's resume ended nothing: it {}",
+            began.said(PATIENCE)
+        );
         // As above, a short wait sees it land without spinning.
         thread::sleep(Duration::from_millis(50));
     }

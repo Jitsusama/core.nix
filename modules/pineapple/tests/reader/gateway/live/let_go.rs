@@ -4,7 +4,7 @@
 //! reads the live reader's folder.
 
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::json;
 
@@ -59,8 +59,8 @@ fn a_keyring_reader_in_shadow_says_no_alert_let_go() {
     aged(&home, &[("untold", 15)]);
     let mut reader = crate::reader_with(&home, &origin, &[]);
     let rounds = || journal(&home).matches("no Slack sign-in yet").count();
-    let began = Instant::now();
-    while rounds() < 3 && began.elapsed() < PATIENCE {
+    let began = test_pace::Timed::start();
+    while rounds() < 3 && began.within(PATIENCE) {
         thread::sleep(Duration::from_millis(50));
     }
     reader.kill().expect("the reader stops");

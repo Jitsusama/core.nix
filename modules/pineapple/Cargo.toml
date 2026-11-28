@@ -45,3 +45,5 @@ libc = "0.2"
 [dev-dependencies]
 # A test's client of pineapple serve, asking over its socket.
 daemon-client = { path = "../daemon-client" }
+# How long a timed step may take on a machine as busy as the one testing.
+test-pace = { path = "../test-pace" }

@@ -14,7 +14,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -108,15 +108,16 @@ fn serve(at: &Path, homes: Option<&Path>) -> (Serving, PathBuf) {
 
 /// What the daemon has said, once it's said `wanted`.
 fn said_until(serving: &Serving, wanted: &str) -> String {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     loop {
         let said = serving.said.lock().expect("what it said").clone();
         if said.contains(wanted) {
             return said;
         }
         assert!(
-            began.elapsed() < Duration::from_secs(10),
-            "it never said {wanted:?}; it said {said:?}"
+            began.within(Duration::from_secs(10)),
+            "it never said {wanted:?}: it {}; it said {said:?}",
+            began.said(Duration::from_secs(10))
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -159,7 +160,7 @@ fn homes(at: &Path) -> PathBuf {
 
 /// A connection to the socket, once the daemon listens on it.
 fn connect(socket: &Path) -> UnixStream {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     loop {
         if let Ok(stream) = UnixStream::connect(socket) {
             stream
@@ -168,8 +169,9 @@ fn connect(socket: &Path) -> UnixStream {
             return stream;
         }
         assert!(
-            began.elapsed() < Duration::from_secs(10),
-            "it never listened"
+            began.within(Duration::from_secs(10)),
+            "it never listened: it {}",
+            began.said(Duration::from_secs(10))
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -194,7 +196,7 @@ fn told_until(lines: &mut impl BufRead, wanted: impl Fn(&Value) -> bool) -> Valu
 /// Code's homes as the daemon last wrote them to `file`, once they hold
 /// what `wanted` looks for.
 fn homes_until(file: &Path, wanted: impl Fn(&[Value]) -> bool) -> Vec<Value> {
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     loop {
         let things = fs::read_to_string(file)
             .ok()
@@ -205,8 +207,9 @@ fn homes_until(file: &Path, wanted: impl Fn(&[Value]) -> bool) -> Vec<Value> {
             return things;
         }
         assert!(
-            began.elapsed() < Duration::from_secs(10),
-            "the homes never came; they hold {things:?}"
+            began.within(Duration::from_secs(10)),
+            "the homes never came: it {}; they hold {things:?}",
+            began.said(Duration::from_secs(10))
         );
         std::thread::sleep(Duration::from_millis(20));
     }
