@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 
 # A JSON object as tc gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]
+# A queue on a link as (kind, parent), the root's parent said as "root".
+type Queue = tuple[str, str]
 
 # One of Meet's media servers, which takes a call on 443.
 MEET = "74.125.250.1"
@@ -88,6 +90,12 @@ def address(node_ip: str) -> str:
     return node_ip.split()[3].split("/", maxsplit=1)[0]
 
 
+def shaped(queues: list[Queue]) -> bool:
+    """Say whether a link's queues are the shaper's HTB with its lanes beneath it."""
+    lanes = {("cake", "1:3"), ("fq_codel", "1:4"), ("cake", "1:5")}
+    return ("htb", "root") in queues and lanes <= set(queues)
+
+
 @dataclass
 class Connection:
     """The client, its connection through the router to the server, and what CAKE counts on it."""
@@ -138,11 +146,9 @@ class Connection:
         index = int(self.client.succeed(f"cat /sys/class/net/{link}/ifindex"))
         return f"shaper{index:x}"
 
-    def shaped(self, link: str) -> bool:
-        """Say whether a link carries the shaper's HTB with its lanes beneath it."""
-        kinds = {(q["kind"], q.get("parent", "root")) for q in self.qdiscs(link)}
-        lanes = {("cake", "1:3"), ("fq_codel", "1:4"), ("cake", "1:5")}
-        return ("htb", "root") in kinds and lanes <= kinds
+    def queues(self, link: str) -> list[Queue]:
+        """Give a link's queues sorted, read once so a failure prints what `shaped` judged."""
+        return sorted((q["kind"], q.get("parent", "root")) for q in self.qdiscs(link))
 
     def hold(self, slice_name: str, *, system: bool = False) -> None:
         """Keep a slice open, as something always runs in one on a machine in use."""
@@ -704,7 +710,8 @@ def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
 
 def test_route_moves(on_eth2: Connection) -> None:
     """The queues follow the default route to another link."""
-    assert not on_eth2.shaped("eth1"), f"eth1 kept its lanes: {on_eth2.qdiscs('eth1')}"
+    queues = on_eth2.queues("eth1")
+    assert not shaped(queues), f"eth1 kept its lanes: {queues}"
     on_eth2.client.succeed(f"! ip link show {on_eth2.ifb('eth1')}")
     on_eth2.lands("bulk", "jobs.slice", on_eth2.upload, dev="eth2")
 
@@ -735,7 +742,8 @@ def test_replug(replugged: Replugged) -> None:
     connection.client.wait_until_succeeds(
         f"tc -j qdisc show dev {replugged.plugged_ifb} | grep -q cake", timeout=SHAPING
     )
-    assert connection.shaped("eth2"), f"eth2 came back unshaped: {connection.qdiscs('eth2')}"
+    queues = connection.queues("eth2")
+    assert shaped(queues), f"eth2 came back unshaped: {queues}"
     connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q eth2", timeout=SHAPING
     )
@@ -775,7 +783,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     )
     client.succeed("systemctl is-active shaper.service")
     assert "bare" not in bare, "a restart left a link unshaped while it ran"
-    assert on_eth2.shaped("eth2"), "a restart left eth2 without its lanes"
+    queues = on_eth2.queues("eth2")
+    assert shaped(queues), f"a restart left eth2 without its lanes: {queues}"
     assert sent() >= before, "a restart made the queues afresh rather than keeping them"
     said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
     assert "is restarting, so its queues stay" in said, said
@@ -805,7 +814,8 @@ def test_stopping(on_eth2: Connection) -> None:
     assert status != 0, said
     client.succeed("systemctl is-active shaper.service")
     client.succeed("runuser -u bob -- systemctl stop shaper.service")
-    assert not on_eth2.shaped("eth2"), f"the stop left eth2 its lanes: {on_eth2.qdiscs('eth2')}"
+    queues = on_eth2.queues("eth2")
+    assert not shaped(queues), f"the stop left eth2 its lanes: {queues}"
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")
