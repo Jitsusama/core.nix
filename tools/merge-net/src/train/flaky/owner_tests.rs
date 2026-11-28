@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use super::super::folder;
+use super::super::checkout_in;
 use super::super::tests::git_in as git;
 use super::Red;
 use super::owner::{MOST_OWNER_MERGES, Unowned, owner_in};
@@ -26,7 +26,7 @@ fn merged(checkout: &Path, side: &str, subject: &str) -> String {
 fn net_past_twelve(name: &str) -> (PathBuf, PathBuf, String, String) {
     let root = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
-    let checkout = folder(&root).join("checkout");
+    let checkout = checkout_in(&root);
     fs::create_dir_all(&checkout).unwrap();
     git(&checkout, &["init", "-q", "-b", "main"]).unwrap();
     git(

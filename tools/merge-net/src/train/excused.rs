@@ -17,6 +17,7 @@
 //! removes it; until then neither `recent` nor `record` reads it.
 
 use std::fs;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -82,21 +83,42 @@ pub(super) fn record(checkout: &Path, candidate: &str) -> String {
         return String::new();
     }
     let file = beside(checkout).join(candidate);
-    let fresh = fs::metadata(&file)
+    // Most candidates were never excused, so they have no record: none is
+    // nothing. One that can't be read speaks for no pass either; this only
+    // says so, and `still_passes` then reads nix-offload's record of the
+    // candidate, and failing that builds its recut again.
+    let read = fs::metadata(&file)
         .and_then(|kept| kept.modified())
-        .is_ok_and(within_its_day);
-    if !fresh {
-        return String::new();
-    }
-    // Most candidates were never excused, so they have no record, and one
-    // that can't be read speaks for no pass either: the recut is then built
-    // again, as a red with no record always is.
-    fs::read_to_string(file).unwrap_or_default()
+        .and_then(|at| {
+            if within_its_day(at) {
+                fs::read_to_string(&file)
+            } else {
+                Ok(String::new())
+            }
+        });
+    read.unwrap_or_else(|error| {
+        if let Some(said) = unread(candidate, &error) {
+            println!("{said}");
+        }
+        String::new()
+    })
+}
+
+/// What the train says when reading `candidate`'s record failed with
+/// `error`: nothing when it has none, as most candidates haven't.
+fn unread(candidate: &str, error: &io::Error) -> Option<String> {
+    (error.kind() != ErrorKind::NotFound).then(|| {
+        format!(
+            "merge-net: the excuse of {} couldn't be read, so it speaks for no recut of it: \
+             {error}",
+            short(candidate)
+        )
+    })
 }
 
 /// The folder of records beside the train's `checkout`, which `ride_from`
 /// keeps in the train's folder, as `keep` writes them.
-fn beside(checkout: &Path) -> PathBuf {
+pub(super) fn beside(checkout: &Path) -> PathBuf {
     checkout.with_file_name(FOLDER)
 }
 

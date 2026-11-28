@@ -118,6 +118,13 @@ pub fn folder(root: &Path) -> PathBuf {
     root.join("train")
 }
 
+/// The train's checkout in the net's state folder `root`, where it cuts
+/// each candidate; its tests take it from here, so they can't drift from
+/// where `ride_from` keeps it.
+fn checkout_in(root: &Path) -> PathBuf {
+    folder(root).join("checkout")
+}
+
 fn riders_folder(root: &Path) -> PathBuf {
     folder(root).join("riders")
 }
@@ -525,7 +532,7 @@ fn open_the_run(root: &Path, began: u64) {
 /// `url`, until no one waits on it.
 fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let root = root.to_path_buf();
-    let checkout = folder(&root).join("checkout");
+    let checkout = checkout_in(&root);
     if !checkout.join(".git").exists() {
         run_git(
             &folder(&root),

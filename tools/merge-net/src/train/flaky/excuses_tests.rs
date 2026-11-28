@@ -10,7 +10,7 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::super::tests::git_in as git;
-use super::super::{excused, folder};
+use super::super::{checkout_in, excused, folder};
 use super::checks_said_tests::excused_by_quarantine;
 use super::tests::words;
 use super::{Blame, Flakes, Lent, Red, built_log, excuses, said, tell};
@@ -60,7 +60,7 @@ fn a_flake_is_built_at_the_base_then_at_the_candidate_and_its_finding_names_the_
     let root = std::env::temp_dir().join(format!("merge-net-excuses-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let (base, candidate) = ("b".repeat(40), "c".repeat(40));
-    let checkout = folder(&root).join("checkout");
+    let checkout = checkout_in(&root);
     fs::create_dir_all(&checkout).unwrap();
     let log = folder(&root).join(format!("{candidate}.log"));
     State::at(root.clone()).make().unwrap();
@@ -217,7 +217,7 @@ fn a_check_the_candidates_quarantine_alone_holds_is_judged() {
     let root = std::env::temp_dir().join(format!("merge-net-held-ours-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     State::at(root.clone()).make().unwrap();
-    let checkout = folder(&root).join("checkout");
+    let checkout = checkout_in(&root);
     fs::create_dir_all(checkout.join("tools/merge-net")).unwrap();
     git(&checkout, &["init", "-q", "-b", "main"]).unwrap();
     let commit = |list: &str, subject: &str| {
