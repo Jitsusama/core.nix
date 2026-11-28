@@ -14,7 +14,10 @@ here=$PWD
 # itself, and its own folders exactly, let it through.
 if [[ $TUPLE_FOLDER_OF_ITS_OWN != "$here" || $HOME != "$here" ||
   $XDG_RUNTIME_DIR != "$here/run" || $XDG_DATA_HOME != "$here/data" ]]; then
-  print -ru2 -- "tuple-completion.zsh runs only from tuple-completes-in-zsh.sh"
+  print -ru2 -- "tuple-completion.zsh runs only in the folder of its own" \
+    "tuple-completes-in-zsh.sh makes, from $here, not with" \
+    "TUPLE_FOLDER_OF_ITS_OWN=${TUPLE_FOLDER_OF_ITS_OWN-} HOME=$HOME" \
+    "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR-} XDG_DATA_HOME=${XDG_DATA_HOME-}"
   exit 64
 fi
 mkdir -p dot

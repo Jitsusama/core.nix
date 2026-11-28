@@ -3,7 +3,8 @@
 # tuple runs, folders that would let it reach a person's own. Given portal,
 # tuple-shares-through-the-portal.sh, given second, with the folder library
 # given third, refuses a data folder to find that isn't a whole path or
-# ends in a slash. Given editors, tuple-completion.zsh, given second,
+# ends in a slash, and moves no step for one that is only the tail of the
+# steps' own. Given editors, tuple-completion.zsh, given second,
 # refuses any folders but those of the folder of its own its wrapper makes,
 # a person's home holding its own runtime and data folders among them. Each
 # is run from a person's home, with a stand-in tuple first on PATH that
@@ -60,6 +61,24 @@ case $what in
       turned_away "the data folder \"$data\"" HOME="$home" \
         timeout -k 5 60 "$BASH" "$script" "$library" "$here/activate" "$data"
     done
+    # A whole path that is only the tail of a step's real folder can't be
+    # told apart before the steps are read, so it's held to finding no step
+    # it may move: matched inside the step's folder, it would write into the
+    # home, at the home's path with the folder of its own's put after it.
+    # Its library's own folder and stop are its own, so only the home and
+    # what it said are read.
+    printf 'run mkdir -p %q\n' "$home/.local/share/tuple/0/settings" > "$here/activate"
+    status=0
+    (cd "$home" && env -i PATH="$here/bin:$PATH" HOME="$home" TMPDIR="$here" \
+      timeout -k 5 60 "$BASH" "$script" "$library" "$here/activate" /.local/share) \
+      > "$here/said" 2>&1 < /dev/null || status=$?
+    (cd "$home" && find . -mindepth 1 ! -path ./run ! -path ./data) > "$here/written"
+    if [[ $status -ne 1 || -s $here/written ]] ||
+      ! grep -q 'has no step writing into /.local/share/tuple/' "$here/said"; then
+      echo "${script##*/} with a tail of the data folder ended $status and wrote" \
+        "\"$(< "$here/written")\" into the home; it said \"$(< "$here/said")\"" >&2
+      exit 1
+    fi
     ;;
   editors)
     editors() { turned_away "$1" "${@:2}" timeout -k 5 60 zsh -f "$script" "$here/_tuple"; }
