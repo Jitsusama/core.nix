@@ -349,7 +349,7 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
     if !status.success() {
         return Err(format!("cadence ended {status}"));
     }
-    match reading.recv_timeout(deadline.saturating_sub(started.elapsed())) {
+    match reading.recv_timeout(output_wait(deadline, started.elapsed())) {
         Ok(Ok(printed)) => Ok(printed),
         Ok(Err(why)) => Err(format!("cadence's output couldn't be read: {why}")),
         Err(_) => Err(format!(
@@ -357,6 +357,17 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
             deadline.as_secs()
         )),
     }
+}
+
+/// How long to wait for a read's output once it ended at `elapsed` and its
+/// group was stopped and reaped: what's left of `deadline`, but never less
+/// than a moment. Nothing can still hold the pipe then, so its end is on
+/// its way, and a read that ended just inside its deadline is kept rather
+/// than said to have held its output open past it (review of #6875, 154).
+fn output_wait(deadline: Duration, elapsed: Duration) -> Duration {
+    deadline
+        .saturating_sub(elapsed)
+        .max(Duration::from_millis(100))
 }
 
 /// Whether `child` has ended, seen without reaping it, so the number of
@@ -745,6 +756,27 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&folder);
         assert!(gone, "what it left is stopped, not left running");
+    }
+
+    #[test]
+    fn a_read_ended_at_its_deadline_still_waits_a_moment_for_its_output() {
+        let minute = Duration::from_mins(1);
+        let moment = Duration::from_millis(100);
+        assert_eq!(
+            output_wait(minute, Duration::from_millis(59_990)),
+            moment,
+            "a read ending 10 ms inside its deadline is given a moment, not 10 ms"
+        );
+        assert_eq!(
+            output_wait(minute, Duration::from_millis(60_015)),
+            moment,
+            "one seen ended just past it, as the 20 ms look can, is given a moment too"
+        );
+        assert_eq!(
+            output_wait(minute, Duration::from_secs(10)),
+            Duration::from_secs(50),
+            "one ending early waits out the rest of its deadline"
+        );
     }
 
     #[test]
