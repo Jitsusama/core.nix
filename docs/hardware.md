@@ -1213,9 +1213,13 @@ Chrome's drawing to get there.
 
 A patched Mesa is one nixpkgs' cache doesn't hold, so each nixpkgs update that
 moves Mesa builds all of it again rather than downloading it. The patch comes
-out, and its check with it, once Mesa's release has the fix: until then it
-applies as it is, and when upstream changes those lines it stops
-applying and the build says so.
+out, and its check with it, once Mesa's release has the fix. Since patch allows
+some fuzz in the lines around a change, it can keep applying after Mesa moves
+nearby, and one that stops applying says only that Mesa changed the lines it
+touches: read Mesa's `iris_resource_configure_main`, and carry the patch onto
+it unless a memory object's branch there no longer hangs off the shared one.
+The check reads Mesa's own source each run too, and fails once that source
+passes, which is the other sign the fix has landed.
 
 ### Fixed Here Until nixpkgs Fixes It
 

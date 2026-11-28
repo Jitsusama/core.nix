@@ -36,8 +36,10 @@ let
   # from the one anv wrote, so the canvas shows as a checkerboard
   # (iris-memory-objects-prefer-4k-tiles.patch). nixpkgs' cache holds no
   # Mesa with it, so each update that moves Mesa builds it again. Take the
-  # patch out, with its check, once Mesa's release has the fix; a Mesa that
-  # changes those lines stops the patch applying, which says it's time.
+  # patch out, with its check, once Mesa's release has the fix. A patch that
+  # stops applying only says Mesa changed the lines it touches: read its
+  # iris_resource_configure_main, and carry the patch onto the new lines
+  # unless a memory object's branch there no longer hangs off the shared one.
   mesa = pkgs.mesa.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./programs/iris-memory-objects-prefer-4k-tiles.patch ];
   });
