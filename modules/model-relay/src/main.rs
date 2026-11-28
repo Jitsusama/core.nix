@@ -138,12 +138,11 @@ struct Places {
 /// named the lend's; of two, the one named the lend's is, in whichever
 /// order systemd hands them, and the other pi's.
 fn places(count: &str, names: &str) -> Result<Places, String> {
-    let named: Vec<&str> = names.split(':').collect();
-    let lends: Vec<usize> = named
-        .iter()
+    let lends: Vec<usize> = names
+        .split(':')
         .take(2)
         .enumerate()
-        .filter_map(|(at, &name)| (name == LEND).then_some(at))
+        .filter_map(|(at, name)| (name == LEND).then_some(at))
         .collect();
     match (count, lends.as_slice()) {
         ("1", []) => Ok(Places {
