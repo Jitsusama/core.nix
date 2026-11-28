@@ -1786,6 +1786,11 @@ PanelWindow {
     function say(): void {
         if (!Options.reports)
             return;
+        // The word of its column's move that the window carrying it has
+        // itself, read as rideTo reads it (Tiles.heardOf), never
+        // columnHeard.at, which is the latest begin of any column niri moved.
+        const columnBegan = Tiles.heardOf(window.columnHeard,
+            Carried.carriedBy(window.landedOn, window.sat)).at;
         const at = !place ? "nowhere" : JSON.stringify({
             x: place.x,
             y: place.y,
@@ -1822,6 +1827,16 @@ PanelWindow {
             scrolled: (window.scrollHeard?.at ?? null) === null ? null
                 : Math.round(Date.now() - window.scrollHeard.at),
             scrollBegan: window.scrollHeard?.at ?? null,
+            // When on the wall clock niri began moving the column of the
+            // window it's carried by, as the cat dated it, null for none, so
+            // a check can tell which move a ride or a seat at once came of,
+            // as scrollBegan tells which scroll.
+            columnBegan: columnBegan,
+            // How long before this that move began, null for none, so a
+            // check can tell a cat put on its seat at once since it heard of
+            // a column's move already done from one that missed it under
+            // way, as `scrolled` tells of a scroll.
+            columnMoved: columnBegan === null ? null : Math.round(Date.now() - columnBegan),
             slides: window.slideMs,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
