@@ -521,14 +521,25 @@ fn say_it_runs(candidate: &str, merged: &[String]) {
     );
 }
 
-/// Let fall each rider whose head in `conflicted` conflicts with main at
-/// `base`, from the train under `root`.
-fn fall_conflicting(root: &Path, conflicted: &[String], base: &str) {
-    for head in conflicted {
+/// Let fall each rider of the candidate `done` that conflicts with main at
+/// `base`, from the train under `root`, and say of each that conflicts
+/// only with a rider before it that it waits for the next candidate.
+fn fall_conflicting(root: &Path, done: &Cut, base: &str) {
+    for head in &done.conflicted {
         let _ = fall(
             root,
             head,
             &format!("it conflicts with main at {}", short(base)),
+        );
+    }
+    for head in &done.clashing {
+        // It stays aboard: once the rider it clashes with lands, the next
+        // candidate merges it onto main, or it falls as main's.
+        println!(
+            "merge-net: {} waits for the next candidate: it conflicts with a rider merged \
+             before it, not with main at {}",
+            short(head),
+            short(base)
         );
     }
 }
@@ -593,17 +604,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         git(&["fetch", "--quiet", "origin", "main"])?;
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
         let done = cut(&git, &base, &mergings)?;
-        fall_conflicting(&root, &done.conflicted, &base);
-        for head in &done.clashing {
-            // It stays aboard: once the rider it clashes with lands, the
-            // next candidate merges it onto main, or it falls as main's.
-            println!(
-                "merge-net: {} waits for the next candidate: it conflicts with a rider merged \
-                 before it, not with main at {}",
-                short(head),
-                short(&base)
-            );
-        }
+        fall_conflicting(&root, &done, &base);
         if done.merged.is_empty() {
             continue;
         }
