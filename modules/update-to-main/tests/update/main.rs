@@ -4237,10 +4237,16 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
 fn the_follower_doesnt_look_at_an_input_followed_only_when_asked() {
     let world = asking_nested(World::new());
     world.signed("one");
-    fs::rename(world.root.join("mycelium"), world.root.join("mycelium-gone")).unwrap();
+    fs::rename(
+        world.root.join("mycelium"),
+        world.root.join("mycelium-gone"),
+    )
+    .unwrap();
     let heads = follow::heads(&world.config, None);
     assert!(
-        heads.as_ref().is_ok_and(|heads| !heads.contains_key(NESTED)),
+        heads
+            .as_ref()
+            .is_ok_and(|heads| !heads.contains_key(NESTED)),
         "the follower looked at an input followed only when asked: {heads:?}"
     );
 }
@@ -4268,7 +4274,10 @@ fn an_ask_at_an_input_s_commit_from_the_command_line_builds_it() {
         "an ask at core's commit failed: {said}{}",
         String::from_utf8_lossy(&asked.stderr)
     );
-    let ending: Option<Line> = said.lines().last().and_then(|l| serde_json::from_str(l).ok());
+    let ending: Option<Line> = said
+        .lines()
+        .last()
+        .and_then(|l| serde_json::from_str(l).ok());
     assert_eq!(
         ending,
         Some(done_following(&head, &[("core", &wanted)])),
@@ -5042,7 +5051,11 @@ fn an_input_s_copy_looks_for_held_commits_once_however_many_it_lacks() {
     let pinned = world.commit_in("mycelium", "pinned", true);
     let one = main_pinning_mycelium(&world, &pinned);
     world.system(&one);
-    held::ask(&world.config, &format!("hold {}", "d".repeat(40)), Some(1000));
+    held::ask(
+        &world.config,
+        &format!("hold {}", "d".repeat(40)),
+        Some(1000),
+    );
     assert_eq!(world.update().1, done(&one), "main wasn't built");
     let fetches = world.root.join("fetches");
     let counting = world.root.join("counting-git");
@@ -5059,7 +5072,11 @@ fn an_input_s_copy_looks_for_held_commits_once_however_many_it_lacks() {
     let mycelium = world.root.join("mycelium");
     fs::rename(&mycelium, world.root.join("mycelium-gone")).unwrap();
     for held in ["e", "f"] {
-        held::ask(&world.config, &format!("hold {}", held.repeat(40)), Some(1000));
+        held::ask(
+            &world.config,
+            &format!("hold {}", held.repeat(40)),
+            Some(1000),
+        );
     }
     assert_eq!(
         held::stops(&world.config, &one, &BTreeMap::new()),
@@ -5067,7 +5084,10 @@ fn an_input_s_copy_looks_for_held_commits_once_however_many_it_lacks() {
         "holds mycelium's copy shows it doesn't build stopped main"
     );
     let tried = world.read("fetches");
-    let of_mycelium = tried.lines().filter(|line| line.contains("mycelium")).count();
+    let of_mycelium = tried
+        .lines()
+        .filter(|line| line.contains("mycelium"))
+        .count();
     assert_eq!(
         of_mycelium, 1,
         "mycelium's copy wasn't fetched once for three holds it lacks: {tried}"
@@ -5083,7 +5103,11 @@ fn an_input_s_copy_behind_its_pin_is_fetched_before_a_hold_is_judged() {
     let pinned = world.commit_in("mycelium", "pinned", true);
     let one = main_pinning_mycelium(&world, &pinned);
     world.system(&one);
-    held::ask(&world.config, &format!("hold {}", "d".repeat(40)), Some(1000));
+    held::ask(
+        &world.config,
+        &format!("hold {}", "d".repeat(40)),
+        Some(1000),
+    );
     assert_eq!(world.update().1, done(&one), "main wasn't built");
     let copy = world.config.follows_folder().join("core/mycelium.git");
     assert!(copy.exists(), "judging a hold made no copy of mycelium");
