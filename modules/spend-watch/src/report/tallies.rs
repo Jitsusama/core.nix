@@ -288,3 +288,78 @@ pub fn today_by_session(picture: &Picture) -> std::collections::BTreeMap<String,
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+    use crate::quests::Quest;
+
+    const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z
+
+    // A quest's record can name it above itself, at once or through a
+    // quest it names in turn. Walking up its parents still ends, and a
+    // quest's own spend is counted once, as its own, never as its own
+    // family's again.
+    #[test]
+    fn a_quest_named_above_itself_counts_its_own_spend_once() {
+        let history = crate::history::History::memory();
+        let named_under = |id: &str, parent: &str| Quest {
+            id: id.into(),
+            title: id.into(),
+            parent: Some(parent.into()),
+            ..Quest::default()
+        };
+        crate::quests::store(
+            &history,
+            &[
+                named_under("QEST-SELF", "QEST-SELF"),
+                named_under("QEST-ONE", "QEST-OTHER"),
+                named_under("QEST-OTHER", "QEST-ONE"),
+            ],
+        )
+        .unwrap();
+        for (quest, spent) in [("QEST-SELF", 2.0), ("QEST-ONE", 3.0)] {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: format!("s-{quest}"),
+                    at: NOW - 3600.0,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total: spent,
+                        ..Cost::default()
+                    },
+                    quest: Some(quest.into()),
+                    budget: None,
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 0.0,
+                    cause: None,
+                }))
+                .unwrap();
+        }
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let family = |all: f64, own: f64, under: f64| Family {
+            all: dollars(all),
+            own: dollars(own),
+            under: dollars(under),
+        };
+        assert_eq!(
+            by_family(&picture, Period::Today),
+            std::collections::BTreeMap::from([
+                ("QEST-ONE".to_owned(), family(3.0, 3.0, 0.0)),
+                ("QEST-OTHER".to_owned(), family(3.0, 0.0, 3.0)),
+                ("QEST-SELF".to_owned(), family(2.0, 2.0, 0.0)),
+            ]),
+            "a quest named above itself counted its own spend again"
+        );
+    }
+}

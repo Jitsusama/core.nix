@@ -125,12 +125,16 @@
     "FileFacts.js"
     "Fuzzy.js"
     "launcher/Captured.js"
-    "launcher/HeldWindows.js"
-    "launcher/Media.js"
     "launcher/Order.js"
     "launcher/Program.js"
     "launcher/Recent.js"
   ];
+  "launcher/ApplicationsPlaying.qml" = [ "launcher/Media.js" ];
+  "launcher/ApplicationsRecents.qml" = [
+    "launcher/Program.js"
+    "launcher/Recent.js"
+  ];
+  "launcher/ApplicationsWindows.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Ask.qml" = [
     "Fuzzy.js"
     "launcher/TalkOn.js"
@@ -243,6 +247,7 @@
     "launcher/Ago.js"
     "launcher/ForYou.js"
     "launcher/ForYouCells.js"
+    "launcher/ForYouDrawers.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Keeping.js"

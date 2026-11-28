@@ -95,7 +95,7 @@ fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
     let run = path.with_extension("rows");
     let mut command = Command::new(env!("CARGO_BIN_EXE_slack-unreads"));
     command.env("LAUNCHER_WORDS", WORDS);
-    let program = unreads_from(command, &stand_in, &path, &run);
+    let mut program = unreads_from(command, &stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let rows = |place: &str| {
         asked(
@@ -130,7 +130,6 @@ fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
     );
     assert_eq!(keys(&rows("slack-recent"))[0], "row:slack-recent:C3");
     program.stop();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -139,7 +138,7 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     let stand_in = StandIn::new(reading);
     let path = credentials("unreads-watch");
     let run = path.with_extension("watch");
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let mut shell = Connection::to(&run);
     until("Slack was never heard", || {
@@ -224,7 +223,6 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
         (&serde_json::json!(0), &serde_json::json!("answering"))
     );
     program.stop();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -317,7 +315,7 @@ fn the_messages_are_said_whole_only_once_every_history_wanted_was_read() {
     let stand_in = StandIn::new(missing);
     let path = credentials("unreads-missing");
     let run = path.with_extension("missing");
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     // Ada's two, from the conversation he's never opened, read over both
     // pages of its history; #launcher's isn't given, so they aren't whole.
@@ -357,7 +355,6 @@ fn the_messages_are_said_whole_only_once_every_history_wanted_was_read() {
         ["@someone can you look", "are you there?", "hello, new here"]
     );
     program.stop();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -366,7 +363,7 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     let stand_in = StandIn::new(raising);
     let path = credentials("unreads-raising");
     let run = path.with_extension("raising");
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     until("no message was held", || {
         listed(&run, "slack-message").len() == 3
@@ -459,7 +456,6 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         heard.iter().all(|one| one.line.starts_with("GET /api/")),
         "{heard:?}"
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 

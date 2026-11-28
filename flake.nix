@@ -241,6 +241,7 @@
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         local-sites = ./modules/local-sites/home.nix;
+        lock-follows = ./modules/lock-follows/home.nix;
         lsd = ./modules/lsd/home.nix;
         machine = ./modules/machine/home.nix;
         margin-cat = moduleFrom ./modules/margin-cat/home.nix {

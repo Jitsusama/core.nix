@@ -165,14 +165,18 @@ in
             nine tenths of it, or the controller holds it under a full
             line, having cut it in the last few seconds or with the
             download filling its hold, the download is held at nine
-            tenths, under the router's queue, so
-            it queues in this machine's CAKE, which puts the call first,
-            rather than in a router's flow queues, where a call that
-            shares one with a bulk download loses what it loses. The
-            controller may hold it lower, and the hold goes when the call
-            ends. Declare the line at its slowest busy hour, and again
-            when it's made faster: held, the download can't show a faster
-            line, so each call would hold it at nine tenths of the old one.
+            tenths, under the router's queue, so it queues in this
+            machine's CAKE, which puts the call first, rather than in a
+            router's flow queues, where a call that shares one with a
+            bulk download loses what it loses. The controller may hold it
+            lower, and the hold goes when the call ends. A link following
+            another to the router, as Wi-Fi beside a cable, isn't
+            measured, so it's held at nine tenths for the whole of a call
+            whatever it carries; each link's hold is its own, so two
+            downloading at once may together pass the line. Declare the
+            line at its slowest busy hour, and again when it's made
+            faster: held, the download can't show a faster line, so each
+            call would hold it at nine tenths of the old one.
           '';
         };
         options.links = lib.mkOption {
@@ -412,7 +416,9 @@ in
   # those by `//`, `/./` or `/../`; and the ear holds each address to one
   # key, so two houses naming one address, spelled alike, must name the
   # same key. A link into those folders still passes, for the journal to
-  # say.
+  # say. A link's line can't be above its network's: held over the line, a
+  # call's hold leaves the router's queue to fill, and does nothing (a
+  # link's own line round 7's F6).
   config.assertions =
     let
       keyed = lib.filter (house: house.keyFile != null) houses;
@@ -439,6 +445,14 @@ in
       shared = lib.filter (address: lib.length (keysOf address) > 1) (
         lib.unique (lib.concatMap (house: house.from) keyed)
       );
+      overOf =
+        name: network:
+        lib.mapAttrsToList (link: _: "${name}.links.${link}") (
+          lib.filterAttrs (
+            _: link: network.down != null && link.down != null && link.down > network.down
+          ) network.links
+        );
+      over = lib.concatLists (lib.mapAttrsToList overOf networks);
     in
     [
       {
@@ -461,6 +475,13 @@ in
           "jitsusama.shaper.networks: houses naming one address must name one "
           + "keyFile: "
           + lib.concatStringsSep ", " shared;
+      }
+      {
+        assertion = over == [ ];
+        message =
+          "jitsusama.shaper.networks: a link's down can't be above its network's, "
+          + "which would hold it over the line: "
+          + lib.concatStringsSep ", " over;
       }
     ];
 

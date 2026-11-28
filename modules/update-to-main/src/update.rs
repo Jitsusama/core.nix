@@ -11,7 +11,9 @@
 //! switch the follower asked for waits, once built, while someone is at the
 //! machine. With a boot check, a system whose kernel, initrd or kernel
 //! parameters changed becomes what the machine boots only once it passes.
-//! Each step is told as it starts.
+//! Each step is told as it starts. Long because these steps are one ordered
+//! sequence over shared state, and each going back must see the switch it
+//! undoes, so splitting them would scatter one update across files.
 
 use crate::boot_default;
 use crate::busy;
@@ -233,12 +235,13 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     let last_followed = follows::last(config);
-    let followed = match follows::heads(config, &head, &last_followed, at) {
+    let followed = match follows::heads(config, &head, &last_followed, &waited_asks(config), at) {
         Ok(Ok(followed)) => followed,
         Ok(Err(why)) => return Line::Refused { commit: last, why },
         Err(failure) => return failed(last, failure),
     };
     if last.as_deref() == Some(head.as_str()) && followed == last_followed {
+        call_off(config, at);
         return unchanged(head, followed);
     }
     if let Some(refused) = untrusted(config, &main, last.as_deref(), &head) {
@@ -277,8 +280,7 @@ fn run(
     // another machine's files, switch nothing, and so restart nothing a
     // switch would.
     if runs_wholly(config, &built) {
-        if let Err(e) = remember(config, &head).and_then(|()| follows::remember(config, &followed))
-        {
+        if let Err(e) = ran_wholly(config, &head, &followed) {
             return failed(Some(head), e);
         }
         return unchanged(head, followed);
@@ -317,12 +319,82 @@ fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
     held::paused(config).filter(|_| following())
 }
 
+/// Each asked input a build waiting for a hold was built at, and each one a
+/// switch left unended was for, since what that switch followed was never
+/// remembered. An ask at an
+/// input that moves only when asked is one whose move most often waits for
+/// a hold, and its commit is remembered only once it switches: without
+/// this, the next update builds that input at its pin, and its switch, or
+/// a newer wait, spends the ask. It's kept, never a floor, since it never
+/// ran, so a later ask may still step behind it. One a hold keeps off is
+/// let go, so the hold stops that ask rather than every update of main's.
+/// A switch cut off, as a Mac's activation cuts its daemon, would otherwise
+/// be undone by the next update, restarting what it restarted twice.
+fn waited_asks(config: &Config) -> follows::Followed {
+    let waiting = waited(config)
+        .map(|waiting| waiting.followed)
+        .unwrap_or_default();
+    let left = begun(config)
+        .map(|begun| begun.followed)
+        .unwrap_or_default();
+    let mut asks = follows::Followed::new();
+    for (name, commit) in waiting.into_iter().chain(left) {
+        if !asks.contains_key(&name)
+            && config.follows.get(&name).is_some_and(|f| f.asked)
+            && !held::keeps_off(config, &name, &commit)
+        {
+            asks.insert(name, commit);
+        }
+    }
+    asks
+}
+
+/// Remembers main at `head` and its inputs at `followed` as what runs,
+/// when it builds what the machine already runs. A build that waited for
+/// a hold is let go then: what ran since is a later ask's, so the next
+/// update mustn't build the wait again.
+fn ran_wholly(config: &Config, head: &str, followed: &follows::Followed) -> Result<(), Failure> {
+    remember(config, head)?;
+    follows::remember(config, followed)?;
+    let _ = fs::remove_file(waiting_file(config));
+    Ok(())
+}
+
+/// Lets go of a build that waited for a hold when `at`, an ask that ends at
+/// what already runs, names an input that build has at another commit: the
+/// ask calls the wait off, as one that builds does in `ran_wholly`, though
+/// it builds nothing. Kept, the wait is built again by the next update, and
+/// by every merge of main's after it. The whole wait goes, not the asked
+/// entries alone, since its system was built with the commit called off and
+/// a grant would still switch to it.
+fn call_off(config: &Config, at: &follows::Followed) {
+    let Some(waiting) = waited(config) else {
+        return;
+    };
+    if at
+        .iter()
+        .any(|(name, commit)| waiting.followed.get(name) != Some(commit))
+    {
+        let _ = fs::remove_file(waiting_file(config));
+    }
+}
+
 /// A built system whose switch waits for a hold to be given.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Waiting {
     commit: String,
     followed: follows::Followed,
     system: std::path::PathBuf,
+}
+
+/// The commit of the build waiting for a hold, read as written: its
+/// system may be gone, but the read of it is still let go of only once
+/// the wait is.
+pub fn waiting_commit(config: &Config) -> Option<String> {
+    // No file, or none written whole, is no build waiting, so no read is kept for one.
+    let text = fs::read_to_string(waiting_file(config)).ok()?;
+    let waiting: Waiting = serde_json::from_str(&text).ok()?;
+    Some(waiting.commit)
 }
 
 fn waiting_file(config: &Config) -> std::path::PathBuf {
@@ -478,6 +550,7 @@ fn switch(
             system: left,
             previous: Some(previous),
             failed: Some(why),
+            ..
         }) if fs::canonicalize(&left).ok() == fs::canonicalize(built.system).ok() => {
             // Going back from this very system didn't finish, cut off as
             // a Mac's is when going back reloads its daemon too, or
@@ -525,6 +598,7 @@ fn switch(
         system: built.system.to_path_buf(),
         previous: previous.clone(),
         failed: None,
+        followed: followed.clone(),
     };
     if let Err(failure) = begin(config, &begun) {
         return failed(last, failure);
@@ -558,6 +632,11 @@ struct Begun {
     /// back cut off is finished rather than the switch made again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     failed: Option<String>,
+    /// The inputs the switch builds at their followed commits, which are
+    /// remembered only once it ends, so an ask a cut-off switch was for is
+    /// kept by the next update. None while going back, which asks nothing.
+    #[serde(default, skip_serializing_if = "follows::Followed::is_empty")]
+    followed: follows::Followed,
 }
 
 fn begun_file(config: &Config) -> std::path::PathBuf {
@@ -678,6 +757,7 @@ fn going_back(
         system: system.to_path_buf(),
         previous: Some(previous.clone()),
         failed: Some(failure.why.clone()),
+        followed: follows::Followed::new(),
     };
     if let Err(unmarked) = begin(config, &begun) {
         eprintln!("{}", unmarked.why);

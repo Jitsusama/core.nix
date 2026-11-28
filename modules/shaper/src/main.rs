@@ -384,12 +384,13 @@ struct Shaped {
     /// The line its download is held under for a call, its own or its
     /// network's, as the last step read it (src/networks.rs).
     line: Option<u64>,
-    /// Whether the journal has been told the link's line (`line_said`).
-    line_told: bool,
+    /// Whether the journal has been told the link's line, and the line it
+    /// was told, kept through a step its network isn't known (`line_said`).
+    line_told: (bool, Option<u64>),
     /// What the controller held its download to at the last step, apart
     /// from a call's hold, and whether it left the download unlimited:
     /// what a follower takes (`hold_followers`).
-    asked_down: (u64, bool),
+    asked_down: Asked,
     /// The bytes the upload's CAKE had sent at its last good read, and at
     /// the last good read before the controller was last told, each with
     /// when it was read: what crossed the line, apart from the home
@@ -752,8 +753,11 @@ fn start(
         download: Download::Turned,
         room: room::Room::default(),
         line: None,
-        line_told: false,
-        asked_down: (down, true),
+        line_told: (false, None),
+        asked_down: Asked {
+            down,
+            unlimited: true,
+        },
         sent_read: None,
         sent_told: None,
         lanes,
@@ -1876,15 +1880,57 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     }
 }
 
-/// What a follower takes from the link it follows (`hold_followers`): its
-/// upload's rate and most, what the controller asked of its download and
-/// whether it left it unlimited, and its steady ceiling.
-#[derive(Clone, Copy)]
-struct Leader {
+/// What a link gives the links following it (`hold_followers`): its
+/// upload's rate and the most its CAKE is told, what the controller asked
+/// of its download and whether it left it unlimited (`Shaped::asked_down`),
+/// and its steady ceiling (a link's own line round 8's F2 and F6).
+struct Followed {
     up: u64,
-    asked_down: (u64, bool),
-    most: u64,
+    up_most: u64,
+    asked_down: Asked,
     under: Option<u64>,
+}
+
+/// What a follower is held to (`taken`): its upload's rate and the most
+/// its CAKE is told, its download's rate and whether it goes straight in,
+/// and its steady ceiling.
+#[derive(Debug, PartialEq, Eq)]
+struct Taken {
+    up: u64,
+    up_most: u64,
+    down: (u64, bool),
+    under: Option<u64>,
+}
+
+/// What a follower takes from the link it `follows`, under its own call's
+/// `room` and its own link's `most` each way: the leader's upload rate and
+/// steady ceiling, so the two together are held under it exactly, and
+/// what the controller asked of the leader's download, held under the
+/// follower's room, never the leader's. Its download and the most its
+/// upload's CAKE is told are no more than the follower's own link carries
+/// (a link's own line round 7's F5 and F12); its upload rate and steady
+/// ceiling are the leader's as they stand, which may pass it (ceilings
+/// named apart round 2's F12). A leader the controller
+/// leaves unlimited is told its own link's most,
+/// which says nothing of the follower's, so the follower takes its own
+/// most then, under its room: a cable's wire never holds the Wi-Fi
+/// following it (a link's own line round 9's F2).
+fn taken(follows: &Followed, room: Option<u64>, most: Held) -> Taken {
+    let asked = if follows.asked_down.unlimited {
+        Asked {
+            down: most.down,
+            unlimited: true,
+        }
+    } else {
+        follows.asked_down
+    };
+    let (down, straight) = held_down(asked, room);
+    Taken {
+        up: follows.up,
+        up_most: follows.up_most.min(most.up),
+        down: (down.min(most.down), straight),
+        under: follows.under,
+    }
 }
 
 /// Holds each follower to its leader's rates; its own pings still say its
@@ -1897,36 +1943,32 @@ struct Leader {
 /// judged against the lower of its leader's ceiling and its own, so its
 /// CAKE is never told a rate its own link can't carry.
 fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
-    let rates: BTreeMap<String, Leader> = shaped
+    let followed: BTreeMap<String, Followed> = shaped
         .iter()
         .map(|(n, s)| {
-            let leader = Leader {
+            let gives = Followed {
                 up: s.up.rate,
+                up_most: s.up.bounds.max,
                 asked_down: s.asked_down,
-                most: s.up.bounds.max,
                 under: s.under,
             };
-            (n.clone(), leader)
+            (n.clone(), gives)
         })
         .collect();
     for s in shaped.values_mut() {
-        let leader = s.follows.as_ref().and_then(|l| rates.get(l));
-        if let Some(&Leader {
-            up,
-            asked_down,
-            most,
-            under,
-        }) = leader
-        {
-            let (down, straight) = held_down(asked_down, s.room.held());
-            s.up.rate = up;
-            s.down.rate = down;
-            // A follower takes its leader's ceiling, so the two together
-            // are held under it exactly too.
-            s.under = under;
-            apply(s, most.min(s.up.bounds.max));
-            go_straight(s, straight);
-        }
+        let Some(follows) = s.follows.as_ref().and_then(|l| followed.get(l)) else {
+            continue;
+        };
+        let most = Held {
+            up: s.up.bounds.max,
+            down: s.down.bounds.max,
+        };
+        let held = taken(follows, s.room.held(), most);
+        s.up.rate = held.up;
+        s.down.rate = held.down.0;
+        s.under = held.under;
+        apply(s, held.up_most);
+        go_straight(s, held.down.1);
     }
 }
 
@@ -1936,14 +1978,17 @@ fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
 /// `was`, so a link whose name its network's line doesn't match is seen
 /// to take none (a link's own line round 1's F14). A link named by itself
 /// waits for its router to answer, so its line isn't said to be none
-/// before its network is known (round 3's F2, F12 and F17).
+/// before its network is known (round 3's F2, F12 and F17), and what was
+/// told before it lost its router's name is kept, so a move through an
+/// unnamed step to a network declaring none is said (round 4's F1, F4,
+/// F5, F8 and F10). A link no router ever names says nothing of its line.
 fn line_said(
     (name, network): (&str, &str),
     (told, was): (bool, Option<u64>),
     now: Option<u64>,
-) -> (bool, Option<String>) {
+) -> ((bool, Option<u64>), Option<String>) {
     if pin::unnamed(network) {
-        return (told, None);
+        return ((told, was), None);
     }
     let said = (!told || was != now).then(|| match now {
         Some(line) => {
@@ -1951,25 +1996,49 @@ fn line_said(
         }
         None => format!("{name}: no line is declared for the download, so a call holds none"),
     });
-    (true, said)
+    ((true, now), said)
+}
+
+/// What the controller asked of a link's download at a step, apart from
+/// a call's hold: the rate it held it to, and whether it left it unlimited
+/// (a link's own line round 8's F6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Asked {
+    down: u64,
+    unlimited: bool,
+}
+
+impl Asked {
+    /// What the controller's `rates` ask of a download held to `down`: one
+    /// it gives no rate goes unlimited.
+    fn of(down: u64, rates: replay::Rates) -> Self {
+        Self {
+            down,
+            unlimited: rates.down.is_none(),
+        }
+    }
 }
 
 /// What a link's download is held to, and whether it goes straight in,
-/// given what the controller holds it to and whether it leaves it
-/// unlimited, and a call's `room`: under both, never over what the
-/// controller asks, and straight in only where neither holds it.
-fn held_down((down, unheld): (u64, bool), room: Option<u64>) -> (u64, bool) {
+/// given what the controller `asked` of it and a call's `room`: under
+/// both, never over what the controller asks, and straight in only where
+/// neither holds it.
+fn held_down(asked: Asked, room: Option<u64>) -> (u64, bool) {
     (
-        lower(Some(down), room).unwrap_or(down),
-        unheld && room.is_none(),
+        lower(Some(asked.down), room).unwrap_or(asked.down),
+        asked.unlimited && room.is_none(),
     )
 }
 
 /// One step of the controller, `live`, over every uplink that leads its
-/// router: a follower takes its leader's rates after. While a call is on,
-/// `calling`, a link whose network declares its download's line in
-/// `lines` is given the call's room under it (src/room.rs), under
-/// whatever the controller asks.
+/// router: a follower takes its leader's rates after. Each link takes its
+/// own download line from `lines`, or its network's where it has none
+/// (`networks::line_of`), and the journal says it as it changes
+/// (`line_said`). While a call is on, `calling`, a leader under a line is
+/// given the call's room as its download fills it (`room::Room::step`),
+/// under whatever the controller asks, and a follower under one is held
+/// at its room for the whole call (`room::Room::follow`; a link's own
+/// line round 9's F4).
 fn step_links(
     shaped: &mut BTreeMap<String, Shaped>,
     live: &mut live::Live,
@@ -2027,28 +2096,30 @@ fn step_links(
         if s.agents_share >= 1.0 {
             s.let_agents_go();
         }
-        let own_line = networks::line_of(lines, &s.network, name);
-        let (told, said) = line_said((name, s.network.as_str()), (s.line_told, s.line), own_line);
+        // The line the link takes: its own, or its network's where it has
+        // none (a link's own line round 5's F1).
+        let taken_line = networks::line_of(lines, &s.network, name);
+        let (told, said) = line_said((name, s.network.as_str()), s.line_told, taken_line);
         if let Some(said) = said {
             eprintln!("{said}");
         }
-        (s.line, s.line_told) = (own_line, told);
+        (s.line, s.line_told) = (taken_line, told);
         if let Some(leader) = &s.follows {
             // A follower takes its leader's rates, and a call's room of
             // its own line, unmeasured (download hold round 1's F3; a
             // link's own line round 3's F1 and F4).
             if let (_, Some(said)) =
                 s.room
-                    .follow((name, leader.as_str()), &s.network, calling, own_line)
+                    .follow((name, leader.as_str()), &s.network, calling, taken_line)
             {
                 eprintln!("{said}");
             }
             continue;
         }
-        let (most, steady_under) = upload_ceilings(
+        let upload = upload_ceilings(
             held,
             ceilings.get(&s.network).copied().map(rate::whole),
-            house.get(&s.network).map(|&(_, most)| most),
+            house.get(&s.network),
             controller_ceiling,
         );
         let (room, said) = s.room.step(
@@ -2065,9 +2136,9 @@ fn step_links(
         if let Some(said) = said {
             eprintln!("{said}");
         }
-        let rates = led(rates, held, most);
+        let rates = led(rates, held, upload.rate);
         let why = if held { &why } else { &why::Judged::Nothing };
-        s.under = steady_under;
+        s.under = upload.queues;
         hold(s, rates, why, room);
     }
 }
@@ -2317,7 +2388,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     };
     let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
     s.up.rate = spell.held.up;
-    s.asked_down = (spell.held.down, rates.down.is_none());
+    s.asked_down = Asked::of(spell.held.down, rates);
     let (down, state, straight) = under_room(rates, spell.held.down, room);
     (s.down.rate, s.state) = (down, state);
     if let Some(line) = &spell.said {
@@ -2328,18 +2399,34 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     go_straight(s, straight);
 }
 
-/// The ceilings a link's upload is held under at a step, in kbit/s: the
-/// one its rate is held under, the lower of its network's `written` one
-/// and its house's of this second, `house`; and the steady one its queues
-/// are put exactly under (`under`), which leaves the house's of this
-/// second out (exact ceiling round 2's F1 and F4).
+/// The ceilings a link's upload is held under at a step, in kbit/s, each
+/// named, so the one meant for the rate can't be taken for the queues'
+/// (exact ceiling round 3's F3 and F12).
+#[derive(Debug, PartialEq, Eq)]
+struct UploadCeilings {
+    /// What its rate is held under: the lower of its network's written
+    /// one and its house's of this second.
+    rate: Option<u64>,
+    /// What its queues are put exactly under: its steady one (`under`).
+    queues: Option<u64>,
+}
+
+/// The ceilings a link's upload is held under at a step, from its
+/// network's `written` one, its house's hold of this second, `house`, as
+/// `HouseHolds` keeps it, and the controller's `steady` one: the house's
+/// reaches the rate and not the queues (exact ceiling round 2's F1 and
+/// F4). The house's comes as its own type, so it can't be handed over in
+/// the steady one's place (round 3's F6).
 fn upload_ceilings(
     held: bool,
     written: Option<u64>,
-    house: Option<u64>,
+    house: Option<&(u64, u64)>,
     steady: Option<u64>,
-) -> (Option<u64>, Option<u64>) {
-    (lower(written, house), under(held, written, steady))
+) -> UploadCeilings {
+    UploadCeilings {
+        rate: lower(written, house.map(|&(_, most)| most)),
+        queues: under(held, written, steady),
+    }
 }
 
 /// The steady ceiling a link's upload is held under, in kbit/s: its
@@ -2348,9 +2435,10 @@ fn upload_ceilings(
 /// controller holds it, `steady`. A house's ceiling of each second, which
 /// moves with the other machine's sawtooth, is left out (exact ceiling
 /// round 1's F1, F10 and F12). The rate still follows that ceiling, so
-/// the queues take it once it moves them by more than 1%, but not
-/// exactly: they may sit up to 1% over what the house leaves a second
-/// (exact ceiling round 2's F3, F5, F7 and F8).
+/// the queues take it once it moves them by more than a hundredth of what
+/// they hold, but not exactly: they may sit over what the house leaves a
+/// second by up to that hundredth, a little over 1% of the house's hold
+/// (exact ceiling round 2's F3, F5, F7 and F8, round 3's F4 and F11).
 fn under(held: bool, written: Option<u64>, steady: Option<u64>) -> Option<u64> {
     if held {
         lower(written, steady)
@@ -2364,7 +2452,8 @@ fn under(held: bool, written: Option<u64>, steady: Option<u64>) -> Option<u64> {
 /// that wavers doesn't change the queues each second, or when what they
 /// hold is over the steady ceiling the upload is held `under` and the rate
 /// isn't, so that ceiling holds exactly rather than up to 1% over; a
-/// house's hold of each second is kept only to within 1%. On 23 November
+/// house's hold of each second is kept only to within a hundredth of what
+/// the queues hold. On 23 November
 /// the call test read 6035 kbit/s held under a trial's 6000: the queues
 /// kept a rate 0.58% over it, a move under 1% being left alone.
 fn due(rate: u64, applied: u64, under: Option<u64>) -> bool {
@@ -2384,7 +2473,7 @@ fn under_room(rates: replay::Rates, down: u64, room: Option<u64>) -> (u64, State
     } else {
         State::Resting
     };
-    let (held, straight) = held_down((down, rates.down.is_none()), room);
+    let (held, straight) = held_down(Asked::of(down, rates), room);
     (held, state, straight)
 }
 
@@ -2756,20 +2845,27 @@ mod tests {
     fn the_journal_says_the_line_a_link_takes_as_it_changes() {
         let none = "wlan0: no line is declared for the download, so a call holds none";
         let line = "wlan0: the download's line is 20000 kbit/s, for a call to hold it under";
+        // A link coming up unnamed says its line once its router answers,
+        // a line of none too, and one roaming through an unnamed step
+        // says the line it comes to, none too, and only if it changed
+        // (a link's own line round 4's F1, F4, F5, F8 and F10).
         let steps = [
             ("link wlan0", None, None),
             ("link wlan0", None, None),
+            ("office", None, Some(none)),
             ("home", Some(20_000), Some(line)),
             ("home", Some(20_000), None),
+            ("link wlan0", None, None),
             ("home", Some(20_000), None),
+            ("link wlan0", None, None),
             ("hotel", None, Some(none)),
             ("hotel", None, None),
         ];
-        let (mut told, mut was) = (false, None);
+        let mut told = (false, None);
         for (network, now, expected) in steps {
-            let (said_now, said) = line_said(("wlan0", network), (told, was), now);
-            assert_eq!(said.as_deref(), expected, "on {network}, after {was:?}");
-            (told, was) = (said_now, now);
+            let (told_now, said) = line_said(("wlan0", network), told, now);
+            assert_eq!(said.as_deref(), expected, "on {network}, after {told:?}");
+            told = told_now;
         }
         assert_eq!(
             line_said(("wlan0", "home"), (false, None), None)
@@ -2810,7 +2906,10 @@ mod tests {
         let mut cable = room::Room::default();
         let cable_line = networks::line_of(&lines, "home", "enp0s20f0u2u2");
         let (followed, _) = cable.follow(("enp0s20f0u2u2", "wlp0s20f3"), "home", true, cable_line);
-        let unlimited = (2_000_000, true);
+        let unlimited = Asked {
+            down: 2_000_000,
+            unlimited: true,
+        };
         assert_eq!(held_down(unlimited, held), (18_000, false), "Wi-Fi leading");
         assert_eq!(
             held_down(unlimited, followed),
@@ -2818,16 +2917,119 @@ mod tests {
             "the cable following it, under the network's line, not Wi-Fi's"
         );
         assert_eq!(
-            held_down((10_000, false), followed),
+            held_down(
+                Asked {
+                    down: 10_000,
+                    unlimited: false,
+                },
+                followed
+            ),
             (10_000, false),
             "never over what the controller asks of the one connection"
         );
-        assert_eq!(held_down(unlimited, None), unlimited, "no call");
-        let (leader, _, straight) = under_room(replay::Rates::default(), 2_000_000, held);
+        assert_eq!(held_down(unlimited, None), (2_000_000, true), "no call");
+    }
+
+    // What the controller asked is what a follower takes, so a download
+    // it gives a rate must read as held, and one it gives none as
+    // unlimited, whatever it's held to (a link's own line round 9's F6).
+    #[test]
+    fn a_download_the_controller_gives_no_rate_is_asked_unlimited() {
+        let held = replay::Rates {
+            up: None,
+            down: Some(50_000),
+        };
         assert_eq!(
-            (leader, straight),
-            held_down(unlimited, held),
-            "a leader's download, as hold() works it out, by the same rule"
+            Asked::of(50_000, held),
+            Asked {
+                down: 50_000,
+                unlimited: false,
+            },
+            "a download given a rate is held to it"
+        );
+        let unheld = replay::Rates {
+            up: Some(9_000),
+            down: None,
+        };
+        assert_eq!(
+            Asked::of(83_000, unheld),
+            Asked {
+                down: 83_000,
+                unlimited: true,
+            },
+            "a download given no rate goes unlimited, at its link's most"
+        );
+    }
+
+    // What a follower takes is worked out apart from its link, so each
+    // field can be told from the others: a swap of the upload's rate and
+    // most, the leader's room taken for the follower's, or a steady
+    // ceiling left behind each fails (a link's own line round 7's F2, F7
+    // and F14, round 8's F1 and F3), and an unlimited leader's own most
+    // taken for the follower's (round 9's F2).
+    #[test]
+    fn a_follower_takes_each_of_its_leader_s_rates_under_its_own_link() {
+        let follows = Followed {
+            up: 9_000,
+            up_most: 12_000,
+            asked_down: Asked {
+                down: 50_000,
+                unlimited: false,
+            },
+            under: Some(10_800),
+        };
+        let most = Held {
+            up: 11_000,
+            down: 400_000,
+        };
+        assert_eq!(
+            taken(&follows, Some(18_000), most),
+            Taken {
+                up: 9_000,
+                up_most: 11_000,
+                down: (18_000, false),
+                under: Some(10_800),
+            },
+            "held under its own room and the lower of the two links' most"
+        );
+        assert_eq!(
+            taken(&follows, None, most).down,
+            (50_000, false),
+            "outside a call, what the controller asked of its leader"
+        );
+        let unlimited = Followed {
+            asked_down: Asked {
+                down: 2_000_000,
+                unlimited: true,
+            },
+            ..follows
+        };
+        assert_eq!(
+            taken(&unlimited, None, most).down,
+            (400_000, true),
+            "left unlimited, straight in, and never told more than its own link"
+        );
+        assert_eq!(
+            taken(&unlimited, Some(18_000), most).down,
+            (18_000, false),
+            "a call's room holds it though its leader goes unlimited"
+        );
+        let wired = Followed {
+            asked_down: Asked {
+                down: 83_000,
+                unlimited: true,
+            },
+            ..follows
+        };
+        assert_eq!(
+            taken(&wired, Some(360_000), most).down,
+            (360_000, false),
+            "an unlimited leader's own most never holds it: its room does"
+        );
+        assert_eq!(
+            taken(&wired, None, most).down,
+            (400_000, true),
+            "outside a call, its own most"
         );
     }
 
@@ -2857,9 +3059,15 @@ mod tests {
             !due(6_040, 6_035, Some(6_000)),
             "a rate over the ceiling too leaves the queues, so it can't move them each second"
         );
+        // The band a house's hold of each second is kept within, a
+        // hundredth of what the queues hold (exact ceiling round 3's F2).
         assert!(
-            !due(5_960, 6_000, Some(6_000)),
-            "a house's hold of a second dipping under the queues by less than 1%"
+            !due(5_940, 6_000, Some(6_000)),
+            "a fall of a hundredth of what the queues hold is left"
+        );
+        assert!(
+            due(5_939, 6_000, Some(6_000)),
+            "past it the queues take the rate"
         );
         assert!(due(7_000, 6_000, Some(9_000)), "a move past 1%");
         assert!(due(5_000, 6_000, None), "a move past 1% down");
@@ -2893,28 +3101,36 @@ mod tests {
     // A house's hold of each second moves with the other machine's
     // sawtooth, so it reaches the rate but not the ceiling the queues are
     // put exactly under, which would rewrite them on most falling seconds
-    // (exact ceiling round 1's F1 and F12, round 2's F1 and F4).
+    // (exact ceiling round 1's F1 and F12, round 2's F1 and F4, round 3's
+    // F17).
     #[test]
     fn a_house_s_hold_of_each_second_reaches_the_rate_alone() {
+        let ceilings = |rate, queues| UploadCeilings { rate, queues };
+        let house = |most| (0, most);
         assert_eq!(
-            upload_ceilings(true, Some(9_000), Some(5_960), Some(6_000)),
-            (Some(5_960), Some(6_000)),
+            upload_ceilings(true, Some(9_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_960), Some(6_000)),
             "the rate under this second's, the queues under the steady one"
         );
         assert_eq!(
-            upload_ceilings(true, None, Some(5_200), Some(5_250)),
-            (Some(5_200), Some(5_250)),
+            upload_ceilings(true, None, Some(&house(5_200)), Some(5_250)),
+            ceilings(Some(5_200), Some(5_250)),
             "no ceiling written"
         );
         assert_eq!(
-            upload_ceilings(true, Some(5_000), Some(5_960), Some(6_000)),
-            (Some(5_000), Some(5_000)),
+            upload_ceilings(true, Some(5_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_000), Some(5_000)),
             "a written ceiling under both holds both"
         );
         assert_eq!(
             upload_ceilings(false, Some(9_000), None, Some(6_000)),
-            (Some(9_000), Some(9_000)),
+            ceilings(Some(9_000), Some(9_000)),
             "a link the controller doesn't hold"
+        );
+        assert_eq!(
+            upload_ceilings(false, Some(9_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_960), Some(9_000)),
+            "a link the controller doesn't hold, on a network a house holds"
         );
     }
 

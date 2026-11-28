@@ -342,7 +342,9 @@ fn clear_asked_under_a_hold(home: &Home) -> (Guard, PathBuf) {
 
 /// Steps a clear asked under a writers' hold, giving back the guard and,
 /// each time its survey looked, what the status said of the held disk's
-/// waiting (left out when false) and of the pass at work.
+/// waiting (left out when false) and of the pass at work. A status that
+/// lists no disk reads as waiting "no disk listed", so a case pinning the
+/// field as left out can't pass on a disk that's missing.
 fn clear_under_a_hold(home: &Home) -> (Guard, Vec<(serde_json::Value, serde_json::Value)>) {
     let (mut guard, scratch) = clear_asked_under_a_hold(home);
     // Asked once its survey has walked, before any pass judges.
@@ -352,10 +354,15 @@ fn clear_under_a_hold(home: &Home) -> (Guard, Vec<(serde_json::Value, serde_json
     guard.stop_when(Box::new(move || {
         if let Ok(text) = fs::read_to_string(&status) {
             let read: serde_json::Value = serde_json::from_str(&text).unwrap();
-            seeing.borrow_mut().push((
-                read["filesystems"][0]["waiting"].clone(),
-                read["passing"]["why"].clone(),
-            ));
+            let disk = &read["filesystems"][0];
+            let waiting = if disk.is_object() {
+                disk["waiting"].clone()
+            } else {
+                serde_json::json!("no disk listed")
+            };
+            seeing
+                .borrow_mut()
+                .push((waiting, read["passing"]["why"].clone()));
         }
         false
     }));
