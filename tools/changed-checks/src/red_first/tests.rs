@@ -215,18 +215,25 @@ fn a_code_file_s_inline_tests_begin_at_its_test_module_or_first_test_function() 
     let rust = "fn a() {}\n\n#[cfg(test)]\n#[expect(x, reason = \"y\")]\nmod tests {\n}\n";
     let declared = "fn a() {}\n#[cfg(test)]\nmod tests;\n";
     let python = "import x\n\nclass T:\n    def test_a(self):\n        pass\n";
+    let spaced = "fn a() {}\n# [ cfg ( test ) ]\nmod tests {\n}\n";
+    let not_tests = "#[cfg(not(test))]\nmod real {\n}\n#[cfg(test)]\nmod tests {\n}\n";
+    let or_feature = "fn a() {}\n#[cfg(any(test, feature = \"x\"))]\nmod tests {\n}\n";
 
     let begins = [
         tests_begin("src/a.rs", rust),
         tests_begin("src/a.rs", declared),
         tests_begin("a.py", python),
         tests_begin("a.sh", rust),
+        tests_begin("src/a.rs", spaced),
+        tests_begin("src/a.rs", not_tests),
+        tests_begin("src/a.rs", or_feature),
     ];
 
     assert_eq!(
         begins,
-        [Some(3), None, Some(4), None],
-        "inline tests weren't found where they begin, or a declared module was taken for them"
+        [Some(3), None, Some(4), None, Some(2), Some(4), None],
+        "inline tests weren't found where they begin, or a declared module, or one a cfg \
+         other than test alone marks, was taken for them"
     );
 }
 

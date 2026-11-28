@@ -246,9 +246,10 @@ pub fn adding(said: &str) -> BTreeSet<String> {
 }
 
 /// The line a code file's inline tests begin at, as the head has it
-/// (`text`): a Rust `#[cfg(test)]` module written in the file, rather than
-/// declared from another, or Python's first test function. Inline tests
-/// end a file by custom, so a line added from there on may edit one.
+/// (`text`): a Rust `#[cfg(test)]` module ([`marks_tests`]) written in
+/// the file, rather than declared from another, or Python's first test
+/// function. Inline tests end a file by custom, so a line added from there
+/// on may edit one.
 pub fn tests_begin(path: &str, text: &str) -> Option<usize> {
     let lines: Vec<&str> = text.lines().map(str::trim).collect();
     match Path::new(path)
@@ -256,7 +257,7 @@ pub fn tests_begin(path: &str, text: &str) -> Option<usize> {
         .and_then(std::ffi::OsStr::to_str)
     {
         Some("rs") => lines.iter().enumerate().find_map(|(at, line)| {
-            let marks = line.starts_with("#[cfg(") && line.contains("test");
+            let marks = marks_tests(line);
             let module = lines[at + 1..]
                 .iter()
                 .find(|next| !next.is_empty() && !next.starts_with("#["))?;
@@ -269,6 +270,15 @@ pub fn tests_begin(path: &str, text: &str) -> Option<usize> {
             .map(|at| at + 1),
         _ => None,
     }
+}
+
+/// Whether a Rust line is `#[cfg(test)]`, however it's spaced. A `cfg`
+/// only naming `test` among others, as `not(test)` or `any(test, ...)`
+/// does, marks code built outside tests too, so lines past it aren't
+/// tests' alone.
+fn marks_tests(line: &str) -> bool {
+    let unspaced: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+    unspaced == "#[cfg(test)]"
 }
 
 /// The code files whose added lines, as `git diff -U0` gives them, add a
