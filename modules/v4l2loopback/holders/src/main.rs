@@ -66,13 +66,13 @@
 //! until it's right, whoever holds the camera: each second, or every two
 //! while a loopback's camera is watched, and while nobody holds it, twice
 //! as long each try, up to sixteen seconds. A read that failed keeps what
-//! its file said, as it says nothing of who holds the camera now. What
-//! went wrong is said once as it begins and once as it clears, for each
-//! file. The first time its files say who holds the camera as a read that
-//! worked found, and which node it is, or nobody and no `.devices/` file
-//! where there's no camera, its log says `ready in N ms`, once a run
-//! (src/ready.rs says why). Its help, its failures and its exits take the
-//! terminal kit's shape (`help()`).
+//! its file said, even as a run before left it, as it says nothing of who
+//! holds the camera now. What went wrong is said once as it begins and
+//! once as it clears, for each file. The first time its files say who
+//! holds the camera as a read that worked found, and which node it is,
+//! or nobody and no `.devices/` file where there's no camera, its log
+//! says `ready in N ms`, once a run (src/ready.rs says why). Its help,
+//! its failures and its exits take the terminal kit's shape (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -577,15 +577,17 @@ fn watch(
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
     let mut retry = Retry::new(every);
     // What the file holds, as last written, and what it was last meant to
-    // say, written or not, which a read that fails keeps.
+    // say, written or not, which a read that fails keeps. It begins meaning
+    // what the file already says, as a run before left it, so a run started
+    // again whose first read fails never says a camera held off.
     let mut said = None;
-    let mut meant = None;
+    let mut meant = said_in(output);
     let mut pids = HashSet::new();
     loop {
         let mut troubles = Vec::new();
-        // A read that fails keeps what was said, or with nothing said yet,
-        // says nobody, which is a guess, so only a read that worked counts
-        // toward the watch being ready.
+        // A read that fails keeps what was said, or with nothing said yet
+        // and no file, says nobody, which is a guess, so only a read that
+        // worked counts toward the watch being ready.
         let read = match holders::holders(node, units, &pids) {
             Ok((names, now)) => {
                 pids = now;
@@ -650,6 +652,16 @@ fn watch(
 /// nothing was meant yet.
 fn to_say(listed: Option<BTreeSet<String>>, meant: Option<&BTreeSet<String>>) -> BTreeSet<String> {
     listed.or_else(|| meant.cloned()).unwrap_or_default()
+}
+
+/// Who a holders file already says, one a line, as a run before may have
+/// left it; none when there's no file that can be read.
+fn said_in(output: &Path) -> Option<BTreeSet<String>> {
+    // A file missing or unreadable says nothing a run before meant, so the
+    // watch begins meaning nothing, as it did before it read one.
+    fs::read_to_string(output)
+        .ok()
+        .map(|said| said.lines().map(str::to_owned).collect())
 }
 
 /// Says who streams from a USB camera while it's there, in a file of its
@@ -988,6 +1000,35 @@ mod tests {
             to_say(None, None),
             BTreeSet::new(),
             "a first read that failed didn't say nobody"
+        );
+    }
+
+    #[test]
+    fn a_watch_begins_meaning_what_its_file_already_says() {
+        let root = scratch("said-in");
+        let output = root.join("Stand-in");
+        assert_eq!(
+            said_in(&output),
+            None,
+            "a file that isn't there said who holds the camera"
+        );
+        fs::write(&output, "").unwrap();
+        assert_eq!(
+            said_in(&output),
+            Some(BTreeSet::new()),
+            "an empty file didn't say nobody"
+        );
+        fs::write(&output, "firefox\nzoom\n").unwrap();
+        let kept = said_in(&output);
+        assert_eq!(
+            kept,
+            Some(named(&["firefox", "zoom"])),
+            "a file a run before left wasn't read as it said"
+        );
+        assert_eq!(
+            to_say(None, kept.as_ref()),
+            named(&["firefox", "zoom"]),
+            "a first read that failed said off a camera its file said held"
         );
     }
 
