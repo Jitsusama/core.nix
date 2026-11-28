@@ -750,6 +750,37 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     opened.close()
 
 
+def test_a_stale_map_says_nothing_of_waiting_on_its_messages(
+    browser: Browser, slow_talk_served: Served
+) -> None:
+    root, server = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    # Past its patience the line waits on the messages, and so does the drawer.
+    expect(asof, "the map never said it was waiting on its messages").to_contain_text(
+        WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
+    )
+    expect(drawer, "a cell's drawer never said it was waiting").to_contain_text(
+        DRAWER_WAITING, timeout=PACE_MS
+    )
+    opened.loses(server)
+    the_map_stands(page, "stale")
+    expect(asof, "a stale map said it was waiting on what it can't read").not_to_contain_text(
+        WAITING_TALK
+    )
+    expect(
+        drawer, "a stale map's drawer said it was waiting on what it can't read"
+    ).to_contain_text(DRAWER_BROKEN, timeout=PACE_MS)
+    expect(drawer, "a stale map's drawer said waiting and broken at once").not_to_contain_text(
+        DRAWER_WAITING
+    )
+    opened.close()
+
+
 def asked_of(node: StandIn, kind: str) -> dict[str, object]:
     """Give what the server's watch of `kind` asked `node`, once it has, within PACE_MS."""
     deadline = time.monotonic() + PACE_MS / 1000
