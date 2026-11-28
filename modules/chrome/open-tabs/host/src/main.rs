@@ -524,6 +524,18 @@ mod tests {
     }
 
     #[test]
+    fn a_message_as_long_as_chrome_sends_is_read() {
+        // A zero and the spaces JSON allows after it, to the longest length.
+        let longest = usize::try_from(LONGEST).unwrap();
+        let mut bytes = LONGEST.to_ne_bytes().to_vec();
+        bytes.push(b'0');
+        bytes.resize(4 + longest, b' ');
+        let mut input = bytes.as_slice();
+        let read = read_message(&mut input).expect("a message as long as Chrome sends was refused");
+        assert_eq!(read, Some(json!(0)));
+    }
+
+    #[test]
     fn a_length_past_what_chrome_sends_is_refused() {
         let mut input: &[u8] = &(LONGEST + 1).to_ne_bytes();
         let refused =
