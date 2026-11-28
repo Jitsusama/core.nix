@@ -220,7 +220,10 @@ impl Risks {
 
 /// What this command said last as `ready`'s refusal, for the line that
 /// tells the ledger of it. `ready` refuses from many places, and each
-/// says why on stderr as it goes; this keeps the last of them.
+/// says why on stderr as it goes; this keeps the last of them. It ends
+/// as nothing when `ready` ends by boarding the train, or holding a head
+/// for an earlier gate, which end 1 as a refusal does but cost its date
+/// no run again.
 static REFUSAL: Mutex<String> = Mutex::new(String::new());
 
 /// Keep `said` as what `ready` refused for.
@@ -228,6 +231,14 @@ pub fn heard(said: &str) {
     if let Ok(mut refusal) = REFUSAL.lock() {
         said.trim_start_matches("merge-net: ")
             .clone_into(&mut refusal);
+    }
+}
+
+/// Forget any refusal kept, since `ready` boarded the head on the train,
+/// which is how a head merges now, not a risk to its date.
+pub fn boarded() {
+    if let Ok(mut refusal) = REFUSAL.lock() {
+        refusal.clear();
     }
 }
 
