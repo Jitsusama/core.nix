@@ -111,8 +111,10 @@ onLinux {
   # in its own memory, locked and unreadable through /proc: it pastes on
   # Joel's display, and nothing is made under TMPDIR, where any process of
   # the account's could read it, nor run from PATH. It says it's ready only
-  # once it can't be read, and held once it holds the copy. One it can't
-  # read whole is refused, never said held
+  # once it can't be read, and held only once Joel's display has the copy,
+  # so one paste at once pastes it whole (case 10). One it can't read whole
+  # is refused, never said held, and told to say held of a copy that isn't
+  # sensitive, it ends saying so, never ready or held (case 14)
   # (tests/copier-keeps-a-secret-in-memory.py).
   passwords-copier-keeps-a-secret-in-memory-on-niri =
     let
@@ -142,6 +144,29 @@ onLinux {
         ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests/copier-keeps-a-secret-in-memory.py} \
           ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
+  # The copier check's reads of a copier are bounded, each answering
+  # within its patience: a copier still running hasn't refused, one that
+  # ended is said with its code and what it said, even with a child
+  # holding its standard error open, one that never ends is killed, a
+  # reader that never reads is given up on without spinning, and a copier
+  # saying nothing says nothing. A line is read whole and exactly, as the
+  # daemon reads it: one said in pieces is joined, two said at once are
+  # answered in turn, 'ready ' is never 'ready', one with no end is cut off
+  # at a cap, and a half line is answered as said only once the copier
+  # closed its standard output, the next read finishing one held open.
+  # What was read past a line comes first in how the copier ended, and a
+  # refusal keeps none of it. A copier with no pipe to read is refused by
+  # name, and a read that raised fails by what it raised, not as a hang.
+  # Its copiers are bash scripts, so it needs no display
+  # (tests/copier-check-reads-bounded-test.py).
+  passwords-copier-check-reads-are-bounded =
+    pkgs.runCommandLocal "passwords-copier-check-reads-are-bounded"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${./tests/copier-check-reads-bounded-test.py} ${lib.getExe pkgs.bash} \
+          ${./tests/copier-keeps-a-secret-in-memory.py}
         touch $out
       '';
   # clippy finds nothing in the passwords daemon, its tests included.

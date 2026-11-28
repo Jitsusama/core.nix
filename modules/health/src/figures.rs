@@ -370,6 +370,7 @@ mod tests {
         };
         day.memory.insert("overcounted".into(), looked(Some(5)));
         day.memory.insert("resumed".into(), looked(None));
+        day.memory.insert("by-rss".into(), looked(Some(0)));
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -399,6 +400,11 @@ mod tests {
             figure("memory.resumed.looks-by-pss-percent"),
             None,
             "looks kept before they were counted, so no share is known"
+        );
+        assert_eq!(
+            figure("memory.by-rss.looks-by-pss-percent"),
+            Some(0.0),
+            "looks counted, none of them by Pss, read as none rather than unknown"
         );
         assert_eq!(
             (

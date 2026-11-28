@@ -241,6 +241,11 @@ pub struct Memory {
     /// isn't known, rather than 0, which would say they were all by Rss.
     /// Left out of the file then, not written as null, which a build
     /// holding a plain count can't read, so it would start the day afresh.
+    /// Such a build reads the absent count as 0 and writes it back plain,
+    /// so a day rolled back to one and forward again within the day reads
+    /// its count as known, short by the looks before the rollback: the
+    /// file holds nothing to tell that count from one begun at the day's
+    /// first look.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub looks_by_pss: Option<u64>,
 }

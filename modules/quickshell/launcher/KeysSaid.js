@@ -16,9 +16,10 @@ const ownLength = 64;
 // there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
 // from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Agents'
 // served rows' among them, Emoji's, Copies' and a network's parts' are made by Presented.js's
-// keyMade, and the rows Agents makes itself are keyed by kinds of its own, none in keysOwn.
-// Timers', Runs' and OnSelection's rows and Agents' act rows take their daemon's key as served,
-// which no daemon writes under an own kind (2026-11-27), so one that did would be said whole.
+// keyMade, Timers', Runs' and OnSelection's by its keyServed, from the key their daemon wrote,
+// and the rows Agents makes itself are keyed by kinds of its own, none in keysOwn. Agents' act
+// rows Talk to It, Carry Back and Let Them Start take their act's key only once it's that act's
+// own `verb:` key.
 // keyShown also says a served `program:<id>` whole where its id is shaped as an app's, which
 // holds while only the programs daemon serves two-part `program:` keys: sound's are
 // `program:<device>:<name>`, said as `program`.
