@@ -61,7 +61,9 @@ impl Sched {
     /// fair count the time a sleeper stays queued before it leaves, which
     /// put Chrome's drawing thread's at 310 ms against 125 ms over 30 s on
     /// 26 November. The lesser is the real wait, plus whatever both
-    /// counted.
+    /// counted. That each counts every real wait was shown for threads the
+    /// fair scheduler runs; for a real-time one, such as PipeWire's data
+    /// loop, it has yet to be checked.
     ///
     /// The two credit a wait at different moments: the schedstat adds a
     /// queued thread's wait so far when it moves between CPUs, the fair
@@ -73,9 +75,21 @@ impl Sched {
     /// only with the other count's leftover, and what's owed is let go
     /// after one window. Around a sleep one count booked, then, at most
     /// the other's own excess in the windows either side is counted with
-    /// it; and a wait longer than two windows loses what the schedstat
-    /// booked of it more than a window before it ended. A fair count that
-    /// went back, as when schedstats was turned off and on, leaves the
+    /// it.
+    ///
+    /// The price is paid by waits the schedstat booked part of at a move,
+    /// which are counted short in two ways. A wait loses what the schedstat
+    /// booked of it two or more reads before it ended, since that is let
+    /// go before the fair count books it: so one only a little over a
+    /// window long can lose what was booked before the first read it spans,
+    /// and shows no wait in the window between. And since this window's
+    /// growth is matched first, a wait that ends in a window where another
+    /// begins and moves gives the fair count's late booking of the first to
+    /// the second's early part, and the lesser of the two early parts is
+    /// lost. Either loses only what the schedstat booked at moves, where
+    /// keeping what's owed longer, or paying it first, would let a sleep of
+    /// seconds pair with the other count's excess. A fair count that went
+    /// back, as when schedstats was turned off and on, leaves the
     /// schedstat's alone.
     pub fn waited_since(&self, old: &Sched) -> u64 {
         match self.matched(old) {
@@ -86,7 +100,9 @@ impl Sched {
 
     /// Takes what each count is owed for the window after this read
     /// (`owed`): what it grew by since `old` that nothing matched, never
-    /// what `old` was owed, which is let go.
+    /// what `old` was owed, which is let go. Where the two can't be
+    /// matched, nothing is owed, so a sleep booked before a fair count went
+    /// back can't pair with its growth after.
     pub fn credit_since(&mut self, old: &Sched) {
         self.owed = self.matched(old).map_or((0, 0), |(_, owed)| owed);
     }
@@ -185,10 +201,21 @@ pub fn blocked(text: &str) -> Option<u64> {
     sched_ms(text, |key| key.ends_with("sum_block_runtime"))
 }
 
-/// The first line of a `sched` whose key `named` takes, which the kernel
-/// prints in milliseconds, in nanoseconds.
+/// The most bytes a thread's name holds, as the kernel keeps it.
+const NAME_BYTES: usize = 15;
+
+/// The first line of a `sched`'s stats whose key `named` takes, which the
+/// kernel prints in milliseconds, in nanoseconds. The file opens with a
+/// header holding the thread's own name, which a thread sets itself with
+/// prctl and the kernel prints as it was set, newlines and all: so a name
+/// of `\nwait_sum:9e9\n` reads as a line of its own, and its thread could
+/// forge its fair count. The kernel ends the header with a rule of
+/// dashes longer than a name can hold, so the stats are read only past
+/// the first such line, and a file without one has none.
 fn sched_ms(text: &str, named: impl Fn(&str) -> bool) -> Option<u64> {
-    let ms: f64 = text.lines().find_map(|line| {
+    let rule = |line: &str| line.len() > NAME_BYTES && line.bytes().all(|b| b == b'-');
+    let mut stats = text.lines().skip_while(|line| !rule(line)).skip(1);
+    let ms: f64 = stats.find_map(|line| {
         let (key, value) = line.split_once(':')?;
         named(key.trim()).then(|| value.trim().parse().ok())?
     })?;
