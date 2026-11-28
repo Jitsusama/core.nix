@@ -9357,7 +9357,18 @@ Scope {
             return drawn;
         const here = (trail ?? "") + "/" + String(item).replace(/\(0x[0-9a-f]+\)/, "")
             .replace(/_QMLTYPE_[0-9]+/, "");
-        const at = item.mapToItem(into, 0, 0);
+        // A mark says where its glyph's ink stands down its parent
+        // (Mark.qml's inkFrom), which a box its face's line tall, and
+        // taller than the name's, leaves empty above and below; judged
+        // by that box, a whole mark at a list's foot read as cut.
+        const marked = typeof item.inkFrom === "number" && typeof item.inkTo === "number"
+            && item.inkTo > item.inkFrom && item.parent !== null;
+        // A mark is placed from its parent, whose terms its ink is said in
+        // and which its own transform doesn't move: a turned mark's half
+        // turn (Mark.qml) maps its own top left to about twice its turn's
+        // origin, which put its room, its ink and its x that far off.
+        const at = marked ? item.parent.mapToItem(into, item.x, item.y)
+            : item.mapToItem(into, 0, 0);
         const own = { x: at.x, y: at.y, width: item.width, height: item.height };
         const shows = item.clip && item !== floor
             ? (clipped === null ? own : Contained.shared(clipped, own)) : clipped;
@@ -9379,11 +9390,15 @@ Scope {
             const down = item.height - item.contentHeight;
             const aligned = item.verticalAlignment === Qt.AlignBottom ? down
                 : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0;
+            const inkTop = marked ? item.parent.mapToItem(into, 0, item.inkFrom) : null;
+            const inkFoot = marked ? item.parent.mapToItem(into, 0, item.inkTo) : null;
             const inked = {
                 x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
                     : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
-                y: at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
-                width: item.contentWidth, height: lines.height
+                y: marked ? inkTop.y
+                    : at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
+                width: item.contentWidth,
+                height: marked ? inkFoot.y - inkTop.y : lines.height
             };
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
@@ -10536,6 +10551,11 @@ Scope {
             // whether the wheel or a flick still moves the view.
             groundCut: list.groundCut(),
             moving: list.moving,
+            // How many times it has come to rest, and whether it stands at
+            // its top or its foot, where the wheel can't move it that way.
+            movements: list.movementsEnded,
+            atTop: list.atYBeginning,
+            atFoot: list.atYEnd,
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -15456,12 +15476,17 @@ Scope {
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
+                            // How many times the wheel or a flick has come to
+                            // rest, so a check can tell a turn that rested
+                            // where it set off from one not yet heard.
+                            property int movementsEnded: 0
                             // Where the wheel or a flick leaves a list that
                             // rests whole, it rests on a row's top, as a
                             // step does (Headings.rested).
                             onMovementEnded: {
                                 if (root.restsWhole)
                                     list.contentY = Headings.rested(list.contentY, list.headed());
+                                list.movementsEnded += 1;
                             }
                             // A row built past the view each way, so the
                             // next an arrow reaches is drawn before it's

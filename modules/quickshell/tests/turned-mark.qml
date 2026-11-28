@@ -1,8 +1,10 @@
 // Draws the theme's triangle and its turned triangle through the one mark
 // (Mark.qml), side by side in cells of their own, on lines a quarter of a
 // point apart, since where a line falls between pixels moves its ink. Keeps
-// a picture of each and says what each is. modules/quickshell/tests/
-// turned-mark.py reads them back to the ink, at the scale the shell ran at.
+// a picture of each and says what each is, and where its mark says its ink
+// starts and ends down its cell. modules/quickshell/tests/turned-mark.py
+// reads them back to the ink, at the scale the shell ran at.
+pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 
@@ -14,12 +16,15 @@ ShellRoot {
         { name: `upright-${by}`, glyph: Theme.glyph.shapeTriangle, by: by },
         { name: `turned-${by}`, glyph: Theme.glyph.shapeDownTriangle, by: by }
     ]))
+    // How wide and tall each cell is, in logical pixels, which the
+    // pictures' own size gives the scale against.
+    readonly property int cell: 100
     property int grabbed: 0
 
     FloatingWindow {
         visible: true
-        implicitWidth: 100 * root.cellsMade.length
-        implicitHeight: 100
+        implicitWidth: root.cell * root.cellsMade.length
+        implicitHeight: root.cell
         color: "black"
 
         Row {
@@ -29,8 +34,8 @@ ShellRoot {
 
                 Rectangle {
                     required property var modelData
-                    width: 100
-                    height: 100
+                    width: root.cell
+                    height: root.cell
                     color: "black"
 
                     Mark {
@@ -70,6 +75,13 @@ ShellRoot {
             offsets: root.offsets,
             turned: Theme.turned[Theme.glyph.shapeDownTriangle] === true,
             upright: Theme.turned[Theme.glyph.shapeTriangle] === true,
+            cell: root.cell,
+            // Where each mark says its ink stands down its cell, its parent,
+            // which its half turn doesn't move: what the launcher's reader
+            // takes for a mark's ink (Launcher.qml's drawnTexts).
+            inks: root.cellsMade.map((made, at) => ({ name: made.name,
+                from: cells.itemAt(at).children[0].inkFrom,
+                to: cells.itemAt(at).children[0].inkTo })),
         })}`);
         Qt.callLater(() => Qt.exit(0));
     }

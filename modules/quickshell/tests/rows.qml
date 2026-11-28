@@ -421,6 +421,12 @@ ShellRoot {
             // markup, and one of the letter alone, to hold it drawn as typed.
             Choice { id: markupHeading; width: root.panel; name: "<b>x</b>"; heading: true }
             Choice { id: letterHeading; width: root.panel; name: "x"; heading: true }
+            // Rows whose line is read with their mark: one whose mark is set
+            // to stand past its name's line, one with no glyph, and a heading
+            // given one, to hold a row's line to its mark's ink alone.
+            Choice { id: inkPassing; width: root.panel; name: "Home"; glyph: "$" }
+            Choice { id: unglyphed; width: root.panel; name: "Home"; glyph: "" }
+            Choice { id: headedGlyph; width: root.panel; name: "x"; heading: true; glyph: "$" }
             // A modal line blinking quickly, which fades and then, with no
             // key, holds steady, as his kitty's cursor does.
             Prompt {
@@ -776,6 +782,16 @@ ShellRoot {
             expect("a mark's ink stands on the capitals' middle",
                 Math.abs(middle - capsMiddle) <= 0.5,
                 `${shown}, middle ${middle} against ${capsMiddle}`);
+            // Where a mark says its ink starts and ends (Mark.qml's inkFrom
+            // and inkTo) is what a row's line and the launcher's reader take
+            // for it, so it's held to this measure rather than to its own.
+            const measuredFrom = mark.y + mark.baselineOffset + ink.y;
+            const measuredTo = measuredFrom + ink.height;
+            expect("a mark says its ink starts and ends where it's measured",
+                Math.abs(mark.inkFrom - measuredFrom) <= 0.5
+                    && Math.abs(mark.inkTo - measuredTo) <= 0.5,
+                `${shown}, said ${mark.inkFrom} to ${mark.inkTo} against ${measuredFrom} to `
+                    + `${measuredTo}`);
             // Its ink's left edge stands on the mark column, the row's
             // inset, wherever its glyph's origin is, so every row's mark
             // keeps one column (Joel, 2026-11-11: Later's stood right of it).
@@ -1017,6 +1033,57 @@ ShellRoot {
             && markup.textFormat === Text.PlainText
             && markup.implicitWidth > 3 * letter.implicitWidth,
             `${markup?.implicitWidth} against ${letter?.implicitWidth}`);
+    }
+
+    // A row's line runs from the top of its name's and its mark's ink to
+    // the foot of either (Choice.qml's drawnFrom and drawnTo), so a mark
+    // standing past its name's line is drawn whole; a row with no glyph, or
+    // a heading, keeps its words' line. No theme glyph's ink stands past its
+    // name's line at the sizes held, so a row's mark is set to, its line
+    // moved by more than the line is tall, which breaks that binding in this
+    // row alone. The row with no glyph has its mark moved too, so its line
+    // would follow were its empty mark counted.
+    function inkLinesHold() {
+        const lineOf = row => {
+            const nameLine = row.children.find(child => child.visible === true
+                && child.text === row.name);
+            const monoText = row.children.find(child => child.visible === false
+                && child.text === "0");
+            return { from: Math.min(nameLine.y, monoText.y),
+                to: Math.max(nameLine.y + nameLine.height, monoText.y + monoText.height) };
+        };
+        const markIn = row => row.children.find(child => typeof child.inkFrom === "number");
+        const lineTall = lineOf(inkPassing).to - lineOf(inkPassing).from;
+        for (const [row, moved] of [[inkPassing, lineTall], [unglyphed, -lineTall]]) {
+            const toMove = markIn(row);
+            toMove.line = toMove.line + moved;
+        }
+        const passing = lineOf(inkPassing);
+        const inkMark = markIn(inkPassing);
+        const inkSaid = `line ${passing.from} to ${passing.to}, ink ${inkMark.inkFrom} to `
+            + `${inkMark.inkTo}, drawn ${inkPassing.drawnFrom} to ${inkPassing.drawnTo}`;
+        expect("a mark set past its name's line stands past it", inkMark.inkTo > passing.to,
+            inkSaid);
+        expect("a row's line runs to its mark's ink where that stands past its name's",
+            inkPassing.drawnFrom === passing.from && inkPassing.drawnTo === inkMark.inkTo,
+            inkSaid);
+        inkMark.line = inkMark.line - 2 * lineTall;
+        expect("and from it, where that stands above",
+            inkMark.inkFrom < passing.from && inkPassing.drawnFrom === inkMark.inkFrom
+                && inkPassing.drawnTo === passing.to,
+            `line ${passing.from} to ${passing.to}, ink ${inkMark.inkFrom} to `
+                + `${inkMark.inkTo}, drawn ${inkPassing.drawnFrom} to ${inkPassing.drawnTo}`);
+        const bare = lineOf(unglyphed);
+        expect("a row with no glyph keeps its words' line",
+            unglyphed.drawnFrom === bare.from && unglyphed.drawnTo === bare.to,
+            `line ${bare.from} to ${bare.to}, its mark at ${markIn(unglyphed).inkFrom}, `
+                + `drawn ${unglyphed.drawnFrom} to ${unglyphed.drawnTo}`);
+        const headText = textItem(headedGlyph, headedGlyph.plainName);
+        expect("a heading keeps its name's line, glyph or not", headText !== null
+            && headedGlyph.drawnFrom === headText.y
+            && headedGlyph.drawnTo === headText.y + headText.height,
+            `${headText?.y} to ${headText?.y + headText?.height}, drawn `
+                + `${headedGlyph.drawnFrom} to ${headedGlyph.drawnTo}`);
     }
 
     // The words a row's side draws: the Text holding them, however it's
@@ -1693,6 +1760,7 @@ ShellRoot {
             root.sideItemsHold();
             root.headMarkHolds();
             root.headingPlain();
+            root.inkLinesHold();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

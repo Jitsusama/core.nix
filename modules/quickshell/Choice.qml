@@ -253,14 +253,20 @@ Rectangle {
     // glyph stands on too (the launcher's empty line's cat).
     readonly property real markAt: Theme.space.rung.inset + row.indent
 
+    // Whether it draws its glyph: a swatch is the figure itself, so it
+    // stays, as does a figure's mark saying how it stands.
+    readonly property bool drawsMark: !row.heading
+        && (row.sort !== "figure" || row.swatch || row.marked)
+    // Whether that glyph has ink to count in the line the row draws.
+    readonly property bool markInked: drawsMark && row.glyph !== ""
+
     // Its glyph, on the name's capitals (Mark.qml), whose baseline is the
     // row's middle less half the capitals.
     Mark {
+        id: glyphMark
         x: row.markAt
         line: (row.height + row.capitals) / 2
-        // A swatch is the figure itself, so it stays, as does a figure's
-        // mark saying how it stands.
-        visible: !row.heading && (row.sort !== "figure" || row.swatch || row.marked)
+        visible: row.drawsMark
         text: row.glyph
         // A row holding more is quieter than one that acts, muted as a
         // place's mark is in the head: never the frame's edge, which the
@@ -291,11 +297,15 @@ Rectangle {
     // Where what it draws, unselected, starts and ends, down from its top:
     // a heading's line, or the line its name, mark and words share, which
     // the launcher needs whole to draw it (VKCF3Z, 2026-11-15 [889f9a7d]).
-    // Selected, it draws its whole ground, which is the row's height.
+    // Selected, it draws its whole ground, which is the row's height. Its
+    // mark is taken by its ink, which it centres on the name's capitals
+    // and may stand past the name's line (Mark.qml's overhang); its box is
+    // taller than the ink, and empty past it.
     readonly property real drawnFrom: row.heading ? headingText.y
-        : Math.min(nameBox.y, monoLine.y)
+        : Math.min(nameBox.y, monoLine.y, row.markInked ? glyphMark.inkFrom : Infinity)
     readonly property real drawnTo: row.heading ? headingText.y + headingText.height
-        : Math.max(nameBox.y + nameBox.height, monoLine.y + monoLine.height)
+        : Math.max(nameBox.y + nameBox.height, monoLine.y + monoLine.height,
+            row.markInked ? glyphMark.inkTo : -Infinity)
     // Where its words have theirs, which is the name's.
     readonly property real detailBaseline: countText.y + countText.baselineOffset
     // How far its words stand from its name.

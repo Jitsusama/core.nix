@@ -4609,10 +4609,14 @@ def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) 
     and the selection's ground from where it's drawn (groundCut), not from the rule's own
     extents, so a row the rule took for whole and drew cut is caught; and the selection against
     where its row's band is drawn (laidOut's selection), so one wholly in view on the wrong row
-    is caught too. A key keeps the selection in view; the wheel moves the view alone, so it
-    may leave the selected row out of it (`selection_in_view`), when only a drawn one is held
-    to its row. Where the view rests is `restsOnARow`'s, from the rows' tops. A row's name
-    reading on is clipped across, never down, so it's no cut.
+    is caught too. A row's mark is the exception: it's judged by its glyph's ink as its Mark
+    says it stands (Mark.qml's inkFrom and inkTo), the numbers the rule takes too, rather than
+    by its box, which stands empty above and below that ink. Those numbers are held to the ink
+    as measured and drawn in tests/rows.qml and tests/turned-mark.qml. A key keeps the
+    selection in view; the wheel moves the view alone, so it may leave the selected row out of
+    it (`selection_in_view`), when only a drawn one is held to its row. Where the view rests is
+    `restsOnARow`'s, from the rows' tops. A row's name reading on is clipped across, never
+    down, so it's no cut.
     """
     cut = rows_drawn_cut(shell)
     assert cut == [], f"{where}: drawn cut: {cut}"
@@ -4683,6 +4687,11 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
     can take out of view, and where the turn back up rests depends on the rows' heights, so
     whether the selection is in view isn't asked here.
+
+    It rests at every place a small turn reaches, down to the list's end and back up to its
+    top, then by larger turns: two turns, at one place in thirty, once left an eero whose mark
+    stood whole at the view's foot judged cut by its glyph's box, which is taller than its
+    ink (Mark.qml's inkFrom), so one rest alone passed by chance (2026-11-27).
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]
@@ -4690,19 +4699,38 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     shell.as_account(f"{wlrctl} pointer move -100000 -100000")
     middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
-    # Down and back up by a turn that isn't a whole number of rows, so the view can stop
-    # inside one.
-    for by in [70, -70]:
-        was = shell.showing()["scrolled"]
+    # Turns that aren't a whole number of rows, so the view can stop inside one: small ones
+    # down to the list's foot and back to its top, then larger ones down and up. A turn may
+    # come to rest where it set off (one from 156 did, 2026-11-27): it stopped inside the row
+    # above, taller than the turn, and rested back on the top it left. So a turn up that didn't
+    # move is followed by one twice as far, until one passes that row. The case's turns up by
+    # 70 always moved the view before, so one by 140 passes any row it draws today: no row
+    # takes more than three turns up, and the way back up at most three times the turns down.
+    places: list[int] = []
+
+    # Where each turn sent came to rest, and whether it was sent: one toward the bound the view
+    # stands at isn't, and rests nowhere, so the climb ends on it rather than taking it for a
+    # turn that rested where it set off.
+    def turn(by: int) -> tuple[int, bool]:
+        shown = shell.showing()
+        was, heard = shown["scrolled"], shown["movements"]
+        # At the bound it turns toward, the wheel can't move the view, so it isn't sent: a
+        # turn heard late there would come to rest during the next turn and be counted as it.
+        at_its_bound = shown["atFoot"] if by > 0 else shown["atTop"]
+        if at_its_bound:
+            print(f"the wheel by {by} from {was} isn't sent: the view is at its bound")
+            return int(was), False
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
         shell.as_account(f"{wlrctl} pointer scroll {by} 0")
 
-        # Once the view has stopped, so one the wheel only passed through doesn't count.
-        def rested(shown: Json, was: int = was, by: int = by) -> bool:
+        # Once the view has come to rest from this turn, as the list counts its rests, so one
+        # the wheel only passed through doesn't count, one heard late is waited for, and one
+        # that rested where it set off isn't taken for one not yet heard.
+        def rested(shown: Json) -> bool:
             return bool(
-                not shown["moving"]
-                and (shown["scrolled"] - was) * by > 0
+                shown["movements"] > heard
+                and not shown["moving"]
                 and shown["restsOnARow"]
                 and shown["cut"] == []
             )
@@ -4710,8 +4738,64 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         shell.launcher_until(rested)
         shown = shell.showing()
         print(f"the wheel by {by} rested at {shown['scrolled']}")
-        assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
-        none_drawn_cut(shell, f"the wheel by {by}", selection_in_view=False)
+        # Every condition the wait held, so a failure here names the one that let go.
+        assert rested(shown), {
+            "by": by,
+            "scrolled": shown["scrolled"],
+            "restsOnARow": shown["restsOnARow"],
+            "cut": shown["cut"],
+            "moving": shown["moving"],
+            "movements": shown["movements"],
+            "heard": heard,
+        }
+        none_drawn_cut(shell, f"the wheel by {by} from {was}", selection_in_view=False)
+        places.append(shown["scrolled"])
+        return int(shown["scrolled"]), True
+
+    # Small turns down until the list says it stands at its foot, which turn() reads before it
+    # sends one, so every place between is rested at. A turn down rests on the top of the first
+    # row at or below where it stopped, so each passes a row's top, and the foot comes within
+    # as many turns as the list has rows.
+    rows = shell.showing()["count"]
+    down = 0
+    while turn(35)[1]:
+        down += 1
+        assert down <= rows, (
+            f"{down} turns by 35 passed the {rows} rows' tops short of the foot, at {places[-1]}: "
+            f"{places}"
+        )
+    # A list that fits its view stands at both bounds, so no turn is sent and nothing after
+    # this tests the wheel; it's said here rather than as an empty `places` further on.
+    assert down > 0, f"the list never left its top, so it fits its view: {rows} rows"
+    # Twice the turns up by 70 that always moved the view, so it passes any row drawn today.
+    passes_any_row = -140
+    up = 0
+    at = int(shell.showing()["scrolled"])
+    by = -35
+    # Up until the list says it stands at its top, which turn() reads before it sends one, so
+    # the climb ends there wherever the top rests, not only at a contentY of 0.
+    while True:
+        rest, sent = turn(by)
+        if not sent:
+            break
+        up += 1
+        assert by > passes_any_row or rest < at, f"a turn up by {by} from {at} stayed put"
+        assert up <= 3 * down, f"{up} small turns up never reached the top: {places}"
+        by = by * 2 if rest == at else -35
+        at = rest
+    assert shell.showing()["atTop"], f"the turns up ended off the top: {places}"
+    # The larger turns move the view too: down from the top always, since a view rests on
+    # the row at or below where it stopped, and back up from wherever that left it.
+    for by in [70] * 3:
+        was = int(shell.showing()["scrolled"])
+        rest, sent = turn(by)
+        assert rest > was or not sent, f"a turn by {by} from {was} rested at {rest}"
+    lowest = shell.showing()
+    for by in [-70] * 3:
+        turn(by)
+    assert places[-1] < lowest["scrolled"] or lowest["atTop"], (
+        f"turns up by 70 from {lowest['scrolled']}: {places}"
+    )
     shell.close_launcher()
 
 

@@ -156,6 +156,14 @@ Text {
 
     // Its ink's middle on the capitals'.
     y: on - inkMiddle / fine * markScale - baselineOffset
+    // Where its ink starts and ends down its parent, as it's drawn. Its box
+    // is its face's line at the mark's scale, up to half as tall again as
+    // the name's beside it, around ink it centres on the capitals, so what
+    // judges a row whole, or a mark cut, reads these rather than the box: a
+    // mark's box at the list's foot was cut where its ink stood whole in
+    // three of thirty places the wheel rested (2026-11-27).
+    readonly property real inkFrom: y + baselineOffset + ink.y / fine * markScale
+    readonly property real inkTo: inkFrom + inkTall / fine * markScale
     font.family: Theme.level.figure.family
     font.pointSize: Theme.level.figure.pointSize * markScale
 }
