@@ -292,6 +292,7 @@ async fn serve(
         state: &state,
         picked: RefCell::default(),
         held: RefCell::default(),
+        readied: RefCell::default(),
         astray: RefCell::default(),
         alone: RefCell::default(),
         stopped: RefCell::default(),
@@ -1663,10 +1664,21 @@ fn forgot(name: &str, reply: &zbus::Message) -> bool {
             .is_ok_and(|(_, wrong)| wrong == BSS_FORGOTTEN)
 }
 
+/// Whether a card was held before a move asked of it now, given what
+/// `Wifid::ready` kept when it readied the card (`readied`) and whether
+/// it's held now. Readied, every card is held for its move, so one that
+/// was free would be pinned where it is by a refused move: no move frees a
+/// held card until it comes off its network. A move asked with no ready,
+/// as a warned one or one asked again after a look, finds the card as the
+/// refusal before it left it, which is as it was before.
+fn held_before_the_move(readied: Option<bool>, held: bool) -> bool {
+    readied.unwrap_or(held)
+}
+
 /// The point a card whose move was refused is held to again: the one it's
-/// on, where it was held when the move was asked, as `Wifid::ready` holds
-/// it before every move. None where it wasn't held, no point is known, or
-/// its point warned it drops the card (`holds`), so it's let go as before.
+/// on, where it was held before the move (`held_before_the_move`). None
+/// where it wasn't held, no point is known, or its point warned it drops
+/// the card (`holds`), so it's let go as before.
 fn kept_on(
     held_before: bool,
     on: Option<String>,
@@ -1964,6 +1976,10 @@ struct Wifid<'a> {
     /// The cards moved to an access point, each with the network it's
     /// held to that point on, until the card comes off it.
     held: RefCell<HashMap<String, OwnedObjectPath>>,
+    /// The cards `Wifid::ready` held for a move, each with whether it was
+    /// held before, until the move is asked, so a refused move leaves the
+    /// card as it was then (`held_before_the_move`).
+    readied: RefCell<HashMap<String, bool>>,
     /// The cards that took another network as they were let go, each with
     /// the network they were held on, to look again once joined.
     astray: RefCell<HashMap<String, OwnedObjectPath>>,
@@ -3048,6 +3064,10 @@ impl Wifid<'_> {
         missed: Missed,
     ) -> Result<(), Refused> {
         let card = card.to_owned();
+        // Taken by every move, refused or not, so none is read by a later
+        // move it wasn't kept for.
+        let readied = self.readied.borrow_mut().remove(&card);
+        let held_before = held_before_the_move(readied, self.held.borrow().contains_key(&card));
         let busy = self
             .arrivals
             .borrow()
@@ -3062,7 +3082,6 @@ impl Wifid<'_> {
         // back, other networks off, should it reach neither point.
         let before = self.arrivals.borrow().saved(&card);
         let moving = before.is_some();
-        let held_before = self.held.borrow().contains_key(&card);
         let roamed = async {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
@@ -3641,6 +3660,7 @@ impl Wifid<'_> {
     /// silent as one, 253 ms with 57 of them the look's (2026-11-15).
     async fn ready(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
+        let held_before = self.held.borrow().contains_key(&card);
         // Held anew, a way back couldn't reach the point it went back to,
         // and a card leaving a point that drops it would be held back to
         // that point partway into the move.
@@ -3675,7 +3695,10 @@ impl Wifid<'_> {
             zbus::Result::Ok((interface, on))
         };
         let (interface, on) = match held.await {
-            Ok(held) => held,
+            Ok(held) => {
+                self.readied.borrow_mut().insert(card.clone(), held_before);
+                held
+            }
             Err(error) => {
                 self.let_go(&card, false).await;
                 return Err(Refused::Failed {
@@ -4120,6 +4143,27 @@ mod tests {
             kept_on(true, None, holds),
             None,
             "a card on no known point was held to one"
+        );
+    }
+
+    #[test]
+    fn a_refused_move_reads_whether_the_card_was_held_before_it_was_readied() {
+        assert!(
+            !held_before_the_move(Some(false), true),
+            "a card free before ready held it for the move was taken as held, so a \
+             refused move would pin it where it is"
+        );
+        assert!(
+            held_before_the_move(Some(true), true),
+            "a card held before it was readied was taken as free"
+        );
+        assert!(
+            held_before_the_move(None, true),
+            "a held card moved with no ready, as a warned one is, was taken as free"
+        );
+        assert!(
+            !held_before_the_move(None, false),
+            "a free card moved again after a look was taken as held"
         );
     }
 
