@@ -6,11 +6,11 @@
 # ends in a slash, and moves no step for one that is only the tail of the
 # steps' own. Given editors, tuple-completion.zsh, given second,
 # refuses any folders but those of the folder of its own its wrapper makes,
-# a person's home holding its own runtime and data folders among them. Each
-# is run from a person's home, with a stand-in tuple first on PATH that
-# marks being reached, so a refusal that comes too late fails here rather
-# than on the person's Tuple. The checks that run them for real show what
-# they let through.
+# a person's home holding its own runtime and data folders among them, and
+# lets that folder's own through. Each is run from a person's home, with a
+# stand-in tuple first on PATH that marks being reached, so a refusal that
+# comes too late fails here rather than on the person's Tuple. The checks
+# that run them for real show what they let through.
 set -euo pipefail
 
 what=$1
@@ -31,32 +31,63 @@ if ! "$here/bin/tuple" || [[ ! -e $here/reached ]]; then
   echo "the stand-in tuple in $here doesn't run; is TMPDIR mounted noexec?" >&2
   exit 1
 fi
-# Steps that write nothing, and a completion that completes nothing, so a
-# script that got past its refusal would only go on to reach tuple.
+# Steps that write nothing, and a completion that only runs tuple, as
+# Tuple's own does on each Tab, so a script that got past its refusal
+# would only go on to reach tuple, even one that refused only after its
+# completion had run.
 echo 'run true' > "$here/activate"
-: > "$here/_tuple"
+printf '#compdef tuple\ntuple\n' > "$here/_tuple"
 
-# Fails unless the script, run from the home with the environment and
-# command given, ends 64 without reaching tuple, held to a time in case it
-# went on to wait on one.
-turned_away() {
-  local why=$1
-  shift
-  local status=0
+# Every case is run, and each that fails says so, so a red names all the
+# cases a change breaks rather than only the first.
+failed=0
+
+# Runs the script from the home with the environment and command given,
+# held to a time in case it went on to wait on tuple, keeping its status
+# in status and what it said in said.
+run_from_home() {
+  status=0
   rm -f "$here/reached"
   (cd "$home" && env -i PATH="$here/bin:$PATH" "$@") > "$here/said" 2>&1 < /dev/null ||
     status=$?
+}
+
+# Fails unless the script, run from the home with the environment and
+# command given, ends 64 without reaching tuple.
+turned_away() {
+  local why=$1
+  shift
+  run_from_home "$@"
   if [[ $status -ne 64 || -e $here/reached ]]; then
     local reached="didn't reach tuple"
     if [[ -e $here/reached ]]; then reached="reached tuple"; fi
     echo "${script##*/} with $why ended $status and $reached, not refusing;" \
       "it said \"$(< "$here/said")\"" >&2
-    exit 1
+    failed=1
+  fi
+}
+
+# Fails unless the script, run from the home with the environment and
+# command given, gets past its refusal and reaches tuple, so a script that
+# refused everything couldn't pass for one refusing only what it should.
+let_through() {
+  local why=$1
+  shift
+  run_from_home "$@"
+  if [[ $status -eq 64 || ! -e $here/reached ]]; then
+    echo "${script##*/} with $why ended $status and didn't reach tuple, refusing it;" \
+      "it said \"$(< "$here/said")\"" >&2
+    failed=1
   fi
 }
 
 case $what in
   portal)
+    # Could one ending in a slash, were it let through, match part of a
+    # step's folder? No: the script finds the data folder only where a word
+    # starts and with a slash after it, so one ending in a slash is found
+    # only where a step writes two, and then as the whole of a folder. It's
+    # refused all the same, as a sign that what was given was a mistake.
     for data in "" share share/ /x/ /; do
       turned_away "the data folder \"$data\"" HOME="$home" \
         timeout -k 5 60 "$BASH" "$script" "$library" "$here/activate" "$data"
@@ -77,7 +108,7 @@ case $what in
       ! grep -q 'has no step writing into /.local/share/tuple/' "$here/said"; then
       echo "${script##*/} with a tail of the data folder ended $status and wrote" \
         "\"$(< "$here/written")\" into the home; it said \"$(< "$here/said")\"" >&2
-      exit 1
+      failed=1
     fi
     ;;
   editors)
@@ -96,12 +127,22 @@ case $what in
     editors "another folder's name" \
       TUPLE_FOLDER_OF_ITS_OWN="$here" HOME="$home" XDG_RUNTIME_DIR="$home/run" \
       XDG_DATA_HOME="$home/data"
-    editors "runtime and data folders below their own" \
+    # One case to a folder, so a script checking only one of them can't
+    # pass on the other's refusal.
+    editors "a runtime folder below its own" \
       TUPLE_FOLDER_OF_ITS_OWN="$home" HOME="$home" XDG_RUNTIME_DIR="$home/run/x" \
+      XDG_DATA_HOME="$home/data"
+    editors "a data folder below its own" \
+      TUPLE_FOLDER_OF_ITS_OWN="$home" HOME="$home" XDG_RUNTIME_DIR="$home/run" \
       XDG_DATA_HOME="$home/data/x"
+    # Last, since the completion it lets through writes into the home.
+    let_through "the folder of its own's name, home and folders, run from it" \
+      TUPLE_FOLDER_OF_ITS_OWN="$home" HOME="$home" XDG_RUNTIME_DIR="$home/run" \
+      XDG_DATA_HOME="$home/data" timeout -k 5 60 zsh -f "$script" "$here/_tuple"
     ;;
   *)
     echo "tuple-refuses-a-folder-not-its-own.sh takes portal or editors, not \"$what\"" >&2
     exit 64
     ;;
 esac
+exit "$failed"
