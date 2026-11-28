@@ -290,11 +290,15 @@
       # took it on to 21.5%, his side to 24.0%. Cutting a word of his far
       # below theirs, however spelled, took it to 19.8%, his side to 19.1%.
       # Judging each word of his by his voice near it rather than across
-      # the call took his side to 19.0%.
+      # the call took his side to 19.0%. Cutting a word of his far under
+      # their sound inside their line, a second from any word of theirs,
+      # took it to 19.3%, his side to 17.6%: that inside case is what
+      # holds both ceilings, since outside their lines, with his voice
+      # asked, the sound rule cuts nothing here.
       # The ceiling is what it reaches, as the clean meetings' is, and his
       # side's own ceiling is what his side reaches.
-      ceiling = "19.8";
-      joels = "19.0";
+      ceiling = "19.3";
+      joels = "17.6";
     in
     pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling} ${lib.escapeShellArg joels}

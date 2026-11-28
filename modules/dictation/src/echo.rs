@@ -11,7 +11,10 @@
 //! loudness keeps it (loudness.rs), however spelled, and, once his voice
 //! is known, far quieter than his voice too: a line of theirs spans its
 //! whole take, so that reaches the takes their model heard no words in,
-//! and the second after one ends. His own words in their sound stay:
+//! and the second after one ends. Inside their lines, so are words of
+//! his as far under their sound with no word of theirs within a second
+//! either side, where their model heard no words in it, whatever his
+//! voice. His own words in their sound stay:
 //! their microphones pick up his voice too, far quieter than their own,
 //! and that's his. A line of his whose words repeat a line of theirs
 //! said at the same time is their echo, and is left out whole, which
@@ -119,6 +122,18 @@ const NEAR: usize = 11;
 /// once, raising his side of the meetings with no echo from 12.0% to
 /// 12.9%, so it holds only outside them. There it took his echoed side to
 /// 18.0% and left the meetings with no echo as they were.
+/// Inside their lines it also cuts a word with no word of theirs within
+/// `LAG` either side, where their model heard no words in their sound,
+/// and there it doesn't ask his voice, since that echo is no quieter
+/// than his voice is. Before, on the echoed meetings, the rule outside
+/// their lines cut nothing once his voice was asked, leaving his side at
+/// 19.0%. Between their words it took his side to 17.6% and the whole to
+/// 19.3%, and left the meetings with no echo at 12.0% for his side and
+/// 17.4% overall; asking his voice there too, it cut only 3 runs and
+/// took his side to 19.1%. Those 3 runs, all in `IS1009a`, raise his side
+/// there from 14.7% to 14.9% either way. The risk it leaves: on a quiet
+/// microphone, Joel speaking into their sound inside their line, a
+/// second from any word of theirs, is cut as their echo.
 const SOUND: f32 = 20.0;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
@@ -297,19 +312,21 @@ pub enum Rule {
     /// many dB.
     Level(f32),
     /// Far under the loudest of their sound just before the first,
-    /// outside their lines, by this many dB.
+    /// outside their lines or between their words, by this many dB.
     Sound(f32),
 }
 
 /// The index of `theirs` a word of Joel's far under their `sound` is cut
 /// against, and how far under it the word is, if it's their echo by
-/// that: said outside each of `lines` of theirs, `SOUND` under the
-/// loudest of their sound just before it, and, once his `voice` around
-/// it is known from his words heard `alone`, `QUIETER` under that too, as
-/// for `drowned`, so his answer through a quiet microphone is his. It's
-/// cut against the first of theirs said from when he said it, or their
-/// last, so with no words of theirs there's none to cut it against, and
-/// it's kept.
+/// that: `SOUND` under the loudest of their sound just before it. Said
+/// outside each of `lines` of theirs, once his `voice` around it is known
+/// from his words heard `alone`, it must be `QUIETER` under that too, as
+/// for `drowned`, so his answer through a quiet microphone is his. Said
+/// inside one, no word of theirs may be within `LAG` either side, and
+/// his voice isn't asked; one near a word of theirs is left to the
+/// spelling and level rules. It's cut against the first of theirs said
+/// from when he said it, or their last, so with no words of theirs
+/// there's none to cut it against, and it's kept.
 fn under(
     word: &Word,
     theirs: &[Word],
@@ -318,13 +335,16 @@ fn under(
     alone: &[(usize, f32)],
 ) -> Option<(usize, Rule)> {
     let last = theirs.len().checked_sub(1)?;
-    if lines
+    let inside = lines
         .iter()
-        .any(|line| line.start <= word.at && word.at < line.end)
-    {
+        .any(|line| line.start <= word.at && word.at < line.end);
+    let beside = theirs[theirs.partition_point(|said| said.at + LAG < word.at)..]
+        .first()
+        .is_some_and(|said| said.at <= word.at + LAG);
+    if inside && beside {
         return None;
     }
-    if voice(alone, word.at).is_some_and(|his| word.level + QUIETER > his) {
+    if !inside && voice(alone, word.at).is_some_and(|his| word.level + QUIETER > his) {
         return None;
     }
     let gap = sound.loudest_before(word.at) - word.level;
