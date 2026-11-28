@@ -47,6 +47,9 @@ HERE = Path(__file__).parent
 # Code draws on the frame after a record moves, then at most twice a second while records keep
 # coming, so a change must show well inside this.
 PACE_MS = 6000
+# Longer than any paced draw waits once asked for, at most 2 s after the last (pace.ts), with
+# room for the frames it measures across.
+SETTLED_MS = 5000
 # Long enough for Code to ask three times again for a cell with no home, 14 s, with room.
 ASKED_AGAIN_MS = 20_000
 # How far the page may shift unasked: a tenth of the web's "good" bound, which a font
@@ -499,6 +502,17 @@ def test_ages_move_on_while_nothing_is_written(
         page.locator(".head .keys").get_by_text("Return", exact=True).focus()
         page.keyboard.press("Enter")
         expect(stepped_in, "Return didn't step into the tree").to_be_focused()
+        # A draw still owed when the tree is marked lands in the fast-forward and draws the tree
+        # anew, ages and all, which reads as the minute redrawing it. So the feeds' last answers
+        # are let draw first, the cell's home and core's use, then every paced draw they owe.
+        expect(
+            page.locator(f'#open a[href="../{CELL_HOME}"]'), "the cell's home wasn't linked"
+        ).to_be_visible(timeout=PACE_MS)
+        expect(row(page, "github:owl/core"), "what works in core wasn't said").to_contain_text(
+            "of memory", timeout=PACE_MS
+        )
+        page.clock.run_for(SETTLED_MS)
+        expect(stepped_in, "the draws owed took focus off the tree").to_be_focused()
         stepped_in.evaluate("tree => { tree.kept = true; }")
         page.clock.fast_forward("02:00:00")
         expect(when, "an age stood still while nothing was written").to_have_text(
