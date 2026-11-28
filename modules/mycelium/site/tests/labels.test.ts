@@ -339,6 +339,20 @@ it("networks whose keys differ only in spaces a page runs together are told apar
   );
 });
 
+// Only the spaces a page runs together are written out in a key's tell: a no-break space, which
+// it draws as it is, reads in the tell as it does in the name and the id.
+it("a key's tell keeps a no-break space as the page draws it", () => {
+  const name = "Rig the Skiff";
+  const keys = ["orchestration.skiff\u00a0one", "orchestration.SKIFF\u00a0ONE"];
+  const networks = keys.map((key) => ({ key, name, carries: name }));
+  const told = toldApart(networks);
+  assert.deepEqual(
+    keys.map((key) => told.get(key)),
+    keys.map((key) => `${name} (SKIFF\u00a0ONE) [${key}]`),
+    "a key's no-break space was written out in its tell, though a page draws it as it is",
+  );
+});
+
 // The names the page gives its own groups of cells (view.js): the receptors
 // at the realm's edge, and the cells working alone, by machine where there
 // are several.
