@@ -303,9 +303,17 @@ def a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience() -> None
 
 
 def a_half_line_held_at_the_patience_is_finished_by_the_next_read() -> None:
-    """said_next keeps a half line it answered as unfinished, and the next read finishes it."""
-    with copier("printf rea; sleep 3; printf 'dy\\n'; exec sleep 30") as slow:
+    """said_next keeps a half line it answered as unfinished, and the next read finishes it.
+
+    The copier says the rest only once the test tells it to, after the first read has
+    answered, so how long anything takes decides nothing.
+    """
+    reading, writing = os.pipe()
+    with copier("printf rea; read -r _; printf 'dy\\n'; exec sleep 30", stdin=reading) as slow:
+        os.close(reading)
         first = CHECK.said_next(slow)
+        os.write(writing, b"\n")
+        os.close(writing)
         second = CHECK.said_next(slow)
     unfinished = f"rea {CHECK.UNFINISHED}"
     assert first == unfinished, f"'rea' held past the patience was said {first!r}"
