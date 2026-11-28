@@ -53,6 +53,7 @@
     pkgs.runCommandLocal "a-filter-passes-a-file-by-its-kind" { } ''
       cp ${../tests/file-kinds.qml} file-kinds.qml
       cp ${../../open-with/FileKinds.js} FileKinds.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
