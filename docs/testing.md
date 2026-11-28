@@ -622,7 +622,20 @@ for it, such as `windows`, opens that place from shut each round and steps
 out of it to home with nothing typed, as Super+Tab then - does. Each
 round prints the opening's own line as `lab-into`, what its thread ran,
 waited and slept of its working among it, and the step out as
-`lab-chord`. `LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
+`lab-chord`. `LAB_CHORD = "home"` opens home by the shell's toggle and
+closes it, as Super does. Each of those openings opens on what home kept,
+since the lab waits for home to be kept before its first, so
+`LAB_WHOLE = "first"` restarts the shell before each round, its first
+opening whole until home is first kept. Profiled, each opening's
+`toggled()` call is split where `openWorkDone` returned, as
+`whole-first-working`, `whole-working` or `kept-working` and the matching
+`-settling`, so what settling spends is named by place. The wait its line
+names before the shell heard its frame swapped is `-unheard`, but only
+where the trace holds the line's text, which these traces didn't, and the
+lab's openings waited 0 ms there anyway (2026-11-28). `LAB_TRACES` prints
+each trace too, packed as `lab-trace` lines, so it can be read again once
+the run is gone.
+`LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
 windows join home's rows too, so the typed keys' medians change with them.
 Out of Windows over 10, holding fell from 7.5 to 5 ms once the foot was
 fitted once a step (2026-11-18). `LAB_AGENTS` lays that many live

@@ -20,7 +20,13 @@ LAB_AGENTS, it lays that many live sessions and serves them through the realm's 
 agents daemon (agents_served.py), so a step into Agents lays as many agent rows as Joel's, one
 of them moving before each step as his do between his looks. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
-and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
+and steps out of it to home with nothing typed, as Joel's Super+Tab then - does; given home, it
+opens home by the shell's toggle and closes it again, as his Super does. Every such opening here
+opens on what home kept, unless LAB_WHOLE=first asks for it whole: it restarts the shell before
+each round, its first opening being whole until home is first kept. Profiled, each opening's
+toggled() call is then split where openWorkDone returned, into its working and its settling, and
+the wait before the shell heard its frame swapped is a span of its own, as lab_traces.py reads
+the traces; given LAB_TRACES, each trace is printed too, packed, so it can be read again later.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
 ran inside them. Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
@@ -32,17 +38,19 @@ LAB_PROFILE, LAB_PROFILE without QS_GIVEN's `--debug 3768`, or LAB_BACK without 
 
 from __future__ import annotations
 
+import base64
+import gzip
 import itertools
 import os
 import re
 import statistics
 import subprocess
 import time
-import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
+import lab_traces
 import launcher_on_niri
 from agents_served import agents_served
 
@@ -66,6 +74,9 @@ PORT = "3768"
 # A key's line, as Trials.qml says it, and each part of it the lab reads by name.
 KEY = re.compile(r'launcher: "(?P<typed>[^"]*)" took (?P<took>\d+) ms to its frame, (?P<rest>.*)')
 PARTS = ("searching", "rows", "answers", "before", "counting", "typed", "words", "readying")
+
+# How many characters of a trace, packed, each of its lines LAB_TRACES asks for holds.
+PACKED = 4000
 
 # How long the profiler may take to write its trace once asked, in seconds.
 FLUSHING = 60
@@ -237,6 +248,46 @@ def chorded_out(shell: Shell, place: str) -> tuple[str | None, str | None]:
     return opening, out
 
 
+def opened_home(shell: Shell, whole: str, profiling: Profiling | None) -> str | None:
+    """Open home from shut by its toggle, as Super+Space does, and give the opening's line.
+
+    Home is no place a chord steps into, so nothing is stepped out of. Kept, it opens from what
+    was kept, as every opening but a shell's first does. Given LAB_WHOLE=first, the shell starts
+    again first and home opens at once, before warming keeps it, so each is whole and the first
+    since the shell started, as two of Joel's three whole openings were (2026-11-27).
+    """
+    if whole == "first":
+        restarted(shell, profiling)
+    else:
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    since = shell.mark()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    opening = into_said(shell, since)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    return opening
+
+
+def restarted(shell: Shell, profiling: Profiling | None) -> None:
+    """Start the shell again, and its profiler with it, so a trace holds its first opening.
+
+    A restart drops the profiler's connection, so the trace so far is written first, and the
+    shell starts waiting for a new profiler (`--waitfordebug`), which tries its port until it
+    listens, so nothing the shell runs as it starts goes unrecorded.
+    """
+    if profiling is None:
+        shell.restart()
+        return
+    profiling.written()
+    given = os.environ.get("QS_GIVEN", "")
+    os.environ["QS_GIVEN"] = f"{given} --waitfordebug"
+    try:
+        shell.restart(while_down=lambda: profiling.begin(fresh=True))
+    finally:
+        os.environ["QS_GIVEN"] = given
+
+
 def into_said(shell: Shell, since: int) -> str | None:
     """Give the opening's line the shell has said since the mark, from its time on, or None.
 
@@ -358,146 +409,44 @@ def tallied(
             parts[typed][name].append((part(line, name) or 0) if line else 0)
 
 
-class Spent:
-    """What one place took inside a span: how often it ran, its own time and its whole."""
-
-    def __init__(self) -> None:
-        """Begin with nothing spent."""
-        self.count = 0
-        self.own = 0.0
-        self.whole = 0.0
+def say_packed(trace: Path) -> None:
+    """Print the trace packed, a line of PACKED characters at a time, so it outlives the run."""
+    packed = base64.b64encode(gzip.compress(trace.read_bytes())).decode()
+    for at in range(0, len(packed), PACKED):
+        print(f"lab-trace {trace.name} {packed[at : at + PACKED]}", flush=True)
 
 
-def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
-    """Give what each place took inside each span of the profiler's trace, by the span's name.
+def say_held(traces: list[tuple[Path, bool]], opened: list[str]) -> None:
+    """Print what each trace holds, the trace itself given LAB_TRACES, and each opening."""
+    for trace, _ in traces:
+        for line in lab_traces.census(trace):
+            print(f"lab-profile held {trace.name} {line}", flush=True)
+        if os.environ.get("LAB_TRACES"):
+            say_packed(trace)
+    for line in opened:
+        print(f"lab-opening {line}", flush=True)
 
-    A place is a binding, handler or function by its kind, file and line. Its own time leaves out
-    what it called that the profiler recorded too, so a handler holding the whole search is not
-    named for it; its whole is all of it.
+
+def say_profiled(
+    traces: list[tuple[Path, bool]], said: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Print each span's costliest places by their own time, or what the traces held instead.
+
+    Each trace is a life of the shell's, and their spans are added together. With no span, what
+    the profiler and the shell said of the debugger is printed too, as what's said leaves the
+    run with it. Given LAB_TRACES, each trace is printed too, packed.
     """
-    root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
-    places: dict[str, str] = {}
-    parts = Parts()
-    # The functions whose calls are spans of their own, `within-<name>`, each call holding itself
-    # and what ran inside it, so the function's own place in its span says what its calls took.
-    asked = set(within_asked())
-    within: dict[str, str] = {}
-    for event in root.iter("event"):
-        where = Path(event.findtext("filename") or "").name
-        kind = event.findtext("type") or ""
-        details = (event.findtext("details") or "").replace("\n", " ")[:60]
-        places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
-        if where == "Launcher.qml" and details in parts.functions:
-            parts.functions[details].add(event.get("index", ""))
-        if where == "Launcher.qml" and kind == "Javascript" and details in asked:
-            within[event.get("index", "")] = details
-    spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
-    # The ranges still open where the next starts: when each ends, its places' tallies, and the
-    # functions asked for that it runs within.
-    held: list[tuple[int, list[Spent], frozenset[str]]] = []
-    # A call starting where its caller does is read after it, by its shorter duration.
-    for each in sorted(
-        root.iter("range"),
-        key=lambda one: (int(one.get("startTime", "0")), -int(one.get("duration", "0"))),
-    ):
-        start = int(each.get("startTime", "0"))
-        index = each.get("eventIndex", "")
-        ends = start + int(each.get("duration", "0"))
-        took = int(each.get("duration", "0")) / 1e6
-        while held and held[-1][0] <= start:
-            held.pop()
-        for parent in held[-1][1] if held else []:
-            parent.own -= took
-        # A named call is in its own span as well as what it ran; one inside another of the same
-        # name adds its whole again at that place, as no function of the launcher's recurses.
-        inside = (held[-1][2] if held else frozenset()) | (
-            {within[index]} if index in within else set()
-        )
-        names = parts.at(index, start, ends) + [f"within-{name}" for name in sorted(inside)]
-        tallies = [spans[name][places.get(index, "?")] for name in names]
-        for tally in tallies:
-            tally.count += 1
-            tally.own += took
-            tally.whole += took
-        held.append((ends, tallies, inside))
-    return spans
-
-
-class Parts:
-    """Which part of a launcher's search a range of the trace falls in, as it's read in order.
-
-    Each call of its search is a span, `search`, and so is each of its parts, `search-<part>`:
-    `before` it gathers its lists, `lists` while gathering them, `rows` until it composes its
-    answers, and `answers` from then on, as the key's line splits it. A step into a place
-    gathers nothing: its rows are the place's, so it's `step` from when it lives them on, which
-    is its showing as the step's line says it.
-    """
-
-    def __init__(self) -> None:
-        """Begin outside any search, knowing none of its functions yet."""
-        self.functions: dict[str, set[str]] = {
-            "search": set(),
-            "gathering": set(),
-            "compose": set(),
-            "live": set(),
-        }
-        self.ends = 0
-        self.part = ""
-        self.gathered = 0
-        self.count = 0
-
-    def at(self, index: str, start: int, ends: int) -> list[str]:
-        """Give the spans a range of this event, starting and ending so, falls in."""
-        if start >= self.ends:
-            if index in self.functions["search"]:
-                self.ends, self.part = ends, "before"
-                self.count += 1
-            return []
-        if index in self.functions["gathering"] and self.part == "before":
-            self.part, self.gathered = "lists", ends
-        elif self.part == "lists" and start >= self.gathered:
-            self.part = "rows"
-        if index in self.functions["compose"] and self.part in {"lists", "rows"}:
-            self.part = "answers"
-        if index in self.functions["live"] and self.part == "before":
-            self.part = "step"
-        # Each search's time before it gathers is a span of its own too, `before#<n>`, so the
-        # slowest are named apart from the rest.
-        alone = [f"before#{self.count}"] if self.part == "before" else []
-        return ["search", f"search-{self.part}", *alone]
-
-
-def census(trace: Path) -> list[str]:
-    """Give how many events and ranges of each kind the trace holds, and a range of each."""
-    root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
-    kinds = {one.get("index", ""): one.findtext("type") or "" for one in root.iter("event")}
-    counted: dict[str, int] = defaultdict(int)
-    sample: dict[str, str] = {}
-    for each in root.iter("range"):
-        kind = kinds.get(each.get("eventIndex", ""), "?")
-        counted[kind] += 1
-        sample.setdefault(kind, str(each.attrib))
-    return [f"{kind}: {count} ranges, as {sample[kind]}" for kind, count in counted.items()]
-
-
-def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str]) -> None:
-    """Print each span's costliest places by their own time, or what the trace held instead.
-
-    With no span, what the profiler and the shell said of the debugger is printed too, as what's
-    said leaves the run with it.
-    """
-    spans = profiled(trace) if trace.exists() else {}
+    written = [(trace, fresh) for trace, fresh in traces if trace.exists()]
+    spans, opened = lab_traces.gathered(written, set(within_asked()))
     with capsys.disabled():
         for name in [name for name in within_asked() if f"within-{name}" not in spans]:
             print(f"lab-profile within-{name}: never called while profiled", flush=True)
-        for line in census(trace) if trace.exists() else []:
-            print(f"lab-profile held {line}", flush=True)
+        say_held(written, opened)
         if not spans:
             for line in said:
                 print(f"lab-profile said: {line}", flush=True)
-            # The trace this run wrote, as the others are.
-            whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
-            ranges = len(list(whole.iter("range"))) if whole is not None else 0
+            # The traces this run wrote, as the others are.
+            ranges = sum(lab_traces.ranges_in(trace) for trace, _ in written)
             print(f"lab-profile: no search profiled, of {ranges} ranges", flush=True)
         each = sorted(
             (span for span in spans if span.startswith("before#")),
@@ -591,6 +540,8 @@ def lab_asks_known(launcher: Path) -> None:
         if asked and not os.environ.get("LAB_PROFILE")
         else f'LAB_PROFILE profiles only a shell given QS_GIVEN = "--debug {PORT}"'
         if os.environ.get("LAB_PROFILE") and not debugged(os.environ.get("QS_GIVEN", ""))
+        else "LAB_WHOLE is first, or not given"
+        if os.environ.get("LAB_WHOLE", "") not in {"", "first"}
         else None
     )
     if refused:
@@ -610,8 +561,39 @@ def say_heard(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
                 print(f"lab-heard {line}", flush=True)
 
 
+class Profiling:
+    """Qt's profiler on the shell, a trace for each of its lives, as a restart ends one."""
+
+    def __init__(self, folder: Path) -> None:
+        """Begin with no trace, each to be written in `folder`, all saying into one log."""
+        self.folder = folder
+        self.log = folder / "profiler.log"
+        # Each trace, and whether its profiler began before the shell did, so its first
+        # opening is the first since the shell started.
+        self.traces: list[tuple[Path, bool]] = []
+        self.ended: list[int] = []
+        self.process: subprocess.Popen[bytes] | None = None
+
+    def begin(self, *, fresh: bool) -> None:
+        """Start a profiler writing a trace of its own."""
+        trace = self.folder / f"keys-{len(self.traces)}.qtd"
+        self.traces.append((trace, fresh))
+        self.process = profiler_started(trace, self.log)
+
+    def written(self) -> None:
+        """Have the profiler write its trace and quit, while the shell still runs."""
+        if self.process is None:
+            return
+        flushed(self.process, self.traces[-1][0])
+        self.ended.append(self.process.wait(timeout=60))
+        self.process = None
+
+
 def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
-    """Start qmlprofiler on the shell's debug port, writing its trace to `trace`."""
+    """Start qmlprofiler on the shell's debug port, writing its trace to `trace`.
+
+    It's asked for the scene graph's frames too, so an opening's frame is found by its sync.
+    """
     return subprocess.Popen(
         [
             os.environ["QMLPROFILER"],
@@ -623,24 +605,38 @@ def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
             "-o",
             str(trace),
             "--include",
-            "binding,javascript,handlingsignal,debugmessages",
+            "binding,javascript,handlingsignal,debugmessages,scenegraph",
         ],
         stdin=subprocess.PIPE,
-        stdout=profiling.open("wb"),
+        stdout=profiling.open("ab"),
         stderr=subprocess.STDOUT,
     )
 
 
-def warmed(shell: Shell, step: str, step_key: str) -> None:
+def chorded(shell: Shell, chord: str, profiling: Profiling | None) -> tuple[str | None, str | None]:
+    """Open LAB_CHORD's place and step out of it, or home by its toggle, given both lines.
+
+    Home steps out of nothing, so its second is None; LAB_WHOLE says how it opens (opened_home).
+    """
+    if chord != "home":
+        return chorded_out(shell, chord)
+    return opened_home(shell, os.environ.get("LAB_WHOLE", ""), profiling), None
+
+
+def warmed(shell: Shell, step: str, step_key: str, profiling: Profiling | None) -> None:
     """Step into `step` and out of LAB_CHORD's place once untimed, as the words are typed once."""
     if step:
         stepped_from_home(shell, step, step_key)
     if chord := os.environ.get("LAB_CHORD"):
-        chorded_out(shell, chord)
+        chorded(shell, chord, profiling)
 
 
 def stepped_round(
-    shell: Shell, round_: int, step: tuple[str, str], capsys: pytest.CaptureFixture[str]
+    shell: Shell,
+    round_: int,
+    step: tuple[str, str],
+    profiling: Profiling | None,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Step into `step` by its key and back out, then out of LAB_CHORD's place, printing each."""
     if step[0]:
@@ -650,10 +646,11 @@ def stepped_round(
             if os.environ.get("LAB_BACK"):
                 print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
     if chord := os.environ.get("LAB_CHORD"):
-        opening, out = chorded_out(shell, chord)
+        opening, out = chorded(shell, chord, profiling)
         with capsys.disabled():
             print(f"lab-into {round_}: {opening or 'never said'}", flush=True)
-            print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
+            if chord != "home":
+                print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
 
 
 def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -663,9 +660,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     """
     words = os.environ.get("LAB_WORDS", " ".join(WORDS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    trace = tmp_path / "keys.qtd"
-    profiling = tmp_path / "profiler.log"
-    profiler: subprocess.Popen[bytes] | None = None
+    profiling = Profiling(tmp_path) if os.environ.get("LAB_PROFILE") else None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     step = os.environ.get("LAB_STEP", "")
     if os.environ.get("LAB_BACK") and not step:
@@ -682,26 +677,26 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         # Windows to list are opened before the profiler listens, so it hears only the keys.
         for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
             shell.opened(f"Lab {nth}", app="foot")
-        if os.environ.get("LAB_PROFILE"):
-            profiler = profiler_started(trace, profiling)
+        if profiling is not None:
+            profiling.begin(fresh=False)
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         typed_from_home(shell, words[0])
         rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
-        warmed(shell, step, step_key)
+        warmed(shell, step, step_key, profiling)
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
             # A session moves while home's shut, as Joel's do between his looks, so Agents
             # has something new to say once the step wants its rows; with no LAB_AGENTS, none.
             moved()
-            stepped_round(shell, round_, (step, step_key), capsys)
-        if profiler is not None:
-            flushed(profiler, trace)
+            stepped_round(shell, round_, (step, step_key), profiling, capsys)
+        if profiling is not None:
+            profiling.written()
     heard: list[str] = []
-    if profiler is not None:
-        heard.append(f"the profiler ended {profiler.wait(timeout=60)}")
-        heard.extend(profiling.read_text(errors="replace").splitlines())
+    if profiling is not None:
+        heard.extend(f"the profiler ended {ended}" for ended in profiling.ended)
+        heard.extend(profiling.log.read_text(errors="replace").splitlines())
         logged = shell.log.read_text(errors="replace").splitlines()
         heard.extend(line for line in logged if "ebug" in line or "qmltooling" in line)
     for typed, each in parts.items():
@@ -709,5 +704,5 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         with capsys.disabled():
             print(f"lab-keys {typed!r}: {len(each['took'])} typed, medians {medians}", flush=True)
     say_heard(shell.log, capsys)
-    if profiler is not None:
-        say_profiled(trace, heard, capsys)
+    if profiling is not None:
+        say_profiled(profiling.traces, heard, capsys)

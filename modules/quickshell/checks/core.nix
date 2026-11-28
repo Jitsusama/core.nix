@@ -144,7 +144,10 @@ in
           keys-lab = launcherOnNiri {
             name = "the-launcher-keys-lab-on-niri";
             tests = ../tests/launcher-keys-lab-on-niri.py;
-            helpers = [ ../tests/agents_served.py ];
+            helpers = [
+              ../tests/agents_served.py
+              ../tests/lab_traces.py
+            ];
             # The profiler of the Qt the shell runs on, beside what the lab
             # is given, without which Emoji and Copies have no rows.
             # And the realm's node and the agents daemon, which serve
