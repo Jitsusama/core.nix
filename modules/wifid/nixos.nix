@@ -148,8 +148,12 @@ in
         StateDirectoryMode = "0700";
         # Each point that warned a card it drops it, which a restart must
         # remember and a boot needn't, as no warning lasts past an hour.
-        # Beside the sockets in /run/wifid, and kept as wifid stops, so a
-        # switch's stop and start remember it as a restart does.
+        # It's kept in memory, beside the sockets in /run/wifid, rather than
+        # with wifid's state on the disk, as the points and when each warned
+        # say where the laptop has been. It's kept as wifid stops, so a
+        # switch, which restarts wifid in place, and a stop and start both
+        # remember it. Deleting /run/wifid/kept/warned and restarting wifid
+        # ends every keep-off at once.
         RuntimeDirectory = "wifid/kept";
         RuntimeDirectoryMode = "0700";
         RuntimeDirectoryPreserve = "yes";
