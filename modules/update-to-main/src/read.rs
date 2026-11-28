@@ -107,6 +107,11 @@ pub fn read(
 /// a failed comparison is passed on as the host's only once the same token
 /// shows it `head`. Otherwise a token command giving a token that sees
 /// nothing would lift a hold of main's own commit.
+///
+/// A second ask that fails for another reason, such as a timeout, a rate
+/// limit or a host that's down, says nothing of the token, so both
+/// failures are passed on in the host's own words: neither reads as the
+/// host not knowing the commit, so the hold stays untold either way.
 pub fn holds(
     config: &Config,
     api: &str,
@@ -116,18 +121,52 @@ pub fn holds(
 ) -> Result<bool, Failure> {
     let host = Host::new(config, api, token)?;
     host.descends(commit, head).map_err(|failure| {
-        let shown = host.get_one(&format!("git/commits/{head}"));
-        if shown.is_ok_and(|seen| seen["sha"].as_str() == Some(head)) {
-            failure
-        } else {
-            Failure::new(format!(
+        match host.get_one(&format!("git/commits/{head}")) {
+            Ok(seen) if seen["sha"].as_str() == Some(head) => failure,
+            Err(shown) if !unknown_to_host(&shown) => Failure {
+                why: format!(
+                    "asking the host how {} and main at {} stand failed: {}, and asking it \
+                     for main at {} failed too: {}",
+                    git::short(commit),
+                    git::short(head),
+                    failure.why,
+                    git::short(head),
+                    shown.why
+                ),
+                lines: failure.lines.into_iter().chain(shown.lines).collect(),
+            },
+            _ => Failure::new(format!(
                 "the host didn't show main at {} to the account's token, so its word on {} \
                  can't be read",
                 git::short(head),
                 git::short(commit)
-            ))
+            )),
         }
     })
+}
+
+/// Curl's exit for an answer file that isn't there, as an API served from
+/// files says it knows no such commit.
+const NO_ANSWER_FILE: &str = "(exit status: 37)";
+
+/// Whether an ask of main's host failed by its saying it knows no such
+/// commit: curl's own line for each failed answer names its HTTP code, and
+/// an API served from files has no answer file for it. Only the ask itself
+/// can say so; a step before it, such as the account's token command, may
+/// fail with any exit and print anything.
+pub fn unknown_to_host(failure: &Failure) -> bool {
+    let Some(how) = failure
+        .why
+        .strip_prefix(ASKING_THE_HOST)
+        .and_then(|rest| rest.strip_prefix(" failed "))
+    else {
+        return false;
+    };
+    how == NO_ANSWER_FILE
+        || failure
+            .lines
+            .iter()
+            .any(|line| line.trim_end().ends_with(" answered 404"))
 }
 
 fn keep(config: &Config, head: &str, found: &Found, from: Option<&str>) -> Result<(), Failure> {
@@ -587,6 +626,38 @@ fn allowed(left: Duration) -> Option<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_host_s_404_says_it_knows_no_such_commit() {
+        let failed = |line: &str| Failure {
+            why: "reading main's folder from the host failed (exit status: 22)".into(),
+            lines: vec![line.to_owned()],
+        };
+        let unfiled = Failure::new("reading main's folder from the host failed (exit status: 37)");
+        assert!(
+            unknown_to_host(&unfiled),
+            "an API served from files with no answer for the commit wasn't read as not knowing it"
+        );
+        let compare = "https://api.example/repos/kestrel/core/compare/a...b";
+        assert!(
+            unknown_to_host(&failed(&format!("{compare} answered 404"))),
+            "a 404 wasn't read as a commit the host doesn't know"
+        );
+        for code in ["429", "500", "000", "4040"] {
+            assert!(
+                !unknown_to_host(&failed(&format!("{compare} answered {code}"))),
+                "a {code} was read as a commit the host doesn't know"
+            );
+        }
+        let token = Failure {
+            why: "asking for a token failed (exit status: 37)".into(),
+            lines: vec![format!("{compare} answered 404")],
+        };
+        assert!(
+            !unknown_to_host(&token),
+            "a token command's failure was read as the host not knowing the commit"
+        );
+    }
 
     #[test]
     fn a_comparison_asks_for_no_commit_or_file_it_doesnt_read() {

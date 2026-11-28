@@ -379,7 +379,7 @@ pub fn is_commit(name: &str) -> bool {
 /// which only root reads, rather than in its arguments.
 fn ask(config: &Config, token: &str) -> Result<String, Failure> {
     let main = format!("refs/heads/{}", config.branch);
-    let said = git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+    let said = git::retried(&config.fetch_again, std::thread::sleep, || {
         let mut command = git::git(&Repo::main(config));
         command
             .env("GIT_CONFIG_COUNT", "1")
@@ -458,7 +458,7 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
     let began = std::time::SystemTime::now();
     let timer = std::time::Instant::now();
     let mut attempts = 0;
-    let tried = git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+    let tried = git::retried(&config.fetch_again, std::thread::sleep, || {
         attempts += 1;
         let mut command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
         git::ending_stalls(&mut command);

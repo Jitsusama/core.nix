@@ -7,6 +7,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// The kind of system the machine runs, which decides how it's switched.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -122,6 +123,12 @@ pub struct Config {
     /// doesn't answer: four minutes unless given.
     #[serde(default = "silent_for")]
     pub silent_for: u64,
+    /// How long a failed fetch waits before each try again: always
+    /// `git::FETCH_AGAIN`, since no config file may name it. Only the tests
+    /// shorten it, where a fetch that can never succeed would otherwise
+    /// wait out a minute and a quarter of real time.
+    #[serde(skip, default = "fetch_again")]
+    pub fetch_again: Vec<Duration>,
     /// The programs it runs, by their paths in the store.
     pub tools: Tools,
     /// How a command is run in an account's login session, where a Mac's
@@ -378,6 +385,10 @@ pub struct Session {
 
 fn silent_for() -> u64 {
     240
+}
+
+fn fetch_again() -> Vec<Duration> {
+    crate::git::FETCH_AGAIN.to_vec()
 }
 
 impl Config {
