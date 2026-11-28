@@ -483,11 +483,7 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
         Path::new("."),
         &["merge-base", commit, "refs/remotes/origin/main"],
     )?;
-    let listed = git_in(
-        Path::new("."),
-        &["diff", "--name-only", base.trim(), commit],
-    )?;
-    let ours: Vec<String> = listed.lines().map(str::to_owned).collect();
+    let ours = fates::changed(&git_here(Path::new(".")), base.trim(), commit).ok()?;
     let crates = Crates::at(Path::new("."), commit);
     let now = crate::state::now();
     let mut gates = gates(&folder()?);
@@ -551,22 +547,8 @@ fn judged_by(commit: &str) -> Vec<Fate> {
 /// The paths the change at `commit` in `folder` renamed or deleted since
 /// it left origin's main, by their old names.
 fn gone_since_main(folder: &Path, commit: &str) -> Option<Vec<String>> {
-    let git = |arguments: &[&str]| git_in(folder, arguments);
-    let base = git(&["merge-base", commit, "refs/remotes/origin/main"])?;
-    let said = git(&[
-        "diff",
-        "--name-status",
-        "-M",
-        "--diff-filter=DR",
-        base.trim(),
-        commit,
-    ])?;
-    Some(
-        said.lines()
-            .filter_map(|line| line.split('\t').nth(1))
-            .map(str::to_owned)
-            .collect(),
-    )
+    let base = git_in(folder, &["merge-base", commit, "refs/remotes/origin/main"])?;
+    fates::gone(&git_here(folder), base.trim(), commit).ok()
 }
 
 /// What a `gate` shares with a change `merging`: the files they both
@@ -750,15 +732,21 @@ fn placed(gates: &[Gate], here: &Path, passed: Option<u64>, now: u64) -> Places 
 /// The files a gate's commit changes from where it left origin's main, as
 /// its own tree's repository says.
 fn files_of(gate: &Gate) -> Option<Vec<String>> {
-    let git = |arguments: &[&str]| git_in(&gate.folder, arguments);
-    let base = git(&["merge-base", &gate.commit, "refs/remotes/origin/main"])?;
-    let files = git(&["diff", "--name-only", base.trim(), &gate.commit])?;
-    Some(files.lines().map(str::to_owned).collect())
+    let base = git_in(
+        &gate.folder,
+        &["merge-base", &gate.commit, "refs/remotes/origin/main"],
+    )?;
+    fates::changed(&git_here(&gate.folder), base.trim(), &gate.commit).ok()
+}
+
+/// `git_in` at `folder`, as `fates::changed` and `fates::gone` run it.
+fn git_here(folder: &Path) -> impl Fn(&[&str]) -> Result<String, ()> + '_ {
+    move |arguments| git_in(folder, arguments).ok_or(())
 }
 
 /// What git says in `folder`, or nothing when it fails, its paths as they
-/// are named rather than C-quoted, so one in a fate's folder still starts
-/// with the folder.
+/// are named rather than C-quoted for a byte over 0x7f, so one in a fate's
+/// folder still starts with the folder (with `-z`, any: `fates::changed`).
 fn git_in(folder: &Path, arguments: &[&str]) -> Option<String> {
     let ran = Command::new("git")
         .arg("-C")

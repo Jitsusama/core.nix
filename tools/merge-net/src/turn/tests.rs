@@ -190,6 +190,64 @@ fn a_head_whose_change_main_took_rebased_counts_as_merged() {
 }
 
 #[test]
+fn a_name_git_would_quote_is_read_whole_and_keeps_its_fate() {
+    // git quotes a name holding `"`, `\`, a tab or a newline whatever
+    // core.quotePath says, and a quoted name never starts with its folder.
+    use crate::tests::git_in;
+    let repo = std::env::temp_dir().join(format!("merge-net-quoted-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&repo);
+    let site = repo.join("modules/mycelium/site");
+    fs::create_dir_all(&site).unwrap();
+    git_in(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(site.join("old \"one\".js"), "a map's own words\n").unwrap();
+    fs::write(site.join("z\\gone.js"), "").unwrap();
+    git_in(&repo, &["add", "-A"]);
+    git_in(&repo, &["commit", "-qm", "base"]);
+    git_in(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    fs::create_dir_all(repo.join("modules/elsewhere")).unwrap();
+    git_in(
+        &repo,
+        &[
+            "mv",
+            "modules/mycelium/site/old \"one\".js",
+            "modules/elsewhere/old.js",
+        ],
+    );
+    // Deleted after the rename, which is said with its new name too.
+    fs::remove_file(site.join("z\\gone.js")).unwrap();
+    let named = ["back\\slash.js", "tab\there.js", "new\nline.js"];
+    for name in named {
+        fs::write(site.join(name), name).unwrap();
+    }
+    git_in(&repo, &["add", "-A"]);
+    git_in(&repo, &["commit", "-qm", "moved"]);
+    let gate = Gate {
+        commit: git_in(&repo, &["rev-parse", "HEAD"]),
+        folder: repo.clone(),
+        ..gate(1, "/map", 100)
+    };
+    let (files, gone) = (files_of(&gate), gone_since_main(&repo, &gate.commit));
+    fs::remove_dir_all(&repo).unwrap();
+    let (files, gone) = (files.unwrap_or_default(), gone.unwrap_or_default());
+    let in_the_map = |name: &str| format!("modules/mycelium/site/{name}");
+    assert_eq!(
+        gone,
+        vec![in_the_map("old \"one\".js"), in_the_map("z\\gone.js")],
+        "a quoted name renamed out of the map, or deleted, wasn't read by its old name"
+    );
+    let ours = owned(&["modules/mycelium/site/view.js"]);
+    let mut shared = fates::beside(&fates::fates(), &side(&ours, &[]), &side(&files, &gone));
+    shared.sort();
+    let mut fated: Vec<String> = named.iter().map(|name| in_the_map(name)).collect();
+    fated.extend(gone);
+    fated.sort();
+    assert_eq!(
+        shared, fated,
+        "a name git quotes fell out of the map's fate"
+    );
+}
+
+#[test]
 fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
     // Two changes in different files the map's check is built from each
     // fit its budget's room alone. Were the later to merge while the

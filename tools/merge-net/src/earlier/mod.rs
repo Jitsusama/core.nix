@@ -15,8 +15,8 @@ use std::process::Command;
 
 use crate_reach::Crates;
 
-use crate::rules::fates::Fate;
-use crate::{candidates, git, gone, lines, patch_id, ready, rules, stands};
+use crate::rules::fates::{self, Fate};
+use crate::{candidates, git, patch_id, ready, rules, stands};
 
 /// The record of the run that passed at an earlier commit of `commit`'s
 /// change and speaks for it on `main` as `ready` takes one, since main
@@ -52,8 +52,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     let branched = git(&["merge-base", main, commit])?;
     let behind = branched != main;
     let stands = stands(commit, main, behind);
-    let files = lines(&git(&["diff", "--name-only", &branched, commit])?);
-    let renamed = gone(&branched, commit)?;
+    let files = fates::changed(&git, &branched, commit)?;
+    let renamed = fates::gone(&git, &branched, commit)?;
     let at = |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
     let at_head = |file: &str| at(commit, file);
     let at_main = |file: &str| at(main, file);
@@ -62,8 +62,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // What main did since `base`: the files it changed and the paths it
     // took away.
     let since = |base: &str| {
-        let since = lines(&git(&["diff", "--name-only", base, main]).ok()?);
-        let taken_away = gone(base, main).ok()?;
+        let since = fates::changed(&git, base, main).ok()?;
+        let taken_away = fates::gone(&git, base, main).ok()?;
         Some((since, taken_away))
     };
     let id_of = |base: &str, candidate: &str| patch_id(Path::new("."), base, candidate);

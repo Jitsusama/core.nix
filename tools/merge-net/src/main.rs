@@ -331,7 +331,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     if !ready::built_there(&ready::record(&commit), &on_main) {
         return by_change(&commit, &main, &on_main);
     }
-    let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
+    let files = rules::fates::changed(&git, &main, &commit)?;
     Ok(may_merge(
         &commit,
         &main,
@@ -578,23 +578,6 @@ fn status() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// The paths renamed or deleted from `base` to `head`, by their old names.
-fn gone(base: &str, head: &str) -> Result<Vec<String>, String> {
-    let said = git(&[
-        "diff",
-        "--name-status",
-        "-M",
-        "--diff-filter=DR",
-        base,
-        head,
-    ])?;
-    Ok(said
-        .lines()
-        .filter_map(|line| line.split('\t').nth(1))
-        .map(str::to_owned)
-        .collect())
-}
-
 fn lines(text: &str) -> Vec<String> {
     text.lines()
         .filter(|line| !line.is_empty())
@@ -680,7 +663,8 @@ fn git(arguments: &[&str]) -> Result<String, String> {
 /// What git says, run in the repo at `repo`.
 fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     // Paths come back as they are named, not C-quoted for a byte over
-    // 0x7f, so one in a fate's folder still starts with the folder.
+    // 0x7f, so one in a fate's folder still starts with the folder; one
+    // holding a quote or a control byte needs `-z` too (`fates::changed`).
     let ran = Command::new("git")
         .arg("-C")
         .arg(repo)
