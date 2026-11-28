@@ -2,13 +2,16 @@
 # stand-in for its node, and wedges and crashes it: a host whose loop stops
 # pinging the watchdog is killed and started again, and one that keeps
 # crashing stays down once its start limit is spent rather than spinning,
-# while one whose command the kernel kills for memory stays up. Only
-# systemd's own manager and the kernel show these, which is why this is a
-# VM test; the unit's values, both hosts', are
-# pi-hosts-start-with-the-session's, and that a host killed as the watchdog
-# kills one resumes everything it held is the harness's own killed-host test. The stand-in, pi-hosts-recover-host.sh,
-# says ready and pings as the harness's host does. The tests are
-# pi-hosts-recover-vm-test.py, which pytest runs inside the driver.
+# while one whose command the kernel kills for memory stays up. It runs the
+# harness's .mjs entry, or a former harness's .ts where there's no .mjs, as
+# node itself, and is skipped where there's neither. Only systemd's own
+# manager and the kernel show these, which is why this is a VM test; the
+# unit's values, both hosts', are pi-hosts-start-with-the-session's, and that
+# a host killed as the watchdog kills one resumes everything it held is the
+# harness's own killed-host test. The stand-in, pi-hosts-recover-host.sh,
+# says ready and pings as the harness's host does, and records the entry it
+# was given. The tests are pi-hosts-recover-vm-test.py, which pytest runs
+# inside the driver.
 { self, pkgs }:
 let
   inherit (pkgs) lib;

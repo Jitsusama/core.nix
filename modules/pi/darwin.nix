@@ -162,7 +162,13 @@ let
     fi
     { /usr/bin/tail -n 2 "$starts" 2>/dev/null; echo "$now"; } >"$starts.new"
     /bin/mv -f "$starts.new" "$starts"
-    if [ ! -e ${lib.escapeShellArg (launch.entry home)} ]; then
+    # The .mjs, else the .ts of a harness from before it (host-launch.nix's
+    # formerEntry).
+    if [ -e ${lib.escapeShellArg (launch.entry home)} ]; then
+      entry=${lib.escapeShellArg (launch.entry home)}
+    elif [ -e ${lib.escapeShellArg (launch.formerEntry home)} ]; then
+      entry=${lib.escapeShellArg (launch.formerEntry home)}
+    else
       echo "pi-host: the harness has no host here yet; looking again in ten minutes"
       /bin/sleep 600
       exit 1
@@ -194,9 +200,9 @@ let
       )
     }  ${
       lib.escapeShellArgs (
-        [ "${named host}/bin/pi-host" ] ++ launch.words home host host.heapMb [ ] [ kind ]
+        [ "${named host}/bin/pi-host" ] ++ launch.nodeFlags host { inherit (host) heapMb; }
       )
-    }
+    } "$entry" ${lib.escapeShellArg kind}
   '';
 
   hostOf = realm: kind: {

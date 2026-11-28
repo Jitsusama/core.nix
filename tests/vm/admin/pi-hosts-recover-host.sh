@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Stands in for the node a pi host runs on, in pi-hosts-recover's VM. It
-# takes the host's command line, writes its pid to its kind's starts as it
-# begins, says it's ready as the host does once it listens, and pings the
+# takes the host's command line, writes its pid to its kind's starts and the
+# harness's program it was given to its kind's entries as it begins, says
+# it's ready as the host does once it listens, and pings the
 # watchdog each second from its own loop. A file named hang in its folder
 # makes one start stop pinging while it stays alive, as a host whose loop
 # is wedged does, and one named deaf does the same deaf to the watchdog's
@@ -14,11 +15,13 @@
 # one start exit 1 when it's stopped, as a host's stop did when a write
 # threw on its way out.
 kind="${*: -1}"
+entry="${*: -2:1}"
 dir="$HOME/stand-in"
 mkdir -p "$dir"
 # Only one start fails its stop, so the one it restarts into stops cleanly.
 trap 'if mv "$dir/fail-stop" "$dir/failed-stop" 2>/dev/null; then exit 1; fi; exit 0' TERM
 echo "$$" >>"$dir/$kind.starts"
+echo "$entry" >>"$dir/$kind.entries"
 if [ -e "$dir/refuse" ]; then
   exit 78
 fi

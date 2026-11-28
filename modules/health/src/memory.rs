@@ -13,12 +13,14 @@ use serde::{Deserialize, Serialize};
 /// The programs watched, by the last part of the path each was started by,
 /// since the shell's own name in `/proc` is its wrapper's, cut short; and
 /// the pi host and each conversation's own process, which are started by
-/// the host's node, so they are known by the program it runs (`HOST`).
+/// the host's node, so they are known by the program it runs (`HOSTS`).
 pub const WATCHED: [&str; 4] = ["pi", "quickshell", "pi-host", "pi-conversation"];
 
-/// The harness's program a pi host's node runs, for the host and, with
-/// `--child` after it, for each conversation's own process.
-const HOST: &str = "pi-host.ts";
+/// The harness's programs a pi host's node runs, for the host and, with
+/// `--child` after it, for each conversation's own process: the entry a
+/// host's unit starts, and the one it started before, which a host and
+/// its conversations keep until they next start.
+const HOSTS: [&str; 2] = ["pi-host.mjs", "pi-host.ts"];
 
 /// The ages copies are grouped by, in seconds: under an hour, under six
 /// hours, under a day, and older.
@@ -151,7 +153,7 @@ fn started_by(process: &Path) -> Option<String> {
         let mut after = words.skip_while(|word| word.starts_with('-'));
         if after
             .next()
-            .is_some_and(|program| last_part(&program) == HOST)
+            .is_some_and(|program| HOSTS.contains(&last_part(&program).as_str()))
         {
             let child = after.any(|word| word == "--child");
             return Some(if child { "pi-conversation" } else { "pi-host" }.to_owned());
@@ -551,6 +553,52 @@ mod tests {
             2,
             "another node program, one named like the host's, or the host's \
              program open in an editor isn't pi: {seen:?}"
+        );
+    }
+
+    #[test]
+    fn a_host_and_its_conversations_started_by_the_mjs_entry_are_found_too() {
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        fs::write(proc.path().join("uptime"), "7200.55 14000.10\n").expect("uptime");
+        let node = "/nix/store/y-pi-host-runtime-1.5.0/libexec/pi-host/node";
+        let flags = "--disable-sigusr1\0--max-old-space-size=4096";
+        process(
+            proc.path(),
+            30,
+            &format!("{node}\0{flags}\0/srv/harness/scripts/pi-host.mjs\0--child\0"),
+            Some(500_000),
+            0,
+        );
+        process(
+            proc.path(),
+            31,
+            &format!("{node}\0{flags}\0scripts/pi-host.mjs\0realm\0"),
+            Some(600_000),
+            0,
+        );
+        process(
+            proc.path(),
+            32,
+            &format!("{node}\0scripts/not-pi-host.mjs\0--child\0"),
+            Some(75),
+            0,
+        );
+        let seen = look(proc.path());
+        let kib = |name: &str| -> Vec<u64> { seen[name].iter().map(|held| held.kib).collect() };
+        assert_eq!(
+            kib("pi-conversation"),
+            vec![500_000],
+            "a conversation's own process, by the .mjs entry and --child"
+        );
+        assert_eq!(
+            kib("pi-host"),
+            vec![600_000],
+            "the host, by the .mjs entry alone"
+        );
+        assert_eq!(
+            seen.len(),
+            2,
+            "a program only named like the .mjs entry isn't pi: {seen:?}"
         );
     }
 

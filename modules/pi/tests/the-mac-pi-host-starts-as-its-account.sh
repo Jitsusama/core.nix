@@ -8,15 +8,17 @@
 # move only a log past 10 MB aside, wait before a fourth start in ten
 # minutes, say why and fail when the harness is missing or the temporary or
 # cache folder isn't the account's alone, naming that folder, and otherwise
-# become the node in its own place, with the words it was given and every
+# become the node in its own place, giving it the harness's .mjs, or its .ts
+# where the harness is from before the .mjs, the words it was given and every
 # value of the realm's environment whole, whatever the shell would read in
 # it, and none of the variables that would run code as node starts.
-# usage: the-mac-pi-host-starts-as-its-account.sh <start> <entry> <shell>...
+# usage: the-mac-pi-host-starts-as-its-account.sh <start> <entry> <former entry> <shell>...
 set -euo pipefail
 
 start=$1
 entry=$2
-shift 2
+former_entry=$3
+shift 3
 
 fail() {
   echo "the Mac's pi host start $*" >&2
@@ -98,6 +100,9 @@ logs=${work}/Logs
 log=${logs}/host.log
 present=${work}/entry
 touch "${present}"
+# A harness from before the .mjs has only the .ts, which isn't there until
+# the test puts it there.
+former=${work}/former-entry
 
 # The start as the Mac reads it, with each of its Mac paths led elsewhere.
 sed \
@@ -114,18 +119,24 @@ sed \
   -e "s|/usr/bin/env|${env_program}|g" \
   -e "s|/Users/someone/Library/Logs/pi-host-one-attended.log|${log}|g" \
   -e "s|${entry}|${present}|g" \
+  -e "s|${former_entry}|${former}|g" \
   -e "s|/nix/store/[a-z0-9]*-pi-host/bin/pi-host|${stand}/node|g" \
   "${start}" >"${work}/start"
 
 grep -q "${stand}/node" "${work}/start" || fail "doesn't become the realm's node named pi-host"
+grep -qF "${former}" "${work}/start" || fail "doesn't name the harness's former entry"
 
-# The words the host's node has to be given.
-expected_words=$(printf '%s\n' \
-  --disable-sigusr1 \
-  --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
-  --max-old-space-size=8192 \
-  "${present}" \
-  attended)
+# The words the host's node has to be given, running the harness's entry
+# given.
+words_for() {
+  printf '%s\n' \
+    --disable-sigusr1 \
+    --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+    --max-old-space-size=8192 \
+    "$1" \
+    attended
+}
+expected_words=$(words_for "${present}")
 
 # Fails unless the environment the node was given holds the name with the
 # value, saying what it held instead.
@@ -208,6 +219,19 @@ for shell in "$@"; do
   slept=$(slept)
   [[ ${slept} == 600 ]] || fail "under ${name} slept '${slept}', not ten minutes, for the harness"
   [[ ! -e "${work}/words" ]] || fail "under ${name} ran node with no harness"
+
+  # A harness from before the .mjs: node is given its .ts, so a harness
+  # rolled back past the .mjs still starts.
+  fresh
+  mv "${present}" "${present}.away"
+  touch "${former}"
+  run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed with only the former entry"
+  rm "${former}"
+  mv "${present}.away" "${present}"
+  words=$(<"${work}/words")
+  former_words=$(words_for "${former}")
+  [[ ${words} == "${former_words}" ]] ||
+    fail "under ${name} gave node ${words} with only the former entry"
 
   # A temporary folder that isn't the account's alone is refused, rather
   # than putting the host's socket where another may reach it.

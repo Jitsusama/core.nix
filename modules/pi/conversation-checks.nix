@@ -175,7 +175,11 @@ in
         let
           unit = services."pi-conversation-one-${kind}@" or { Service = { }; };
           service = unit.Service;
-          execStart = first (service.ExecStart or "");
+          # A shell choosing the harness's .mjs, else its .ts, as a host's
+          # does (pi-hosts-start-with-the-session), then node's own words.
+          started = lib.splitString "' pi-host " (first (service.ExecStart or ""));
+          shell = lib.head started;
+          execStart = lib.last started;
           environment = lib.toList (service.Environment or [ ]);
         in
         service.Type or null == "exec"
@@ -199,10 +203,13 @@ in
         && !(unit.Unit ? BindsTo)
         && !(unit.Unit ? Requires)
         && !(unit.Unit ? Requisite)
+        && lib.length started == 2
+        && lib.hasPrefix "${pkgs.dash}/bin/dash -c 'if [ -e /" shell
+        && lib.hasInfix "/scripts/pi-host.mjs; else e=/" shell
+        && lib.hasSuffix ''/scripts/pi-host.ts; fi; exec "$$@" "$$e" --child'' shell
         && lib.hasPrefix "${node} --disable-sigusr1 --experimental-async-context-frame " execStart
         && !(lib.hasInfix "--inspect" (lib.replaceStrings [ "_" ] [ "-" ] execStart))
-        && lib.hasInfix " '--max-old-space-size=3072' /" execStart
-        && lib.hasSuffix "/scripts/pi-host.ts --child" execStart
+        && lib.hasSuffix " '--max-old-space-size=3072'" execStart
         &&
           lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ])) == lib.sort lib.lessThan (
             [
@@ -278,8 +285,11 @@ in
           start = startOf growing "pi-conversation-set-${kind}@";
           proven = growing."pi-conversation-set-${kind}@".Unit.X-HeapGrowthTakenBy or "";
         in
-        lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
-        && lib.hasSuffix "/scripts/pi-host.ts --child" start
+        # The shell before node's words chooses the harness's entry and
+        # ends them with --child (pi-conversations-run-apart), so node's
+        # own words end the command.
+        lib.hasInfix "/scripts/pi-host.mjs; else e=/" start
+        && lib.hasSuffix " '--max-old-space-size=4096' '--heap-growing-percent=30'" start
         && proven == proof
         && builtins.getContext proven == builtins.getContext proof;
       # Whether a unit is there, its command leaves V8 its own growth and it
@@ -292,7 +302,7 @@ in
       # Taken when the realm's conversation holds the percent's word.
       taken =
         realm: percent:
-        lib.hasInfix " '--heap-growing-percent=${toString percent}' /" (
+        lib.hasSuffix " '--heap-growing-percent=${toString percent}'" (
           startOf growing "pi-conversation-${realm}-attended@"
         );
       # Refused when a realm naming it doesn't evaluate at all: each is a
