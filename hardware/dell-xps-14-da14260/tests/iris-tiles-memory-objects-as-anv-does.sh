@@ -7,9 +7,10 @@
 # alone and not as an else, and the preference must follow it. Both sides
 # are read, since the canvas breaks whichever of them drifts: anv must
 # still prefer 4K tiles for an image it exports with no modifier, and
-# iris must keep the constant-bandwidth branch the patch moved. The same
-# read of Mesa as released must then fail for that else and nothing else,
-# so each run shows the check catches the bug, not some other failure.
+# iris must keep the constant-bandwidth branch the patch moved. Mesa as
+# released is then read too: its anv must pass as it stands, and its iris
+# must fail at that else, so each run shows the check catches the bug,
+# not some other failure.
 # usage: iris-tiles-memory-objects-as-anv-does.sh <iris_resource.c> <anv_image.c>
 #          <released iris_resource.c> <released anv_image.c>
 set -euo pipefail
@@ -37,10 +38,12 @@ between() {
   ' "$3"
 }
 
-# Judges one iris_resource.c and anv_image.c, printing why and exiting 1
-# at the first thing that would leave the canvas a checkerboard.
-judge() {
-  local resource=$1 image=$2 configure branch init exported condition
+# Each judges one source, printing why and exiting 1 at the first thing
+# that would leave the canvas a checkerboard. Every test exits on its own,
+# so each reads the same whether set -e holds where it's called or not.
+judgeIris() {
+  local resource=$1 configure branch
+  [[ -r $resource ]] || unreadable "$resource can't be read"
   configure=$(between 'iris_resource_configure_main(' '}' "$resource")
   [[ -n $configure ]] || unreadable "iris_resource.c has no iris_resource_configure_main"
   if grep -qF "else if $memoryObject" <<<"$configure"; then
@@ -56,7 +59,11 @@ judge() {
   grep -A1 -xF '   else if (templ->bind & PIPE_BIND_CONST_BW)' <<<"$configure" |
     grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' ||
     broken "iris lost the constant-bandwidth branch the patch moved"
+}
 
+judgeAnv() {
+  local image=$1 init exported condition
+  [[ -r $image ]] || unreadable "$image can't be read"
   init=$(between 'anv_image_init(' '}' "$image")
   [[ -n $init ]] || unreadable "anv_image.c has no anv_image_init"
   exported=$(between '   if (image->vk.external_handle_types != 0 &&' '   }' <(echo "$init"))
@@ -70,12 +77,15 @@ judge() {
     broken "anv no longer prefers 4K tiles for an image it exports with no modifier"
 }
 
-judge "$1" "$2"
+judgeIris "$1"
+judgeAnv "$2"
+judgeAnv "$4"
 status=0
-# shellcheck disable=SC2310 # judge failing is the result sought here, and it exits on its own.
-released=$(judge "$3" "$4") || status=$?
+# shellcheck disable=SC2310 # judgeIris failing is the result sought here, and it exits on its own.
+released=$(judgeIris "$3") || status=$?
 if ((status == 0)); then
-  echo "The check passes on Mesa as released, so it can't tell the patch is there."
+  echo "Mesa as released passes too, so it may carry the fix: read its" \
+    "iris_resource_configure_main, and take out the patch and this check if it does."
   exit 1
 fi
 [[ $released == "$shadowed, "* ]] || {
