@@ -220,6 +220,9 @@ in
           Timer = {
             OnCalendar = "hourly";
             RandomizedDelaySec = "10min";
+            # Fixed, the delay is a steady offset of its own, keeping this from starting in
+            # the same second as core's other short timers, which held Joel's apps up.
+            FixedRandomDelay = true;
             # An hour slept through runs once the machine wakes.
             Persistent = true;
           };

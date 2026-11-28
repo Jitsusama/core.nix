@@ -46,6 +46,13 @@
   };
   systemd.timers.coredump-forget-node = {
     wantedBy = [ "timers.target" ];
-    timerConfig.OnCalendar = "*:0/15";
+    timerConfig = {
+      OnCalendar = "*:0/15";
+      # A steady offset of its own keeps this from starting in the same second as core's
+      # other short timers, which held Joel's apps up.
+      RandomizedDelaySec = "12min";
+      FixedRandomDelay = true;
+      AccuracySec = "1s";
+    };
   };
 }

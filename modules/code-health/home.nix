@@ -176,9 +176,15 @@ in
     systemd.user.timers.code-health = {
       Unit.Description = "Reads how messy each repository is getting, each hour";
       Timer = {
-        # On the hour, so the hour's file is fresh when `cadence hour` reads
-        # it at ten past, and the 17:00 read is in before cadence's day.
+        # Near the top of the hour, so the hour's file is fresh when `cadence hour`
+        # reads it at ten past, and the 17:00 read is in before cadence's day.
         OnCalendar = "hourly";
+        # A steady offset of its own keeps this from starting in the same second as
+        # core's other short timers, which held Joel's apps up. Under five minutes,
+        # it still lands before cadence's read at ten past.
+        RandomizedDelaySec = "5min";
+        FixedRandomDelay = true;
+        AccuracySec = "1s";
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];

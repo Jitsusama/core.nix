@@ -656,6 +656,9 @@ in
       OnCalendar = "hourly";
       Persistent = true;
       RandomizedDelaySec = 300;
+      # Fixed, the delay is a steady offset of its own, keeping this from starting in the
+      # same second as core's other short timers, which held Joel's apps up.
+      FixedRandomDelay = true;
     };
   };
 

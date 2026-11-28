@@ -122,13 +122,29 @@ in
 
   systemd.user.timers.pain-hear = {
     Unit.Description = "Hears what hurt Joel in his pi sessions, every five minutes";
-    Timer.OnCalendar = "*:0/5";
+    Timer = {
+      OnCalendar = "*:0/5";
+      # A steady offset of its own keeps this from starting in the same second as core's
+      # other short timers, which held Joel's apps up. Under four minutes, the run before
+      # cadence's hour reads hour.json at ten past still starts by nine past, and a run
+      # ends in seconds.
+      RandomizedDelaySec = "4min";
+      FixedRandomDelay = true;
+      AccuracySec = "1s";
+    };
     Install.WantedBy = [ "timers.target" ];
   };
 
   systemd.user.timers.pain-points = {
     Unit.Description = "Names what slowed Joel most in the launcher, pi and Chrome, every ten minutes";
-    Timer.OnCalendar = "*:0/10";
+    Timer = {
+      OnCalendar = "*:0/10";
+      # A steady offset of its own keeps this from starting in the same second as core's
+      # other short timers, which held Joel's apps up.
+      RandomizedDelaySec = "8min";
+      FixedRandomDelay = true;
+      AccuracySec = "1s";
+    };
     Install.WantedBy = [ "timers.target" ];
   };
 }

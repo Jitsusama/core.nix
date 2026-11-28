@@ -86,8 +86,8 @@ onLinux {
       );
 
   # Ended sessions' work trees are swept in a unit of their own, among
-  # agents' commands, at the top of each hour, rather than on a pi host's
-  # one thread; a Mac, with no systemd, gets none yet. That the
+  # agents' commands, once each hour at a steady offset, rather than on a
+  # pi host's one thread; a Mac, with no systemd, gets none yet. That the
   # hosts stand down after it is the harness's to prove, in its tests.
   pi-sweeps-work-trees-in-a-unit-of-its-own =
     let
@@ -188,12 +188,15 @@ onLinux {
       ];
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GiB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or a variable bash reads as it starts, or reaches a Mac."
+      "pi's tree sweep doesn't run only once each hour by the wall clock at a steady offset of its own, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GiB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or a variable bash reads as it starts, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
           timer.Timer == {
             OnCalendar = "hourly";
+            RandomizedDelaySec = "45min";
+            FixedRandomDelay = true;
+            AccuracySec = "1s";
             Persistent = true;
           }
         && service.Service.Type == "oneshot"

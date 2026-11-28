@@ -2514,7 +2514,11 @@ in
       Unit.Description = "Weighs the shell every ten minutes";
       Timer = {
         OnCalendar = "*:0/10";
-        AccuracySec = "1min";
+        # A steady offset of its own keeps this from starting in the same second as
+        # core's other short timers, which held Joel's apps up.
+        RandomizedDelaySec = "8min";
+        FixedRandomDelay = true;
+        AccuracySec = "1s";
       };
       Install.WantedBy = [ "timers.target" ];
     };

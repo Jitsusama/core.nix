@@ -152,7 +152,11 @@ in
       Unit.Description = "Notes every five minutes the windows joined to sessions other machines hold";
       Timer = {
         OnCalendar = "*:0/5";
-        AccuracySec = "10s";
+        # A steady offset of its own keeps this from starting in the same second as
+        # core's other short timers, which held Joel's apps up.
+        RandomizedDelaySec = "4min";
+        FixedRandomDelay = true;
+        AccuracySec = "1s";
       };
       Install.WantedBy = [ "timers.target" ];
     };
@@ -164,9 +168,9 @@ in
     # providers whose trees it judged, and while that stamp is under two
     # hours old a host whose providers it names, every one, stands its own
     # sweeps down, so stopping this timer, or a sweep that keeps failing, hands
-    # sweeping back to the hosts. It runs at the top of each hour by the
-    # wall clock the stamp is dated by, which also fires on waking when a
-    # sleep took the hour.
+    # sweeping back to the hosts. It runs once each hour by the wall clock
+    # the stamp is dated by, at a steady offset into the hour, which also
+    # fires on waking when a sleep took the hour.
     systemd.user.services.pi-sweep = {
       Unit = {
         Description = "Sweeps ended pi sessions' work trees";
@@ -268,6 +272,12 @@ in
       Unit.Description = "Sweeps ended pi sessions' work trees every hour";
       Timer = {
         OnCalendar = "hourly";
+        # A steady offset of its own keeps this from starting in the same second as
+        # core's other short timers, which held Joel's apps up. Fixed, it keeps the
+        # sweeps an hour apart, well inside the two hours before the hosts take over.
+        RandomizedDelaySec = "45min";
+        FixedRandomDelay = true;
+        AccuracySec = "1s";
         # An hour the machine was off or logged out through runs once it's
         # back, as waking already does for a realtime timer.
         Persistent = true;
