@@ -11,10 +11,17 @@
 onLinux {
   # cargo builds a program with the config an account gets, and mold is the
   # linker that wrote it, through the linker setting rather than rustflags, which
-  # would keep a crate build cache (World's cargo-wrapper) from serving any crate.
+  # would keep a crate build cache from serving any crate. mold still writes it
+  # when rustflags ask for another linker, as rustc's own -fuse-ld does.
   cargo-links-with-mold =
     let
-      files = (account workstation).home.file;
+      settings = (account workstation).home;
+      files = settings.file;
+      # rustflags the account's environment sets, which a cache reads as the
+      # config file's.
+      flagged = builtins.filter (pkgs.lib.hasInfix "RUSTFLAGS") (
+        builtins.attrNames settings.sessionVariables
+      );
     in
     pkgs.runCommandCC "cargo-links-with-mold"
       {
@@ -34,10 +41,16 @@ onLinux {
         echo 'fn main() {}' > hello/src/main.rs
         cargo build --offline --quiet --manifest-path hello/Cargo.toml
         readelf -p .comment hello/target/debug/hello | grep mold
+        RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo build --offline --quiet --manifest-path hello/Cargo.toml
+        readelf -p .comment hello/target/debug/hello | grep mold
         if grep -q rustflags .cargo/config.toml; then
           echo 'the account config sets rustflags, which turn a crate build cache off' >&2
           exit 1
         fi
+        for name in ${pkgs.lib.escapeShellArgs flagged}; do
+          echo "the account's environment sets $name, which turns a crate build cache off" >&2
+          exit 1
+        done
         touch $out
       '';
 

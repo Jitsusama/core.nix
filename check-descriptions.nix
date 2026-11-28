@@ -767,7 +767,9 @@
     mounts it
   '';
   cargo-links-with-mold = ''
-    cargo links an account's Rust builds with mold, as its linker rather than through rustflags
+    cargo links an account's Rust builds with mold, as its linker rather than through rustflags,
+    and still with mold when rustflags ask for another; the account sets rustflags in neither its
+    config nor its environment
   '';
   changed-checks-names-what-moved = ''
     changed-checks names a check added, changed, removed or broken by its derivation, fails on a
