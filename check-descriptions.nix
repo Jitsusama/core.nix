@@ -1346,6 +1346,10 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-hardware-address-is-made-up = ''
+    no hardware address in the repository could be a real device's, but the ten kept on purpose
+    under a maker's prefix, and a copied one is refused
+  '';
   every-linked-prompt-keeps-key-time = ''
     every Prompt of the shell whose linked() its file calls is given keyNow in its own block, so
     its link's quiet is timed on the launcher's monotonic clock rather than a wall clock that can

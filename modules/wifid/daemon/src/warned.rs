@@ -138,8 +138,8 @@ fn instant(until: u64, now: Instant, wall: SystemTime) -> Option<Instant> {
 mod tests {
     use super::*;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
+    const DESK: &str = "02:00:00:00:01:00";
+    const HALL: &str = "02:00:00:00:02:00";
 
     fn wall(seconds: u64) -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(seconds)
