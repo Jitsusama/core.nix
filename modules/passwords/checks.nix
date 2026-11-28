@@ -31,7 +31,7 @@ onLinux {
   # no typist is named, while the launcher keeps the keys, where another
   # window has them, into a window an agent is beneath, above or below,
   # or into a terminal running one or a multiplexer, or whose kitty can't
-  # say what runs in it, each
+  # say what runs in it or doesn't hold its own address, each
   # type a journal line naming the entry and the window, never the secret;
   # a one-time code says its period, and its detail gives the code, never
   # its seed; a manager signed out is said so and

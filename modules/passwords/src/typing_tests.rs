@@ -63,6 +63,115 @@ fn only_a_kitty_listening_at_an_abstract_address_answers_alone() {
     }
 }
 
+/// /proc/net/unix's head, as Linux writes it above its rows.
+const UNIX_HEAD: &str = "Num       RefCount Protocol Flags    Type St Inode Path";
+
+/// A row of /proc/net/unix: a socket's flags, state, inode and path. Linux
+/// pads the inode to five, but rows are read by their whitespace alone, so
+/// it's written bare, as commands-agree asks of every column in a command.
+fn unix_row(flags: &str, state: &str, inode: u64, path: &str) -> String {
+    format!("0000000000000000: 00000002 00000000 {flags} 0001 {state} {inode} {path}")
+}
+
+#[test]
+fn a_socket_listening_at_an_abstract_name_is_found_by_it() {
+    let unix = [
+        UNIX_HEAD.to_owned(),
+        unix_row("00010000", "01", 4100, "@kitty-90"),
+        unix_row("00010000", "01", 41001, "@kitty-9"),
+        unix_row("00000000", "01", 41002, ""),
+    ]
+    .join("\n");
+    assert_eq!(
+        listening_at(&unix, "@kitty-9"),
+        Some(41001),
+        "kitty-9's listening socket wasn't found by its name in {unix}"
+    );
+}
+
+#[test]
+fn a_connected_socket_at_the_name_isnt_taken_for_the_listening_one() {
+    // A connection kitty accepted shows its listener's name too.
+    let unix = [
+        UNIX_HEAD.to_owned(),
+        unix_row("00000000", "03", 41002, "@kitty-9"),
+        unix_row("00010000", "03", 41003, "@kitty-9"),
+    ]
+    .join("\n");
+    assert_eq!(
+        listening_at(&unix, "@kitty-9"),
+        None,
+        "a connected socket was taken for one listening in {unix}"
+    );
+}
+
+#[test]
+fn a_socket_file_is_never_found_listening() {
+    // A socket's file can be removed and bound again by any program.
+    let unix = [
+        UNIX_HEAD.to_owned(),
+        unix_row("00010000", "01", 41004, "/run/user/1000/kitty-9"),
+    ]
+    .join("\n");
+    for name in ["/run/user/1000/kitty-9", "@kitty-9", "kitty-9"] {
+        assert_eq!(
+            listening_at(&unix, name),
+            None,
+            "the socket file was found listening at {name:?}"
+        );
+    }
+}
+
+#[test]
+fn a_torn_row_of_the_socket_table_is_passed_over() {
+    let unix = [
+        UNIX_HEAD.to_owned(),
+        "0000000000000000: 00000002 00000000 00010000 0001 01".to_owned(),
+        "0000000000000000: 00000002 00000000 0001".to_owned(),
+        "0000000000000000: 00000002 00000000 zz010000 0001 01 41005 @kitty-9".to_owned(),
+        unix_row("00010000", "01", 41006, "@kitty-9"),
+    ]
+    .join("\n");
+    assert_eq!(
+        listening_at(&unix, "@kitty-9"),
+        Some(41006),
+        "a torn row wasn't passed over for the whole one in {unix}"
+    );
+    assert_eq!(
+        listening_at(
+            "0000000000000000: 00000002 00000000 00010000 0001 01 410",
+            "@kitty-9"
+        ),
+        None,
+        "a row torn before its path was found"
+    );
+}
+
+#[test]
+fn only_a_socket_among_kittys_own_files_is_held_by_it() {
+    let links = [
+        "/dev/null",
+        "pipe:[7]",
+        "socket:[41001]",
+        "anon_inode:[eventfd]",
+    ]
+    .map(str::to_owned);
+    assert!(
+        holds_socket(&links, 41001),
+        "kitty's own socket wasn't found among its files"
+    );
+    for inode in [4100, 410_011, 7] {
+        assert!(
+            !holds_socket(&links, inode),
+            "socket {inode} was taken for one among kitty's files"
+        );
+    }
+    assert!(
+        !holds_socket(&[], 41001),
+        "a kitty whose files couldn't be read was taken to hold its socket"
+    );
+}
+
 #[test]
 fn only_the_focused_windows_foreground_is_read() {
     let listed = json!([
@@ -148,7 +257,7 @@ fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
     let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
     let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
     let command = format!("{user}/jobs.slice/jobs-work.slice/pi-spawner-3820109-dc5d.scope");
-    let kittys = format!("{user}/agents.slice/kitty-4248-0.scope");
+    let kittys = format!("{user}/agents.slice/kitty-1-1.scope");
     let app = format!("{user}/app.slice/app-gio-google-chrome-2349662.scope");
     assert!(
         agents("node", &words("/nix/store/x-nodejs/bin/node"), &hosted),
@@ -175,24 +284,24 @@ fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
         "a command in the jobs' slice wasn't an agent's"
     );
     assert!(
-        !agents("zsh", &words("-zsh"), &kittys),
-        "a shell in a scope kitty made for its window was taken for an agent"
+        agents("zsh", &words("-zsh"), &kittys),
+        "a shell in a scope named as kitty's window, in the agents' slice, wasn't an agent's"
     );
     assert!(
         !agents("chrome", &words("/nix/store/x-google-chrome/chrome"), &app),
         "Joel's own Chrome was taken for an agent"
     );
     assert!(
-        agents_group(&format!("{user}/agents.slice/kitty-4248-x.scope")),
-        "a scope only named like kitty's window was let through"
+        agents_group(&format!("{user}/agents.slice/sessions-kitty.service")),
+        "the sessions' kitty's own unit in the agents' slice wasn't an agent's"
     );
 }
 
 #[test]
-fn only_a_kitty_believed_by_its_path_has_its_slice_set_aside() {
-    // The sessions' kitty lives in the agents' slice, so its group is set
-    // aside, but only for the kitty kitten comes with: a name is the
-    // process's own to change.
+fn a_kitty_from_kittens_own_package_in_the_agents_slice_is_an_agents() {
+    // An agent can run kitty's own program from its package, or start it
+    // in the agents' slice, so a kitty there is an agent's like anything
+    // else, and nothing is typed into its windows.
     let user = "0::/user.slice/user-1000.slice/user@1000.service";
     let sessions_kitty = format!("{user}/agents.slice/sessions-kitty.service");
     let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
@@ -200,29 +309,19 @@ fn only_a_kitty_believed_by_its_path_has_its_slice_set_aside() {
     let kitty = "/nix/store/k-kitty-0.50.0/bin/.kitty-wrapped";
     let node = "/nix/store/x-nodejs/bin/node";
     let words = |exe: &str| vec![exe.to_owned()];
+    for group in [&sessions_kitty, &hosted] {
+        assert!(
+            kitty_believed(".kitty-wrapped", kitty, group, Some(package)),
+            "a kitty from kitten's package in {group} wasn't the one kitten would ask"
+        );
+        assert!(
+            agents(".kitty-wrapped", &words(kitty), group),
+            "a kitty from kitten's package in {group} wasn't an agent's"
+        );
+    }
     assert!(
-        !agents_judged(
-            ".kitty-wrapped",
-            kitty,
-            &words(kitty),
-            &sessions_kitty,
-            Some(package)
-        ),
-        "the sessions' kitty, from kitten's package, was taken for an agent"
-    );
-    assert!(
-        agents_judged("kitty", node, &words(node), &hosted, Some(package)),
+        agents("kitty", &words(node), &hosted),
         "an agent renamed kitty in the agents' slice was let through"
-    );
-    assert!(
-        agents_judged(
-            ".kitty-wrapped",
-            kitty,
-            &words(kitty),
-            &sessions_kitty,
-            None
-        ),
-        "a kitty with no kitten to believe it by had its slice set aside"
     );
 }
 

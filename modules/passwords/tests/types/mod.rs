@@ -6,7 +6,8 @@
 //! below it, a session reached by ssh or a multiplexer below it, where
 //! it's X11's, where it's kitty and kitty says an agent or a multiplexer
 //! runs in it, names what isn't its own or can't say what does, where
-//! something named kitty isn't the kitty kitten asks, where another
+//! something named kitty isn't the kitty kitten asks, where kitty's
+//! address is held by another program or by nothing, where another
 //! window may lie over kitty's, where the keys move once the secret is
 //! read, to another window or another of kitty's, and where the secret
 //! comes more than 5 s after its ask;
@@ -16,14 +17,18 @@
 //! niri, the typist and kitty are stand-ins, and each window's process is
 //! one of the test's own, its forebears made as each case needs. They run
 //! in the build's sandbox: run beneath an agent, every window is refused.
-//! Long because each of ISXEG8's refusals is a case here beside the
-//! stand-ins it arranges, and they change together as its terms do: a
-//! split would put every case's desk in one file and its proof in another.
+//! Long because each of ISXEG8's refusals, and each its reviews found
+//! missing, is a case here beside the stand-ins it arranges, and they
+//! change together as its terms do: a split would put every case's desk
+//! in one file and its proof in another.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixDatagram, UnixListener};
+use std::os::fd::IntoRawFd;
+use std::os::linux::net::SocketAddrExt;
+use std::os::unix::net::{SocketAddr, UnixDatagram, UnixListener};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use crate::common::{KEEPING, Running, program, program_copied, until};
@@ -95,6 +100,9 @@ struct Desk {
     // says another has, as when the keys move while the secret is read.
     moves_after: Arc<Mutex<Option<usize>>>,
     started: Vec<u32>,
+    // The stand-in kitties, the test's own children, so the socket each
+    // listens on is bound in the kitty itself.
+    kitties: Vec<Child>,
 }
 
 impl Desk {
@@ -152,6 +160,7 @@ impl Desk {
             holding,
             moves_after,
             started: Vec::new(),
+            kitties: Vec::new(),
         }
     }
 
@@ -304,8 +313,9 @@ impl Desk {
     }
 
     /// A stand-in kitty, a copy of the shell in the folder kitten is in,
-    /// named as Linux names kitty, running `child` as its window's process;
-    /// answers kitty's id and the child's.
+    /// named as Linux names kitty, listening at the address kitty.conf
+    /// names by its pid, running `child` as its window's process; answers
+    /// kitty's id and the child's.
     fn kitty(&mut self, child: &str) -> (u32, u32) {
         self.kitty_with(child, "")
     }
@@ -313,15 +323,42 @@ impl Desk {
     /// A stand-in kitty, as `kitty` starts one, started with `words` too,
     /// as kitty is told where to listen.
     fn kitty_with(&mut self, child: &str, words: &str) -> (u32, u32) {
+        self.kitty_started(child, words, true)
+    }
+
+    /// A stand-in kitty, as `kitty` starts one, listening nowhere, so
+    /// nothing of its own answers at its address.
+    fn kitty_unheard(&mut self, child: &str) -> (u32, u32) {
+        self.kitty_started(child, "", false)
+    }
+
+    /// A stand-in kitty, listening at `@kitty-<pid>` where `listens`, its
+    /// own socket bound in it before it runs, as kitty binds its own.
+    fn kitty_started(&mut self, child: &str, words: &str, listens: bool) -> (u32, u32) {
         let kitty = self.copied(&format!("{KITTY_PACKAGE}/kitty"));
         let said = self.folder.join("kitty-child");
-        let pid = self.start(
-            &kitty,
-            &format!(
-                "-c '{child} & echo $! > \"{}\"; wait' {words}",
-                said.display()
-            ),
-        );
+        let mut command = Command::new(&kitty);
+        command
+            .arg("-c")
+            .arg(format!("{child} & echo $! > \"{}\"; wait", said.display()))
+            .args(words.split_whitespace())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(self.folder.join(STARTED_SAID))
+                    .unwrap(),
+            );
+        if listens {
+            // SAFETY: listening_as_kitty makes only system calls, and
+            // allocates nothing, between the fork and the exec.
+            unsafe { command.pre_exec(listening_as_kitty) };
+        }
+        let started = command.spawn().expect("the stand-in kitty starts");
+        let pid = started.id();
+        self.kitties.push(started);
         until("kitty is named kitty", || {
             std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| comm == "kitty\n")
         });
@@ -369,6 +406,10 @@ impl Desk {
 
 impl Drop for Desk {
     fn drop(&mut self) {
+        for kitty in &mut self.kitties {
+            let _ = kitty.kill();
+            let _ = kitty.wait();
+        }
         for pid in &self.started {
             let _ = Command::new("/bin/sh")
                 .arg("-c")
@@ -376,6 +417,35 @@ impl Drop for Desk {
                 .status();
         }
         let _ = std::fs::remove_dir_all(&self.folder);
+    }
+}
+
+/// Binds a socket listening at `@kitty-<pid>`, its own pid, in the child
+/// about to become a stand-in kitty, kept open through the exec, as
+/// kitty.conf's `listen_on unix:@kitty-{kitty_pid}` has kitty bind one.
+/// It runs between the fork and the exec, so its name is written on the
+/// stack rather than allocated.
+fn listening_as_kitty() -> std::io::Result<()> {
+    let mut name = *b"kitty-0000000000";
+    let mut pid = std::process::id();
+    let mut digits = 0;
+    let mut left = pid;
+    while left > 0 || digits == 0 {
+        digits += 1;
+        left /= 10;
+    }
+    for at in (6..6 + digits).rev() {
+        name[at] = b'0' + u8::try_from(pid % 10).unwrap_or(0);
+        pid /= 10;
+    }
+    let listener = UnixListener::bind_addr(&SocketAddr::from_abstract_name(&name[..6 + digits])?)?;
+    let socket = listener.into_raw_fd();
+    // SAFETY: `socket` is the listener's own, given up above, and F_SETFD
+    // only clears its close-on-exec flag, so kitty's program holds it.
+    if unsafe { libc::fcntl(socket, libc::F_SETFD, 0) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
 
@@ -476,11 +546,11 @@ fn the_password_is_typed_into_the_window_on_the_typists_input_alone() {
 
 #[test]
 fn nothing_is_typed_while_the_launcher_keeps_the_keys() {
-    let mut desk = Desk::new("kept");
+    let mut desk = Desk::new("launcher-kept");
     let window = desk.plain();
     desk.focus(WINDOW, window, "firefox");
     *desk.holding.lock().unwrap() = true;
-    let (running, _journal) = running("kept", &desk, &[]);
+    let (running, _journal) = running("launcher-kept", &desk, &[]);
     let refused = type_github(&running);
     refused_reading_nothing(&running, &refused, "the launcher kept the keys");
     assert!(desk.typed().is_none(), "it was typed into the launcher");
@@ -564,6 +634,61 @@ fn nothing_is_typed_into_a_kitty_listening_where_another_could_answer() {
         desk.kitty_asked()
     );
     assert!(desk.typed().is_none(), "it was typed past an open address");
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_whose_address_another_holds() {
+    // kitty's abstract address is named by its pid, which another program
+    // of Joel's can foretell and bind first, then answer kitten's ls.
+    let mut desk = Desk::new("kitty-address-taken");
+    let (kitty, shell) = desk.kitty_unheard("sleep 1000");
+    let name = format!("kitty-{kitty}");
+    let _taken = UnixListener::bind_addr(&SocketAddr::from_abstract_name(&name).unwrap())
+        .expect("the test binds kitty's address first");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-address-taken", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(
+        &running,
+        &refused,
+        "that kitty's address isn't held by kitty",
+    );
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address another program holds: {}",
+        desk.kitty_asked()
+    );
+    assert!(
+        desk.typed().is_none(),
+        "it was typed where another program answered for kitty"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_nothing_listens_for() {
+    // A kitty listening nowhere leaves its address free for whoever binds
+    // it while the daemon asks.
+    let mut desk = Desk::new("kitty-unheard");
+    let (kitty, shell) = desk.kitty_unheard("sleep 1000");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-unheard", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(
+        &running,
+        &refused,
+        "that kitty's address isn't held by kitty",
+    );
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address nothing of its listens on: {}",
+        desk.kitty_asked()
+    );
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a kitty that listens nowhere"
+    );
 }
 
 #[test]

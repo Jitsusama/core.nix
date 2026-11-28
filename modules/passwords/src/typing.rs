@@ -9,14 +9,18 @@
 //! which runs its commands, or mycelium, which holds and attaches pi
 //! sessions; the hosted runtime, which runs sessions as node; or anything
 //! in the agents' or jobs' slices, where a hosted session and every
-//! command it runs are kept. Below a window, a session reached by ssh and
-//! a multiplexer, whose sessions run out of sight, are refused too. A
-//! kitty, the one from the package the daemon's kitten comes from and
-//! outside the jobs' slice, is asked what runs in its focused window
-//! instead, since every kitty window shares the one kitty process, which
-//! lives in the agents' slice itself: refused when what it names isn't
-//! its own, when an agent runs in it or below it, when a multiplexer
-//! stands in front, past which kitty can't see, and when kitty can't say.
+//! command it runs are kept, kitty or not, whatever its unit is named: the
+//! sessions' kitty lives in the agents' slice, so its windows are never
+//! typed into (finding 22 on #6643). Below a window, a session reached by
+//! ssh and a multiplexer, whose sessions run out of sight, are refused
+//! too. A kitty outside those slices, the one from the package the
+//! daemon's kitten comes from, is asked what runs in its focused window
+//! instead, since every kitty window shares the one kitty process, once
+//! the abstract address it's asked at is shown to be held by its own
+//! socket: refused when another program holds it or nothing does, when
+//! what it names isn't its own, when an agent runs in it or below it,
+//! when a multiplexer stands in front, past which kitty can't see, and
+//! when kitty can't say.
 //! An X11 window is refused, since niri knows only xwayland-satellite
 //! behind it, and any X program can read its keys.
 //!
@@ -63,7 +67,8 @@ const AGENTS: [&str; 3] = ["pi", "pi-spawner", "mycelium"];
 const RUNTIME: &str = "pi-host-runtime";
 
 /// The slices agents run in: hosted sessions and the sessions' kitty in
-/// the agents', every command a session runs in the jobs'.
+/// the agents', every command a session runs in the jobs'. Anything in
+/// either is an agent's.
 const AGENTS_SLICE: &str = "/agents.slice/";
 const JOBS_SLICE: &str = "/jobs.slice/";
 
@@ -232,33 +237,23 @@ fn runs(pid: u32) -> bool {
 /// Why a window whose process is gone is refused.
 pub const GONE: &str = "the program that opened that window is gone";
 
-/// Whether a control group, as /proc gives it, is an agent's: in the jobs'
-/// slice, or the agents' slice but for a scope kitty makes for one of its
-/// windows, which holds whatever Joel starts there.
+/// Whether a control group, as /proc gives it, is an agent's: in the
+/// agents' or the jobs' slice, whatever its unit is named. A scope's name
+/// is whoever starts it's to choose, so one named as kitty names its
+/// windows' (`kitty-<pid>-<n>.scope`) counts for nothing.
 #[must_use]
 pub fn agents_group(group: &str) -> bool {
     group.lines().any(|line| {
         let path = line.splitn(3, ':').nth(2).unwrap_or("");
-        let unit = path.rsplit('/').next().unwrap_or("");
-        path.contains(JOBS_SLICE) || (path.contains(AGENTS_SLICE) && !kittys_window(unit))
+        path.contains(JOBS_SLICE) || path.contains(AGENTS_SLICE)
     })
 }
 
-/// Whether a unit is a scope kitty makes for a window: `kitty-<pid>-<n>.scope`.
-fn kittys_window(unit: &str) -> bool {
-    unit.strip_prefix("kitty-")
-        .and_then(|rest| rest.strip_suffix(".scope"))
-        .and_then(|rest| rest.split_once('-'))
-        .is_some_and(|(pid, n)| {
-            [pid, n]
-                .iter()
-                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-        })
-}
-
 /// Whether a process named so, with these arguments, in this control
-/// group, is an agent's. kitty's own group is passed as "", since the
-/// sessions' kitty lives in the agents' slice and is asked what it runs.
+/// group, is an agent's. A kitty is judged as anything else: an agent can
+/// run kitty's own program from its package, as `setsid -f` with no pi
+/// above it, or start it in the agents' slice, so a kitty there is an
+/// agent's (ISXEG8's (63), 2026-11-25, and finding 22 on #6643).
 #[must_use]
 pub fn agents(name: &str, words: &[String], group: &str) -> bool {
     AGENTS.contains(&name) || words.iter().any(|word| word.contains(RUNTIME)) || agents_group(group)
@@ -275,28 +270,9 @@ fn in_jobs(group: &str) -> bool {
     })
 }
 
-/// Whether a process named so, run from `exe`, with these arguments, in
-/// this control group, is an agent's, as `agents` says, its group set
-/// aside only for a kitty believed by its program's path and group
-/// (`kitty_believed`, `from` as it takes it), since the sessions' kitty
-/// lives in the agents' slice. Its name is the process's own to change,
-/// so an agent renamed kitty in the agents' slice is still an agent's
-/// (ISXEG8's (63), 2026-11-25).
-#[must_use]
-pub fn agents_judged(
-    name: &str,
-    exe: &str,
-    words: &[String],
-    group: &str,
-    from: Option<&Path>,
-) -> bool {
-    let believed = kitty_believed(name, exe, group, from);
-    agents(name, words, if believed { "" } else { group })
-}
-
-/// Whether the process at `pid` is an agent's, as /proc says, `from`
-/// being the package the daemon's kitten comes from, as `kitty` takes it.
-fn an_agent(pid: u32, from: Option<&Path>) -> bool {
+/// Whether the process at `pid` is an agent's, as /proc says and `agents`
+/// judges, its program's path among its words.
+fn an_agent(pid: u32) -> bool {
     let name = program(pid);
     let group = cgroup(pid);
     let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
@@ -304,21 +280,21 @@ fn an_agent(pid: u32, from: Option<&Path>) -> bool {
         .unwrap_or_default();
     let mut words = arguments(pid);
     if !exe.is_empty() {
-        words.push(exe.clone());
+        words.push(exe);
     }
-    agents_judged(&name, &exe, &words, &group, from)
+    agents(&name, &words, &group)
 }
 
 /// The process at `pid` or among its forebears that is an agent's, up to
-/// the first, or none, `from` as `an_agent` takes it. One that can't be
-/// read counts, since what it was can't be told.
+/// the first, or none. One that can't be read counts, since what it was
+/// can't be told.
 #[must_use]
-pub fn session_above(pid: u32, from: Option<&Path>) -> Option<u32> {
+pub fn session_above(pid: u32) -> Option<u32> {
     let mut at = Some(pid);
     // A loop in what /proc says can't be, but is never followed forever.
     for _ in 0..4096 {
         let here = at?;
-        if !read(here) || an_agent(here, from) {
+        if !read(here) || an_agent(here) {
             return Some(here);
         }
         at = parent(here).filter(|up| *up != 0 && *up != here);
@@ -346,8 +322,7 @@ fn descends(pid: u32, forebear: u32) -> bool {
 /// sessions run beside the terminal rather than below it. A terminal
 /// other than kitty can't be asked what it runs, and what kitty says runs
 /// in its window may have more below it, so both are read this way.
-/// `from` is as `an_agent` takes it.
-fn below(pid: u32, from: Option<&Path>) -> Option<&'static str> {
+fn below(pid: u32) -> Option<&'static str> {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return Some(UNREAD);
     };
@@ -365,7 +340,7 @@ fn below(pid: u32, from: Option<&Path>) -> Option<&'static str> {
             .filter(|(child, up)| *up == at && *child != at)
         {
             let (name, words) = (program(*child), arguments(*child));
-            if an_agent(*child, from) || a_sessions(&name, &words) {
+            if an_agent(*child) || a_sessions(&name, &words) {
                 return Some(AGENT_RUNS);
             }
             if multiplexes(&name, &words) {
@@ -414,7 +389,9 @@ pub fn a_sessions(name: &str, words: &[String]) -> bool {
 /// a kitty to ask what it runs: named as kitty is, run from the package
 /// the daemon's kitten comes from, `from`, and outside the jobs' slice,
 /// where only an agent's commands run. Anything else named kitty, as a
-/// program renamed to answer for it, is refused outright.
+/// program renamed to answer for it, is refused outright. It only chooses
+/// which kitty to ask: one in an agent's slice is refused before it's
+/// asked, as `session_above` finds it an agent's.
 #[must_use]
 pub fn kitty_believed(name: &str, exe: &str, group: &str, from: Option<&Path>) -> bool {
     KITTIES.contains(&name)
@@ -460,9 +437,9 @@ pub fn listens_on(words: &[String], pid: u32) -> String {
 
 /// Whether kitty listening at `address` can be the only one to answer
 /// there: an abstract address, which none can take from it while it
-/// holds it. A socket's file can be removed and bound again by any
-/// program of Joel's, which would then answer for kitty (finding 152 on
-/// #6502, 2026-11-25).
+/// holds it, once it's shown to (`kitty_holds`). A socket's file can be
+/// removed and bound again by any program of Joel's, which would then
+/// answer for kitty (finding 152 on #6502, 2026-11-25).
 #[must_use]
 pub fn kittys_alone(address: &str) -> bool {
     address.starts_with("unix:@")
@@ -470,6 +447,75 @@ pub fn kittys_alone(address: &str) -> bool {
 
 /// Why a kitty listening elsewhere is refused.
 pub const OPENLY: &str = "that kitty listens where any program of yours could answer for it";
+
+/// Why a kitty is refused whose abstract address another holds, or nothing does.
+pub const UNHELD: &str = "that kitty's address isn't held by kitty";
+
+/// `__SO_ACCEPTCON`, among a socket's flags in /proc/net/unix while it listens.
+const ACCEPTING: u32 = 0x0001_0000;
+
+/// The inode of the socket listening at `name`, an abstract address as
+/// /proc/net/unix writes it (`@` and its name), in that file's text
+/// `unix`, or none where nothing listens there. Each row is a socket's
+/// slot, references, protocol, flags, type, state, inode and path; one
+/// listening has `__SO_ACCEPTCON` among its flags and is unconnected
+/// (state 01), where a connection it accepted shows its name too. A
+/// socket's file is never found, since any program may bind it again,
+/// and a torn row, or one whose path holds a space, is passed over.
+#[must_use]
+pub fn listening_at(unix: &str, name: &str) -> Option<u64> {
+    if !name.starts_with('@') {
+        return None;
+    }
+    unix.lines().find_map(|row| {
+        let fields: Vec<&str> = row.split_whitespace().collect();
+        let [_, _, _, flags, _, state, inode, path] = fields[..] else {
+            return None;
+        };
+        let flags = u32::from_str_radix(flags, 16).ok()?;
+        if path != name || state != "01" || flags & ACCEPTING == 0 {
+            return None;
+        }
+        inode.parse().ok()
+    })
+}
+
+/// Whether the socket at `inode` is among a process's open files, `links`
+/// being what each in its /proc fd folder links to, a socket's
+/// `socket:[<inode>]`.
+#[must_use]
+pub fn holds_socket(links: &[String], inode: u64) -> bool {
+    let socket = format!("socket:[{inode}]");
+    links.contains(&socket)
+}
+
+/// Whether kitty at `pid` itself holds the socket listening at its
+/// abstract `address`, as /proc says. An abstract name can be bound first
+/// by any program of Joel's, as kitty's is foretold by its pid, or be free
+/// since that kitty listens nowhere, and whoever answers kitten there
+/// picks the window and what runs in it; none can bind it while kitty
+/// holds it (finding 23 on #6643).
+fn kitty_holds(pid: u32, address: &str) -> bool {
+    let Some(name) = address.strip_prefix("unix:") else {
+        return false;
+    };
+    // A socket table that can't be read finds no socket listening, so the
+    // kitty is refused.
+    let unix = std::fs::read_to_string("/proc/net/unix").unwrap_or_default();
+    let Some(inode) = listening_at(&unix, name) else {
+        return false;
+    };
+    // A kitty whose open files can't be read, or one of them, is taken to
+    // hold nothing there, so it's refused too.
+    let links: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .map(|link| link.to_string_lossy().into_owned())
+        .collect();
+    holds_socket(&links, inode)
+}
 
 /// What kitty's `ls` says runs in the window that has its keys: each
 /// foreground process's id and arguments, from its focused OS window's
@@ -611,7 +657,7 @@ fn kitty_says(kitty: &str, address: &str) -> Result<String, String> {
 /// program that opened it is gone, an agent reads it, or it's a terminal
 /// that runs an agent, a multiplexer, or can't say what it runs, a kitty
 /// listening where another could answer, or a kitty window another may
-/// lie over.
+/// lie over, or a kitty whose address its own socket doesn't hold.
 pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit, (String, String)> {
     let unknown = |why: String| (String::new(), why);
     let Some(focused) = focused_now(niri).map_err(unknown)? else {
@@ -639,24 +685,27 @@ pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit,
     if x11s(&name) {
         return refused("that window is X11's, where any X program can read its keys");
     }
-    if session_above(pid, from).is_some() {
+    if session_above(pid).is_some() {
         return refused("an agent reads that window");
     }
     let Some(kitty_program) = kitty_program else {
         if KITTIES.contains(&name.as_str()) {
             return refused("kitty can't be asked what runs in it");
         }
-        return below(pid, from).map_or_else(fits, refused);
+        return below(pid).map_or_else(fits, refused);
     };
     if !kitty(pid, from) {
         if KITTIES.contains(&name.as_str()) {
             return refused("that kitty isn't the one kitten asks");
         }
-        return below(pid, from).map_or_else(fits, refused);
+        return below(pid).map_or_else(fits, refused);
     }
     let address = listens_on(&arguments(pid), pid);
     if !kittys_alone(&address) {
         return refused(OPENLY);
+    }
+    if !kitty_holds(pid, &address) {
+        return refused(UNHELD);
     }
     let said = match kitty_says(kitty_program, &address) {
         Ok(said) => said,
@@ -688,14 +737,14 @@ pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit,
         return refused("kitty can't see past the multiplexer in that terminal");
     }
     let session = running.iter().any(|(pid, words)| {
-        a_sessions(&named(pid), words) || pid.and_then(|pid| session_above(pid, from)).is_some()
+        a_sessions(&named(pid), words) || pid.and_then(session_above).is_some()
     });
     if session {
         return refused("an agent runs in that terminal");
     }
     match running
         .iter()
-        .find_map(|(process, _)| process.and_then(|process| below(process, from)))
+        .find_map(|(process, _)| process.and_then(below))
     {
         Some(UNSEEN) => refused("kitty can't see past the multiplexer in that terminal"),
         Some(UNREAD) => refused(UNREAD),
