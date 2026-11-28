@@ -10,9 +10,10 @@ and draws a frame each way, plays in place once they stop, and once they've been
 a hop that rises and lands where it sat, a wander a few cells along the margin, a key
 ending it at once, the cat walking back, and a ball of yarn batted off and a pounce on
 nothing, each shown whole and each walking it back after, and the puppy's visit, the cat
-hopping where it sits. How a hop, the yarn, a pounce and the puppy move is held in Qt's
-engine too (modules/margin-cat/tests/margin-cat-games.qml and margin-cat-puppy.qml). Each
-case asks the shell for the play it watches, so none waits on chance.
+hopping where it sits and riding its window as a column moved past it cuts the visit. How a
+hop, the yarn, a pounce and the puppy move is held in Qt's engine too
+(modules/margin-cat/tests/margin-cat-games.qml and margin-cat-puppy.qml). Each case asks the
+shell for the play it watches, so none waits on chance.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from typing import TYPE_CHECKING
 
 import launcher_on_niri
 import pytest
-from launcher_on_niri import placed
+from launcher_on_niri import layout_now, placed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -88,6 +89,17 @@ HEARS = timedelta(seconds=10)
 HOPPING = {"pouncing", "leaping", "tucked", "falling"}
 PLAYS = timedelta(seconds=20)
 POLL = 0.05
+# How long the keys rest on a column before the cat walks there
+# (modules/margin-cat/MarginCatScreen.qml), as margin-cat-on-niri-test.py has it.
+RESTS = 2.0
+# How long before the keys rest a case that must beat them sends its keys back by, for the
+# shell to hear them on a loaded builder.
+SPARE = 0.5
+# How far, in ms, the shell's date of a column's move may fall before the keys that set it off
+# were sent, both read from the one wall clock. niri says how long ago it began to a fraction
+# of a millisecond, but the shell's clock, which it takes that from, reads in whole ones, up to
+# one short; the other is room for the clocks' reads on either side.
+CLOCKED = 2
 
 
 @pytest.fixture(scope="module")
@@ -264,6 +276,16 @@ def playing(at: Json | None) -> Json | None:
     """Give the step of a play a place is, as MarginCatScreen.qml says each, or None."""
     walk = (at or {}).get("walk") or {}
     return walk if walk.get("play") else None
+
+
+def puppy_in_sight(said: str) -> bool:
+    """Say whether a place is a step of the puppy's visit with the puppy by the cat in sight.
+
+    Its first beat has it still behind the room's edge and its last trotting back there, so a
+    case cutting a visit he can see waits for a beat between.
+    """
+    step = playing(placed(said)) or {}
+    return step.get("play") == "puppy" and step.get("beat") in PUPPY[1:-1]
 
 
 def in_order(seen: list[str], beats: list[str]) -> bool:
@@ -597,13 +619,9 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     def visiting(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == "puppy"
 
-    def in_sight(said: str) -> bool:
-        step = playing(placed(said)) or {}
-        return step.get("play") == "puppy" and step.get("beat") in PUPPY[1:-1]
-
     # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
     # not one still behind the room's edge, where the puppy is drawn nowhere either way.
-    reported_since_ask(shell, in_sight, since, VISITS)
+    reported_since_ask(shell, puppy_in_sight, since, VISITS)
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")
@@ -622,4 +640,140 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
         ),
         since,
         HOME,
+    )
+
+
+def moved_from(shell: Shell, window: Json, left: float) -> Json:
+    """Give the window's layout once niri says its tile is no longer at `left`.
+
+    niri says where a move will bring a tile as the move sets off, but its list of windows is
+    refreshed with its loop, so the read just after the action is asked again till it shows it.
+    """
+    deadline = time.monotonic() + RESTS - SPARE
+    while True:
+        now = layout_now(shell, window)
+        if abs(now["tile_pos_in_workspace_view"][0] - left) >= 1:
+            return now
+        assert time.monotonic() < deadline, f"niri never moved its column: {now}: the case's own"
+        time.sleep(POLL)
+
+
+def test_a_cut_puppy_visit_rides_a_column_moved_past_it(shell: Shell) -> None:
+    """Its window slid aside mid-visit for a column moved past it, the cat rides with it.
+
+    niri carrying the cat's window away cuts the puppy's visit, and the cat goes to its seat
+    on that window on niri's spring as it slides, never sat there at once ahead of it nor
+    left on the air where the window was (MarginCatScreen.qml's follow, Carried.visitCut).
+    niri says that slide as the column's move (modules/niri/tiled-positions.patch's
+    ColumnMove), which move-column-left gives the column it swaps past. Qt's engine holds
+    which word is heard and where the cat goes; here, only that niri's word reaches it,
+    unless the shell heard of the move only once niri's spring was done, as a loaded
+    builder's can, which its report says.
+
+    Both columns are half the screen and niri centres no column, so neither the focus nor
+    the move scrolls the strip: only the column's move carries the cat's window.
+    """
+    first = shell.opened("a column a cut visit rides with")
+    second, _ = sitting_over(shell, "a column moved past a cut visit")
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    seats: list[Json] = []
+
+    def sits(said: str) -> bool:
+        at = placed(said)
+        if at is None or at.get("window") != first["id"] or walking(at):
+            return False
+        seats.append(at)
+        return True
+
+    shell.reported(SITS, sits, since)
+    seat = seats[-1]
+    across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
+    before, beside = layout_now(shell, first), layout_now(shell, second)
+    left, width = before["tile_pos_in_workspace_view"][0], before["tile_size"][0]
+    other, wide = beside["tile_pos_in_workspace_view"][0], beside["tile_size"][0]
+    column = before["pos_in_scrolling_layout"][0]
+    assert beside["pos_in_scrolling_layout"][0] == column + 1, (
+        f"niri put the second column at {beside['pos_in_scrolling_layout']}, not right of the"
+        f" first at {before['pos_in_scrolling_layout']}: the case's own"
+    )
+    assert abs(wide - width) < 1, f"niri made the columns {width} and {wide} wide: the case's own"
+    assert left >= 0, f"niri laid the first column out off the screen at {left}: the case's own"
+    assert other + wide <= across, (
+        f"niri laid the second column out at {other}, {wide} wide, past a screen {across} wide:"
+        " the case's own"
+    )
+
+    since = leaves_then_asks(shell, "puppy")
+    reported_since_ask(shell, puppy_in_sight, since, VISITS)
+    since = shell.mark()
+    # The shell's rest begins when it hears the keys go, after this clock is read before them.
+    focused = time.monotonic()
+    # On the wall clock, the shell's own, which dates the move it heard by niri's begin.
+    sent = time.time() * 1000
+    # In one command, so the keys are on the second column for as short a time as can be before
+    # it moves, and the visit is cut by the move, not by the keys resting there.
+    shell.as_account(
+        f"niri msg action focus-window --id {second['id']} && niri msg action move-column-left"
+    )
+    after = moved_from(shell, first, left)
+    took = time.monotonic() - focused
+    # The keys must have moved the column before they rest on it, or the cat walks there.
+    assert took < RESTS - SPARE, f"the case spent {took:.1f} s of the rest: the case's own"
+    moved = layout_now(shell, second)
+    move = after["tile_pos_in_workspace_view"][0] - left
+    put = moved["tile_pos_in_workspace_view"][0]
+    # Where the view comes to rest is where niri says each tile goes, so a moved column put
+    # anywhere but where the first was says niri scrolled the strip too.
+    assert abs(put - left) < 1, (
+        f"niri put the moved column at {put}, not at {left} where the first was, so it scrolled"
+        " the strip: the case's own"
+    )
+    assert move > 0, f"niri moved the first column {move}, not right: the case's own"
+    assert after.get("tile_animation") == "ColumnMove", (
+        f"niri said {after.get('tile_animation')} of the column moved past, not ColumnMove:"
+        " the case's own"
+    )
+    gone: list[Json] = []
+
+    # Its first place on its window off where it sat, not a step of the visit's walk: a report
+    # as the visit is cut, the cat not yet carried, keeps the seat it sat on.
+    def off_its_seat(said: str) -> bool:
+        at = placed(said)
+        if at is None or walking(at) or at.get("window") != first["id"]:
+            return False
+        if abs(at["x"] - seat["x"]) < 1:
+            return False
+        gone.append(at)
+        return True
+
+    reported_since_ask(shell, off_its_seat, since, launcher_on_niri.WAITING)
+    carried = gone[0]
+    if carried["drawn"]["x"] != carried["x"]:
+        # Drawn short of its seat by what's left of the slide, as its window is, from where it
+        # sat: never set off from elsewhere, nor ahead of its window.
+        short = (carried["x"] - carried["drawn"]["x"]) / move
+        assert 0 < short <= 1, f"drawn {short:.2f} of the column's move short of its place"
+        return
+    moved_late(carried, sent)
+
+
+def moved_late(seated: Json, sent: float) -> None:
+    """Fail unless the cat, put on its seat at once, heard of niri's column move late.
+
+    A shell that hears of the move only once niri's spring is done finds its window at rest
+    and sits on it at once, as it should. Its report says when the move of the column it's
+    carried by began, so one that never heard this move, or heard none, fails; and how long
+    before, so one that missed a move still under way fails too.
+    """
+    began = seated["columnBegan"]
+    assert began is not None, "the cat was put on its seat at once, dating no column's move"
+    assert began >= sent - CLOCKED, (
+        f"the cat was put on its seat at once, the last move of its column it heard of begun at"
+        f" {began}, before the column was moved at {sent:.0f}"
+    )
+    heard_late = seated["columnMoved"] >= seated["slides"]
+    assert heard_late, (
+        "niri moved a column past its window and the cat was put on its seat at once, "
+        f"{seated['columnMoved']} ms into a move of {seated['slides']}"
     )

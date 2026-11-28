@@ -295,11 +295,23 @@ class Shell:
         socket.unlink(missing_ok=True)
 
     def stop(self) -> None:
-        """End the shell."""
+        """End the shell, and fail saying which never ended and what the shell last logged.
+
+        One still running after 10 s is killed, and the rest are still ended, so a slow end
+        neither leaves processes behind it nor fails with no word of why.
+        """
+        lingered: list[str] = []
         for process in (self.process, *self.daemons.values()):
-            if process is not None:
-                process.terminate()
+            if process is None:
+                continue
+            process.terminate()
+            try:
                 process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                lingered.append(str(process.args))
+        assert not lingered, f"still running 10 s after asked to end: {lingered}\n{self.tail()}"
 
     def tail(self) -> str:
         """Give the end of the shell's log, to say why a wait failed."""
@@ -810,6 +822,14 @@ def placed(said: str) -> Json | None:
     _, rest = said.split(" ", 1)
     at, _ = rest.split(" over ", 1)
     return None if at == "nowhere" else cast("Json", json.loads(at))
+
+
+def layout_now(shell: Shell, window: Json) -> Json:
+    """Give where niri lays this window out now, its target as it slides there.
+
+    Both of the cat's tests on niri read it, to say where its window is going.
+    """
+    return cast("Json", next(one for one in shell.windows() if one["id"] == window["id"])["layout"])
 
 
 def logged_since(shell: Shell, mark: int) -> str:
