@@ -26,13 +26,15 @@
 // and every character through how a name is read, in Node rather than in
 // Qt's engine, which tests/for-you.qml holds LookForm.js in.
 //
-// It's stricter than For You in two places, on the side of not asking.
+// It's stricter than For You in three places, on the side of not asking.
 // For You offers a look's choices under To Read too, though it says it
-// asks nothing, where a page offers none on a look not asking. And For You
-// reads its looks at the hour it last opened or was told them, so it may
-// keep one waiting past its expiresAt or its quiet until it next does,
-// where a page lapses at the moment. It knows the launcher's six act names
-// only as core's own words say them, so on a machine renaming one
+// asks nothing, where a page offers none on a look not asking. For You's
+// drawer says there what happens if he does nothing, too, where a page
+// says that only while a look waits and asks. And For You reads its looks
+// at the hour it last opened or was told them, so it may keep one waiting
+// past its expiresAt or its quiet until it next does, where a page lapses
+// at the moment. It knows the launcher's six act names only as core's own
+// words say them, so on a machine renaming one
 // (jitsusama.quickshell.launcher.words) a page would offer a choice, or
 // link an act, named as the renamed one, which For You refuses, and would
 // fall back to "Open" where For You says the renamed word: local-sites'
