@@ -709,7 +709,11 @@ mod tests {
 
         let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
-        assert!(detail.points[0].joined);
+        assert!(
+            detail.points[0].joined,
+            "the best access point should be marked joined, as wlan0 is on it; it was {:?}",
+            detail.points[0]
+        );
         assert_eq!(detail.best.unwrap().reasons, ["the fastest of 3"]);
     }
 
@@ -720,7 +724,12 @@ mod tests {
 
         let detail = detail("Hilton", of(&hotel), [on.as_str()], []);
 
-        assert!(detail.points[0].joined);
+        assert!(
+            detail.points[0].joined,
+            "the access point a card is on should be marked joined before its link is read; \
+             it was {:?}",
+            detail.points[0]
+        );
         assert_eq!(detail.joined, []);
         assert_eq!(detail.best.unwrap().reasons, ["the fastest of 3"]);
     }
