@@ -1273,6 +1273,29 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
+# The wall clock set back an hour, as a clock corrected can be. The floor between readings runs
+# on the page's own clock, which never steps back, so the map still moves within its pace.
+CLOCK_SET_BACK = """() => {
+  const wall = Date.now;
+  Date.now = () => wall() - 3_600_000;
+}"""
+
+
+def test_a_wall_clock_set_back_leaves_the_map_moving(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    # The readings first drawn land before the clock moves, so none already timed carries the next.
+    page.wait_for_timeout(FLOOR_MS + 500)
+    page.evaluate(CLOCK_SET_BACK)
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    the_map_counts(
+        page, "8 cells, 3 moving, 1 stuck", "a wall clock set back held the map's next reading"
+    )
+
+
 # The two cells node.json names "Mend the Sails": the first moving, the
 # second needing Joel.
 NAMESAKES = ("TERN01", "TERN02")
