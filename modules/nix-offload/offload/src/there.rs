@@ -1742,15 +1742,37 @@ const UPLOADS: u32 = 3;
 /// file is never read, only kept open, since its lock is the turn.
 struct Turn {
     _held: fs::File,
-    /// The net's own turn, held beside it by a run sent first.
+    /// The net's own turn, held beside it by a copy of the net's.
     _net: Option<fs::File>,
     folder: PathBuf,
 }
 
 /// The file of the net's one turn at sending, in the uplink's turns
-/// folder: a run sent first holds it as well as one of the [`UPLOADS`]
+/// folder: a copy of the net's holds it as well as one of the [`UPLOADS`]
 /// shared turns, so the net's copies go up one at a time.
 const NET_TURN: &str = "uplink-net";
+
+/// The units the net runs in, the watch's and the train's, whose copies
+/// hold the net's turn ([`NET_TURN`]) as well as a shared one.
+const THE_NETS: [&str; 2] = ["merge-net.service", "merge-net-train.service"];
+
+/// Whether a process whose `/proc/self/cgroup` reads `cgroup` runs in one
+/// of the net's units, or a group within one: a part of its path names
+/// one whole, so a unit only named like one isn't.
+fn in_the_nets(cgroup: &str) -> bool {
+    cgroup
+        .lines()
+        .filter_map(|line| line.split_once("::").map(|(_, path)| path))
+        .any(|path| path.split('/').any(|unit| THE_NETS.contains(&unit)))
+}
+
+/// Whether this copy is the net's: a run sent first, or one from either
+/// of the net's units. Where there's no `/proc`, as on a Mac, only a run
+/// sent first is.
+fn the_nets(rank: Rank) -> bool {
+    rank == Rank::First
+        || fs::read_to_string("/proc/self/cgroup").is_ok_and(|cgroup| in_the_nets(&cgroup))
+}
 
 /// The seconds the variable `name` gives, if it's set to a whole number
 /// of them; one set to anything else is said to be ignored, once a run,
@@ -1791,16 +1813,17 @@ fn seconds_in(set: &str) -> Option<u64> {
 /// A turn at sending up from this machine, for the copy `about` names.
 /// When none can be had, the copy goes on without one.
 ///
-/// A run sent first, the net's, takes one too, once it holds the net's own
-/// turn ([`net_turn`]). It once took none, so it went ahead of sessions'
-/// copies, but the watch sends a dozen runs at once: on 27 November its
-/// copies went up beside every turn's, the uplink's resets stopped only
-/// once the watch was, and it stayed stopped until they could be paced. Holding the
-/// net's turn first keeps the net to one shared turn of the three.
+/// A copy of the net's ([`the_nets`]) first holds the net's own turn
+/// ([`net_turn`]), so the watch's and the train's copies go up one at a
+/// time between them, holding one shared turn of the three. A run sent
+/// first once took no turn, to go ahead of sessions' copies, but the watch
+/// sends a dozen runs at once: on 27 November its copies went up beside
+/// every turn's, the uplink's resets stopped only once the watch was, and
+/// it stayed stopped until they could be paced.
 fn uplink_turn(rank: Rank, about: &str) -> Option<Turn> {
     let folder = turns_folder()?;
     let mut say = |line: String| eprintln!("{line}");
-    let net = if rank == Rank::First {
+    let net = if the_nets(rank) {
         net_turn(&folder, about, &mut say)
     } else {
         None
@@ -7269,6 +7292,33 @@ mod tests {
             "a waiter with no usable turn didn't say it takes none: {said:?}"
         );
         assert!(!elsewhere.exists(), "a turn's link was followed");
+    }
+
+    // Only a process in the watch's or the train's own unit, or a group
+    // within one, is the net's, read from its cgroup's path.
+    #[test]
+    fn only_the_nets_units_are_the_nets() {
+        let at = |unit: &str| format!("0::/user.slice/user@1000.service/app.slice/{unit}\n");
+        assert!(in_the_nets(&at("merge-net.service")), "the watch's unit");
+        assert!(
+            in_the_nets(&format!(
+                "0::/user.slice/jobs.slice/jobs-work.slice/{}\n",
+                "merge-net-train.service"
+            )),
+            "the train's unit, in a slice of its own"
+        );
+        assert!(
+            in_the_nets(&at("merge-net.service/inner.scope")),
+            "a group within the watch's unit"
+        );
+        for other in [
+            "not-merge-net.service",
+            "merge-net.service.d",
+            "work-1.scope",
+            "80eco2-rerun-merge-net.service",
+        ] {
+            assert!(!in_the_nets(&at(other)), "{other} was taken as the net's");
+        }
     }
 
     // The net's copies go up one at a time: one waits on the net's turn
