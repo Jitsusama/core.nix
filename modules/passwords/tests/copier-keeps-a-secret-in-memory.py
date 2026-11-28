@@ -36,9 +36,11 @@ the cat then running the real one so a copier that leans on it still holds its c
 14. Told to say it holds a copy that isn't sensitive, it ends saying so, never ready or held,
     making nothing under TMPDIR and running nothing, as only a sensitive copy says either.
 
-Every case is checked and reported before it fails. Cases 7 and 13 lock past 2 MiB at once, as
-the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
-and one too low for them fails naming it rather than as a refusal or a paste that never came.
+Every case is checked and reported before it fails. Where a copy in case 1, 8 or 13 never
+pastes, a copier that ended is failed with how it ended and what it said. Cases 7 and 13 lock
+past 2 MiB at once, as the copier grows its buffer, so the limit on locked memory is raised to
+its hard limit first, and one too low for them fails naming it rather than as a refusal or a
+paste that never came.
 
 usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 """
@@ -83,6 +85,16 @@ HINT = "x-kde-passwordManagerHint"
 LOCKS = 2 * CAP + 4096
 
 LIBC = ctypes.CDLL(None, use_errno=True)
+
+# What each copier said past the line said_next last answered of it, kept for its next call.
+UNANSWERED: dict[subprocess.Popen[bytes], bytes] = {}
+# What said_next adds to a line a copier began and held on after without ending it, so it's
+# never answered as the word the daemon waits for: the daemon reads whole lines, and hears a
+# half one only once the copier closes its standard output.
+UNFINISHED = "(said with no newline, which the daemon waits on)"
+# How much of a line said_next reads, in bytes, before it answers what it has as unfinished,
+# so a copier pouring out bytes with no newline can't grow its read for the whole PATIENCE.
+SAID_CAP = 4096
 
 
 class Cases:
@@ -167,12 +179,16 @@ class Cases:
         given(writing, held)
         try:
             said = said_next(copier)
+            # Pasted the moment it says held, before any other step, so a held said early has
+            # the least time to catch up. What this can't see is a held said a moment before
+            # the display has the copy, if the copier takes it before the paste asks for it.
+            once = pasted_now(held) if said == "held" else "it never said held"
             unheld = None if said == "held" else f"it said {said!r} rather than held"
             self.check("it says it holds the copy", unheld)
-            once = None if unheld else pasted_now(held)
             self.check("once it says it's held, one paste has it", once)
-            pasted = pasted_once_held(held)
-            self.check("the secret pastes whole", None if pasted else "it never pasted")
+            pasted = pasted_once_held(held, copier)
+            never = None if pasted else refused_instead(copier) or "it never pasted"
+            self.check("the secret pastes whole", never)
             self.check("it's offered marked secret", ended(copier) or unmarked())
             self.check("nothing is made under TMPDIR", self.anything_made())
             self.check("nothing on PATH runs", self.anything_ran())
@@ -180,6 +196,8 @@ class Cases:
             locked = ended(copier) or unlocked(copier.pid, len(held))
             self.check("its secret is locked in memory", locked)
         finally:
+            # Anything it said past held could be the secret, so none of it is kept.
+            unanswered(copier)
             copier.kill()
             copier.wait()
 
@@ -191,8 +209,9 @@ class Cases:
         os.close(reading)
         given(writing, held)
         try:
-            pasted = pasted_once_held(held)
-            self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
+            pasted = pasted_once_held(held, copier)
+            never = None if pasted else refused_instead(copier) or "it never pasted"
+            self.check("a 64 KiB secret pastes whole", never)
             self.check("a 64 KiB secret makes nothing under TMPDIR", self.anything_made())
             self.check("a 64 KiB secret runs nothing", self.anything_ran())
             locked = ended(copier) or unlocked(copier.pid, len(held))
@@ -209,7 +228,7 @@ class Cases:
         os.close(reading)
         given(writing, held)
         try:
-            pasted = pasted_once_held(held)
+            pasted = pasted_once_held(held, copier)
             never = None if pasted else refused_instead(copier) or "it never pasted"
             self.check("a secret of exactly the cap pastes whole", never)
             self.check("a secret of exactly the cap makes nothing", self.anything_made())
@@ -263,30 +282,40 @@ class Cases:
         self.check("a copy not sensitive is never said ready or held", quiet)
 
 
+def paste() -> subprocess.CompletedProcess[bytes] | None:
+    """Paste once on Joel's display, answering None if wl-paste hadn't ended in time."""
+    try:
+        pasted = subprocess.run(
+            ["wl-paste", "--no-newline", "--type", TEXT],
+            capture_output=True,
+            check=False,
+            timeout=PATIENCE,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    return pasted
+
+
 def pasted_now(held: str) -> str | None:
     """Say what one paste on Joel's display gave in place of the secret, if not the secret."""
-    pasted = subprocess.run(
-        ["wl-paste", "--no-newline", "--type", TEXT],
-        capture_output=True,
-        check=False,
-    )
+    pasted = paste()
+    if pasted is None:
+        return f"the paste hadn't ended in {PATIENCE:g} s"
     if pasted.stdout == held.encode():
         return None
     why = pasted.stderr.decode(errors="replace").strip()
     return f"it pasted {len(pasted.stdout)} other bytes, exiting {pasted.returncode}: {why!r}"
 
 
-def pasted_once_held(held: str) -> bool:
-    """Answer whether Joel's display pastes the secret, waiting for the copier to hold it."""
+def pasted_once_held(held: str, copier: subprocess.Popen[bytes]) -> bool:
+    """Answer whether Joel's display pastes the secret, waiting while the copier runs."""
     until = time.monotonic() + PATIENCE
     while time.monotonic() < until:
-        pasted = subprocess.run(
-            ["wl-paste", "--no-newline", "--type", TEXT],
-            capture_output=True,
-            check=False,
-        )
-        if pasted.stdout == held.encode():
+        pasted = paste()
+        if pasted is not None and pasted.stdout == held.encode():
             return True
+        if copier.poll() is not None:
+            return False
         time.sleep(0.2)
     return False
 
@@ -336,11 +365,51 @@ def fed(writing: int, data: bytes) -> str | None:
 
 
 def said_next(copier: subprocess.Popen[bytes]) -> str:
-    """Answer the next line the copier says on its standard output, or none if none comes."""
-    if copier.stdout is None or not select.select([copier.stdout], [], [], PATIENCE)[0]:
-        return ""
-    line: bytes = copier.stdout.readline()
-    return line.decode(errors="replace").strip()
+    """Answer the next line the copier says on its standard output, or none if none comes.
+
+    The whole read is bounded by PATIENCE from its start: it reads only once select says
+    there's something to read, until a newline, the end, SAID_CAP or the deadline, so a
+    copier that says part of a line and holds on is answered in time rather than hanging
+    the check. The line is answered as the daemon's lines() hears it: whole, its newline and
+    a carriage return before it taken off, and nothing else, so 'ready ' is never 'ready'.
+    A half line is answered as said only once the copier closed its standard output; one
+    still held open at the deadline is answered with UNFINISHED after it, as the daemon
+    would never hear it, and kept for the next call to finish. What came past the line is
+    kept for the next call on the same copier, as two lines said at once come in one read,
+    and for ended_within.
+
+    It reads the pipe itself, never the file object's buffer, so nothing it read sits
+    where select can't see it, and communicate later reads on from where it stopped.
+    """
+    stdout = copier.stdout
+    if stdout is None:
+        why = "the copier was started with no pipe for its standard output"
+        raise ValueError(why)
+    heard = unanswered(copier)
+    until = time.monotonic() + PATIENCE
+    ended = False
+    while b"\n" not in heard and len(heard) < SAID_CAP:
+        waiting = until - time.monotonic()
+        if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
+            break
+        more = os.read(stdout.fileno(), SAID_CAP)
+        if not more:
+            ended = True
+            break
+        heard += more
+    line, newline, rest = heard.partition(b"\n")
+    if newline or ended or not line:
+        if rest:
+            UNANSWERED[copier] = rest
+        whole = line.removesuffix(b"\r") if newline else line
+        return whole.decode(errors="replace")
+    UNANSWERED[copier] = line
+    return f"{line.decode(errors='replace')} {UNFINISHED}"
+
+
+def unanswered(copier: subprocess.Popen[bytes]) -> bytes:
+    """Give what said_next read of the copier past the line it answered, and keep it no more."""
+    return UNANSWERED.pop(copier, b"")
 
 
 def said_held(told: str) -> str | None:
@@ -355,12 +424,28 @@ def ended(copier: subprocess.Popen[bytes]) -> str | None:
 
 
 def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
-    """Say how a copier that should hold its copy ended instead, and why, if it ended."""
+    """Say how a copier that should hold its copy ended instead, and why, if it ended.
+
+    What it said is read as ended_within reads it, for as long as PATIENCE, since a child it
+    left behind could hold its standard error open past its end.
+    """
     code = copier.poll()
-    if code is None or copier.stderr is None:
+    if code is None:
         return None
-    said = copier.stderr.read().decode(errors="replace").strip()
-    return f"it ended with {code}, saying {said!r}"
+    unanswered(copier)
+    try:
+        _, said = copier.communicate(timeout=PATIENCE)
+    except subprocess.TimeoutExpired as held_open:
+        copier.kill()
+        heard = (held_open.stderr or b"").decode(errors="replace").strip()
+        return (
+            f"it ended with {code}, its standard error still open after {PATIENCE:g} s, "
+            f"having said {heard!r}"
+        )
+    if code == 0:
+        return "it ended with 0, as if it had copied, yet nothing pasted"
+    reason = said.decode(errors="replace").strip()
+    return f"it ended with {code}, saying {reason!r}"
 
 
 def readable(pid: int) -> str | None:
@@ -383,14 +468,17 @@ def unlocked(pid: int, length: int) -> str | None:
 def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str, str]:
     """Answer how the copier ended, or None, ended here, if it held on, and what it said.
 
-    What it said is on its standard error, then its standard output.
+    What it said is on its standard error, then its standard output, which begins with
+    anything said_next read of it but didn't answer.
     """
+    before = unanswered(copier)
     try:
         told, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
         copier.kill()
         told, said = copier.communicate()
-        return None, said.decode(errors="replace"), told.decode(errors="replace")
+        return None, said.decode(errors="replace"), (before + told).decode(errors="replace")
+    told = before + told
     return copier.returncode, said.decode(errors="replace"), told.decode(errors="replace")
 
 

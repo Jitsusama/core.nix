@@ -8,8 +8,22 @@ use std::collections::HashSet;
 
 use dictation::{transcript, wer};
 
+use crate::unheard::Unheard;
+
 /// What a call with too little said gets in place of a summary.
 pub const TOO_LITTLE: &str = "Too little was said to sum up.";
+
+/// What a call gets in place of a summary when too little of it was
+/// heard, the speech model having failed on the rest, so it isn't taken
+/// for a call where little was said.
+pub const TOO_LITTLE_HEARD: &str =
+    "Too little was heard to sum up: the speech model failed on part of the call.";
+
+/// What a call none of which was heard gets in place of a summary. Its
+/// takes heard may hold no word as well, so it says only that some were
+/// failed on.
+pub const NOTHING_HEARD: &str = "Nothing was heard to sum up: no words of the call were heard, \
+     and the speech model failed on some of it.";
 
 /// Fewer words than this, each counted once and greetings and thanks
 /// left out, is too little to sum up. A question and its answer, the
@@ -59,6 +73,21 @@ pub fn too_little(transcript: &str) -> bool {
         .filter(|word| !FILLER.contains(&word.as_str()))
         .collect();
     said.len() < LEAST_WORDS
+}
+
+/// What `transcript` gets in place of a summary, or none when enough of
+/// it was said to sum it up: when its note says the speech model failed
+/// on some of it, too little heard, or nothing heard when it has no line;
+/// else too little said.
+pub fn in_place_of_a_summary(transcript: &str) -> Option<&'static str> {
+    if !too_little(transcript) {
+        return None;
+    }
+    Some(match Unheard::read(transcript) {
+        None => TOO_LITTLE,
+        Some(_) if transcript::read(transcript, "").is_empty() => NOTHING_HEARD,
+        Some(_) => TOO_LITTLE_HEARD,
+    })
 }
 
 /// `text`'s words, lowercase, without what's around them or a
@@ -138,5 +167,34 @@ mod tests {
     #[test]
     fn nothing_written_down_is_too_little_to_sum_up() {
         assert!(too_little("# Transcript\n"));
+    }
+
+    #[test]
+    fn a_call_mostly_not_heard_says_so_in_place_of_a_summary() {
+        assert_eq!(in_place_of_a_summary(SHORT), None);
+        assert_eq!(in_place_of_a_summary(HELLOS), Some(TOO_LITTLE));
+        let part = crate::unheard::and(None, 0).note();
+        // As a file has it: the note opens the Transcript section.
+        let opened = format!("# Transcript\n\n{part}\n\n");
+        let unheard = HELLOS.replacen("# Transcript\n\n", &opened, 1);
+        assert_eq!(
+            in_place_of_a_summary(&unheard),
+            Some(TOO_LITTLE_HEARD),
+            "a call the speech model failed on read as one where little was said"
+        );
+        let nothing = crate::unheard::and(None, 0).note_with_none_heard();
+        assert_eq!(
+            in_place_of_a_summary(&format!("# Transcript\n\n{nothing}")),
+            Some(NOTHING_HEARD),
+            "a call none of which was heard read as one where part was"
+        );
+        // No line may come of takes heard as well as of takes failed on,
+        // so it says no more than that some were failed on.
+        assert_eq!(
+            NOTHING_HEARD,
+            "Nothing was heard to sum up: no words of the call were heard, and the speech \
+             model failed on some of it.",
+            "a call with no line was said to be failed on whole"
+        );
     }
 }

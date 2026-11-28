@@ -10,9 +10,9 @@
 //! writes one. OUTPUT gets one program name per line, sorted, and nothing
 //! while no program has it open; it's replaced whole, so a reader never
 //! sees half of it. A process in an ignored unit, such as the relay that
-//! fills the camera, is left out; a unit is a cgroup no program can put
-//! itself in, as it can take any name, so long as it's one the system's
-//! manager placed rather than a person's own. With --card, only a loopback of
+//! fills the camera, is left out, since a program can take any name but
+//! can't put itself in a system service or scope. A unit a person's own
+//! manager starts by the same name doesn't count. With --card, only a loopback of
 //! that name counts, so a node number another camera has since been given
 //! isn't taken for this one.
 //!
@@ -66,13 +66,13 @@
 //! until it's right, whoever holds the camera: each second, or every two
 //! while a loopback's camera is watched, and while nobody holds it, twice
 //! as long each try, up to sixteen seconds. A read that failed keeps what
-//! its file said, as it says nothing of who holds the camera now. What
-//! went wrong is said once as it begins and once as it clears, for each
-//! file. The first time its files say who holds the camera as a read that
-//! worked found, and which node it is, or nobody and no `.devices/` file
-//! where there's no camera, its log says `ready in N ms`, once a run
-//! (src/ready.rs says why). Its help, its failures and its exits take the
-//! terminal kit's shape (`help()`).
+//! its file said, even as a run before left it, as it says nothing of who
+//! holds the camera now. What went wrong is said once as it begins and
+//! once as it clears, for each file. The first time its files say who
+//! holds the camera as a read that worked found, and which node it is,
+//! or nobody and no `.devices/` file where there's no camera, its log
+//! says `ready in N ms`, once a run (src/ready.rs says why). Its help,
+//! its failures and its exits take the terminal kit's shape (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -125,7 +125,10 @@ fn help() -> Help {
         .argument("SOURCE", "the camera's node, or a file naming it")
         .argument("OUTPUT", "the file to name them in; with --usb, its folder")
         .option("--card NAME", "only a loopback of this name counts")
-        .option("--ignore-unit UNIT", "leaves out this unit's processes")
+        .option(
+            "--ignore-unit UNIT",
+            "leaves out this system service's or scope's processes",
+        )
         .option("--usb", "SOURCE is a USB camera's node")
         .option(
             "--forget",
@@ -137,6 +140,24 @@ fn help() -> Help {
 /// A start asked wrongly, pointing at the help.
 fn wrongly(what: String) -> Failure {
     Failure::new(Exit::Usage, what).try_this("loopback-holders --help")
+}
+
+/// A unit to leave out, if it's a system service or scope holding only its
+/// own processes. A person's manager or session, or init.scope, holds
+/// everything they run, so leaving one out would hide every reader; and a
+/// slice or any other kind never names the unit a process is in.
+fn unit(name: String) -> Result<String, Failure> {
+    let own = name
+        .rsplit_once('.')
+        .is_some_and(|(stem, kind)| !stem.is_empty() && matches!(kind, "service" | "scope"));
+    let everyones =
+        name.starts_with("user@") || name.starts_with("session-") || name == "init.scope";
+    if !own || everyones || name.contains('/') {
+        return Err(wrongly(format!(
+            "--ignore-unit takes a system service or scope of its own, not {name}"
+        )));
+    }
+    Ok(name)
 }
 
 fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failure> {
@@ -156,7 +177,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         };
         match argument.as_str() {
             "--card" => card = Some(value()?),
-            "--ignore-unit" => units.push(value()?),
+            "--ignore-unit" => units.push(unit(value()?)?),
             "--sysfs" => sysfs = PathBuf::from(value()?),
             "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
@@ -556,15 +577,17 @@ fn watch(
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
     let mut retry = Retry::new(every);
     // What the file holds, as last written, and what it was last meant to
-    // say, written or not, which a read that fails keeps.
+    // say, written or not, which a read that fails keeps. It begins meaning
+    // what the file already says, as a run before left it, so a run started
+    // again whose first read fails never says a camera held off.
     let mut said = None;
-    let mut meant = None;
+    let mut meant = said_in(output);
     let mut pids = HashSet::new();
     loop {
         let mut troubles = Vec::new();
-        // A read that fails keeps what was said, or with nothing said yet,
-        // says nobody, which is a guess, so only a read that worked counts
-        // toward the watch being ready.
+        // A read that fails keeps what was said, or with nothing said yet
+        // and no file, says nobody, which is a guess, so only a read that
+        // worked counts toward the watch being ready.
         let read = match holders::holders(node, units, &pids) {
             Ok((names, now)) => {
                 pids = now;
@@ -629,6 +652,16 @@ fn watch(
 /// nothing was meant yet.
 fn to_say(listed: Option<BTreeSet<String>>, meant: Option<&BTreeSet<String>>) -> BTreeSet<String> {
     listed.or_else(|| meant.cloned()).unwrap_or_default()
+}
+
+/// Who a holders file already says, one a line, as a run before may have
+/// left it; none when there's no file that can be read.
+fn said_in(output: &Path) -> Option<BTreeSet<String>> {
+    // A file missing or unreadable says nothing a run before meant, so the
+    // watch begins meaning nothing, as it did before it read one.
+    fs::read_to_string(output)
+        .ok()
+        .map(|said| said.lines().map(str::to_owned).collect())
 }
 
 /// Says who streams from a USB camera while it's there, in a file of its
@@ -971,6 +1004,35 @@ mod tests {
     }
 
     #[test]
+    fn a_watch_begins_meaning_what_its_file_already_says() {
+        let root = scratch("said-in");
+        let output = root.join("Stand-in");
+        assert_eq!(
+            said_in(&output),
+            None,
+            "a file that isn't there said who holds the camera"
+        );
+        fs::write(&output, "").unwrap();
+        assert_eq!(
+            said_in(&output),
+            Some(BTreeSet::new()),
+            "an empty file didn't say nobody"
+        );
+        fs::write(&output, "firefox\nzoom\n").unwrap();
+        let kept = said_in(&output);
+        assert_eq!(
+            kept,
+            Some(named(&["firefox", "zoom"])),
+            "a file a run before left wasn't read as it said"
+        );
+        assert_eq!(
+            to_say(None, kept.as_ref()),
+            named(&["firefox", "zoom"]),
+            "a first read that failed said off a camera its file said held"
+        );
+    }
+
+    #[test]
     fn an_idle_usb_camera_names_nobody() {
         let camera = Camera::new("listed-idle", "MX Brio 705 for Business");
         assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
@@ -1107,10 +1169,10 @@ mod tests {
     fn the_arguments_are_read_as_the_units_give_them() {
         let given = |line: &str| options(line.split(' ').map(str::to_owned));
         let read =
-            given("--card Stand-in --ignore-unit a.service --ignore-unit b.service /run/d /run/o")
+            given("--card Stand-in --ignore-unit a.service --ignore-unit b.scope /run/d /run/o")
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
-        assert_eq!(read.units, ["a.service", "b.service"]);
+        assert_eq!(read.units, ["a.service", "b.scope"]);
         assert!(!read.usb);
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
@@ -1137,6 +1199,13 @@ mod tests {
             "--forget /a /b",
             "--usb --forget --card Camera /a /b",
             "--usb --forget --ignore-unit a.service /a /b",
+            "--ignore-unit a.slice /a /b",
+            "--ignore-unit a.socket /a /b",
+            "--ignore-unit .service /a /b",
+            "--ignore-unit a/b.service /a /b",
+            "--ignore-unit user@1000.service /a /b",
+            "--ignore-unit session-2.scope /a /b",
+            "--ignore-unit init.scope /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),

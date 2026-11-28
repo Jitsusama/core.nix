@@ -65,6 +65,18 @@ const VERSION: u32 = 2;
 /// line sent makes a key or an ask of any length.
 const UNFOLDED_AT_MOST: usize = 100;
 
+/// The most letters a case keeps of the cause as said, which it is folded
+/// from again on every read. The longest a cell sent by 27 November ran
+/// about 250; past this a line's words make the kept file grow, not its
+/// fold surer.
+const SAID_AT_MOST: usize = 500;
+
+/// The most changes one line or record counts, so one naming hundreds
+/// can't keep a file of them. It bounds what a line costs, not what it
+/// weighs: one naming three changes still puts a class over its bar. A
+/// change named twice counts once toward it.
+const CHANGES_PER_LINE: usize = 10;
+
 /// The most unfolded classes one message counts, so a message of many
 /// junk wordings can't put each over the bar; the folded classes are few
 /// by their making.
@@ -180,8 +192,11 @@ fn kept_reading(at: &Path) -> Result<Kept, String> {
             );
             Ok(Kept::default())
         }
+        // It says what moving it aside would cost, as symbiosis's does, so
+        // whoever mends it knows the cases only it holds go with it.
         Err(error) => Err(format!(
-            "the reading kept in {} doesn't parse ({error})",
+            "the reading kept in {} doesn't parse ({error}); moved aside, the week would be \
+             read anew, forgetting what only it held",
             at.display()
         )),
     }
@@ -232,19 +247,19 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     };
     let heard: Vec<(Message, i64)> = listed
         .into_iter()
-        .filter_map(|(path, name, written)| {
-            let json = symbiosis::opened_at_most(&path).ok()?;
-            let message: Message = serde_json::from_slice(&json).ok()?;
-            genuine(&message, &name).then_some((message, written))
-        })
+        .filter_map(|(path, name, written)| Some((message_in(&path, &name)?, written)))
         .collect();
     let withdrawn = withdrawals(kept.withdrawn, &heard);
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
-        .map(|case| Case {
-            class: class_named(&case.said),
-            ..case
+        .map(|case| {
+            let said: String = case.said.chars().take(SAID_AT_MOST).collect();
+            Case {
+                class: class_named(&said),
+                said,
+                ..case
+            }
         })
         .collect();
     cases.extend(said(&heard));
@@ -315,8 +330,9 @@ pub fn names_no_class(line: &str) -> bool {
 /// before `now`, the vetted before the unfolded and most changes first,
 /// each with its owner after ` · `, so
 /// each is filed with its own. A class whose owner differs by repository
-/// has a line for each repository it was found in, named after the class,
-/// since the class recurs though one half of it may not.
+/// has a line for each repository with an owner of its own that it was
+/// found in over the bar, named after the class, and one for the rest,
+/// since the class recurs though one part of it may not.
 #[must_use]
 pub fn recurring(cases: &[Case], now: i64) -> Measure {
     let mut changes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -378,15 +394,38 @@ pub fn class_of(line: &str) -> &str {
     line.split_once(':').map_or(line, |(class, _)| class)
 }
 
-/// The lines one class over its bar gives, found on the changes `on`: one
-/// naming them all, or, where its owner differs by repository, one for
-/// each repository, naming that one's changes and its owner.
+/// The lines one class over its bar gives, found on the changes `on`.
+/// Each repository `OWNERS` names the class's owner in has a line of its
+/// own whenever the class is found there, asked of that owner. The other
+/// repositories share the class's own line, asked of its owner, and only
+/// once they are on `AT_LEAST` changes together; with no repository
+/// apart, that line names every change. So each line's key stays one
+/// owner's whatever the counts do: a count crossing the bar opens or
+/// closes that one ask, and a fix named on it holds. Letting a repository
+/// go apart by its count moved its cases between keys and asked again
+/// for a fix just named. On 27 November world, which no owner is named
+/// in, was asked apart on 1 of a class's 55 changes; it now counts only
+/// toward the rest's bar, so three such repositories on two changes each
+/// still reach the class's owner, and a sender naming many makes one ask.
 fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
-    let split = OWNERS
-        .iter()
-        .any(|&(named, repo, _)| named == class && !repo.is_empty());
-    if !split {
-        let all: Vec<&str> = on.iter().copied().collect();
+    let all: Vec<&str> = on.iter().copied().collect();
+    let owned_in = |repo: &str| {
+        !repo.is_empty()
+            && OWNERS
+                .iter()
+                .any(|&(named, named_repo, _)| named == class && named_repo == repo)
+    };
+    let mut apart: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut rest: Vec<&str> = Vec::new();
+    for &change in on {
+        let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
+        if owned_in(repo) {
+            apart.entry(repo).or_default().push(change);
+        } else {
+            rest.push(change);
+        }
+    }
+    if apart.is_empty() {
         return vec![format!(
             "{class}: on {} changes in a week, {} · {}",
             all.len(),
@@ -394,12 +433,7 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
             owner_of(class, "")
         )];
     }
-    let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    for &change in on {
-        let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
-        by_repo.entry(repo).or_default().push(change);
-    }
-    by_repo
+    let mut lines: Vec<String> = apart
         .into_iter()
         .map(|(repo, changes)| {
             format!(
@@ -410,7 +444,17 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
                 owner_of(class, repo)
             )
         })
-        .collect()
+        .collect();
+    if rest.len() >= AT_LEAST {
+        lines.push(format!(
+            "{class}: on {} of its {} changes in a week in other repositories, {} · {}",
+            rest.len(),
+            on.len(),
+            rest.join(", "),
+            owner_of(class, "")
+        ));
+    }
+    lines
 }
 
 /// Who owns fixing `class` in `repo`: its owner there, else its owner in
@@ -453,19 +497,49 @@ fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)]) -> BTreeSet
 
 /// Of those `withdrawn`, the ones kept for later hours, as of `now` in
 /// seconds: each as long as the line it withdraws could be, since that
-/// may be written here later. One stamped over an hour past now, or
-/// running long, would only grow the kept file every hour, so it is let
-/// go; it was applied to this hour's lines all the same.
+/// may be written here later. One stamped up to a day past now is kept,
+/// since a sender whose clock runs more than an hour fast may have its
+/// line relayed here late, and that line must still stay out. One
+/// stamped further ahead, or running long, would only grow the kept file
+/// every hour, so it is let go; it was applied to this hour's lines all
+/// the same.
 fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
     withdrawn
         .iter()
         .filter(|id| {
             id.len() <= WITHDRAWAL_AT_MOST
                 && stamped_at(id)
-                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
+                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= (now + DAY) * 1000)
         })
         .cloned()
         .collect()
+}
+
+/// The message the mesh's file at `path`, named `name`, holds, when it is
+/// genuine. One the harness moved after it was listed is let go without
+/// a word, since the harness moves only what is old, read already or
+/// expired. One that can't be read, or doesn't parse, is said on stderr
+/// and left out. The next hour lists it again only while it was written
+/// within `SLACK_MS` of that hour's mark, so one caught as it was written
+/// still counts; one that stays unreadable past then is lost, said only
+/// on stderr.
+fn message_in(path: &Path, name: &str) -> Option<Message> {
+    let parsed = match symbiosis::opened_at_most(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        opened => opened.map_err(|error| error.to_string()).and_then(|json| {
+            serde_json::from_slice::<Message>(&json).map_err(|error| error.to_string())
+        }),
+    };
+    match parsed {
+        Ok(message) => genuine(&message, name).then_some(message),
+        Err(why) => {
+            eprintln!(
+                "cadence: the mesh's {} was left out of the causes read ({why})",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 /// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
@@ -567,8 +641,12 @@ fn changes(named: &str) -> Vec<String> {
         if !in_repo.is_empty() {
             repo = repo_named(in_repo).unwrap_or_default();
         }
-        if !repo.is_empty() {
-            found.push(format!("{repo}#{number}"));
+        let change = format!("{repo}#{number}");
+        if !repo.is_empty() && !found.contains(&change) {
+            found.push(change);
+            if found.len() == CHANGES_PER_LINE {
+                break;
+            }
         }
     }
     found
@@ -625,7 +703,7 @@ fn class_named(said: &str) -> String {
 /// spaces gone, a curled apostrophe straight and a colon a comma, since a
 /// colon ends the class on the measure's line. A double quote or backtick
 /// within is an apostrophe, so a sender's words can't close the quotes
-/// the ask puts them in.
+/// the ask puts them in. Only its first `SAID_AT_MOST` letters are kept.
 fn plain(class: &str) -> String {
     class
         .trim()
@@ -637,6 +715,11 @@ fn plain(class: &str) -> String {
         .to_lowercase()
         .replace(['\u{2019}', '"', '`'], "'")
         .replace(':', ",")
+        .chars()
+        .take(SAID_AT_MOST)
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
 }
 
 /// `word` quoted for a POSIX shell: in single quotes, each of its own

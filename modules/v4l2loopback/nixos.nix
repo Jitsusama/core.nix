@@ -99,15 +99,24 @@ in
               ignoreUnits = lib.mkOption {
                 # Only a service or a scope holds processes of its own, so a
                 # slice, or anything else, is refused here rather than
-                # quietly leaving nobody out.
-                type = lib.types.listOf (lib.types.strMatching "[^/]+\\.(service|scope)");
+                # quietly leaving nobody out. A person's manager, a session's
+                # scope and init.scope are refused here too, as the watch
+                # refuses them, so a machine that names one never builds.
+                type = lib.types.listOf (
+                  lib.types.addCheck (lib.types.strMatching "[^/]+\\.(service|scope)") (
+                    unit: builtins.match "(user@|session-).*|init\\.scope" unit == null
+                  )
+                );
                 default = [ ];
                 description = ''
                   System services or scopes whose processes are left out,
                   such as the relay's that fills the camera. By unit rather
                   than by name, since a program can take any name but can't
                   join a system unit; a person's own unit of the same name
-                  doesn't count, nor does a slice.
+                  doesn't count, nor does a slice. A person's manager
+                  (user@UID.service), a session's scope and init.scope hold
+                  everything their people run, so they're refused here, as
+                  the watch refuses them.
                 '';
               };
             };

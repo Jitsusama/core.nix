@@ -223,10 +223,52 @@ const LINES_AT_MOST: usize = 16;
 /// # Errors
 ///
 /// When the node can't be reached or read, never answers the list, or
-/// answers it with an error other than holding no hubs.
+/// answers it with an error other than holding no hubs, or hasn't within
+/// [`LISTED_AT_MOST`].
 pub fn listed(socket: &Path) -> io::Result<Vec<Hub>> {
+    listed_within(socket, LISTED_AT_MOST)
+}
+
+/// How long the whole ask of the node's hubs may take, connect and every
+/// line read: a sender asks it holding its own run's lock, so a node that
+/// never answers mustn't hold every later run behind it (#6774's round,
+/// F17). A connect to a node whose backlog is full blocks with no timeout
+/// of its own, and each read's would otherwise add up line by line.
+pub const LISTED_AT_MOST: Duration = Duration::from_secs(5);
+
+/// The hubs the node at `socket` names, as [`listed`] reads them, or an
+/// error once `within` has passed. The ask runs on a thread of its own,
+/// which a node that never answers leaves behind until the sender ends.
+///
+/// # Errors
+///
+/// As [`listed`], and `TimedOut` when the node hasn't answered `within`.
+pub fn listed_within(socket: &Path, within: Duration) -> io::Result<Vec<Hub>> {
+    let (answered, answer) = std::sync::mpsc::channel();
+    let socket = socket.to_owned();
+    std::thread::spawn(move || {
+        // The asker gave up waiting once it's gone, and nothing is lost.
+        let _ = answered.send(asked(&socket));
+    });
+    answer.recv_timeout(within).unwrap_or_else(|gone| {
+        Err(match gone {
+            std::sync::mpsc::RecvTimeoutError::Timeout => io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("the node didn't list its hubs within {within:?}"),
+            ),
+            std::sync::mpsc::RecvTimeoutError::Disconnected => {
+                io::Error::other("the ask of the node's hubs ended without an answer")
+            }
+        })
+    })
+}
+
+/// The hubs the node at `socket` names, asked with no bound of its own on
+/// the whole: [`listed_within`] gives it one.
+fn asked(socket: &Path) -> io::Result<Vec<Hub>> {
     let mut stream = UnixStream::connect(socket)?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
     stream.write_all(b"{\"id\":1,\"ask\":\"hello\"}\n")?;
     let list = r#"{"id":2,"ask":"list","kind":"hub","fields":["hub","fits","hubs"]}"#;
     stream.write_all(format!("{list}\n").as_bytes())?;

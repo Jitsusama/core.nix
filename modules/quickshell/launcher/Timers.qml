@@ -25,6 +25,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Presented.js" as Presented
 import "Timing.js" as Timing
 
 Provider {
@@ -103,11 +104,14 @@ Provider {
         return { verb: Words.verb("verb:timer:again"), run: () => provider.ask("again", record) };
     }
 
-    // Asks the daemon to change it, saying in the foot why when it won't.
+    // Asks the daemon to change it by its own key, saying in the foot why
+    // when it won't, by its row's key, as the launcher holds what a row
+    // becomes.
     function ask(act, record) {
         const then = answer => {
             if (answer?.error !== undefined)
-                provider.refused(record.key, said[answer.reason] ?? answer.error);
+                provider.refused(Presented.keyServed(record.key),
+                    said[answer.reason] ?? answer.error);
         };
         switch (act) {
         case "pause":
@@ -133,7 +137,7 @@ Provider {
         const back = returned(record);
         const row = member({
             thing: true,
-            key: record.key,
+            key: Presented.keyServed(record.key),
             name: named(record),
             glyph: Words.glyph("timer"),
             // A clock's hue on its mark, as Time's rows wear, muted while

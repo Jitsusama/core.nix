@@ -272,17 +272,16 @@ that every signature asks to be confirmed. The agents' socket starts once
 their key is there, and stopping their agent makes the next signature start
 it again over a key made anew; where it never ran, the stop does nothing. While
 the key is there the socket comes back whenever it stops, so to keep it off,
-stop `agent-signing-key.path` first, then the socket. Nothing keeps a stop: the
-user manager starts both again when it next starts, at the next login or, for a
-lingering account, the next boot, since its targets want them, and so does the
-next switch of the account's home configuration, changed units or not, since
-home-manager's sd-switch starts every unit a running target wants that isn't
-running. `systemctl --user start agent-signing-key.path` brings the socket back
-sooner. Keeping it off is tidiness, not a bar: Joel's own agent still holds the
-agents' key and signs with it, and any process running as Joel can start the
-socket again. Add both public keys to GitHub as
-signing keys, and to the machine repository's
-`jitsusama.signing.allowedSigners`, so git can say whose a signature is.
+stop `agent-signing-key.path` first, then the socket. That holds only until
+something starts them again: the user manager does when it next starts, at the
+next login or, for a lingering account, the next boot, since its targets want
+them, and a switch of the account's home configuration can too.
+`systemctl --user start agent-signing-key.path` brings the socket back sooner.
+Keeping it off is tidiness, not a bar: the agents' key needs no PIN, so
+anything running as the account can load it into an agent of its own and sign
+with it. Add both public keys to GitHub as signing keys, and to the machine
+repository's `jitsusama.signing.allowedSigners`, so git can say whose a
+signature is.
 
 On a machine the guide installed, `guide finish`, run as the account once
 signed in and online, adds the TPM's three keys to GitHub instead. It asks

@@ -220,14 +220,7 @@ fn reading_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The launcher's own words for Spec in tests/words.json, which become
-    /// its place file with Spec.qml; the-daemons-test-the-launchers-words
-    /// keeps the two the same from then.
-    fn words() -> Words {
-        let text = include_str!("../../tests/words.json");
-        Words::new(&serde_json::from_str(text).expect("the test's words are JSON"))
-    }
+    use crate::axes::words::tested as words;
 
     fn axes() -> Vec<Axis> {
         vec![

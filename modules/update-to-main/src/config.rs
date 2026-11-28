@@ -335,6 +335,11 @@ pub struct Follow {
     pub repository: String,
     pub branch: String,
     pub signers: Signers,
+    /// Whether it moves only when an ask names a commit of it, rather
+    /// than whenever its main does: for an input whose every move costs
+    /// a restart someone has to be told of first.
+    #[serde(default)]
+    pub asked: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -447,6 +452,15 @@ impl Config {
     /// The keyring holding only the PGP keys that count.
     pub fn keyring(&self) -> PathBuf {
         self.state.join("gnupg")
+    }
+
+    /// The inputs it follows only when asked, by name.
+    pub fn only_asked(&self) -> Vec<String> {
+        self.follows
+            .iter()
+            .filter(|(_, follow)| follow.asked)
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     /// The folder root keeps each followed input's copy and keyring in.

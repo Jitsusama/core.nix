@@ -1,6 +1,7 @@
 //! Which processes hold a camera's node, and the programs they are, read
 //! from /proc.
 
+use std::cell::OnceCell;
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
 use std::fs;
@@ -113,20 +114,21 @@ fn own_name(proc: &Path) -> io::Result<String> {
 /// counts only where the system's manager puts it, as the first part of
 /// the path that isn't a slice. Only the unified hierarchy's line is read,
 /// since a legacy hierarchy can be shaped by whoever it's delegated to,
-/// and a process with no such line is never left out: naming the relay
-/// shows the camera on, while leaving out a reader would show it off.
+/// and a process with no such line, or more than the one the kernel
+/// writes, is never left out: naming the relay shows the camera on, while
+/// leaving out a reader would show it off. The kernel refuses a newline in
+/// a cgroup's name, so a second line is no more than a guard.
 pub fn ignored(cgroup: &str, units: &[String]) -> bool {
-    cgroup.lines().any(|line| {
-        let Some(path) = line.strip_prefix("0::/") else {
-            return false;
-        };
-        path.split('/')
-            .find(|part| {
-                part.rsplit_once('.')
-                    .is_none_or(|(_, kind)| kind != "slice")
-            })
-            .is_some_and(|part| units.iter().any(|unit| unit == part))
-    })
+    let mut unified = cgroup.lines().filter_map(|line| line.strip_prefix("0::/"));
+    let (Some(path), None) = (unified.next(), unified.next()) else {
+        return false;
+    };
+    path.split('/')
+        .find(|part| {
+            part.rsplit_once('.')
+                .is_none_or(|(_, kind)| kind != "slice")
+        })
+        .is_some_and(|part| units.iter().any(|unit| unit == part))
 }
 
 /// Whether a process is left out, by what reading its cgroup file gave.
@@ -154,28 +156,104 @@ pub fn maps(mapped: &[u8], node: &Path, inode: u64) -> bool {
     })
 }
 
-/// Whether a process has the node open, under any name: a by-id link, or
-/// /dev/videoN.
+/// The mount an open file is on, by the `mnt_id` line of its fdinfo.
+fn mount_id(fdinfo: &[u8]) -> Option<u64> {
+    fdinfo
+        .split(|byte| *byte == b'\n')
+        .find_map(|line| line.strip_prefix(b"mnt_id:"))
+        .and_then(|id| std::str::from_utf8(id).ok()?.trim().parse().ok())
+}
+
+/// The filesystem type of a mount, by its id, as a process's mountinfo
+/// says: the id is a line's first field, and the type is the first field
+/// after the lone dash that ends the optional ones. A path there has its
+/// spaces escaped, so splitting at spaces never cuts one.
+fn mount_type(mountinfo: &[u8], id: u64) -> Option<&[u8]> {
+    mountinfo.split(|byte| *byte == b'\n').find_map(|line| {
+        let mut fields = line.split(|byte| *byte == b' ');
+        let own: u64 = std::str::from_utf8(fields.next()?).ok()?.parse().ok()?;
+        if own != id {
+            return None;
+        }
+        fields.skip_while(|field| *field != b"-").nth(1)
+    })
+}
+
+/// Whether an open file is on a devtmpfs mount, by what the kernel says
+/// of the descriptor and of the process's mounts, never by the file. The
+/// mounts are read the first time a process needs them, and kept for its
+/// other descriptors; a descriptor or mounts that can't be read say no.
+fn on_devtmpfs(proc: &Path, fd: &OsStr, mountinfo: &OnceCell<Option<Vec<u8>>>) -> bool {
+    // A descriptor closed or a process gone since its link was read holds
+    // no camera now, just as one skipped for its link is.
+    let Some(id) = fs::read(proc.join("fdinfo").join(fd))
+        .ok()
+        .as_deref()
+        .and_then(mount_id)
+    else {
+        return false;
+    };
+    mountinfo
+        // A process gone since its descriptors were listed holds no camera
+        // now; one alive whose mounts can't be read is named by maps, if at
+        // all, as it was before mounts were asked.
+        .get_or_init(|| fs::read(proc.join("mountinfo")).ok())
+        .as_deref()
+        .and_then(|mounts| mount_type(mounts, id))
+        .is_some_and(|kind| kind == b"devtmpfs")
+}
+
+/// Whether a process has the node open, under any name: a by-id link,
+/// /dev/videoN, or the node bound anywhere else. A process in a mount
+/// namespace of its own, as a sandboxed app is, still reads as /dev, its
+/// own namespace's path. A link outside /dev is followed only when the
+/// kernel puts its descriptor on a devtmpfs mount, as a bind of the node
+/// is: a user namespace can't make a device node, and a tmpfs it mounts
+/// can't hold one that opens, so devtmpfs is the one place a camera's
+/// node comes from. Which mount it is comes from the descriptor's fdinfo
+/// and the process's mountinfo, read only for such a link, rather than
+/// from the file itself, since one on a network or FUSE filesystem that
+/// hangs would hang the watch for every camera. A socket, pipe or other
+/// link that isn't a path can't be a bound node, so it's never asked,
+/// which keeps a process holding thousands of them as cheap to walk as
+/// before. A descriptor whose fdinfo or mountinfo can't be read is
+/// skipped, as one that's closed is.
 fn holds(proc: &Path, device: u64) -> io::Result<bool> {
+    let mountinfo = OnceCell::new();
     for fd in fs::read_dir(proc.join("fd"))? {
-        let fd = fd?.path();
-        let Ok(link) = fs::read_link(&fd) else {
+        let fd = fd?;
+        let path = fd.path();
+        let Ok(link) = fs::read_link(&path) else {
             continue;
         };
-        if !link.as_os_str().as_bytes().starts_with(b"/dev/") {
+        let link = link.as_os_str().as_bytes();
+        let maybe_a_node = link.starts_with(b"/dev/")
+            || (link.starts_with(b"/") && on_devtmpfs(proc, &fd.file_name(), &mountinfo));
+        if !maybe_a_node {
             continue;
         }
-        if fs::metadata(&fd).is_ok_and(|status| status.rdev() == device) {
+        if fs::metadata(&path).is_ok_and(|status| status.rdev() == device) {
             return Ok(true);
         }
     }
     Ok(false)
 }
 
-/// The programs holding the node, and their processes. It fails only
-/// when the node itself has gone; a process can end at any point while
-/// it's read, and whatever it does, it costs only itself.
+/// The programs holding the node, and their processes. It fails when the
+/// node has gone, or when it or /proc can't be read; a process can end at
+/// any point while it's read, and whatever it does, it costs only itself.
 pub fn holders(
+    node: &Path,
+    units: &[String],
+    before: &HashSet<u32>,
+) -> io::Result<(BTreeSet<String>, HashSet<u32>)> {
+    holders_in(Path::new("/proc"), node, units, before)
+}
+
+/// The programs holding the node, and their processes, as the process
+/// folder given has them, so a test can walk a folder it made.
+fn holders_in(
+    proc_root: &Path,
     node: &Path,
     units: &[String],
     before: &HashSet<u32>,
@@ -184,7 +262,7 @@ pub fn holders(
     let own = std::process::id();
     let mut names = BTreeSet::new();
     let mut pids = HashSet::new();
-    for entry in fs::read_dir("/proc")?.flatten() {
+    for entry in fs::read_dir(proc_root)?.flatten() {
         let Some(pid) = entry
             .file_name()
             .to_str()
@@ -232,12 +310,19 @@ mod tests {
         assert_eq!(unwrapped(".hidden"), ".hidden");
     }
 
-    /// Holds each cgroup file to whether its process is left out.
+    /// Holds each cgroup file to whether its process is left out, with
+    /// the relay's unit ignored.
     fn each_left_out(cases: &[(&str, bool)]) {
-        let units = ["stand-in.service".to_owned()];
+        each_left_out_of(&["stand-in.service"], cases);
+    }
+
+    /// Holds each cgroup file, read as the watch reads it, to whether its
+    /// process is left out with these units ignored.
+    fn each_left_out_of(units: &[&str], cases: &[(&str, bool)]) {
+        let units: Vec<String> = units.iter().map(|&unit| unit.to_owned()).collect();
         for (cgroup, out) in cases {
             assert_eq!(
-                ignored(cgroup, &units),
+                left_out(&Ok(cgroup.as_bytes().to_vec()), &units),
                 *out,
                 "whether {cgroup:?} is left out"
             );
@@ -279,23 +364,38 @@ mod tests {
                 "1:name=systemd:/user.slice\n0::/system.slice/stand-in.service\n",
                 true,
             ),
+            // The kernel writes one unified line, so a file with two
+            // says nothing trustworthy, whichever way round they are.
+            (
+                "0::/user.slice/x.scope\n0::/system.slice/stand-in.service\n",
+                false,
+            ),
+            (
+                "0::/system.slice/stand-in.service\n0::/user.slice/x.scope\n",
+                false,
+            ),
         ]);
     }
 
     #[test]
     fn a_process_in_no_unit_is_never_left_out() {
         // Only root can put a process straight in a slice, or at the root,
-        // but either has no unit to leave out.
-        each_left_out(&[
-            ("0::/\n", false),
-            ("0::/system.slice\n", false),
-            ("0::/user.slice/user-1000.slice\n", false),
-            ("", false),
-        ]);
+        // but either has no unit to leave out, even with its slice named.
+        let slices = ["stand-in.service", "system.slice", "user-1000.slice"];
+        each_left_out_of(
+            &slices,
+            &[
+                ("0::/system.slice/x.service\n", false),
+                ("0::/\n", false),
+                ("0::/system.slice\n", false),
+                ("0::/user.slice/user-1000.slice\n", false),
+                ("", false),
+            ],
+        );
     }
 
     #[test]
-    fn a_cgroup_file_that_cant_be_read_as_text_never_leaves_out() {
+    fn a_cgroup_file_that_isnt_text_or_cant_be_read_leaves_out_only_the_relay() {
         let units = ["stand-in.service".to_owned()];
         let user = b"0::/user.slice/user-1000.slice/user@1000.service";
         let odd = Ok([&user[..], b"/\xff/stand-in.service\n"].concat());
@@ -319,16 +419,28 @@ mod tests {
     fn a_mapping_counts_only_by_the_nodes_inode_and_path() {
         let maps_text = b"7f00-7f10 rw-s 00000000 00:06 812 /dev/video0\n\
             7f10-7f20 r-xp 00000000 103:02 55 /usr/lib/libc.so\n";
-        assert!(maps(maps_text, Path::new("/dev/video0"), 812));
-        assert!(!maps(maps_text, Path::new("/dev/video0"), 55));
-        assert!(!maps(maps_text, Path::new("/dev/video1"), 812));
+        assert!(
+            maps(maps_text, Path::new("/dev/video0"), 812),
+            "a mapping of the node by its path and inode wasn't counted"
+        );
+        assert!(
+            !maps(maps_text, Path::new("/dev/video0"), 55),
+            "a mapping with the node's path but another inode was counted"
+        );
+        assert!(
+            !maps(maps_text, Path::new("/dev/video1"), 812),
+            "a mapping with the node's inode but another path was counted"
+        );
     }
 
     #[test]
     fn this_process_is_named_by_its_own_program() {
         let named = program(Path::new("/proc/self")).unwrap();
         assert_ne!(named, "");
-        assert!(!named.contains('\n'));
+        assert!(
+            !named.contains('\n'),
+            "the program's name kept its newline: {named:?}"
+        );
     }
 
     #[test]
@@ -341,5 +453,210 @@ mod tests {
             assert_eq!(program(&proc).unwrap(), "?", "a comm of {comm:?}");
         }
         fs::remove_dir_all(&proc).unwrap();
+    }
+
+    /// An empty process folder of the test's own, named by its case, so
+    /// tests that run at once never share one. One a failed run left is
+    /// cleared first.
+    fn fake_proc(case: &str) -> std::path::PathBuf {
+        let name = format!("holders-{case}-{}", std::process::id());
+        let root = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// A process named reader in the fake folder, whose descriptor 3 links
+    /// to what it holds, and whose cgroup file holds the bytes given, or is
+    /// missing when there are none.
+    fn fake_process(root: &Path, pid: u32, held: &Path, cgroup: Option<&[u8]>) {
+        let proc = root.join(pid.to_string());
+        fs::create_dir_all(proc.join("fd")).unwrap();
+        fs::write(proc.join("comm"), "reader\n").unwrap();
+        fs::write(proc.join("cmdline"), "").unwrap();
+        std::os::unix::fs::symlink(held, proc.join("fd/3")).unwrap();
+        if let Some(cgroup) = cgroup {
+            fs::write(proc.join("cgroup"), cgroup).unwrap();
+        }
+    }
+
+    /// The mount a fake process's descriptor 3 is on, in its fdinfo, and
+    /// the process's mountinfo saying that mount is of the kind given, or
+    /// no mountinfo when there's none. A devtmpfs mount whose id starts
+    /// with the same digits comes first, so only the whole id finds it.
+    fn fake_mount(root: &Path, pid: u32, kind: Option<&str>) {
+        let proc = root.join(pid.to_string());
+        fs::create_dir_all(proc.join("fdinfo")).unwrap();
+        let fdinfo = "pos:\t0\nflags:\t0100000\nmnt_id:\t42\n";
+        fs::write(proc.join("fdinfo/3"), fdinfo).unwrap();
+        if let Some(kind) = kind {
+            let mounts = format!(
+                "421 1 0:5 / /dev rw,nosuid shared:2 - devtmpfs devtmpfs rw,mode=755\n\
+                 42 421 0:5 /video0 /home/someone/v rw,nosuid shared:2 - {kind} {kind} rw\n"
+            );
+            fs::write(proc.join("mountinfo"), mounts).unwrap();
+        }
+    }
+
+    /// A link outside /dev, in the fake folder, that leads to /dev/null, so
+    /// following it finds the camera's device as a bind of its node would.
+    fn bound(root: &Path) -> std::path::PathBuf {
+        let outside = root.join("video0");
+        std::os::unix::fs::symlink("/dev/null", &outside).unwrap();
+        outside
+    }
+
+    /// What a walk of the fake folder names as holding /dev/null, with the
+    /// stand-in unit the one left out. The folder is removed after, even
+    /// when the walk fails. The walk follows descriptor links and compares
+    /// devices, so /dev/null stands in for a camera and none is ever opened.
+    fn walked(root: &Path) -> (BTreeSet<String>, HashSet<u32>) {
+        walked_after(root, &HashSet::new())
+    }
+
+    /// What a walk of the fake folder names, as walked does, when the
+    /// processes given held the camera at the walk before, so their maps
+    /// are read too.
+    fn walked_after(root: &Path, before: &HashSet<u32>) -> (BTreeSet<String>, HashSet<u32>) {
+        let units = ["stand-in.service".to_owned()];
+        let found = holders_in(root, Path::new("/dev/null"), &units, before);
+        fs::remove_dir_all(root).unwrap();
+        found.unwrap()
+    }
+
+    #[test]
+    fn a_process_whose_cgroup_file_isnt_text_is_named() {
+        // A person can name a cgroup of their own with a byte that isn't
+        // text, and skipping its reader would show a camera in use as off.
+        let root = fake_proc("not-text");
+        let user = b"0::/user.slice/user-1000.slice/user@1000.service";
+        let cgroup = [&user[..], b"/\xff/stand-in.service\n"].concat();
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), Some(&cgroup));
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file isn't text is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_with_no_cgroup_file_is_named() {
+        let root = fake_proc("no-cgroup");
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), None);
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file can't be read is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_in_a_left_out_unit_is_not_named() {
+        // A reader beside it shows the walk saw the folder, so the relay's
+        // absence is its unit's doing.
+        let root = fake_proc("left-out");
+        let null = Path::new("/dev/null");
+        let relay = b"0::/system.slice/stand-in.service\n";
+        let reader = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, null, Some(relay));
+        fake_process(&root, 4_000_002, null, Some(reader));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process outside the stand-in unit is seen"
+        );
+    }
+
+    #[test]
+    fn a_node_bound_outside_dev_from_devtmpfs_is_named() {
+        // A person can bind the camera's node anywhere in a mount namespace
+        // of their own, and missing its reader would show a camera in use
+        // as off.
+        let root = fake_proc("bound");
+        let outside = bound(&root);
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("devtmpfs"));
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader of a node bound outside /dev is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_link_outside_dev_on_another_kind_of_mount_is_not_named() {
+        // The link leads to /dev/null, so the device alone would match; only
+        // its mount's kind leaves it out. A reader beside it shows the walk
+        // saw the folder.
+        let root = fake_proc("other-mount");
+        let outside = bound(&root);
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("tmpfs"));
+        fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process whose link is under /dev is seen"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_whose_mount_cant_be_read_is_skipped_without_failing_the_walk() {
+        // Each link leads to /dev/null, so following one would name its
+        // process. The odd processes have no fdinfo, the even ones no
+        // mountinfo; the ones that held the camera before still map it,
+        // and are named only if skipping the link left their walk going.
+        let root = fake_proc("unreadable-mount");
+        let outside = bound(&root);
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        let inode = fs::metadata("/dev/null").unwrap().ino();
+        let mapped = format!("7f00-7f10 rw-s 00000000 00:06 {inode} /dev/null\n");
+        for pid in 4_000_001..=4_000_004 {
+            fake_process(&root, pid, &outside, Some(cgroup));
+        }
+        fake_mount(&root, 4_000_002, None);
+        fake_mount(&root, 4_000_004, None);
+        for pid in [4_000_003, 4_000_004] {
+            fs::write(root.join(pid.to_string()).join("maps"), &mapped).unwrap();
+        }
+        let (_, pids) = walked_after(&root, &HashSet::from([4_000_003, 4_000_004]));
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_003, 4_000_004]),
+            "only the processes that still map the camera are seen"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_that_isnt_a_path_is_never_asked_its_mount() {
+        // The descriptor reads as a pipe's, as most of a process's do, not
+        // as a path, on a devtmpfs mount. In the fake folder that name leads
+        // on, through a folder beside the descriptors that isn't one, to
+        // /dev/null, so following it would name the process. Only leaving a
+        // link that isn't a path unasked keeps it out.
+        let root = fake_proc("not-a-path");
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, Path::new("pipe:[1]/x"), Some(cgroup));
+        fake_mount(&root, 4_000_001, Some("devtmpfs"));
+        let beside = root.join("4000001/fd/pipe:[1]");
+        fs::create_dir(&beside).unwrap();
+        std::os::unix::fs::symlink("/dev/null", beside.join("x")).unwrap();
+        fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process whose link is under /dev is seen"
+        );
     }
 }

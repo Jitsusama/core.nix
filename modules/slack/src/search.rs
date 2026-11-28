@@ -378,10 +378,11 @@ mod tests {
         let refused = |error: &str| found(&json!({"ok": false, "error": error}), "U0");
         assert_eq!(refused("ratelimited"), Err(Failed::Busy));
         assert_eq!(refused("invalid_auth"), Err(Failed::SignedOut));
-        assert!(matches!(
-            refused("fatal_error"),
-            Err(Failed::Unreachable(_))
-        ));
+        let fatal = refused("fatal_error");
+        assert!(
+            matches!(fatal, Err(Failed::Unreachable(_))),
+            "any other refusal should be out of reach: {fatal:?}"
+        );
         assert_eq!(
             Failed::from(Refused::Unreachable(BUSY.to_owned())),
             Failed::Busy

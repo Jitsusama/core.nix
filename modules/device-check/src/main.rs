@@ -701,6 +701,57 @@ mod tests {
     }
 
     #[test]
+    fn in_a_narrow_terminal_a_long_line_hangs_under_its_mark() {
+        // A device is named by its address and driver, as the walk writes
+        // it, and its line passes a narrow terminal. It wraps there, each
+        // later line under the first's words rather than under the mark,
+        // in the 38 cells the mark's 2 leave. The first line's words fill
+        // those 38 exactly, so a wrap one cell narrower parts them, and
+        // with the mark it reaches the terminal's edge, which a line may.
+        // The second's with the next word come to 39, so a wrap one cell
+        // wider takes that word up.
+        let root = OsStr::new("/nonexistent");
+        let look = Look {
+            now: ["power\t0000:00:04.0 (proc_thermal_pci)".to_owned()].into(),
+            broke: Vec::new(),
+            fixed: Vec::new(),
+            sleeps: Vec::new(),
+            sleep: None,
+        };
+        let pen = Pen::plain();
+        let caution = pen.marked("caution", "warning");
+        let text = answer_text(&look, root, &pen, Room::Cells(40));
+        assert_eq!(
+            layout::overrun(&text, Room::Cells(40)),
+            None,
+            "a line passed 40 cells:\n{text}"
+        );
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines,
+            [
+                format!("{caution}0000:00:04.0 (proc_thermal_pci) failed"),
+                "  a power change and won't wake until".to_owned(),
+                "  the next boot".to_owned(),
+            ],
+            "the line didn't wrap at exactly 38 cells under its mark, each word kept:\n{text}"
+        );
+        // The edges the comment above counts, counted, so a new fixture
+        // that drifts off them fails here rather than passing a wrap a cell
+        // off.
+        assert_eq!(
+            layout::width(lines[0]),
+            40,
+            "the first line's words didn't fill the room past the mark:\n{text}"
+        );
+        assert_eq!(
+            layout::width(lines[1].trim_start()) + 1 + layout::width("the"),
+            39,
+            "the second line's words and the next didn't come to a cell past the room:\n{text}"
+        );
+    }
+
+    #[test]
     fn reads_trouble_only_from_its_own_taints() {
         let dir = env::temp_dir().join(format!("device-check-test-{}", process::id()));
         let kernel = dir.join("proc/sys/kernel");

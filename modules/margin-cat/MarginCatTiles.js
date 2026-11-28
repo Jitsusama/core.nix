@@ -102,6 +102,15 @@ function runs(heard, now, lasts) {
     return heard !== null && heard.at !== null && now >= heard.at && now - heard.at < lasts;
 }
 
+// The motion `heard` (hears) as it tells of window `on` alone: when that
+// window's own word of it began, null for none, as runs() reads it. niri
+// puts a column's move on the tiles of each column it moves, so the cat
+// rides only the one it's carried by, and every window's word is heard,
+// each dated as it came, so a word asked of late keeps its own begin.
+function heardOf(heard, on) {
+    return { at: heard?.tiles?.[on]?.at ?? null };
+}
+
 // The tiles of a workspace's windows, each with its column and its row in
 // niri's scrolling layout, both null for a floating one, and its window's id.
 function of(windows, workspaceId) {
