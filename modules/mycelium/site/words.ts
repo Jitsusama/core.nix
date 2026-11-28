@@ -410,10 +410,14 @@ type Told = ReadonlyMap<string, string>;
  * as another's told name is, by their whole keys until none are. A title
  * that reads as one of `own`, the names the page gives its own groups, is
  * told apart from it as from another network's; those names are kept in
- * what it gives too, keyed as the page keys its own groups (#own.0, #own.1
- * and on), so labelsApart tells labels from them as well. Keys are unique,
- * and stay so written out, so each pass of the last tell leaves fewer
- * alike, and one pass per network bounds it.
+ * what it gives too, under keys of their own (#own.0, #own.1 and on, in
+ * the order given), so labelsApart tells labels from them as well. These
+ * aren't the keys the page holds its groups by (#outside, #loose, and
+ * #loose. with a machine), and no network takes one: the page tells apart
+ * only orchestrations, which the node names `orchestration.` and the
+ * address each is for. Keys are unique, and stay so written out, so each
+ * pass of the last tell leaves fewer alike, and one pass per network
+ * bounds it.
  */
 export const toldApart = (networks: readonly Named[], own: readonly string[] = []): Told => {
   const groups = own.map((name, at) => ({ key: `#own.${at}`, name }));
