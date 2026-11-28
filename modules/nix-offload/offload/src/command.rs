@@ -238,8 +238,14 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
 /// `run`, its paths sent first, and gives its status, or none when ssh
-/// couldn't reach it or its paths couldn't go. `[ssh, nix]` are the
+/// couldn't reach it or lost it while its paths went. `[ssh, nix]` are the
 /// programs run, and `cuts` the run's copies up its keepalive cut.
+///
+/// Paths that couldn't go for any other reason give why, and the run
+/// isn't sent again: that failure comes again on a builder standing
+/// again. A copy cut on an uplink of about 7 Mb/s sent its run round to
+/// wait for a builder, copy and be cut again, every time, until its wait
+/// ran out.
 pub fn on(
     store: &str,
     sending: &Sending,
@@ -248,8 +254,14 @@ pub fn on(
     scratch: &Path,
     [ssh, nix]: [&str; 2],
     cuts: &there::Cuts,
-) -> Option<i32> {
-    let lent = there::builder(store.lines().next()?.trim())?;
+) -> Result<Option<i32>, String> {
+    let Some(lent) = store
+        .lines()
+        .next()
+        .and_then(|line| there::builder(line.trim()))
+    else {
+        return Ok(None);
+    };
     if !asked.copies.is_empty() {
         eprintln!(
             "nix-offload: sending {} to {}",
@@ -257,10 +269,14 @@ pub fn on(
             lent.host
         );
         let size = closure_of(nix, &asked.copies).unwrap_or(0);
-        if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
+        if let Err(unsent) =
+            there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
         {
-            eprintln!("nix-offload: {why}");
-            return None;
+            if !unsent.lost {
+                return Err(format!("{}, and it isn't sent again", unsent.why));
+            }
+            eprintln!("nix-offload: {}", unsent.why);
+            return Ok(None);
         }
     }
     eprintln!("nix-offload: building on the lent builder {}", lent.host);
@@ -272,14 +288,14 @@ pub fn on(
     };
     let out = || Box::new(std::io::stdout()) as Box<dyn Write + Send>;
     match link.followed(sending, run, &out, &mut std::io::stderr()) {
-        Ok(status) if status != there::UNREACHED => Some(status),
+        Ok(status) if status != there::UNREACHED => Ok(Some(status)),
         Ok(_) => {
             eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
-            None
+            Ok(None)
         }
         Err(why) => {
             eprintln!("nix-offload: {why}");
-            None
+            Ok(None)
         }
     }
 }

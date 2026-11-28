@@ -1698,8 +1698,11 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
     let cuts = there::Cuts::default();
     let started = std::time::Instant::now();
     let mut took = None;
+    // How the run ended: none while no builder took it, its status once
+    // one ran it, or why its copies couldn't go, after which it's sent
+    // nowhere else.
     let mut on = |store: &str| {
-        let status = command::on(
+        let outcome = command::on(
             store,
             &sending,
             &asked,
@@ -1707,21 +1710,22 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
             &scratch,
             ["ssh", "nix"],
             &cuts,
-        );
-        if status.is_some() {
+        )
+        .transpose();
+        if matches!(outcome, Some(Ok(_))) {
             took = store
                 .lines()
                 .next()
                 .and_then(|line| there::builder(line.trim()))
                 .map(|lent| lent.host);
         }
-        status
+        outcome
     };
-    let mut status = changed::in_turn(lenders, std::process::id())
+    let mut outcome = changed::in_turn(lenders, std::process::id())
         .iter()
         .filter_map(|lender| standing(lender))
         .find_map(|store| on(&store));
-    if status.is_none()
+    if outcome.is_none()
         && let Some(lender) = lenders.into_iter().find(|lender| there::lends(lender))
     {
         eprintln!(
@@ -1731,12 +1735,15 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         );
         there::want(lender);
         let since = std::time::Instant::now();
-        while status.is_none()
+        while outcome.is_none()
             && let Some(store) = there::stood_again(lender, waiting, since)
         {
-            status = on(&store);
+            outcome = on(&store);
         }
     }
+    let status = outcome
+        .as_ref()
+        .and_then(|ended| ended.as_ref().ok().copied());
     if let Some(bundle) = &sending.bundle {
         archived::gone(bundle);
     }
@@ -1758,10 +1765,11 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         say_a_warm_pass_isnt_kept(status, &asked.words);
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
-    match status {
-        Some(status) => ended::status(status, || {
+    match outcome {
+        Some(Ok(status)) => ended::status(status, || {
             format!("{} failed on a lent builder", asked.words.join(" "))
         }),
+        Some(Err(why)) => Err(not_run(&why)),
         None => Err(not_run("no lent builder took it")),
     }
 }
@@ -2448,14 +2456,14 @@ impl Sent<'_> {
         // the builder trusts no account.
         if let Some(own) = self.own {
             let package = [changed::package_of(own)];
-            if let Err(why) = there::paths_up(
+            if let Err(unsent) = there::paths_up(
                 &package,
                 &lent,
                 "nix",
                 there::send_within(0),
                 &there::Cuts::default(),
             ) {
-                eprintln!("nix-offload: {why}");
+                eprintln!("nix-offload: {}", unsent.why);
                 return None;
             }
         }
