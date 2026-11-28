@@ -8,6 +8,16 @@
   runCommandLocal,
   writeText,
 }:
+let
+  # The rule beside the Rust reader it shares, so it finds the reader.
+  rule = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./every-assert-says-what-was-wrong.py
+      ./rust_source.py
+    ];
+  };
+in
 {
   # The repository's tree, as its flake sees it.
   src,
@@ -18,6 +28,6 @@
   name ? "every-assert-says-what-was-wrong",
 }:
 runCommandLocal name { } ''
-  ${lib.getExe python3} ${./every-assert-says-what-was-wrong.py} ${src} ${writeText "waiting.json" (builtins.toJSON waiting)}
+  ${lib.getExe python3} ${rule}/every-assert-says-what-was-wrong.py ${src} ${writeText "waiting.json" (builtins.toJSON waiting)}
   touch $out
 ''

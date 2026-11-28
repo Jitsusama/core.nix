@@ -23,63 +23,24 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rust_source import rust_code
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # Where a Rust assertion that can't show its sides starts.
 RUST_ASSERT = re.compile(r"\b(debug_)?assert!\s*\(")
-# A raw string's opening, and a character literal, which a lifetime's `'a` isn't.
-RAW_STRING = re.compile(r'b?r(#*)"')
-CHARACTER = re.compile(r"'(\\.[^']*|[^\\'])'")
 OPENS = "([{"
 CLOSES = ")]}"
 
 
-def rust_code(text: str) -> str:
-    """Blank out a Rust file's comments, and fill its strings and characters, keeping lines.
+def rust_bare(text: str) -> Iterator[int]:
+    """Give the line of each Rust `assert!` or `debug_assert!` with no message.
 
-    What's left is the code's brackets and commas where they were, so an
-    assertion's arguments can be counted without a comma in a string or a
-    comment being taken for one between them, while a string still counts as
+    Its arguments are counted in the code alone, so a comma in a string or a
+    comment isn't taken for one between them, while a string still counts as
     something given.
     """
-    out: list[str] = []
-    index = 0
-    while index < len(text):
-        char = text[index]
-        if text.startswith("//", index):
-            end = text.find("\n", index)
-            end = len(text) if end < 0 else end
-            out.append(" " * (end - index))
-            index = end
-        elif text.startswith("/*", index):
-            end = text.find("*/", index + 2)
-            end = len(text) if end < 0 else end + 2
-            out.append(re.sub(r"[^\n]", " ", text[index:end]))
-            index = end
-        elif raw := RAW_STRING.match(text, index):
-            close = '"' + raw.group(1)
-            end = text.find(close, index + len(raw.group(0)))
-            end = len(text) if end < 0 else end + len(close)
-            out.append(re.sub(r"[^\n]", "s", text[index:end]))
-            index = end
-        elif char == '"':
-            end = index + 1
-            while end < len(text) and text[end] != '"':
-                end += 2 if text[end] == "\\" else 1
-            out.append(re.sub(r"[^\n]", "s", text[index : end + 1]))
-            index = end + 1
-        elif literal := CHARACTER.match(text, index):
-            out.append("c" * len(literal.group(0)))
-            index += len(literal.group(0))
-        else:
-            out.append(char)
-            index += 1
-    return "".join(out)
-
-
-def rust_bare(text: str) -> Iterator[int]:
-    """Give the line of each Rust `assert!` or `debug_assert!` with no message."""
     code = rust_code(text)
     for found in RUST_ASSERT.finditer(code):
         depth = 0

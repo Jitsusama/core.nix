@@ -78,6 +78,7 @@ fn a_keep_on_a_builder_traces_while_a_gate_holds_the_base_then_checks_it_against
 
     let keep = stand_in.started(&KEEPING, &[("CHANGED_CHECKS_HERE", "1")]);
     let began = (0..200).any(|_| {
+        // Polls: any looks again each 50 ms, for up to 10 s.
         std::thread::sleep(std::time::Duration::from_millis(50));
         stand_in.path("traced").exists()
     });
