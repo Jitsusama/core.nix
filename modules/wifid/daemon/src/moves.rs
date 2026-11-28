@@ -248,7 +248,7 @@ fn given(
         return None;
     }
     let kept_off = |point: &str| chooser.call_keeps_off(point, now, gone);
-    let way = fading::giving_way(&on.point, measured, around, kept_off);
+    let way = fading::giving_way((&on.point, on.security), measured, around, kept_off);
     // Losing on the point it gave way to for loss, as on the one it left,
     // the card holds and looks for no other: no move escapes the network's
     // own loss, and each takes the call off its link a while.
@@ -1009,6 +1009,73 @@ mod tests {
         );
     }
 
+    /// How wpa_supplicant fails a move or a look it was asked for.
+    fn failed() -> Refused {
+        Refused::Failed {
+            reason: "wpa_supplicant didn't answer".into(),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_refused_once_readied_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Ok(())).expect("answered");
+        // No look ends here, so the move waits out its readying before it's
+        // asked, which paused time passes at once, as nothing else is due.
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the readied move wasn't asked once its readying passed");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move refused once readied wasn't handed back to its chooser"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_whose_look_for_a_point_unheard_is_refused_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Err(Refused::NotNearby)).expect("answered");
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("an unheard point wasn't looked for");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move whose look was refused wasn't handed back to its chooser"
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn a_card_whose_look_never_ends_waits_for_its_next_minute() {
         let (_, again) = looked_with(false).await;
@@ -1467,6 +1534,55 @@ mod tests {
         assert_eq!(first, Some(Next::Look), "it looks for somewhere");
         assert_eq!(again, None, "not within two minutes of its last look");
         assert_eq!(after, Some(Next::Look), "and again once they're past");
+    }
+
+    #[test]
+    fn a_faint_call_hearing_nowhere_holds_rather_than_look() {
+        let (start, around, on) = (Instant::now(), [heard(DESK, -50)], joined(DESK));
+        let given_as = |measured| given(&mut Chooser::default(), start, &on, &around, measured);
+
+        let faint = given_as((0, Some(-75)));
+        let lossy = given_as((2, Some(-75)));
+
+        assert_eq!(
+            faint, None,
+            "a faint call hearing nowhere looked, off a link still carrying it for 5 to 6 s"
+        );
+        assert_eq!(
+            lossy,
+            Some(Next::Look),
+            "a losing call hearing nowhere didn't look"
+        );
+    }
+
+    #[test]
+    fn a_call_gives_way_to_a_point_spurned_past_its_firm_only_once_its_link_is_gone() {
+        // Gone back from the hall to the desk twice on the desk's usual,
+        // so the hall is kept off an hour, yielding to a failing link at
+        // once.
+        let start = Instant::now();
+        let spurned = || choose::tests::back_twice_on_the_usual(start);
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on = joined(DESK);
+        let (mut gone, again) = spurned();
+        let (mut losing, _) = spurned();
+
+        // Five echoes lost of ten is `fading::GONE`, and two is only
+        // `fading::DROPPED`, each past the back's own `fading::BETWEEN`.
+        let past = again + fading::BETWEEN;
+        let to_gone = given(&mut gone, past, &on, &around, (5, Some(-50)));
+        let to_losing = given(&mut losing, past, &on, &around, (2, Some(-50)));
+
+        assert_eq!(
+            to_gone,
+            Some(Next::Move(HALL.into())),
+            "a call whose link was gone kept off a point spurned past its firm"
+        );
+        assert_eq!(
+            to_losing,
+            Some(Next::Look),
+            "a call losing two echoes took a point spurned, as though its link were gone"
+        );
     }
 
     #[test]

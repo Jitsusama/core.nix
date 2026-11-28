@@ -290,10 +290,11 @@ pub struct Chooser {
     /// each time (`SPURNED_MOST`). Every back that keeps a point off counts:
     /// carrying worse than the point left, slower under load, badly for a
     /// wider band's room, or worse than the usual a second time, as each
-    /// is a trial that didn't pay. Like `spurned`, it lives only as long as
-    /// the card's chooser: a restart of wifid, or a minute's tick finding
-    /// the card unjoined, as on a resume, starts every point afresh. Its
-    /// times are awake time, as `Instant` doesn't count a suspend.
+    /// is a trial that didn't pay. Like `spurned`, it lives as long as the
+    /// card's chooser, through a drop, a resume and a change of network, as
+    /// points are named by address: only a restart of wifid starts every
+    /// point afresh. Its times are awake time, as `Instant` doesn't count a
+    /// suspend.
     struck: HashMap<String, Struck>,
     /// What the card's access point carried over each of the last
     /// `JUDGED_MINUTES` minutes alone, where, and whether badly, as a trial
@@ -383,6 +384,8 @@ pub struct Chooser {
     /// Whether the call's link was last found fading with nowhere to give
     /// way to, so that's said once a spell.
     stranded: bool,
+    /// The network the card was last found on (`on_network`).
+    network: Option<String>,
 }
 
 /// A give-way during a call, which isn't judged against what it left as a
@@ -714,6 +717,28 @@ impl Chooser {
             })
         } else {
             !self.settled(now)
+        }
+    }
+
+    /// Takes in the network the card is found on. One the card has joined
+    /// since it was last found on another starts the chooser afresh but for
+    /// what it knows of each point by its address (`spurned`, `struck` and
+    /// `usually`): its moves, give-ways, trials and the holds after them are
+    /// of the last network's points, and a hold after two missed give-ways
+    /// at home would otherwise hold a call's give-ways on a phone's hotspot.
+    pub fn on_network(&mut self, network: &str) {
+        match self.network.as_deref() {
+            Some(last) if last == network => {}
+            Some(_) => {
+                *self = Self {
+                    spurned: std::mem::take(&mut self.spurned),
+                    struck: std::mem::take(&mut self.struck),
+                    usually: std::mem::take(&mut self.usually),
+                    network: Some(network.to_owned()),
+                    ..Self::default()
+                };
+            }
+            None => self.network = Some(network.to_owned()),
         }
     }
 
@@ -3524,14 +3549,75 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_give_way_never_reached_an_hour_after_the_last_is_taken_as_a_first() {
+    fn another_network_lifts_a_hold_but_keeps_each_point_kept_off() {
         let mut chooser = Chooser::default();
+        chooser.on_network("home");
         let start = Instant::now();
         chooser.gave_way(start, (DESK, HALL), LOSING);
         chooser.answered(start, HALL, start);
-        chooser.followed(start + fading::BETWEEN, DESK);
+        let first = start + fading::BETWEEN;
+        chooser.followed(first, DESK);
+        chooser.gave_way(first, (DESK, NEAR), LOSING);
+        chooser.answered(first, NEAR, first);
+        let second = first + fading::BETWEEN;
+        chooser.followed(second, DESK);
+        let later = second + fading::BETWEEN;
+        chooser.on_network("home");
+        let held_at_home = !chooser.may_give_way(later, false);
 
-        let again = start + fading::BETWEEN + SPURNED;
+        chooser.on_network("hotspot");
+
+        assert!(held_at_home, "the same network's name lifted the hold");
+        assert!(
+            chooser.may_give_way(later, false),
+            "two missed give-ways on one network held a call's on another"
+        );
+        assert!(
+            chooser.keeps_off(HALL, later),
+            "a point kept off by its address was forgotten with the network"
+        );
+    }
+
+    #[test]
+    fn a_give_way_never_reached_an_hour_after_the_last_is_taken_as_a_first() {
+        // Whether a call may give way as a second give-way misses, a
+        // `fading::BETWEEN` after it was made, `apart` after the first
+        // missed, which was a `fading::BETWEEN` after it was made too.
+        let missed_apart = |apart: Duration| {
+            let mut chooser = Chooser::default();
+            let start = Instant::now();
+            chooser.gave_way(start, (DESK, HALL), LOSING);
+            chooser.answered(start, HALL, start);
+            chooser.followed(start + fading::BETWEEN, DESK);
+            let again = start + apart;
+            chooser.gave_way(again, (DESK, NEAR), LOSING);
+            chooser.answered(again, NEAR, again);
+            let missed = again + fading::BETWEEN;
+            chooser.followed(missed, DESK);
+            chooser.may_give_way(missed, false)
+        };
+
+        assert!(
+            missed_apart(SPURNED),
+            "a miss an hour after the last held give-ways"
+        );
+        assert!(
+            !missed_apart(SPURNED.saturating_sub(Duration::from_secs(1))),
+            "a miss a second short of an hour after the last, not after its give-way, held nothing"
+        );
+    }
+
+    #[test]
+    fn a_give_way_refused_is_no_miss_toward_holding_the_call_s_give_ways() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        let refused = start + Duration::from_secs(1);
+        chooser.refused(refused, HALL, start);
+
+        // The next best, once the refusal's own hold is past, never gets
+        // there either.
+        let again = refused + fading::WINDOW;
         chooser.gave_way(again, (DESK, NEAR), LOSING);
         chooser.answered(again, NEAR, again);
         let missed = again + fading::BETWEEN;
@@ -3539,8 +3625,38 @@ pub(crate) mod tests {
 
         assert!(
             chooser.may_give_way(missed, false),
-            "a miss an hour after the last held give-ways"
+            "a refused give-way counted as a miss, so one miss held the call's give-ways"
         );
+        assert!(!chooser.began_holding(), "a hold was said that never began");
+    }
+
+    #[test]
+    fn a_give_way_refused_between_two_misses_within_an_hour_still_holds_a_settle() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        chooser.answered(start, HALL, start);
+        let first = start + fading::BETWEEN;
+        chooser.followed(first, DESK);
+        chooser.gave_way(first, (DESK, NEAR), LOSING);
+        let refused = first + Duration::from_secs(1);
+        chooser.refused(refused, NEAR, first);
+
+        let again = refused + fading::WINDOW;
+        chooser.gave_way(again, (DESK, STAIRS), LOSING);
+        chooser.answered(again, STAIRS, again);
+        let second = again + fading::BETWEEN;
+        chooser.followed(second, DESK);
+
+        assert!(
+            !chooser.may_give_way(second + SETTLE - Duration::from_secs(1), false),
+            "a refusal between two misses within an hour forgot the first, holding nothing"
+        );
+        assert!(
+            chooser.may_give_way(second + SETTLE, false),
+            "two misses with a refusal between held give-ways past a settle"
+        );
+        assert!(chooser.began_holding(), "the hold began unsaid");
     }
 
     #[test]
