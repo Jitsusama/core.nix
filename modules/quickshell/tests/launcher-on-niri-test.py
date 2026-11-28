@@ -4694,7 +4694,10 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     # more than three turns up, and the way back up at most three times the turns down.
     places: list[int] = []
 
-    def turn(by: int) -> int:
+    # Where each turn sent came to rest, and whether it was sent: one toward the bound the view
+    # stands at isn't, and rests nowhere, so the climb ends on it rather than taking it for a
+    # turn that rested where it set off.
+    def turn(by: int) -> tuple[int, bool]:
         shown = shell.showing()
         was, heard = shown["scrolled"], shown["movements"]
         # At the bound it turns toward, the wheel can't move the view, so it isn't sent: a
@@ -4702,8 +4705,7 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         at_its_bound = shown["atFoot"] if by > 0 else shown["atTop"]
         if at_its_bound:
             print(f"the wheel by {by} from {was} isn't sent: the view is at its bound")
-            places.append(was)
-            return int(was)
+            return int(was), False
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
         shell.as_account(f"{wlrctl} pointer scroll {by} 0")
@@ -4725,7 +4727,7 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
         none_drawn_cut(shell, f"the wheel by {by} from {was}", selection_in_view=False)
         places.append(shown["scrolled"])
-        return int(shown["scrolled"])
+        return int(shown["scrolled"]), True
 
     down = 7
     for _ in range(down):
@@ -4735,24 +4737,32 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     # Twice the turns up by 70 that always moved the view, so it passes any row drawn today.
     passes_any_row = -140
     up = 0
-    at = places[-1]
+    at = int(shell.showing()["scrolled"])
     by = -35
-    while at > 0:
-        rest = turn(by)
+    # Up until the list says it stands at its top, which turn() reads before it sends one, so
+    # the climb ends there wherever the top rests, not only at a contentY of 0.
+    while True:
+        rest, sent = turn(by)
+        if not sent:
+            break
         up += 1
         assert by > passes_any_row or rest < at, f"a turn up by {by} from {at} stayed put"
         assert up <= 3 * down, f"{up} small turns up never reached the top: {places}"
         by = by * 2 if rest == at else -35
         at = rest
+    assert shell.showing()["atTop"], f"the turns up ended off the top: {places}"
     # The larger turns move the view too: down from the top always, since a view rests on
     # the row at or below where it stopped, and back up from wherever that left it.
     for by in [70] * 3:
-        was = places[-1]
-        assert turn(by) > was or shell.showing()["atFoot"], f"a turn by {by} from {was}"
-    lowest = places[-1]
+        was = int(shell.showing()["scrolled"])
+        rest, sent = turn(by)
+        assert rest > was or not sent, f"a turn by {by} from {was} rested at {rest}"
+    lowest = shell.showing()
     for by in [-70] * 3:
         turn(by)
-    assert places[-1] < lowest or lowest == 0, f"turns up by 70 from {lowest}: {places}"
+    assert places[-1] < lowest["scrolled"] or lowest["atTop"], (
+        f"turns up by 70 from {lowest['scrolled']}: {places}"
+    )
     shell.close_launcher()
 
 
