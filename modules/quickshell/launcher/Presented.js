@@ -203,6 +203,22 @@ function drawerSaid(one) {
         + screensSaid([one]);
 }
 
+// How long after its key a drawer is still timed from it. One served apart comes a round trip after
+// its row, 23 to 71 ms after its key in Joel's journal (Agents.qml, 18 and 19 November), and the
+// loaded test machine made one in up to 122 ms (WENUOW, 2026-11-09), so a drawer slow by a hundred
+// times the bar still says so. One made later than this came from a read that was lost and told
+// again, which Joel stopped waiting on long before: timed from the key, For You's said 785660 ms
+// and 392870 ms and swelled the day's p99 and slowest (Joel's journal, 27 November).
+const drawerKeyHolds = 10000;
+
+// When a drawer made at `made` is timed from, all on KeyTimes's clock: the key pressed at `keyAt`
+// that brought it, or 0 where it isn't timed from a key. A key pressed before the launcher last
+// shut, at `shutAt` (0 where it never has), was another opening's, so it times none of this one's
+// drawers, and nor does a key pressed drawerKeyHolds or more before the drawer was made.
+function drawerKeyed(keyAt, shutAt, made) {
+    return keyAt > shutAt && made - keyAt < drawerKeyHolds ? keyAt : 0;
+}
+
 // The keys gone into a drawer, `{ key, page, from, at, swapped, laid, screen, refresh }`, said as
 // the frame they came in is presented, with how much of it was the shell's, to that frame's swap
 // where it was kept, and how many of its lines that frame laid: Ctrl+W l into Emoji's laid all

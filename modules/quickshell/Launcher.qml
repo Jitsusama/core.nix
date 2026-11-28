@@ -9745,6 +9745,10 @@ Scope {
     // so it's timed from its key as it comes, a round trip on, rather than
     // never (VKCF3Z, 2026-11-12, bcbe9a24).
     property bool drawerAwaited: false
+    // When the launcher last shut, on KeyTimes's clock, or 0 where it never
+    // has, so no drawer is timed from a key another opening heard
+    // (Presented.drawerKeyed).
+    property real drawerShutAt: 0
     function drawerUnread(row) {
         return typeof row?.drawerUnread === "function" && row.drawerUnread();
     }
@@ -10007,7 +10011,11 @@ Scope {
         drawerAfterLetter = false;
         const split = drawerSplit;
         drawerSplit = null;
-        const presenting = drawerKeyAt > 0 ? { key: said, from: drawerKeyAt, followed: began,
+        // Timed only from a key of this opening pressed shortly before, as a
+        // drawer awaited can come minutes on or in a later opening, while
+        // its key is kept.
+        const from = Presented.drawerKeyed(drawerKeyAt, drawerShutAt, made);
+        const presenting = from > 0 ? { key: said, from, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
         drawerKeyAt = 0;
@@ -11535,6 +11543,11 @@ Scope {
         markOpen(open);
         if (!open) {
             Report.say("closing");
+            // A drawer still awaited as it shut is no longer anything Joel
+            // waits on, and the key that brought it was this opening's.
+            drawerShutAt = KeyTimes.now();
+            drawerKeyAt = 0;
+            drawerAwaited = false;
             // Why Return held still was about the row it was on: closed,
             // it would come back over another, whose Return runs.
             unheld();
