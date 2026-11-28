@@ -56,31 +56,7 @@ code,
   font-size: var(--step-small);
 }
 
-/* ---- The sentence over the work, and the grove beside it. ---- */
-
-.over {
-  inline-size: var(--page);
-  margin-inline: auto;
-}
-
-/* On a wide window the grove stands beside the sentence rather than under
-   it, so the list starts high enough to read a screen of it at once. */
-@media (min-width: 75rem) {
-  .over {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 44rem);
-    align-items: end;
-  }
-
-  .over .grove-figure {
-    inline-size: auto;
-    padding-block-end: var(--items);
-  }
-
-  .over .caption {
-    padding-inline-start: 0;
-  }
-}
+/* ---- The sentence over the work. Where the grove stands beside it is in grove.css. ---- */
 
 .head {
   padding: var(--groups) var(--inset) var(--items);
