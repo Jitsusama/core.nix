@@ -35,7 +35,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 
 use crate::choose;
 use crate::echo;
@@ -89,8 +89,9 @@ const STEP: i16 = 6;
 /// the first minute after a join has hardly any.
 const ECHOES: usize = 30;
 
-/// How lately the card must have been on an access point for what it
-/// carried in the hour just gone to stand for it (`just_left`).
+/// How lately the card must have been on an access point, by the boot
+/// clock (`booted`), for what it carried in the hour just gone to stand
+/// for it (`just_left`).
 pub const LEFT_WITHIN: Duration = Duration::from_secs(3600);
 
 /// Where a card is: on which access point of which network, at what hour
@@ -101,8 +102,8 @@ pub struct Here<'a> {
     pub hour: u8,
     pub signal: i16,
     pub trusted: bool,
-    /// When the minute ended.
-    pub at: Instant,
+    /// When the minute ended, by the boot clock (`booted`).
+    pub booted: Duration,
 }
 
 /// What one access point carried at one hour, from about one place.
@@ -129,11 +130,11 @@ struct Learnt {
     /// measured.
     #[serde(skip)]
     kept: bool,
-    /// When the card was last measured on it, while wifid runs: an
-    /// instant means nothing to the next wifid, so none is kept on the
-    /// disk.
+    /// When the card was last measured on it, by the boot clock
+    /// (`booted`), while wifid runs: the boot clock begins again at each
+    /// boot, so none is kept on the disk.
     #[serde(skip)]
-    last: Option<Instant>,
+    last: Option<Duration>,
 }
 
 /// What one access point carried under load, at one hour from one place.
@@ -222,7 +223,7 @@ impl Learned {
         learnt.lost += (measured.lost - learnt.lost) * LATEST;
         learnt.minutes = learnt.minutes.saturating_add(1);
         learnt.kept = here.trusted;
-        learnt.last = Some(here.at);
+        learnt.last = Some(here.booted);
         if here.trusted { self.keep() } else { Ok(()) }
     }
 
@@ -248,10 +249,13 @@ impl Learned {
     /// 10:03 for carrying 519 ms, and at 10:29, with three minutes of hour
     /// 10 learned there, tried it again as untried, heard at -44 dBm, and
     /// left it again at 10:44. What it carried in the hour just gone
-    /// was learned in this room as lately as anything. The hour must be
-    /// the one just gone as well as its last minute that recent, as an
-    /// instant doesn't count a suspend: a laptop asleep from 22:50 to
-    /// 07:10 doesn't go by its evening.
+    /// was learned in this room as lately as anything. Only the hour just
+    /// gone stands in, as the one nearest this hour. "Within" is judged
+    /// on the boot clock as of `booted`, which counts the machine's sleep,
+    /// so a point last measured more than an hour of boot time ago, asleep
+    /// or awake, isn't just left: a lid shut at 09:55 and opened at 10:05
+    /// the next day, or after a weekend, doesn't go by the hour 9 it was
+    /// shut in.
     ///
     /// It reads as the worse of the two hours, not the two weighed by
     /// their minutes: the hour gone holds every day's minutes there, so
@@ -259,12 +263,18 @@ impl Learned {
     /// for nothing, and a point left for 250 ms reads as its usual 41 ms,
     /// quick enough to be tried again as known better. Read as the worse,
     /// a point left for carrying badly isn't gone back to within the hour.
-    pub fn just_left(&self, point: &str, hour: u8, signal: i16, now: Instant) -> Option<Measured> {
+    pub fn just_left(
+        &self,
+        point: &str,
+        hour: u8,
+        signal: i16,
+        booted: Duration,
+    ) -> Option<Measured> {
         let gone = (hour + 23) % 24;
         let lately = |learnt: &Learnt| {
             learnt
                 .last
-                .is_some_and(|last| now.saturating_duration_since(last) < LEFT_WITHIN)
+                .is_some_and(|last| booted.saturating_sub(last) < LEFT_WITHIN)
         };
         let figures = |learnt: &Learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes);
         let near = || self.near(point, signal);
@@ -409,6 +419,31 @@ pub fn hour_here() -> u8 {
     terminal_kit::local::now().map_or(0, |here| u8::try_from(here.hour).unwrap_or(0))
 }
 
+/// How long the machine has been up, its sleep counted, by the kernel's
+/// boot clock. An `Instant` is of the monotonic clock, which stops while
+/// the machine sleeps, so a day asleep would read as no time at all
+/// (`just_left`).
+pub fn booted() -> Duration {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: it writes the one timespec, held for the call.
+    let read = unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &raw mut time) };
+    // Linux has had the boot clock since 2.6.39, so reading it fails only
+    // as reading the monotonic clock would, which `Instant::now` panics on
+    // too.
+    assert_eq!(
+        read,
+        0,
+        "the boot clock can't be read: {}",
+        io::Error::last_os_error()
+    );
+    let seconds = u64::try_from(time.tv_sec).unwrap_or(0);
+    let nanos = u32::try_from(time.tv_nsec).unwrap_or(0);
+    Duration::new(seconds, nanos)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -440,7 +475,7 @@ mod tests {
             hour,
             signal,
             trusted: true,
-            at: Instant::now(),
+            booted: Duration::ZERO,
         }
     }
 
@@ -829,6 +864,88 @@ mod tests {
         );
 
         assert_eq!(p95_of(&Learned::kept_in(&file), HALL, 20, -50), Some(15));
+    }
+
+    /// How long after boot the card's minute on the point it left at
+    /// 10:03 on 27 Nov 2026 began, standing for 09:00.
+    const NINE: Duration = Duration::from_hours(5);
+
+    /// What the card learned of the point it left at 10:03 on 27 Nov 2026:
+    /// all of hour 9 at 35 ms at p95, a minute ending each minute from
+    /// `NINE` on, by the boot clock.
+    fn all_of_nine() -> Learned {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join(FILE));
+        for minute in 1..=60 {
+            let here = Here {
+                booted: NINE + Duration::from_mins(minute),
+                ..at(DESK, 9, -44)
+            };
+            learned.carried(&here, &carried(Some(35), 0.0)).unwrap();
+        }
+        learned
+    }
+
+    /// The p95 a point is known by as just left, as of `booted`.
+    fn just_left_p95(learned: &Learned, hour: u8, booted: Duration) -> Option<u128> {
+        let measured = learned.just_left(DESK, hour, -44, booted)?;
+        Some(measured.p95?.as_millis())
+    }
+
+    #[test]
+    fn a_point_left_within_the_hour_is_known_by_the_hour_just_gone() {
+        let learned = all_of_nine();
+        let last = NINE + Duration::from_hours(1);
+
+        assert_eq!(
+            just_left_p95(&learned, 10, last + Duration::from_mins(26)),
+            Some(35),
+            "a point left 26 minutes before read as untried, though on it all of hour 9"
+        );
+        assert_eq!(
+            learned.of(DESK, 10, -44),
+            None,
+            "hour 10 alone knew the point, so the figure above wasn't shown to be hour 9's"
+        );
+    }
+
+    #[test]
+    fn a_point_last_on_a_day_asleep_ago_is_not_just_left() {
+        let learned = all_of_nine();
+        let last = NINE + Duration::from_hours(1);
+        let next_morning = last + Duration::from_hours(24) + Duration::from_mins(10);
+
+        assert_eq!(
+            just_left_p95(&learned, 10, next_morning),
+            None,
+            "a lid shut at 09:55 and opened at 10:05 the next day read as ten minutes on, \
+             so yesterday's hour 9 stood in as just left"
+        );
+    }
+
+    #[test]
+    fn a_point_last_on_a_weekend_asleep_ago_is_not_just_left() {
+        let learned = all_of_nine();
+        let last = NINE + Duration::from_hours(1);
+        let monday = last + Duration::from_hours(72) + Duration::from_mins(10);
+
+        assert_eq!(
+            just_left_p95(&learned, 10, monday),
+            None,
+            "a lid shut over a weekend read as ten minutes on, \
+             so Friday's hour 9 stood in as just left"
+        );
+    }
+
+    #[test]
+    fn the_boot_clock_goes_on() {
+        let first = booted();
+        let second = booted();
+        assert!(first > Duration::ZERO, "the machine read as just booted");
+        assert!(
+            second >= first,
+            "the boot clock went back: {first:?} then {second:?}"
+        );
     }
 
     #[test]

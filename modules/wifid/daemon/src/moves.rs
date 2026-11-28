@@ -92,10 +92,12 @@ struct Asked {
 /// quick idle but lossy is no floor, and would hold the download however
 /// slow. The chooser leaves a floor out of a trial's bar, where it would
 /// send a download back for carrying worse than no download could.
+/// Within the hour is judged on the boot clock as of `booted`, which
+/// counts the machine's sleep, as `now` doesn't (`learn::booted`).
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
-    (now, hour): (Instant, u8),
+    (now, booted, hour): (Instant, Duration, u8),
 ) -> impl Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a {
     move |point, signal, Asked { own, loaded }| {
         let lately = lately
@@ -112,7 +114,7 @@ fn known<'a>(
                 .of(point, hour, signal)
                 .map(|measured| (measured, Whence::Learned))
                 .or_else(|| {
-                    let left = learned.just_left(point, hour, signal, now);
+                    let left = learned.just_left(point, hour, signal, booted);
                     left.filter(|_| !own)
                         .map(|measured| (measured, Whence::JustLeft))
                 })
@@ -148,7 +150,7 @@ type Known<'a> = dyn Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a;
 /// so no caller can hand the chooser a point that just shed the card.
 pub fn choose(
     chooser: &mut Chooser,
-    (now, hour): (Instant, u8),
+    (now, booted, hour): (Instant, Duration, u8),
     (on, measured): (&Joined, &Measured),
     (lately, learned): (&Measures, &Learned),
     (asks, air, back): (
@@ -158,7 +160,7 @@ pub fn choose(
     ),
     call: bool,
 ) {
-    let known = known(lately, learned, (now, hour));
+    let known = known(lately, learned, (now, booted, hour));
     let (around, warned) = {
         let air = air.borrow();
         let warned = air.warned_from(&on.card, now).map(str::to_owned);
@@ -890,7 +892,7 @@ mod tests {
             hour,
             signal: -50,
             trusted: true,
-            at: Instant::now(),
+            booted: Duration::ZERO,
         };
         for _ in 0..10 {
             learned.carried(&here, measured).unwrap();
@@ -1114,11 +1116,10 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 15);
         let lately = Measures::default();
 
-        let at_eight = known(&lately, &learned, (Instant::now(), 20));
+        let at_eight = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
         // An hour past the card's last minute on the hall, the hour just
         // gone no longer stands for it (`Learned::just_left`).
-        let an_hour_on = Instant::now() + learn::LEFT_WITHIN;
-        let at_nine = known(&lately, &learned, (an_hour_on, 21));
+        let at_nine = known(&lately, &learned, (Instant::now(), learn::LEFT_WITHIN, 21));
 
         let (hall, whence) = at_eight(HALL, -50, IDLE).expect("the hall was learned at eight");
         assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
@@ -1137,7 +1138,7 @@ mod tests {
         hall_carried(&mut learned, 3, &carried(80));
         let lately = Measures::default();
 
-        let known = known(&lately, &learned, (Instant::now(), 20));
+        let known = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
 
         let (hall, whence) = known(HALL, -50, LOADED).expect("the hall was learned under load");
         assert_eq!(
@@ -1163,7 +1164,7 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 119);
         let lately = Measures::default();
 
-        let known = known(&lately, &learned, (Instant::now(), 20));
+        let known = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
 
         let (hall, whence) = known(HALL, -50, LOADED).expect("119 ms idle is slow loaded");
         assert_eq!(hall.p95, Some(ms(119)), "so it isn't tried as untried");
@@ -1191,7 +1192,7 @@ mod tests {
         hall_carried(&mut learned, 20, &lossy);
         let lately = Measures::default();
 
-        let known = known(&lately, &learned, (Instant::now(), 20));
+        let known = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
 
         let (hall, _) = known(HALL, -50, LOADED).expect("a lossy point isn't tried blind");
         assert_eq!(hall.p95, Some(ms(15)), "so it's known by what it lost");
@@ -1212,7 +1213,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let learned = the_hall_at_eight(dir.path(), p95);
             let lately = Measures::default();
-            let known = known(&lately, &learned, (Instant::now(), 20));
+            let known = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
             let own = Asked {
                 own: true,
                 ..LOADED
@@ -1230,7 +1231,7 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 15);
         let lately = Measures::default();
 
-        let known = known(&lately, &learned, (Instant::now(), 20));
+        let known = known(&lately, &learned, (Instant::now(), Duration::ZERO, 20));
 
         assert_eq!(
             known(HALL, -50, LOADED),
@@ -1260,7 +1261,11 @@ mod tests {
             lately.counted(HALL, at, counts);
         }
 
-        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
+        let known = known(
+            &lately,
+            &learned,
+            (start + Duration::from_secs(99), Duration::ZERO, 20),
+        );
 
         let (hall, whence) = known(HALL, -50, IDLE).expect("the hall was learned idle");
         assert_eq!(hall.p95, Some(ms(15)), "40 ms moving 100 Mbit/s isn't idle");
@@ -1285,7 +1290,11 @@ mod tests {
             lately.echoed(HALL, at, Echo::Answered(ms(40)));
         }
 
-        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
+        let known = known(
+            &lately,
+            &learned,
+            (start + Duration::from_secs(99), Duration::ZERO, 20),
+        );
 
         let (hall, whence) = known(HALL, -50, OWN).expect("the hall was learned");
         assert_eq!(
@@ -1307,7 +1316,11 @@ mod tests {
             lately.echoed(HALL, at, Echo::Answered(ms(40)));
         }
 
-        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
+        let known = known(
+            &lately,
+            &learned,
+            (start + Duration::from_secs(99), Duration::ZERO, 20),
+        );
 
         let (hall, whence) = known(HALL, -50, IDLE).expect("the hall was measured lately");
         assert_eq!(hall.p95, Some(ms(40)), "what it carried lately is known");
@@ -1319,12 +1332,16 @@ mod tests {
     const LEFT_AT_TEN: &str = "02:00:00:00:27:00";
     const TRIED_AT_TEN: &str = "02:00:00:00:28:00";
 
-    /// What an access point carried over a minute ending `at`, heard this
-    /// loud, at this hour.
+    /// How long after boot the card's minute on the point it left at 10:03
+    /// on 27 Nov 2026 began, standing for 09:00.
+    const NINE: Duration = Duration::from_hours(5);
+
+    /// What an access point carried over a minute ending at `booted` on
+    /// the boot clock, heard this loud, at this hour.
     fn minute_on(
         learned: &mut Learned,
         (point, signal): (&str, i16),
-        (hour, at): (u8, Instant),
+        (hour, booted): (u8, Duration),
         measured: &Measured,
     ) {
         let here = Here {
@@ -1333,17 +1350,16 @@ mod tests {
             hour,
             signal,
             trusted: true,
-            at,
+            booted,
         };
         learned.carried(&here, measured).unwrap();
     }
 
     /// What the card learned of the point it left at 10:03 on 27 Nov 2026:
     /// all of hour 9 at about 35 ms at p95, then two minutes of hour 10 at
-    /// 250 and one at 519 under load, timed from `nine`, standing for
-    /// 09:00.
-    fn left_at_ten(learned: &mut Learned, nine: Instant) {
-        let past_nine = |minutes: u64| nine + Duration::from_secs(minutes * 60);
+    /// 250 and one at 519 under load, timed on the boot clock from `NINE`.
+    fn left_at_ten(learned: &mut Learned) {
+        let past_nine = |minutes: u64| NINE + Duration::from_mins(minutes);
         for minute in 1..=60 {
             minute_on(
                 learned,
@@ -1372,12 +1388,11 @@ mod tests {
     fn another_point_left_within_the_hour_is_known_by_the_hour_just_gone_too() {
         let dir = tempfile::tempdir().unwrap();
         let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let nine = Instant::now();
-        left_at_ten(&mut learned, nine);
+        left_at_ten(&mut learned);
         let lately = Measures::default();
-        let half_past_ten = nine + Duration::from_secs(89 * 60 + 44);
+        let half_past_ten = NINE + Duration::from_secs(89 * 60 + 44);
 
-        let known_then = known(&lately, &learned, (half_past_ten, 10));
+        let known_then = known(&lately, &learned, (Instant::now(), half_past_ten, 10));
 
         let (left, whence) = known_then(LEFT_AT_TEN, -44, IDLE).expect("left 26 minutes before");
         assert_eq!(
@@ -1400,14 +1415,14 @@ mod tests {
             None,
             "nor is it known so from a room or two away"
         );
-        let after_a_suspend = known(&lately, &learned, (half_past_ten, 7));
+        let at_another_hour = known(&lately, &learned, (Instant::now(), half_past_ten, 7));
         assert_eq!(
-            after_a_suspend(LEFT_AT_TEN, -44, IDLE),
+            at_another_hour(LEFT_AT_TEN, -44, IDLE),
             None,
-            "nor at an hour other than the one after, as an instant doesn't count a suspend"
+            "nor at an hour other than the one after, as only the hour just gone stands in"
         );
-        let an_hour_on = nine + Duration::from_hours(1) + learn::LEFT_WITHIN;
-        let known_later = known(&lately, &learned, (an_hour_on, 10));
+        let an_hour_on = NINE + Duration::from_hours(1) + learn::LEFT_WITHIN;
+        let known_later = known(&lately, &learned, (Instant::now(), an_hour_on, 10));
         assert_eq!(
             known_later(LEFT_AT_TEN, -44, IDLE),
             None,
@@ -1423,13 +1438,14 @@ mod tests {
         // at -44 dBm, though it had been on it for all of hour 9.
         let dir = tempfile::tempdir().unwrap();
         let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let nine = Instant::now();
-        left_at_ten(&mut learned, nine);
+        left_at_ten(&mut learned);
         for _ in 0..10 {
-            minute_on(&mut learned, (TRIED_AT_TEN, -50), (3, nine), &carried(119));
+            minute_on(&mut learned, (TRIED_AT_TEN, -50), (3, NINE), &carried(119));
         }
-        let past_nine =
-            |minutes: u64, seconds: u64| nine + Duration::from_secs(minutes * 60 + seconds);
+        // The chooser goes by instants, and what's learned by the boot
+        // clock, so each time past nine is had on both.
+        let nine = Instant::now();
+        let past_nine = |minutes: u64, seconds: u64| Duration::from_secs(minutes * 60 + seconds);
         let lately = Measures::default();
         let wider = Heard {
             frequency: 5180,
@@ -1437,8 +1453,9 @@ mod tests {
         };
         let around = [heard(LEFT_AT_TEN, -44), wider];
         let mut chooser = crate::choose::tests::after_a_bad_minute(LEFT_AT_TEN);
-        let mut choose = |now: Instant, on: &str, measured: &Measured| {
-            let known = known(&lately, &learned, (now, 10));
+        let mut choose = |since_nine: Duration, on: &str, measured: &Measured| {
+            let (now, booted) = (nine + since_nine, NINE + since_nine);
+            let known = known(&lately, &learned, (now, booted, 10));
             let on = joined(on);
             chosen(
                 &mut chooser,
@@ -2311,7 +2328,7 @@ mod tests {
             ..heard(HALL, -45)
         };
         let around = [heard(DESK, -34), wide];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -2335,7 +2352,7 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 10);
         let (lately, now) = (Measures::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -2359,7 +2376,7 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 10);
         let (lately, now) = (Measures::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
         let downloading = Measured {
             moving: Some(50),
             ..carried(30)
@@ -2398,7 +2415,7 @@ mod tests {
             ..heard(HALL, -50)
         };
         let around = [heard(DESK, -50), wide];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -2418,7 +2435,7 @@ mod tests {
         let learned = Learned::kept_in(&dir.path().join("carried"));
         let (lately, now) = (Measures::default(), Instant::now());
         let around = [heard(DESK, -50)];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let next = chosen(
             &mut choose::tests::after_a_bad_minute(DESK),
@@ -2442,7 +2459,7 @@ mod tests {
             ..heard(bssid, -50)
         };
         let around = [on_5_ghz(DESK), on_5_ghz(HALL)];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -2461,7 +2478,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let learned = the_hall_at_eight(dir.path(), 10);
         let (lately, start) = (Measures::default(), Instant::now());
-        let known = known(&lately, &learned, (start, 20));
+        let known = known(&lately, &learned, (start, Duration::ZERO, 20));
         // A trial of the hall, learned far quicker, carrying far worse
         // than the desk it left once there, which the card no longer
         // hears, as wpa_supplicant forgets a point unheard a while, or
@@ -2545,7 +2562,7 @@ mod tests {
             ..heard(bssid, -42)
         };
         let around = [on_5_ghz(HALL, 5745, 56), on_5_ghz(DESK, 5260, 20)];
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -2575,7 +2592,7 @@ mod tests {
             },
             ..heard(HALL, -41)
         };
-        let known = known(&lately, &learned, (now, 20));
+        let known = known(&lately, &learned, (now, Duration::ZERO, 20));
 
         let next = chosen(
             &mut Chooser::default(),
