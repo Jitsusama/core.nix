@@ -840,6 +840,26 @@ in
       touch $out
     '';
 
+  # The foot keeps room after Return for the widest verb the words file
+  # names, a state's included, measuring each distinct verb once, keeping
+  # the earlier of two as wide, never less than "connect" and leaving out a
+  # verb that isn't a string, as modules/quickshell/tests/widest-verb.qml
+  # holds launcher/WidestVerb.js to it in Qt's own engine.
+  the-foot-weighs-each-verb-once =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-foot-weighs-each-verb-once" { } ''
+      cp ${../tests/widest-verb.qml} widest-verb.qml
+      cp ${../launcher/WidestVerb.js} WidestVerb.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml widest-verb.qml
+      touch $out
+    '';
+
   # A row an act asked a daemon to change is drawn as it will be until its
   # source agrees, as modules/quickshell/tests/becoming.qml holds
   # launcher/Becoming.js to it in Qt's own engine.
