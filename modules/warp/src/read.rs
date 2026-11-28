@@ -458,8 +458,11 @@ mod tests {
                 text: "Status update: Connected".into(),
             }),
         );
+        let garbled_read = read(&garbled);
+        let not_json = "warp-cli status said what isn't JSON";
         assert!(
-            matches!(read(&garbled), Err(Failure::Unreadable(why)) if why.starts_with("warp-cli status said what isn't JSON")),
+            matches!(&garbled_read, Err(Failure::Unreadable(why)) if why.starts_with(not_json)),
+            "a status that isn't JSON read as {garbled_read:?}"
         );
     }
 

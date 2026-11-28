@@ -253,5 +253,5 @@ def test_the_values_file_given_to_run_is_the_one_the_tests_read(
     monkeypatch.setattr(pytest, "main", main)
     vm_pytest.run(symbols, str(tests), values=str(written))
     (plugin,) = given
-    assert isinstance(plugin, vm_pytest.Driven)
+    assert isinstance(plugin, vm_pytest.Driven), f"run gave pytest {plugin!r}, not a Driven"
     assert plugin.values == written

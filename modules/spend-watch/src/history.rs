@@ -979,13 +979,21 @@ mod tests {
             .unwrap();
         let log = dir.path().join("history.db-wal");
         let size = |limit: i64| u64::try_from(limit).unwrap();
-        assert!(fs::metadata(&log).unwrap().len() > size(large));
+        let grown = fs::metadata(&log).unwrap().len();
+        assert!(
+            grown > size(large),
+            "the log held {grown} bytes after a large write"
+        );
         history
             .db
             .query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_| Ok(()))
             .unwrap();
         history.set_meta("after", "a small write").unwrap();
-        assert!(fs::metadata(&log).unwrap().len() <= size(WAL_LIMIT));
+        let shrunk = fs::metadata(&log).unwrap().len();
+        assert!(
+            shrunk <= size(WAL_LIMIT),
+            "the log kept {shrunk} bytes after its checkpoint, past its limit"
+        );
     }
 
     #[test]
@@ -1000,7 +1008,10 @@ mod tests {
         let history = History::open(&path).unwrap();
         assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
         assert_eq!(history.meta("kept"), None);
-        assert!(dir.path().join("history.db.schema-0").exists());
+        assert!(
+            dir.path().join("history.db.schema-0").exists(),
+            "a history of a shape too old wasn't set aside"
+        );
     }
 
     // A machine booted into an older system runs an older watch on the
@@ -1287,7 +1298,10 @@ mod tests {
             .query_row("SELECT since FROM health", [], |row| row.get(0))
             .unwrap();
         assert_eq!(since, None);
-        assert!(!dir.path().join("history.db.schema-1").exists());
+        assert!(
+            !dir.path().join("history.db.schema-1").exists(),
+            "the first shape was set aside rather than carried forward"
+        );
     }
 
     fn turn(history: &History, session: &str, hour: i64, quest: Option<&str>, cost: f64) {
@@ -1372,12 +1386,10 @@ mod tests {
         hours_hold(&history);
         turn(&history, "a", 10, None, 0.75);
         hours_hold(&history);
-        assert!(
-            history
-                .db
-                .execute("UPDATE turns SET cost = 9 WHERE session = 'b'", [])
-                .is_err()
-        );
+        history
+            .db
+            .execute("UPDATE turns SET cost = 9 WHERE session = 'b'", [])
+            .expect_err("a kept turn's cost was changed in place");
     }
 
     // A history of the third shape has its turns summed as it's brought up
@@ -1500,7 +1512,10 @@ mod tests {
             ("", crate::caps::Unit::Dollars, 3948.29)
         );
         assert_eq!(crate::caps::events(&history, 0.0).unwrap().len(), 1);
-        assert!(!dir.path().join("history.db.schema-6").exists());
+        assert!(
+            !dir.path().join("history.db.schema-6").exists(),
+            "the sixth shape was set aside rather than carried forward"
+        );
     }
 
     // The fifth shape's turns, read before budgets were, gain a budget
@@ -1536,7 +1551,10 @@ mod tests {
         assert_eq!(split, ("anthropic".into(), None, 2));
         turn(&history, "a", 10, Some("q"), 1.0);
         hours_hold(&history);
-        assert!(!dir.path().join("history.db.schema-5").exists());
+        assert!(
+            !dir.path().join("history.db.schema-5").exists(),
+            "the fifth shape was set aside rather than carried forward"
+        );
     }
 
     // The fourth shape's sessions gain a kind and a name, none for those
@@ -1574,7 +1592,10 @@ mod tests {
             .unwrap();
         assert_eq!((kind, name), (None, None));
         hours_hold(&history);
-        assert!(!dir.path().join("history.db.schema-4").exists());
+        assert!(
+            !dir.path().join("history.db.schema-4").exists(),
+            "the fourth shape was set aside rather than carried forward"
+        );
     }
 
     // A session read again keeps its name.

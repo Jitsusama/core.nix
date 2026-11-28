@@ -167,7 +167,10 @@ impl Shared {
 /// Lets through the lights alone, and of them caps lock alone. The mask in
 /// `EV_SYN`'s place is one of event types; the frames themselves always pass.
 fn filter(fd: c_int) -> bool {
-    const _: () = assert!(words(EV_MAX + 1) == 1 && words(LED_MAX + 1) == 1);
+    const _: () = assert!(
+        words(EV_MAX + 1) == 1 && words(LED_MAX + 1) == 1,
+        "only() builds each mask as one word, so every event type and light must fit in 64 bits"
+    );
     let (kinds, caps) = (only(EV_LED), only(LED_CAPSL));
     [(EV_SYN, &kinds), (u32::from(EV_LED), &caps)]
         .iter()

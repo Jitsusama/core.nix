@@ -162,7 +162,8 @@ mod tests {
 
     #[test]
     fn no_variable_to_forget_is_a_failure() {
-        assert!(forget(&folder("none-to-forget").join("HibernateRestoring")).is_err());
+        forget(&folder("none-to-forget").join("HibernateRestoring"))
+            .expect_err("forgetting a variable that isn't there succeeded");
     }
 
     #[test]

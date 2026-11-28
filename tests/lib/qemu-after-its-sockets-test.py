@@ -65,7 +65,7 @@ def test_a_socket_qemu_serves_is_not_waited_for(tmp_path: Path) -> None:
     ran = tmp_path / "ran"
     qemu = started(ran, *chardev(tmp_path / "monitor", "server=on", "wait=off"))
     assert qemu.wait(timeout=10) == 0
-    assert ran.exists()
+    assert ran.exists(), "qemu never ran, waiting on a socket it serves itself"
 
 
 def test_a_socket_that_never_comes_fails_and_ends_what_the_script_started(
@@ -89,7 +89,7 @@ def test_a_socket_that_never_comes_fails_and_ends_what_the_script_started(
     _, said = qemu.communicate(timeout=30)
     assert qemu.returncode == 1
     assert str(missing) in said
-    assert not ran.exists()
+    assert not ran.exists(), "qemu ran though the socket it waits on never came"
     sleeper = int(started_by_script.read_text())
     deadline = time.monotonic() + 10
     while not gone(sleeper):
@@ -100,4 +100,5 @@ def test_a_socket_that_never_comes_fails_and_ends_what_the_script_started(
 
 def test_the_rest_of_qemu_is_the_qemu_given() -> None:
     """The rest of qemu, qemu-img among it, is the qemu given."""
-    assert (QEMU / "bin" / "qemu-img").resolve().read_text().startswith("#!")
+    qemu_img = (QEMU / "bin" / "qemu-img").resolve()
+    assert qemu_img.read_text().startswith("#!"), f"qemu-img is {qemu_img}, not the given qemu's"
