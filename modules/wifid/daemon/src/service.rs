@@ -594,7 +594,11 @@ mod tests {
 
         assert_eq!(reply.continues(), Some(false));
         assert_eq!(reply.parameters(), Some(&state.borrow().described()));
-        assert!(replies.next().await.is_none());
+        let again = replies.next().await;
+        assert!(
+            again.is_none(),
+            "describing once should end after its one answer; it answered again: {again:?}"
+        );
     }
 
     #[tokio::test]
@@ -644,7 +648,11 @@ mod tests {
             .expect("never settled")
             .expect("ended without answering");
         assert_eq!(reply.continues(), Some(false));
-        assert!(settling.next().await.is_none());
+        let again = settling.next().await;
+        assert!(
+            again.is_none(),
+            "settling should end after its one answer; it answered again: {again:?}"
+        );
     }
 
     #[tokio::test]
@@ -682,7 +690,12 @@ mod tests {
             reply.parameters().unwrap().points[0].bssid,
             "02:00:00:00:01:00"
         );
-        assert!(replies.next().await.is_none());
+        let again = replies.next().await;
+        assert!(
+            again.is_none(),
+            "a network's detail once should end after its one answer; it answered again: \
+             {again:?}"
+        );
     }
 
     #[tokio::test]
@@ -751,7 +764,11 @@ mod tests {
 
         wifi.check().await;
 
-        assert!(checks.has_changed().unwrap());
+        assert!(
+            checks.has_changed().unwrap(),
+            "checking should ask for the networks to be checked again; the count stayed {}",
+            *checks.borrow()
+        );
         assert_eq!(*checks.borrow_and_update(), 1);
     }
 
@@ -988,7 +1005,10 @@ mod tests {
         drop(wifi);
 
         assert_eq!(answer, Ok(()));
-        assert!(!main_loop.await.unwrap());
+        assert!(
+            !main_loop.await.unwrap(),
+            "turning Wi-Fi off should ask wifid to turn the radios off; it asked for them on"
+        );
     }
 
     #[tokio::test]
