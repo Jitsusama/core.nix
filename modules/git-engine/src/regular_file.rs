@@ -1,9 +1,11 @@
 //! Opening a file of git's that must be a plain one: a ref, packed-refs, a
 //! loose object, a reftable, a commit-graph or a pack's index. A FIFO there
 //! would hold the prompt till something wrote to it, and a device such as
-//! /dev/zero would give bytes without end, so each is opened without waiting
-//! on a writer and refused unless it's a regular file, as git refuses one it
-//! can't read as a ref.
+//! /dev/zero would give bytes without end, so each is refused unless it's a
+//! regular file, as git refuses one it can't read as a ref, and opened
+//! without waiting on a writer. A regular file is all that's asked: procfs,
+//! sysfs and FUSE files are regular files too, so a link to one is read as
+//! any file is.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
@@ -12,29 +14,56 @@ use std::path::Path;
 
 /// The regular file at `path`, or None where nothing is; anything else
 /// there, a FIFO, a device or a folder, is refused as data that won't read.
-/// The type is known only from the file opened, so the open comes first:
-/// a device whose opening does something has it done, though nothing is
-/// read from it.
+/// What the path leads to, through any link, is asked before it's opened,
+/// since opening a device may do something of itself, as a serial port's
+/// raises DTR and /dev/watchdog's arms it. The file opened is asked again,
+/// since another may be put at the path between, which leaves that race
+/// alone to open one.
 /// `O_NONBLOCK` stays set on the file returned, which changes nothing for
 /// a regular file's reads.
 pub(crate) fn open(path: &Path) -> io::Result<Option<File>> {
+    open_as(path, true)
+}
+
+/// The same, but where `follow` is false a link at `path` is refused as
+/// what isn't a file, asked of the link itself and opened with
+/// `O_NOFOLLOW`, so what it leads to is never opened.
+fn open_as(path: &Path, follow: bool) -> io::Result<Option<File>> {
+    let asked = if follow {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    };
+    match asked {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Err(not_a_file(path)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    }
+    let unfollowed = if follow { 0 } else { libc::O_NOFOLLOW };
     let file = match OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY | unfollowed)
         .open(path)
     {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        // A link put at the path between the two is refused by the open.
+        Err(error) if error.raw_os_error() == Some(libc::ELOOP) => return Err(not_a_file(path)),
         Err(error) => return Err(error),
     };
     if file.metadata()?.is_file() {
         Ok(Some(file))
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{} isn't a file", path.display()),
-        ))
+        Err(not_a_file(path))
     }
+}
+
+fn not_a_file(path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("{} isn't a file", path.display()),
+    )
 }
 
 /// The regular file at `path`, for a reader to whom nothing there is an
@@ -66,9 +95,36 @@ pub(crate) fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
+/// The most bytes an ignore or attributes file is read to, as git reads
+/// one no longer (its `PATTERN_MAX_FILE_SIZE` and `ATTR_MAX_FILE_SIZE`),
+/// so one that grows without end, as a file still being written may, isn't
+/// read into memory without end.
+pub(crate) const MOST_PATTERNS: u64 = 100 << 20;
+
+/// The bytes of the regular file at `path`, or None where nothing is, as
+/// `read` answers, but where `follow` is false a link there is refused
+/// unopened, and a file past `most` bytes is refused as data that won't
+/// read, read no further than a byte past it. A file of the worktree's is
+/// read so, since whoever wrote the worktree, as a stranger's clone, may
+/// have left a link to anything the user can read; git reads it so too.
+pub(crate) fn read_capped(path: &Path, follow: bool, most: u64) -> io::Result<Option<Vec<u8>>> {
+    let Some(file) = open_as(path, follow)? else {
+        return Ok(None);
+    };
+    let mut bytes = Vec::new();
+    file.take(most.saturating_add(1)).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > most {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} holds more than {most} bytes", path.display()),
+        ));
+    }
+    Ok(Some(bytes))
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{present, read, read_present};
+    use super::{present, read, read_capped, read_present};
     use std::path::Path;
 
     /// What `work` answers, on a thread of its own, or Err where it took
@@ -150,6 +206,86 @@ pub(crate) mod tests {
         );
     }
 
+    /// A watch on the file at `path`, through which its opens are heard.
+    fn opens_of(path: &Path) -> std::fs::File {
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        use std::os::unix::ffi::OsStrExt;
+        // SAFETY: it takes only flags.
+        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        assert!(fd >= 0, "no inotify: {}", std::io::Error::last_os_error());
+        // SAFETY: the descriptor was just made, and nothing else holds it.
+        let watch = std::fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+        let name =
+            std::ffi::CString::new(path.as_os_str().as_bytes()).expect("a temp path holds no NUL");
+        // SAFETY: the descriptor is the file's, and the path a C string that
+        // outlives the call.
+        let added =
+            unsafe { libc::inotify_add_watch(watch.as_raw_fd(), name.as_ptr(), libc::IN_OPEN) };
+        assert!(
+            added >= 0,
+            "{} can't be watched: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+        watch
+    }
+
+    // A FIFO stands in for a device, which only root can make: opening
+    // either may do something, and both are refused only as they're asked
+    // what they are.
+    #[test]
+    fn a_link_to_what_isnt_a_file_is_refused_before_it_s_opened() {
+        use std::io::Read;
+        let folder = crate::pack_index::tests::unique("unopened");
+        let (target, link) = (folder.join("fifo"), folder.join("link"));
+        fifo(&target);
+        std::os::unix::fs::symlink(&target, &link).expect("the temp folder takes a link");
+        let mut watch = opens_of(&target);
+        // Apart, as above, so a read that waited on it fails by its message.
+        let refused = apart(move || read(&link).map_err(|error| error.kind()));
+        let heard = watch.read(&mut [0; 4096]).map_err(|error| error.kind());
+        std::fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (
+                refused.expect("a read of a link to a FIFO was still waiting after 30 s"),
+                heard
+            ),
+            (
+                Err(std::io::ErrorKind::InvalidData),
+                Err(std::io::ErrorKind::WouldBlock)
+            ),
+            "a link to a FIFO wasn't refused, or what it leads to was opened first"
+        );
+    }
+
+    #[test]
+    fn a_capped_read_refuses_a_file_past_its_cap_or_a_link_it_wont_follow() {
+        let folder = crate::pack_index::tests::unique("capped");
+        std::fs::create_dir_all(&folder).expect("the temp folder takes a folder");
+        let (plain, link) = (folder.join("plain"), folder.join("link"));
+        std::fs::write(&plain, b"0123456789").expect("the temp folder takes a file");
+        std::os::unix::fs::symlink(&plain, &link).expect("the temp folder takes a link");
+        let read = |path: &Path, follow: bool, most: u64| {
+            read_capped(path, follow, most).map_err(|error| error.kind())
+        };
+        let found = [
+            read(&plain, false, 10),
+            read(&plain, false, 9),
+            read(&link, true, 10),
+            read(&link, false, 10),
+        ];
+        std::fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
+        let (whole, refused) = (
+            Ok(Some(b"0123456789".to_vec())),
+            Err(std::io::ErrorKind::InvalidData),
+        );
+        assert_eq!(
+            found,
+            [whole.clone(), refused.clone(), whole, refused],
+            "a capped read refused a file at its cap, read one past it, or didn't follow a \
+             link it was told to, or followed one it wasn't"
+        );
+    }
     /// Makes a FIFO at `path`, which nothing will ever write to.
     pub(crate) fn fifo(path: &Path) {
         let folder = path.parent().expect("a FIFO is made in a folder");

@@ -6,6 +6,7 @@
 use super::chain::{base_distance, entry_header};
 use super::{CHAIN_LIMIT, Kind, Odb};
 use crate::hash::Oid;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
@@ -47,6 +48,36 @@ impl Odb {
                 Headed::Named(base) => oid = base,
             }
         }
+    }
+
+    /// Every base named by a delta on the way down from any packed copy of
+    /// `oid` to its base, and from any copy of a base so named, read from
+    /// headers alone, marked bad or not: the objects whose copies `read`
+    /// may have been refused for, should one be missing or the wrong size.
+    /// The deltas read count against `CHAIN_LIMIT` all told, as a chain's
+    /// do, so no pack costs more headers than `read` would read deltas.
+    pub fn bases_named(&self, oid: &Oid) -> Vec<Oid> {
+        let mut named = Vec::new();
+        let mut seen = HashSet::from([*oid]);
+        let mut next = vec![*oid];
+        let mut deltas = 0;
+        while let Some(oid) = next.pop() {
+            for store in &self.stores {
+                let (mut passed, mut refused) = (Vec::new(), None);
+                while let Some((pack, offset)) = store.locate(&oid, &passed, &mut refused) {
+                    passed.push(pack);
+                    match packed(&store.packs[pack].data, offset, &mut deltas) {
+                        Some(Headed::Named(base)) if seen.insert(base) => {
+                            named.push(base);
+                            next.push(base);
+                        }
+                        _ if deltas > CHAIN_LIMIT => return named,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        named
     }
 
     /// What the headers of the copy `read` would read first say: the first

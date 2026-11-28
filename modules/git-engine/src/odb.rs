@@ -6,7 +6,6 @@
 //! `pack_index`; reading it, loose or from a pack through deltas, is here.
 
 use crate::hash::Oid;
-use crate::pack_index::{Index, Midx};
 use crate::stamp::{Stamp, Stamps};
 use miniz_oxide::inflate::stream::{InflateState, inflate};
 use miniz_oxide::{DataFormat, MZError, MZFlush, MZStatus};
@@ -14,8 +13,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::path::Path;
+use std::sync::Arc;
+use store::Store;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -54,221 +54,6 @@ pub struct Object {
 
 fn invalid(what: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, what.to_string())
-}
-
-struct Pack {
-    data: File,
-    /// Its own index, for a pack the multi-pack-index doesn't cover.
-    index: Option<Index>,
-}
-
-impl Pack {
-    /// The pack beside the index `name` in `pack_dir`, or None where either
-    /// won't open, the pack opened only once its index has and only where
-    /// it's a file, so a FIFO in its place holds nothing up.
-    fn indexed(pack_dir: &Path, name: &str) -> Option<Pack> {
-        let index = Index::open(&pack_dir.join(name)).ok()?;
-        let data = crate::regular_file::present(&pack_dir.join(name.replace(".idx", ".pack")));
-        Some(Pack {
-            data: data.ok()?,
-            index: Some(index),
-        })
-    }
-}
-
-/// One object store: its packs and the folder of loose objects.
-struct Store {
-    dir: PathBuf,
-    midx: Option<Midx>,
-    /// Packs by their `.idx` name; the multi-pack-index's come first, in its
-    /// order.
-    packs: Vec<Pack>,
-    midx_packs: usize,
-    /// The own indexes of the packs the multi-pack-index covers, in its
-    /// order, read only once it can't answer a lookup.
-    covered: OnceLock<Vec<Option<Index>>>,
-    /// Each pack's .idx and .pack, opened or not, stamped before it was,
-    /// since a file rewritten in place moves its own stamp but not its
-    /// folder's, and a copy marked while the packs hold is read again
-    /// only once the store opens afresh.
-    stamps: Stamps,
-}
-
-/// The stamps of each index among `names` in `pack_dir`, and its pack's.
-fn stamps_of<'a>(pack_dir: &Path, names: impl IntoIterator<Item = &'a String>) -> Stamps {
-    let files = names.into_iter().flat_map(|name| {
-        [
-            pack_dir.join(name),
-            pack_dir.join(name.replace(".idx", ".pack")),
-        ]
-    });
-    files.map(|file| (file.clone(), Stamp::of(&file))).collect()
-}
-
-impl Store {
-    #[expect(
-        clippy::case_sensitive_file_extension_comparisons,
-        reason = "git names a pack's index .idx, in lowercase"
-    )]
-    fn open(dir: &Path) -> Store {
-        let pack_dir = dir.join("pack");
-        let midx = Midx::open(&pack_dir.join("multi-pack-index")).ok();
-        let mut packs = Vec::new();
-        let mut covered = std::collections::HashSet::new();
-        let mut midx_packs = 0;
-        let mut stamps = stamps_of(&pack_dir, midx.iter().flat_map(|midx| &midx.packs));
-        if let Some(midx) = &midx {
-            for name in &midx.packs {
-                let data = pack_dir.join(name.replace(".idx", ".pack"));
-                // A pack the index names but that's gone, or isn't a file,
-                // ends the index's use.
-                match crate::regular_file::present(&data) {
-                    Ok(data) => packs.push(Pack { data, index: None }),
-                    Err(_) => {
-                        return Store::without_midx(dir);
-                    }
-                }
-                covered.insert(name.clone());
-            }
-            midx_packs = packs.len();
-        }
-        let mut names: Vec<String> = std::fs::read_dir(&pack_dir)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .filter(|name| name.ends_with(".idx") && !covered.contains(name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        names.sort();
-        stamps.extend(stamps_of(&pack_dir, &names));
-        for name in names {
-            // The pack is opened only once its index has, and only as a file.
-            if let Some(pack) = Pack::indexed(&pack_dir, &name) {
-                packs.push(pack);
-            }
-        }
-        Store {
-            dir: dir.to_path_buf(),
-            midx,
-            packs,
-            midx_packs,
-            covered: OnceLock::new(),
-            stamps,
-        }
-    }
-
-    #[expect(
-        clippy::case_sensitive_file_extension_comparisons,
-        reason = "git names a pack's index .idx, in lowercase"
-    )]
-    fn without_midx(dir: &Path) -> Store {
-        let pack_dir = dir.join("pack");
-        let mut names: Vec<String> = std::fs::read_dir(&pack_dir)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .filter(|name| name.ends_with(".idx"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        names.sort();
-        let stamps = stamps_of(&pack_dir, &names);
-        let packs = names
-            .into_iter()
-            .filter_map(|name| Pack::indexed(&pack_dir, &name))
-            .collect();
-        Store {
-            dir: dir.to_path_buf(),
-            midx: None,
-            packs,
-            midx_packs: 0,
-            covered: OnceLock::new(),
-            stamps,
-        }
-    }
-
-    /// Where `oid` lies in this store's packs. An entry the
-    /// multi-pack-index refuses, or one naming a pack past those it covers,
-    /// can't say where the object is, so its packs' own indexes are read
-    /// instead. What any index refuses is kept in `refused` rather than
-    /// returned, the first kept standing, for the caller to let stand only
-    /// once no other store, nor the loose objects, holds the object: a
-    /// broken entry neither hides an object nor passes for a missing one.
-    /// The packs in `bad` held a copy that wouldn't unpack, and are passed
-    /// over as git passes over a copy it has marked bad.
-    fn locate(
-        &self,
-        oid: &Oid,
-        bad: &[usize],
-        refused: &mut Option<io::Error>,
-    ) -> Option<(usize, u64)> {
-        if let Some(midx) = &self.midx {
-            let found = match midx.locate(oid) {
-                // The multi-pack-index names one copy of each object, so
-                // past a bad one only the packs it doesn't cover are read.
-                Ok(Some((pack, offset))) if pack < self.midx_packs => {
-                    (!bad.contains(&pack)).then_some((pack, offset))
-                }
-                Ok(None) => None,
-                // The entry names a pack it doesn't cover, so the packs it
-                // does are read; should none hold the object, that stands.
-                Ok(Some(_)) => {
-                    refused.get_or_insert_with(|| {
-                        invalid("multi-pack-index names a pack past those it covers")
-                    });
-                    self.in_covered(oid, bad)
-                }
-                Err(error) => {
-                    refused.get_or_insert(error);
-                    self.in_covered(oid, bad)
-                }
-            };
-            if found.is_some() {
-                return found;
-            }
-        }
-        for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
-            if bad.contains(&at) {
-                continue;
-            }
-            match pack.index.as_ref().map(|index| index.offset(oid)) {
-                Some(Ok(Some(offset))) => return Some((at, offset)),
-                Some(Err(error)) => {
-                    refused.get_or_insert(error);
-                }
-                Some(Ok(None)) | None => {}
-            }
-        }
-        None
-    }
-
-    /// Where `oid` lies by the own indexes of the packs the
-    /// multi-pack-index covers, read only once it can't answer and has
-    /// left its own refusal standing. That refusal is what's said should
-    /// none hold the object, so one that won't open or read is passed over
-    /// rather than hiding the packs after it. A pack keeps its place
-    /// whether or not its index opens, since the multi-pack-index numbers
-    /// them. The packs in `bad` are passed over, as `locate` says.
-    fn in_covered(&self, oid: &Oid, bad: &[usize]) -> Option<(usize, u64)> {
-        let indexes = self.covered.get_or_init(|| {
-            let pack_dir = self.dir.join("pack");
-            self.midx
-                .iter()
-                .flat_map(|midx| &midx.packs)
-                .map(|name| Index::open(&pack_dir.join(name)).ok())
-                .collect()
-        });
-        indexes.iter().enumerate().find_map(|(at, index)| {
-            if bad.contains(&at) {
-                return None;
-            }
-            let offset = index.as_ref()?.offset(oid).ok()??;
-            Some((at, offset))
-        })
-    }
 }
 
 #[cfg(test)]
@@ -531,6 +316,10 @@ fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> 
 /// Every store a repository reads, its own first.
 pub struct Odb {
     stores: Vec<Store>,
+    /// The stamps of each store's pack folder, multi-pack-index and
+    /// alternates, which move once a pack is added or taken away: the odb is
+    /// opened again once one does, and a repository holding it let go. Each
+    /// pack's own stamps are its store's, which open only that store again.
     pub stamps: Stamps,
     /// Bases read for the deltas over them, by where each lies, and how
     /// many bytes they hold.
@@ -652,10 +441,8 @@ impl Odb {
                 stamps.push((watched.clone(), Stamp::of(&watched)));
             }
         }
-        let stores: Vec<Store> = dirs.iter().map(|dir| Store::open(dir)).collect();
-        stamps.extend(stores.iter().flat_map(|store| store.stamps.iter().cloned()));
         Odb {
-            stores,
+            stores: dirs.iter().map(|dir| Store::open(dir)).collect(),
             stamps,
             bases: HashMap::new(),
             base_bytes: 0,
@@ -683,8 +470,10 @@ impl Odb {
 
     /// Forgets the marks that last one answer, and those refused memory
     /// that can now be had, as the next answer begins, so the copies they
-    /// marked are read again.
+    /// marked are read again; and those that last while the packs hold, in
+    /// each store a pack of which was rewritten in place, opened again.
     pub fn forget_passing_marks(&mut self) {
+        self.reopen_rewritten_stores();
         self.bad.retain(|_, mark| match mark.lasts {
             Lasts::WhileThePacksHold => true,
             Lasts::UntilThereIsRoom { held, total } => !room_for(held, total),
@@ -692,10 +481,36 @@ impl Odb {
         });
     }
 
+    /// Opens again each store whose packs' own stamps moved while their
+    /// folder's held: a pack or its index rewritten in place, as `cp` copies
+    /// a backup over one, or freshened, as git touches a pack rather than
+    /// write again an object it holds. Its copies marked while its packs
+    /// held go, since they may now read, and an index is read afresh, as its
+    /// count is kept. The bases and trees read stay, as a pack's name is the
+    /// checksum of what it holds, unless the store opens other packs, or in
+    /// another order: then its bases go, being kept by where they lie.
+    fn reopen_rewritten_stores(&mut self) {
+        for at in 0..self.stores.len() {
+            if crate::stamp::still(&self.stores[at].stamps) {
+                continue;
+            }
+            let store = Store::open(&self.stores[at].dir);
+            if !store.opens_as(&self.stores[at]) {
+                self.bases.retain(|place, _| place.0 != at);
+                self.base_bytes = self.bases.values().map(|base| base.1.len()).sum();
+            }
+            self.stores[at] = store;
+            self.bad
+                .retain(|place, mark| place.0 != at || mark.lasts != Lasts::WhileThePacksHold);
+        }
+    }
+
     /// The stamps of the packs every store watches, which move once one is
-    /// added, taken away or rewritten in place.
+    /// added, taken away or rewritten in place: the odb's own, and each
+    /// pack's.
     pub fn pack_stamps(&self) -> Stamps {
-        self.stamps.clone()
+        let packs = self.stores.iter().flat_map(|store| store.stamps.iter());
+        self.stamps.iter().chain(packs).cloned().collect()
     }
 
     /// The stamps that move once `oid` may be written loose: the folder each
@@ -779,6 +594,7 @@ mod chain;
 mod kind;
 mod loose;
 mod parse;
+mod store;
 
 pub use parse::{TreeEntry, parse_commit, tree_entries};
 
@@ -793,3 +609,7 @@ mod delta_tests;
 #[cfg(test)]
 #[path = "odb_bound_tests.rs"]
 mod bound_tests;
+
+#[cfg(test)]
+#[path = "odb_rewrite_tests.rs"]
+mod rewrite_tests;

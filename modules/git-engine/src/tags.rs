@@ -26,13 +26,14 @@ pub(crate) struct Tags {
 enum Peeled {
     /// To what isn't a tag object: the commit, most often.
     To(Oid),
-    /// To a tag object no store holds.
+    /// To a tag object no store holds, or one stored as a delta over a base
+    /// none holds: both stay so till a file is written where it would lie.
     Missing(Oid),
     /// To a tag object whose bytes are wrong: they stay so till its file
     /// is written again, as one missing stays missing.
     Corrupt(Oid),
-    /// To a tag object that wouldn't read this time, a delta's base no
-    /// store holds yet among the reasons.
+    /// To a tag object that wouldn't read this time, as for memory or an
+    /// I/O error.
     Unread(Oid),
 }
 
@@ -71,9 +72,12 @@ impl Tags {
     }
 
     /// Peels each tag not yet peeled: one whose object is missing or wrong
-    /// settles with the stamps of where it would come from, rather than be
-    /// read again every answer, and one whose object wouldn't read this time
-    /// is left for the next.
+    /// settles with the stamps of where it would come from, and of where
+    /// each base its deltas name would, rather than be read again every
+    /// answer, and one whose object wouldn't read this time is left for the
+    /// next. A base is watched too since a delta over one of the wrong size
+    /// is refused as wrong, though the base's, not the delta's, may be the
+    /// fault, which a sound copy of the base renamed into its folder mends.
     fn peel(&mut self, odb: &mut Odb) {
         let mut missing = false;
         for at in std::mem::take(&mut self.unpeeled) {
@@ -82,6 +86,9 @@ impl Tags {
                 Peeled::Missing(oid) | Peeled::Corrupt(oid) => {
                     // Tags in one fan-out folder share its stamp.
                     self.keep(odb.folders_of(&oid));
+                    for base in odb.bases_named(&oid) {
+                        self.keep(odb.folders_of(&base));
+                    }
                     missing = true;
                     oid
                 }
@@ -112,13 +119,12 @@ impl Tags {
 /// whole: what it points at is asked only its kind, as git's `peel_object`
 /// asks, so a tag on a large blob costs the blob's headers.
 fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
-    // Only data that won't read settles; anything else is tried again.
-    let stopped = |oid, error: std::io::Error| {
-        if error.kind() == std::io::ErrorKind::InvalidData {
-            Peeled::Corrupt(oid)
-        } else {
-            Peeled::Unread(oid)
-        }
+    // Only data that won't read, or a delta's base no store holds, which
+    // the store refuses as not found, settles; anything else is tried again.
+    let stopped = |oid, error: std::io::Error| match error.kind() {
+        std::io::ErrorKind::InvalidData => Peeled::Corrupt(oid),
+        std::io::ErrorKind::NotFound => Peeled::Missing(oid),
+        _ => Peeled::Unread(oid),
     };
     for _ in 0..8 {
         match odb.kind(&oid) {
@@ -310,6 +316,101 @@ mod tests {
             miniz_oxide::deflate::compress_to_vec_zlib(object, 1),
         )
         .expect("the object is written");
+    }
+
+    /// Writes a pack in `objects` holding `oid` alone, a delta of `delta`'s
+    /// bytes over `base`, found by name, and the index finding it there.
+    fn delta_over(objects: &Path, oid: Oid, base: Oid, delta: &[u8]) {
+        let pack = objects.join("pack");
+        std::fs::create_dir_all(&pack).expect("the pack folder is made");
+        // A named delta's header, its size said in two bytes.
+        let size = u8::try_from(delta.len()).expect("the delta is short");
+        assert!(
+            (16..128).contains(&size),
+            "the header below says another size"
+        );
+        let entry = [
+            &[0xf0 | (size & 15), size >> 4][..],
+            &base.0,
+            &miniz_oxide::deflate::compress_to_vec_zlib(delta, 1),
+        ]
+        .concat();
+        std::fs::write(
+            pack.join("pack-00.pack"),
+            [b"PACK\0\0\0\x02\0\0\0\x01", &entry[..], &[0; 20]].concat(),
+        )
+        .expect("the pack is written");
+        std::fs::write(
+            pack.join("pack-00.idx"),
+            crate::pack_index::tests::version_2_at(&[oid.0], &[12]),
+        )
+        .expect("the index is written");
+    }
+
+    /// A tag object's bytes naming `commit`, and the delta making them
+    /// over a base of one byte.
+    fn tag_over_a_byte(commit: Oid) -> Vec<u8> {
+        let raw = format!("object {}\ntype commit\n", commit.hex());
+        assert_eq!(raw.len(), 60, "the delta below says another size");
+        [&[1, 60, 60][..], raw.as_bytes()].concat()
+    }
+
+    #[test]
+    fn a_tag_over_a_base_of_the_wrong_size_settles_till_its_base_is_written_again() {
+        let objects = crate::pack_index::tests::unique("tags-base-size");
+        let (tag, base, commit) = (Oid([0x21; 20]), Oid([0x22; 20]), Oid([0x23; 20]));
+        // The tag's delta is over a base of one byte; the base found by
+        // name holds two, which is the base's fault, not the delta's.
+        delta_over(&objects, tag, base, &tag_over_a_byte(commit));
+        loose(&objects, base, b"tag 2\0ab");
+        let named = || vec![("v1".to_string(), tag)];
+        let mut tags = Tags::new(Vec::new(), named(), &HashMap::new());
+        let wrong = tags.naming(commit, &mut Odb::open(&objects));
+        let folder = objects.join(&base.hex()[..2]);
+        let watched = tags.stamps.iter().any(|(path, _)| *path == folder);
+        loose(&objects, base, b"tag 1\0a");
+        let mended = Tags::new(Vec::new(), named(), &HashMap::new())
+            .naming(commit, &mut Odb::open(&objects));
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (
+                wrong.as_str(),
+                tags.unpeeled.len(),
+                watched,
+                mended.as_str()
+            ),
+            ("", 0, true, "v1"),
+            "a tag over a base of the wrong size was named, left to peel again, or \
+             settled without its base's folder, so a base written again left it unnamed"
+        );
+    }
+
+    #[test]
+    fn a_tag_over_a_base_no_store_holds_settles_till_its_base_is_written() {
+        let objects = crate::pack_index::tests::unique("tags-unbased");
+        let (tag, base, commit) = (Oid([0x31; 20]), Oid([0x32; 20]), Oid([0x33; 20]));
+        delta_over(&objects, tag, base, &tag_over_a_byte(commit));
+        let named = || vec![("v1".to_string(), tag)];
+        let mut tags = Tags::new(Vec::new(), named(), &HashMap::new());
+        let unbased = tags.naming(commit, &mut Odb::open(&objects));
+        let folder = objects.join(&base.hex()[..2]);
+        let watched = tags.stamps.iter().any(|(path, _)| *path == folder);
+        loose(&objects, base, b"tag 1\0a");
+        let based = Tags::new(Vec::new(), named(), &HashMap::new())
+            .naming(commit, &mut Odb::open(&objects));
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (
+                unbased.as_str(),
+                tags.unpeeled.len(),
+                watched,
+                based.as_str()
+            ),
+            ("", 0, true, "v1"),
+            "a tag over a base no store holds was named, left to peel again every \
+             answer, or settled without the base's folder, so its base written left it \
+             unnamed"
+        );
     }
 
     #[test]

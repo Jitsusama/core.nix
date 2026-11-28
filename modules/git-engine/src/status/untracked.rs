@@ -2,7 +2,7 @@
 //! walking it under each folder's ignore file. While a file system monitor
 //! names nothing in a folder, what it held stands without walking it.
 
-use super::{Cache, Counts, Limits, Listing, Paths, Patterns, full, os};
+use super::{Cache, Counts, Lies, Limits, Listing, Paths, Patterns, full, os};
 use crate::index::Index;
 use crate::pattern::Pattern;
 use std::collections::HashMap;
@@ -33,9 +33,9 @@ pub fn untracked(
     }
     let mut global: Vec<Arc<Vec<Pattern>>> = Vec::new();
     // Checked first to last: info/exclude, then core.excludesFile.
-    global.push(cache.ignore_file(&paths.common.join("info/exclude")));
+    global.push(cache.ignore_file(&paths.common.join("info/exclude"), Lies::Outside));
     if let Some(file) = &paths.excludes_file {
-        global.push(cache.ignore_file(file));
+        global.push(cache.ignore_file(file, Lies::Outside));
     }
     let mut walker = Untracked {
         index,
@@ -92,7 +92,7 @@ impl Untracked<'_> {
                 Some((_, patterns)) if unchanged => patterns.clone(),
                 _ => {
                     self.cache.checked.insert(name);
-                    self.cache.ignore_file(&file)
+                    self.cache.ignore_file(&file, Lies::InTheTree)
                 }
             }
         } else {

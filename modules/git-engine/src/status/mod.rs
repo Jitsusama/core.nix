@@ -179,8 +179,32 @@ fn stat_key(meta: &std::fs::Metadata) -> StatKey {
     )
 }
 
+/// Where an ignore or attributes file lies, which says whether a link in
+/// its place is followed.
+#[derive(Clone, Copy)]
+enum Lies {
+    /// In the worktree, where whoever wrote it, as a stranger's clone, may
+    /// have left a link to anything the user can read, so one reads as
+    /// empty, as git reads it.
+    InTheTree,
+    /// Among git's own files or named by its config, where a link is the
+    /// user's own, often to their dotfiles, so it's followed, as git does.
+    Outside,
+}
+
+/// The bytes of the ignore or attributes file at `path`, or None where it
+/// won't read: nothing there, what isn't a plain file, so a device or a
+/// FIFO in its place reads as empty rather than without end or not at all,
+/// a link in the worktree, or a file past the size git reads one to.
+fn read_patterns(path: &Path, lies: Lies) -> Option<Vec<u8>> {
+    let follow = matches!(lies, Lies::Outside);
+    crate::regular_file::read_capped(path, follow, crate::regular_file::MOST_PATTERNS)
+        .ok()
+        .flatten()
+}
+
 impl Cache {
-    fn ignore_file(&mut self, path: &Path) -> Arc<Vec<Pattern>> {
+    fn ignore_file(&mut self, path: &Path, lies: Lies) -> Arc<Vec<Pattern>> {
         let stamp = Stamp::of(path);
         if let Some((seen, patterns)) = self.ignores.get(path)
             && *seen == stamp
@@ -188,11 +212,7 @@ impl Cache {
         {
             return patterns.clone();
         }
-        // Read only as a file, so a link to a device or a FIFO in its place
-        // reads as empty rather than without end or not at all.
-        let read = crate::regular_file::read(path)
-            .ok()
-            .flatten()
+        let read = read_patterns(path, lies)
             .map(|text| parse_file(&text, true))
             .unwrap_or_default();
         // The same patterns read again are the same file, so what was
@@ -206,7 +226,7 @@ impl Cache {
         patterns
     }
 
-    fn attributes_file(&mut self, path: &Path, macros: bool) -> Arc<attrs::File> {
+    fn attributes_file(&mut self, path: &Path, macros: bool, lies: Lies) -> Arc<attrs::File> {
         let stamp = Stamp::of(path);
         if let Some((seen, file)) = self.attributes.get(path)
             && *seen == stamp
@@ -214,11 +234,8 @@ impl Cache {
         {
             return file.clone();
         }
-        // Read only as a file, as an ignore file is.
         let file = Arc::new(
-            crate::regular_file::read(path)
-                .ok()
-                .flatten()
+            read_patterns(path, lies)
                 .map(|text| attrs::File::parse(&text, macros))
                 .unwrap_or_default(),
         );

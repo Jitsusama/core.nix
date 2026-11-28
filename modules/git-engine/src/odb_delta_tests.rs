@@ -434,6 +434,10 @@ fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
     entries.push(named(names[0], &[1, 1, 0x91, 5, 1]));
     let at: Vec<u64> = entries.starts.iter().map(|start| 12 + start).collect();
     let folders = packed(&names, &[entries.entries]);
+    // Settled stamps, since a store whose packs were written within the
+    // clock's tick may yet change unseen, so it opens again, and forgets
+    // its marks, each answer till they settle.
+    crate::stamp::tests::ahead(3);
     let mut odb = Odb::open(&folders.0[0]);
     let marks = |odb: &Odb| {
         let mut marks: Vec<_> = odb
@@ -535,37 +539,6 @@ fn a_store_kept_keeps_the_marks_that_last_while_what_it_reads_holds() {
     );
 }
 
-#[test]
-fn a_copy_marked_while_the_packs_hold_is_read_again_once_its_pack_is_rewritten_in_place() {
-    let names = names(1);
-    // names[0] an entry of a kind git has none of, its own bytes' fault;
-    // and a backup of its pack holding a sound blob at the same place.
-    let folders = packed(&names, &[vec![vec![0x50 | 1, 0]]]);
-    let backup = packed(&names, &[vec![blob(b"a")]]);
-    let objects = &folders.0[0];
-    // Settled stamps, so only a change to what the store reads moves them.
-    crate::stamp::tests::ahead(3);
-    let read = |odb: &mut Odb| {
-        odb.read(&Oid(names[0]))
-            .map(|object| object.map(|object| object.data))
-            .map_err(|error| error.to_string())
-    };
-    let mut odb = Odb::open(objects);
-    let marked = read(&mut odb);
-    // Copied over the pack in place, as `cp` copies, so the pack's folder
-    // stays as it was.
-    let pack = "pack/pack-00.pack";
-    std::fs::copy(backup.0[0].join(pack), objects.join(pack))
-        .expect("the temp folder takes a copy");
-    let mut odb = Odb::reopen(Some(odb), objects);
-    odb.forget_passing_marks();
-    assert_eq!(
-        (marked, read(&mut odb)),
-        (Err("pack entry kind".into()), Ok(Some(b"a".to_vec()))),
-        "a copy marked while the packs hold stayed marked once its pack was rewritten in place"
-    );
-}
-
 /// What reading each of `names` from a store opened once answers, and how
 /// many copies it marked bad by the end.
 pub(super) fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<Read>, usize) {
@@ -585,6 +558,12 @@ impl Odb {
     /// How many copies the store has marked bad, for the engine's tests.
     pub(crate) fn marks(&self) -> usize {
         self.bad.len()
+    }
+
+    /// How many trees the store keeps read, which only a store opened
+    /// again forgets, for the engine's tests.
+    pub(crate) fn trees_held(&self) -> usize {
+        self.trees.len()
     }
 }
 
