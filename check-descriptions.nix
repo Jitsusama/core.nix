@@ -5376,6 +5376,11 @@
     would free, one a turn, leaving out names folded under a tilde; and a busy count or weighing
     stays owed for the next closing to take up rather than being dropped
   '';
+  the-foot-weighs-each-verb-once = ''
+    the launcher's foot keeps room after Return for the widest verb the words file names, a
+    state's included, measuring each distinct verb once, keeping the earlier of two as wide, never
+    less than connect, and leaving out a verb that isn't a string
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold

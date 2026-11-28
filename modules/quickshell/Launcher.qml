@@ -98,6 +98,7 @@ import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
 import "launcher/SystemPart.js" as SystemPart
 import "launcher/Weighing.js" as Weighing
+import "launcher/WidestVerb.js" as WidestVerb
 import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
@@ -3715,19 +3716,14 @@ Scope {
     // far end for the widest Return word the words file names"). A room
     // kept for "connect" alone let "\u21b5 brighten" move Return on the
     // first letter; "connect", which a network's source says, stays the
-    // least. A source's own wider verb may still move it once.
+    // least. A source's own wider verb may still move it once. Each
+    // distinct verb is weighed once (launcher/WidestVerb.js): the first
+    // opening since the shell started, with nothing weighed yet, measured
+    // every one of about 1,803 things' verbs twice, against the widest so
+    // far, 6 to 8 ms of the 141 and 209 ms before its frame (2026-11-27),
+    // though most things share a handful of verbs.
     function widestVerb(things) {
-        let widest = "connect";
-        for (const entry of things) {
-            const states = Object.values(entry.states ?? {});
-            for (const verb of [entry.verb].concat(states.map(state => state.verb))) {
-                if (typeof verb === "string"
-                    && statusLine.keys.advance("\u21b5", verb)
-                        > statusLine.keys.advance("\u21b5", widest))
-                    widest = verb;
-            }
-        }
-        return widest;
+        return WidestVerb.among(things, verb => statusLine.keys.advance("\u21b5", verb));
     }
     // Return and its widest word on the find, where the launcher opens,
     // and the completion key the first letter brings, since room is held

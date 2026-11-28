@@ -61,6 +61,7 @@
   "launcher/Thrown.js"
   "launcher/Collector.js"
   "launcher/Weighing.js"
+  "launcher/WidestVerb.js"
   "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"
