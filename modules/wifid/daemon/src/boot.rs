@@ -52,11 +52,6 @@ impl Instant {
     pub fn checked_sub(self, back: Duration) -> Option<Instant> {
         self.0.checked_sub(back).map(Instant)
     }
-
-    /// How long ago this was, by the boot clock now.
-    pub fn elapsed(self) -> Duration {
-        Instant::now().duration_since(self)
-    }
 }
 
 impl Add<Duration> for Instant {
