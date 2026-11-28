@@ -4,7 +4,14 @@
 //! past it, where Joel's packets inside the VPN wait alike with agents'.
 //! Held under that pace, the queue stays in the CAKE, which sends his
 //! first. The link's own rate is left alone, so agents' direct lane
-//! borrows what the VPN no longer takes.
+//! borrows what the VPN no longer takes. It is never held under what
+//! goes ahead of bulk inside it, with Joel's headroom past that, up to a
+//! most (src/lanes.rs's `vpn_held`): Joel's own and agents' model calls,
+//! so under that most only bulk is taken back. A hold that misread the
+//! air's round trip as the tunnel's would otherwise starve model calls,
+//! as on 27 November. At that floor a cut lowers nothing, so a wait
+//! standing there is neither cut for nor let go as a far path's: the hold
+//! keeps to the floor until what goes ahead of bulk lowers it.
 //!
 //! The same hold, a second one, holds agents' direct lane instead while
 //! they send beside the VPN's wait (src/oneway.rs): there what they send
@@ -52,6 +59,9 @@ pub struct Hold {
     waited_ms: f64,
     unheeded_until: f64,
     unheeded_for: f64,
+    /// The share at or under which a cut no longer lowers the VPN's CAKE,
+    /// which src/lanes.rs's `vpn_held` keeps over what goes ahead of bulk.
+    least: f64,
 }
 
 impl Default for Hold {
@@ -67,6 +77,7 @@ impl Default for Hold {
             waited_ms: 0.0,
             unheeded_until: f64::NEG_INFINITY,
             unheeded_for: 0.0,
+            least: 0.0,
         }
     }
 }
@@ -80,6 +91,12 @@ impl Hold {
     /// The wait inside the tunnel that set the last cut, in ms.
     pub fn waited_ms(&self) -> f64 {
         self.waited_ms
+    }
+
+    /// Takes the share at or under which the VPN's CAKE stays at its floor,
+    /// `vpn_held`'s for what goes ahead of bulk, whatever the share.
+    pub fn floor(&mut self, least: f64) {
+        self.least = least;
     }
 
     /// Whether a wait at `at` is heeded: not while one its cuts didn't
@@ -129,6 +146,14 @@ impl Hold {
         // 10.8 Mb/s and the agents inside the VPN waited three seconds on
         // average. A cut never ends the doubling of the time a far path
         // goes unheeded: only a run that drains does.
+        // Held to its floor, a cut lowers nothing, so a tunnel's queue can't
+        // drain and would read as a far path: let go, the VPN's whole lane
+        // went to bulk for up to `FAR_MOST_S` (model calls ahead round 4's
+        // F7). The hold stays at the floor instead, until what goes ahead
+        // of bulk lowers it.
+        if self.share <= self.least {
+            return;
+        }
         let height = self
             .heights
             .iter()
@@ -199,6 +224,32 @@ mod tests {
         assert!(
             (LEAST..0.37).contains(&hold.share()),
             "a tunnel paced at 0.29 of the lane left the share at {:.3}",
+            hold.share()
+        );
+    }
+
+    // Held to a floor over its tunnel's pace, the queue can't drain, and
+    // its wait stands where it was, as a far path's does. The hold keeps
+    // to the floor rather than letting the VPN's lane go to bulk, and cuts
+    // on to the tunnel's pace once the floor comes down.
+    #[test]
+    fn a_tunnel_under_the_floor_keeps_its_hold_until_the_floor_comes_down() {
+        const FLOOR: f64 = 0.5;
+        let mut hold = Hold::default();
+        hold.floor(FLOOR);
+        run(&mut hold, 0.0, 120.0, |_, share| {
+            Some(slow_tunnel(share.max(FLOOR)))
+        });
+        assert!(
+            hold.share() <= FLOOR,
+            "a tunnel held at its floor was let go, at {:.3}",
+            hold.share()
+        );
+        hold.floor(0.0);
+        run(&mut hold, 120.0, 120.0, |_, share| Some(slow_tunnel(share)));
+        assert!(
+            (LEAST..0.37).contains(&hold.share()),
+            "a tunnel paced at 0.29 of the lane left the share at {:.3} once its floor came down",
             hold.share()
         );
     }

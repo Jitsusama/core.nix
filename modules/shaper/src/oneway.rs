@@ -1698,6 +1698,12 @@ impl Controller {
         self.tunnel.share()
     }
 
+    /// Tells the VPN's own hold the share at or under which its CAKE stays
+    /// at its floor (src/lanes.rs's `vpn_least`).
+    pub fn tunnel_floor(&mut self, least: f64) {
+        self.tunnel.floor(least);
+    }
+
     /// The share of their split agents' direct lane is held to: under one
     /// while the VPN's flow waits beside what they send.
     pub fn agents_share(&self) -> f64 {

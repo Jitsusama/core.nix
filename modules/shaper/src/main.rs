@@ -360,6 +360,10 @@ struct Shaped {
     /// The share of its lane the VPN riding the link is held to, while it
     /// waits inside its tunnel (src/tunnel.rs).
     vpn_share: f64,
+    /// The share at or under which the VPN's CAKE on this link stays at its
+    /// floor for what goes ahead of bulk (src/lanes.rs's `vpn_least`), or
+    /// none while no VPN rides it.
+    vpn_least: f64,
     /// The share of their split agents straight on the link are held to,
     /// while the VPN's flow waits beside what they send.
     agents_share: f64,
@@ -739,6 +743,7 @@ fn start(
         ahead_us: 0,
         vpn_reads: (0, 0),
         vpn_share: 1.0,
+        vpn_least: 0.0,
         agents_share: 1.0,
         split_agents_share: 1.0,
         drops: None,
@@ -1382,6 +1387,7 @@ fn run(options: &Options) -> Result<(), Failure> {
             for (name, s) in &mut shaped {
                 if primary.as_ref() != Some(name) {
                     s.share_lanes((0.0, lanes::Agents::default()), t);
+                    s.vpn_least = 0.0;
                 }
             }
             reach = local(&shaped, &vpns.0);
@@ -1651,12 +1657,14 @@ fn follow_vpns(
             },
         },
     );
+    // What the tins ahead of bulk carried: Joel's, and agents' model calls.
     let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
     let base = primary.map(|s| {
         let vpn = s.share_lanes((joel, agents), t);
         // Held under its tunnel's pace while it waits inside it, so the
         // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = vpn * lanes::VPN_HELD * s.vpn_share;
+        let held = lanes::vpn_held(vpn, s.vpn_share, joel);
+        s.vpn_least = lanes::vpn_least(vpn, joel);
         (rate::whole(held), s.applied.1, s.download.straight())
     });
     let carried = sh(&words(&format!(
@@ -1963,6 +1971,9 @@ fn step_links(
     // rates, the reason and the VPN's share judge the recorder's silence
     // alike.
     let now = SystemTime::now();
+    // The VPN's hold judges its wait knowing where its cuts stop lowering
+    // the CAKE (src/tunnel.rs).
+    live.vpn_floor(shaped.values().map(|s| s.vpn_least).fold(0.0, f64::max));
     let polled = live
         .poll(now)
         .map(|(link, rates)| (Some(link.to_string()), rates));
