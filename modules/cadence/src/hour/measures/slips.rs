@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use super::promised::promised;
-use super::{Class, DAY, Measure, count, first_owner, lines, parked, seconds, short};
+use super::{Class, DAY, Measure, asks, count, first_owner, parked, seconds, short};
 use crate::tracking::{self, Tracking};
 
 /// A date that slipped: when it was due, the ask's words and its owner.
@@ -38,7 +38,7 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // was moved by a line written without `promised` to say so, which
     // answers it, while a latest line with no date it can read moves none.
     let mut dated: BTreeMap<[String; 2], (Vec<i64>, bool)> = BTreeMap::new();
-    for (order, ask) in lines(text).enumerate() {
+    for (order, ask) in asks(text).enumerate() {
         let ours = tracking::of(&ask) == Some(which);
         let landed = seconds(&ask["landed"]);
         let given = promised(&ask);

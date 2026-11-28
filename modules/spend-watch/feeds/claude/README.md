@@ -119,7 +119,7 @@ Two more say the same figures, and neither is built:
 
 [contract]: ../../contract/README.md
 [home]: ../../home.nix
-[pi-claude]: ../../../pi/claude.sh
+[pi-claude]: ../../../pi/claude/claude.sh
 [example]: tests/claude-plan.jsonl
 [99231]: https://github.com/anthropics/claude-code/issues/99231
 [105240]: https://github.com/anthropics/claude-code/issues/105240

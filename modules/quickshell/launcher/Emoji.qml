@@ -47,6 +47,8 @@ Provider {
         onSearched: words => provider.foundMore(
             Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }
+    // What the history serves, for a reader told of each change it hears.
+    readonly property alias served: ready
     property real askedAt: 0
     readonly property int freshFor: 50
     // What an emoji's drawer names its lines, made from its row as it's drawn (EmojiDrawer.js).
@@ -73,9 +75,10 @@ Provider {
             return ready.thing(served, key,
                 { hue: "text", nested: true, finds: provider.findsIn(key) });
         const held = served.held ?? {};
+        // Keyed by ready.thing's keyMade, its thing as every served row's,
+        // so one claiming the launcher's own kind is kept under `row:`.
         const readied = ready.thing(served, key, {
             thing: true,
-            key: served.thing,
             hue: served.hue ?? "text",
             // Every emoji says the same keys where it isn't selected, its
             // verb being the window under's, so the foot weighs one of a

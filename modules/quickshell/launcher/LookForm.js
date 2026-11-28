@@ -61,12 +61,15 @@ function secondForm(one) {
 // What its drawer leads with, to act on hours on (Joel, 2026-11-11): in
 // its second form what happened then why it matters, each ending as a
 // sentence ends, as its harness writes a why; else its why, then its ask.
+// Each trimmed, as the sites' ask row reads them, so words only of spaces
+// leave no blank.
 function wordsOf(read) {
     const ended = text => text === "" || ENDED.test(text) ? text : `${text}.`;
     return secondForm(read)
         ? [read.happened, read.matters].map(part => ended(written(part).trim()))
             .filter(part => part !== "").join(" ")
-        : [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n");
+        : [read.why, read.ask].map(part => written(part).trim())
+            .filter(part => part !== "").join("\n\n");
 }
 
 // A name as it reads, to tell two apart: what draws as nothing gone, its

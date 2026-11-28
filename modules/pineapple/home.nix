@@ -82,6 +82,9 @@ let
       Install.WantedBy = [ "default.target" ];
     };
   inherit (config.jitsusama.pineapple) sites gateway;
+  # Whether the reader over the gateway is the one Joel trusts, in place
+  # of the one signing in with pi's keyring.
+  throughGateway = gateway != null && gateway.live;
   # A word systemd reads as itself in ExecStart, which expands `%` and `$`
   # even inside quotes, as night-shift's units say.
   literal = lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ];
@@ -174,7 +177,8 @@ in
     description = ''
       A tool gateway reading Slack for Joel, heard by a second reader in
       shadow beside the one asking Slack itself, so the two can be compared
-      before the gateway's is trusted; none unless a machine names one.
+      before the gateway's is trusted, or in its place once `live` says
+      so; none unless a machine names one.
     '';
     default = null;
     type = lib.types.nullOr (
@@ -192,20 +196,31 @@ in
             '';
             type = lib.types.path;
           };
+          live = lib.mkOption {
+            description = ''
+              Whether the reader over the gateway takes the place of the one
+              signing in with pi's keyring: it runs live as pineapple-slack,
+              its stops standing, telling For You and Joel's phone, and
+              neither the keyring's reader nor the shadow beside it runs.
+            '';
+            type = lib.types.bool;
+            default = false;
+          };
         };
       }
     );
   };
 
   config = lib.mkMerge [
-    (lib.mkIf (gateway != null) {
+    (lib.mkIf (gateway != null && !gateway.live) {
       # The Slack reader again, hearing Slack through the gateway
-      # (src/ears.rs), only ever in shadow, as the reader refuses --live
-      # with --gateway: it keeps to pineapple-gateway beside the live
-      # reader's state, its row of what waits included, however it's run,
-      # so a gateway it can't hear never reaches Joel while the reader he
-      # trusts goes on. The environment is left alone, for the sign-in
-      # program it runs.
+      # (src/ears.rs), in shadow, as it isn't given --live: it keeps to
+      # pineapple-gateway beside the live reader's state, its row of what
+      # waits included, so a gateway it can't hear never reaches Joel while
+      # the reader he trusts goes on. Given --live, as only the live unit
+      # below is, the same program keeps to the live reader's state
+      # instead. The environment is left alone, for the sign-in program it
+      # runs.
       systemd.user.services.pineapple-slack-gateway = {
         Unit = {
           Description = "Reads Slack through a tool gateway for the safe word, in shadow";
@@ -281,7 +296,9 @@ in
 
       systemd.user.services.pineapple-slack = {
         Unit = {
-          Description = "Reads Slack for the safe word that stops Joel's agents";
+          Description =
+            "Reads Slack for the safe word that stops Joel's agents"
+            + lib.optionalString throughGateway ", through a tool gateway";
           # Restarted after a switch reloads the units, it comes back as the
           # new one.
           X-SwitchMethod = "restart";
@@ -291,14 +308,29 @@ in
           # Shown in ps by its name, not its store path (docs/daemons.md).
           # Without --live it only writes down what it would do; taking the
           # word out, with its check's, is the way back to shadow.
-          ExecStart = "@${lib.getExe pineapple} pineapple-slack run --live";
+          # Over a gateway it's given the gateway and the program printing
+          # Joel's sign-in to it, as the shadow is.
+          ExecStart =
+            if throughGateway then
+              lib.escapeShellArgs [
+                "@${lib.getExe pineapple}"
+                "pineapple-slack"
+                "run"
+                "--live"
+                "--gateway"
+                (literal gateway.url)
+                "--gateway-sign-in"
+                (literal "${gateway.signIn}")
+              ]
+            else
+              "@${lib.getExe pineapple} pineapple-slack run --live";
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
-          # the journal and reads nothing until there is one. And the file it
-          # tells For You in, the one its stop removes, quoted as systemd
-          # reads a setting, as the stop's paths are.
-          Environment = [
-            "SIGN_IN_KEYRING=${keyring}"
+          # the journal and reads nothing until there is one; over a gateway
+          # it isn't read. And the file it tells For You in, the one its stop
+          # removes, quoted as systemd reads a setting, as the stop's paths
+          # are.
+          Environment = lib.optional (!throughGateway) "SIGN_IN_KEYRING=${keyring}" ++ [
             ''"SAFE_WORD_WAITING=${waiting}"''
           ];
           Restart = "on-failure";
@@ -317,7 +349,7 @@ in
         Install.WantedBy = [ "default.target" ];
       };
 
-      # The same reader for GitHub (src/bin/pineapple-github/): every minute,
+      # The same reader for GitHub (src/bin/pineapple-github/): every half minute,
       # the pull requests and issues Joel takes part in that changed, and
       # what was said on them, only asked. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take

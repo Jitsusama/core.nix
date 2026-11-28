@@ -193,3 +193,14 @@ fn the_hour_reads_holds_from_the_mesh_and_says_when_there_is_none() {
     let m = read(home.path(), &dating, NOW);
     assert!(m.now < 0.5, "a dated hold on disk counted: {:?}", m.behind);
 }
+
+#[test]
+fn a_twin_folded_into_an_ask_doesnt_undate_its_hold() {
+    let mut dating = ask("0000000a", Some(NOW + 600));
+    dating["id"] = "0a1b2c3d".into();
+    let twin = super::super::slipped::twin(&dating, NOW - 60);
+    assert!(
+        dated(&list(&[dating, twin]), NOW).contains("0000000a"),
+        "a twin written after its ask left its hold undated"
+    );
+}

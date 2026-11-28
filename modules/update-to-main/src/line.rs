@@ -40,6 +40,11 @@ pub enum Line {
         commit: String,
         #[serde(default, skip_serializing_if = "Followed::is_empty")]
         followed: Followed,
+        /// Why the machine still boots the system it booted before, as the
+        /// switch to this commit said, until a boot check passes: an ask
+        /// that switches nothing leaves the boot default where it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        boots: Option<String>,
     },
     /// It went wrong, and the machine is back on the commit it ran.
     Failed {

@@ -40,8 +40,10 @@ public:
     // Where the heap stands against the collector, as weigh() says it but
     // without walking a chunk, so it's cheap enough to read as an opening
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
-    // in megabytes, and `collecting`, whether a collection is under way
-    // between its slices. Openings whose longest stall the collector ran
+    // in megabytes; `roomsCapAt`, where the rooms alone cap the chunks
+    // before what the sweeps keep moves it, or -1 with no room left; and
+    // `collecting`, whether a collection is under way between its slices.
+    // Openings whose longest stall the collector ran
     // in say it, read once their room is left: the room each limit had
     // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;
@@ -63,8 +65,9 @@ public:
     // in its free lists starts the collector, and its strings as many
     // more outside it, and as much again after every collection that ends
     // later, though a miss starts it no later than twice the room beyond
-    // what its chunks held at the first ask since a collection ended,
-    // whatever room it asked for, and never sooner than Qt would: up to
+    // what its chunks held at the first ask since a collection ended, and
+    // twice what its sweeps kept beyond what the last kept then, whatever room
+    // it asked for, and never sooner than Qt would: up to
     // 1024, and none for 0 or what isn't a number, in the heap from the
     // next collection on and outside it as Qt lowers its limit. Asked after the
     // closing's collection and again as an opening is asked, so the
@@ -143,12 +146,14 @@ public:
     // through every other property of the objects those reach. Every other
     // holder stays as it is, so memory it shares with another is kept by
     // that other. What an object nothing reaches holds, the sweep's
-    // anyway, isn't counted. It counts the heap's own items: the text a
-    // string keeps outside the heap, and what C++ keeps for an object the
-    // collector would delete, aren't counted, nor is the storage of an
-    // object of the holder's own file that only the holder keeps, a few
-    // bytes each, though all its values reach is. `held`, whether any property
-    // so named holds a value the heap keeps; `freed`, its megabytes;
+    // anyway, isn't counted. It counts the heap's own items, and the text
+    // their strings keep outside the heap, as weigh()'s `outside` counts it,
+    // where no other QString shares it, since shared text isn't freed. What
+    // C++ keeps for an object the collector would delete isn't counted, nor
+    // is the storage of an object of the holder's own file that only the
+    // holder keeps, a few bytes each, though all its values reach is.
+    // `held`, whether any property so named holds a value the heap keeps;
+    // `freed`, its megabytes; `outside`, the megabytes of that text;
     // `count`; `ms`; `said`, one line naming it, or saying no property
     // holds anything so named; and, only when one holds something,
     // `holder`. It marks with the collector's own marks and clears them, so

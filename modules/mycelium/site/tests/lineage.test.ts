@@ -2,12 +2,14 @@
 // of this machine that works on a quest has a forage (the node's `forage`
 // kind), whose lineage says so too: these prove what the map keeps of
 // that, that the record's word comes first, that a node saying neither
-// names nobody, and which network grows out of which from it.
+// names nobody, and what each cell's forage says it split from and its
+// drawer says of it; branches.test.ts proves which network grows out of
+// which from them.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { grownOf, isLaterCopy, type Network, oneCopyEach, type Started } from "../lineage.ts";
+import { isLaterCopy, oneCopyEach, originsOf, splitSaid } from "../lineage.ts";
 import { nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-19T01:00:00Z");
@@ -215,107 +217,74 @@ it("a cell nobody started, or one said to have started itself, names no starter"
   assert.deepEqual(nowOf(told(these), AT).started, []);
 });
 
-/** A network the node sets within `within`, named `name`, its cells drawn in it. */
-function network(
-  key: string,
-  cells: readonly string[],
-  within: string | null = null,
-  name = key,
-): Network {
-  return { key, name, within, cells };
-}
+it("a cell's forage says what it split from, else the first forage listing it split into", () => {
+  const these = [
+    forage("KESTRL", { split_into: ["TERNAA", "SKIFFS", "GULL01", "AWAY01"] }),
+    forage("OSPREY", { split_into: ["SKIFFS"] }),
+    forage("TERNAA", { split_from: "KESTRL" }),
+    forage("GULL01", { split_from: "OSPREY" }),
+    forage("SKIFFS", {}),
+  ];
+  const split = nowOf(told(these), AT).split;
+  assert.deepEqual(
+    Object.fromEntries(split.map((each) => [each.cell, each.from])),
+    { TERNAA: "KESTRL", GULL01: "OSPREY", SKIFFS: "KESTRL" },
+    "a cell's own split_from should stand, a cell naming none take its first lister, and a cell" +
+      " with no forage here, as one on another machine, take none",
+  );
+});
 
-/** What grows out of what among `networks`, each cell drawn in the network that lists it. */
-function grown(networks: readonly Network[], started: readonly Started[]) {
-  const hubOf = new Map(networks.flatMap((each) => each.cells.map((cell) => [cell, each.key])));
-  return Object.fromEntries(grownOf(networks, hubOf, started));
-}
-
-/** Each of `cells` started by `by`. */
-function startedBy(by: string, ...cells: string[]): Started[] {
-  return cells.map((cell) => ({ cell, by }));
-}
-
-it("a network whose cell another network's cell started grows out of that network", () => {
-  const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
-  assert.deepEqual(grown(networks, startedBy("SKIFF1", "HERON1")), {
-    heron: { from: "skiff", by: ["SKIFF1"], cells: 1 },
+it("a cell whose own split names itself or a blank takes its lister's word", () => {
+  const these = [
+    forage("KESTRL", { split_into: ["SELF01", "BLANK1"] }),
+    forage("SELF01", { split_from: "SELF01" }),
+    forage("BLANK1", { split_from: "" }),
+  ];
+  const split = nowOf(told(these), AT).split;
+  assert.deepEqual(Object.fromEntries(split.map((each) => [each.cell, each.from])), {
+    SELF01: "KESTRL",
+    BLANK1: "KESTRL",
   });
 });
 
-it("nothing grows where nobody is said to have started anybody", () => {
-  assert.deepEqual(grown([network("skiff", ["SKIFF1"]), network("heron", ["HERON1"])], []), {});
+it("a split naming the cell itself, a blank or anything but words names nothing", () => {
+  const these = [
+    forage("SELF01", { split_from: "SELF01", split_into: ["SELF01", "", 7] }),
+    forage("BLANK1", { split_from: "", split_into: "T" }),
+    forage("NUMBER", { split_from: 7, split_into: null }),
+    forage("ALONE1", { split_from: null }),
+    { key: "forage:NOCELL", kind: "forage", heard: AT, lineage: { split_into: ["GULL01"] } },
+    // The cells listed have forages here, so only how they were listed keeps them out:
+    // a string read as a list would name T. A blank or a number can't have a forage, so
+    // those two in SELF01's list only show that they come to nothing.
+    forage("T", {}),
+    forage("GULL01", {}),
+  ];
+  assert.deepEqual(nowOf(told(these), AT).split, []);
+  assert.deepEqual(nowOf(told(undefined), AT).split, [], "a node serving no forage says no split");
 });
 
-it("where the node sets a network stands, whoever started its cells", () => {
-  const networks = [
-    network("skiff", ["SKIFF1"]),
-    network("tern", ["TERN01"]),
-    network("heron", ["HERON1"], "tern"),
-  ];
-  assert.deepEqual(grown(networks, startedBy("SKIFF1", "HERON1")), {});
-});
-
-it("a start from inside, from what sits in it or by a cell in no network grows nothing", () => {
-  const networks = [
-    network("skiff", ["SKIFF1", "SKIFF2", "SKIFF3"]),
-    network("tern", ["TERN01"], "skiff"),
-  ];
+it("a cell's origins are its start, then its split, said once where both name one cell", () => {
   const started = [
-    ...startedBy("SKIFF1", "SKIFF2"),
-    ...startedBy("TERN01", "SKIFF1"),
-    ...startedBy("calls@kestrel", "SKIFF3"),
+    { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERN01", by: "SKIFF1" },
   ];
-  assert.deepEqual(grown(networks, started), {});
+  const splits = [
+    { cell: "HERON1", from: "GULL01" },
+    { cell: "TERNAA", from: "KESTRL" },
+    { cell: "TERN01", from: "SKIFF1" },
+  ];
+  assert.deepEqual(originsOf(started, splits), [
+    { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERN01", by: "SKIFF1" },
+    { cell: "HERON1", by: "GULL01", split: true },
+    { cell: "TERNAA", by: "KESTRL", split: true },
+  ]);
 });
 
-it("a network grows out of the one that started more of its cells, a tie by name", () => {
-  const networks = [
-    network("aaa", ["AUK001"], null, "Zephyr"),
-    network("bbb", ["BRANT1", "BRANT2"], null, "Anchor"),
-    network("ccc", ["CRANE1", "CRANE2", "CRANE3"]),
-    network("ddd", ["DUNLN1", "DUNLN2"]),
-  ];
-  const started = [
-    ...startedBy("AUK001", "CRANE1"),
-    ...startedBy("BRANT1", "CRANE2"),
-    ...startedBy("BRANT2", "CRANE3"),
-    ...startedBy("AUK001", "DUNLN1"),
-    ...startedBy("BRANT1", "DUNLN2"),
-  ];
-  assert.deepEqual(grown(networks, started), {
-    ccc: { from: "bbb", by: ["BRANT1", "BRANT2"], cells: 2 },
-    ddd: { from: "bbb", by: ["BRANT1"], cells: 1 },
-  });
-});
-
-it("of two that started each other's cells, the one that started more is the trunk", () => {
-  const networks = [
-    network("aaa", ["AUK001", "AUK002"]),
-    network("bbb", ["BRANT1", "BRANT2", "BRANT3", "BRANT4"]),
-  ];
-  const started = [
-    ...startedBy("AUK001", "BRANT1", "BRANT2", "BRANT3"),
-    ...startedBy("BRANT4", "AUK002"),
-  ];
-  assert.deepEqual(grown(networks, started), {
-    bbb: { from: "aaa", by: ["AUK001"], cells: 3 },
-  });
-});
-
-it("no branch is grown that would loop back round to the network it grows from", () => {
-  const networks = [
-    network("aaa", ["AUK001"]),
-    network("bbb", ["BRANT1"]),
-    network("ccc", ["CRANE1"]),
-  ];
-  const started = [
-    ...startedBy("BRANT1", "AUK001"),
-    ...startedBy("CRANE1", "BRANT1"),
-    ...startedBy("AUK001", "CRANE1"),
-  ];
-  assert.deepEqual(grown(networks, started), {
-    aaa: { from: "bbb", by: ["BRANT1"], cells: 1 },
-    bbb: { from: "ccc", by: ["CRANE1"], cells: 1 },
-  });
+it("a cell says what it split from only where its start doesn't name it", () => {
+  assert.equal(splitSaid("SKIFF1", undefined), "SKIFF1", "a split with no start should be said");
+  assert.equal(splitSaid("GULL01", "SKIFF1"), "GULL01", "a split from another cell is said");
+  assert.equal(splitSaid("SKIFF1", "SKIFF1"), undefined, "a split from its starter is said once");
+  assert.equal(splitSaid(undefined, "SKIFF1"), undefined, "no split, nothing said");
 });

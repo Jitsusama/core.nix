@@ -7,12 +7,16 @@
 # falls behind enough to fill its socket, as under a storm of windows. The
 # patch applied after it (newer-backend.patch) takes the wayland-backend
 # whose buffer grows while the socket is full, so its vendored crates are
-# fetched again, and the last (flush-when-full.patch) waits for room
+# fetched again, and the third (flush-when-full.patch) waits for room
 # rather than panicking, leaving what it can't send to the main loop,
 # which now wakes when the socket has room; its test fills the socket
-# against a stand-in compositor. The script in front of it
-# (xwayland-satellite.sh) gives Xwayland a cookie, so only Joel's programs
-# connect. nixos.nix installs it, and checks.nix starts it on a nested niri.
+# against a stand-in compositor. The fourth (drain-buffered-events.patch),
+# upstream's own fix not yet released, handles the X11 events xcb read
+# while the loop waited for a reply before it sleeps, so a window opened
+# then isn't left unseen until its program does something else. The script
+# in front of it (xwayland-satellite.sh) gives Xwayland a cookie, so only
+# Joel's programs connect. nixos.nix installs it, and checks.nix starts it
+# on a nested niri.
 {
   coreutils,
   rustPlatform,
@@ -27,6 +31,7 @@ let
       ./untitled-instance.patch
       ./newer-backend.patch
       ./flush-when-full.patch
+      ./drain-buffered-events.patch
     ];
     cargoDeps = rustPlatform.fetchCargoVendor {
       inherit (old) pname src version;

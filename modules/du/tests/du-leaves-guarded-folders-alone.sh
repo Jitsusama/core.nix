@@ -8,10 +8,14 @@
 # file through a link or by the data volume's name, is left out of the count
 # and said, judged before it's opened, du not run when none is left, and
 # that a start after it that looks like an option reaches du as a path; that
-# a start that is a link is judged by its folder unless -H follows it; that
-# a link -H follows that reaches no folder or a folder that can't be entered
-# is left out and said apart; that a start named - is that folder and CDPATH moves none;
-# that only a home's own guarded folders are left out by name; that du's own
+# a start that is a link is judged by its folder unless -H or a / after it
+# follows it, and one followed by where its links lead, each read as written
+# from the folder really holding it and judged as typed, left out when one
+# leads into Documents, and left out and said apart past 32 links or through
+# a folder that can't be entered, as is a start typed below one or below a
+# folder that isn't there, while one alone missing from a folder that is, a
+# / after it or not, reaches du; that a start named - is that folder and
+# CDPATH moves none; that only a home's own guarded folders are left out by name; that du's own
 # nonzero end is kept; that -L, alone or among letters, is taken out, given
 # as -H and said unless -H or -P follows it; that the account's home is
 # guarded whatever HOME says, HOME's too, one whose name begins another's, an
@@ -327,10 +331,12 @@ rm "${home}/src/notes"
 count "${work}" -sh "${data}${home}/Documents"
 runs_nothing "a count of Documents by the data volume's name" "${data}${home}/Documents"
 
-# A start that can't be judged, a link -H follows that reaches no folder,
-# to a file or to nothing, or a folder that can't be entered, is left out
-# and said apart. Root enters any
-# folder, so the test needs an account that can't.
+# A link -H follows is judged by where its links lead, read as written
+# before anything goes there: to a file in Documents, even by a second
+# link or one whose file is gone, it's left out; to a file elsewhere it's
+# counted. A start that can't be judged, a folder that can't be entered or
+# a link that leads round to itself, is left out and said apart. Root
+# enters any folder, so the test needs an account that can't.
 mkdir "${home}/src/locked"
 chmod 000 "${home}/src/locked"
 if (cd "${home}/src/locked" 2>/dev/null); then
@@ -339,22 +345,137 @@ if (cd "${home}/src/locked" 2>/dev/null); then
 fi
 chmod 755 "${home}/src/locked"
 ln -s "${home}/Documents/inside/file" "${home}/src/note"
-unjudged="note: du left out 1 start(s) it couldn't judge, a link -H follows that reaches no"
-unjudged+=" folder or a folder it can't enter, uncounted:"
+unjudged="note: du left out 1 start(s) it couldn't judge, a folder it can't enter or find"
+unjudged+=", or a link whose end it can't read, uncounted:"
 count "${home}" -sh src/note src
 gives "a count of a link to a file in Documents" "" -sh src/note src
-count "${home}" -shH src/note src
-gives "a count of a link to a file in Documents that -H follows" "${unjudged} src/note" \
-  -shH src
+count "${home}" -shH src/note
+runs_nothing "a count of a link to a file in Documents that -H follows" src/note
+# Locked, Documents' folder can't be gone into, so a judgement that went
+# there before reading where a link leads would be told as unjudged.
+ln -s note "${home}/src/again"
+chmod 000 "${home}/Documents/inside"
+count "${home}" -shH src/again
+runs_nothing "a count of a link to a link to a file in Documents that -H follows" src/again
+chmod 755 "${home}/Documents/inside"
 rm "${home}/Documents/inside/file"
-count "${home}" -shH src/note src
-gives "a count of a link to nothing that -H follows" "${unjudged} src/note" -shH src
-rm "${home}/src/note"
+chmod 000 "${home}/Documents/inside"
+count "${home}" -shH src/note
+runs_nothing "a count of a link to a gone file in Documents that -H follows" src/note
+chmod 755 "${home}/Documents/inside"
+rm "${home}/src/note" "${home}/src/again"
+: >"${home}/src/file"
+ln -s file "${home}/src/near"
+count "${home}" -shH src/near
+gives "a count of a link to a file elsewhere that -H follows" "" -shH src/near
+rm "${home}/src/near" "${home}/src/file"
+ln -s round "${home}/src/round"
+count "${home}" -shH src/round src
+gives "a count of a link that leads round to itself" "${unjudged} src/round" -shH src
+rm "${home}/src/round"
 chmod 000 "${home}/src/locked"
 count "${home}" -sh src/locked src
 gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src
 chmod 755 "${home}/src/locked"
 rmdir "${home}/src/locked"
+
+# A / after a link follows it, as -H does, so one to a file in Documents
+# is left out. A target is read as written, a newline ending it too, and a
+# / ending it only follows it; its .. and its next link are read from the
+# folder really holding it, and where it ends by its real path, so a link
+# ending above Documents leaves it out by name. A link is told before a
+# folder, so one to a locked folder in Documents is left out rather than
+# said apart, as is one whose next link is in Documents. 32 links are
+# followed, as macOS does, and no more.
+: >"${home}/Documents/inside/file"
+ln -s "${home}/Documents/inside/file" "${home}/src/note"
+count "${home}" -sh src/note/
+runs_nothing "a count of a link to a file in Documents with a / after it" src/note/
+ln -s "${home}/Documents/inside/file" "${home}/src/gate"$'\n'
+ln -s gate$'\n' "${home}/src/newline"
+count "${home}" -shH src/newline
+runs_nothing "a count of a link whose target ends in a newline" src/newline
+chmod 000 "${home}/Documents/inside"
+ln -s "${home}/Documents/inside" "${home}/src/shelf"
+count "${home}" -shH src/shelf
+runs_nothing "a count of a link to a locked folder in Documents" src/shelf
+ln -s shelf/ "${home}/src/slash"
+count "${home}" -shH src/slash
+runs_nothing "a count of a link to a link with a / after it" src/slash
+mkdir -p "${home}/far/y/z"
+ln -s "${home}/far/y/z" "${home}/src/up"
+ln -s ../../../Documents/inside/file "${home}/far/y/z/back"
+count "${home}" -shH src/up/back
+runs_nothing "a count of a link whose .. is read from its real folder" src/up/back
+chmod 755 "${home}/Documents/inside"
+: >"${home}/src/file"
+ln -s "${home}/src/file" "${home}/Documents/hop"
+ln -s "${home}/Documents" "${home}/src/docs"
+ln -s docs/hop "${home}/src/via"
+count "${home}" -shH src/via
+runs_nothing "a count of a link whose next link is in Documents" src/via
+ln -s ../src/.. "${home}/src/above"
+count "${home}" -shH src/above
+leaves_all "a count of a link ending above Documents" -shH src/above
+mkdir "${home}/src/chain"
+ln -s ../file "${home}/src/chain/l32"
+for at in {31..0}; do
+  ln -s "l$((at + 1))" "${home}/src/chain/l${at}"
+done
+count "${home}" -shH src/chain/l1
+gives "a count of a link through 32 links" "" -shH src/chain/l1
+count "${home}" -shH src/chain/l0 src
+gives "a count of a link through 33 links" "${unjudged} src/chain/l0" -shH src
+# A link to / counts above every guarded folder, so leaves each out by
+# name; one into a folder that isn't there, through a file, or through or
+# below a folder that can't be entered is said apart, as is a start typed
+# below one, since a folder that can't be searched reads as missing too.
+ln -s / "${home}/src/root"
+count "${home}" -shH src/root
+leaves_all "a count of a link to /" -shH src/root
+ln -s "${home}/gone/file" "${home}/src/lost"
+count "${home}" -shH src/lost src
+gives "a count of a link into a folder that isn't there" "${unjudged} src/lost" -shH src
+: >"${home}/src/flat"
+ln -s flat/file "${home}/src/past"
+count "${home}" -shH src/past src
+gives "a count of a link through a file" "${unjudged} src/past" -shH src
+mkdir -p "${home}/src/shut/in"
+: >"${home}/src/shut/in/file"
+ln -s shut/file "${home}/src/through"
+ln -s shut/in/file "${home}/src/below"
+ln -s door/file "${home}/src/knock"
+ln -s shut/in "${home}/src/door"
+chmod 000 "${home}/src/shut"
+count "${home}" -shH src/knock src
+gives "a count of a link through a link below a folder that can't be entered" \
+  "${unjudged} src/knock" -shH src
+count "${home}" -sh src/shut/in/file src
+gives "a count of a start typed below a folder that can't be entered" \
+  "${unjudged} src/shut/in/file" -sh src
+# One alone missing from a folder that is goes to du as typed, a / after it
+# or not, for macOS's du to say it isn't there; the stand-in says nothing.
+count "${home}" -sh src/nothing src
+gives "a count of a start missing from a folder that is" "" -sh src/nothing src
+count "${home}" -sh src/nothing/ src
+gives "a count of a start missing from a folder that is, typed with a / after it" "" \
+  -sh src/nothing/ src
+count "${home}" -sh gone/file src
+gives "a count of a start typed below a folder that isn't there" "${unjudged} gone/file" -sh src
+count "${home}" -shH src/through src
+gives "a count of a link through a folder that can't be entered" "${unjudged} src/through" \
+  -shH src
+count "${home}" -shH src/below src
+gives "a count of a link below a folder that can't be entered" "${unjudged} src/below" \
+  -shH src
+chmod 755 "${home}/src/shut"
+rm -r "${home}/src/shut" "${home}/src/root" "${home}/src/lost" "${home}/src/through" \
+  "${home}/src/below" "${home}/src/flat" "${home}/src/past" "${home}/src/knock" \
+  "${home}/src/door"
+rm -r "${home}/src/chain" "${home}/far"
+rm "${home}/src/note" "${home}/src/gate"$'\n' "${home}/src/newline" "${home}/src/shelf" \
+  "${home}/src/slash" "${home}/src/up" "${home}/src/file" "${home}/Documents/hop" \
+  "${home}/src/docs" "${home}/src/via" "${home}/src/above" "${home}/Documents/inside/file"
 
 # A start named - is a folder of that name, not the last one cd was in,
 # and CDPATH never sends a relative start elsewhere.

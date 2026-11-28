@@ -89,7 +89,9 @@ import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
+import "launcher/ActsSaid.js" as ActsSaid
 import "launcher/ChangesPresented.js" as ChangesPresented
+import "launcher/Thrown.js" as Thrown
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -103,6 +105,7 @@ import "launcher/RowsPlace.js" as RowsPlace
 import "launcher/Reached.js" as Reached
 import "launcher/Headings.js" as Headings
 import "launcher/Most.js" as Most
+import "launcher/StartSaid.js" as StartSaid
 
 Scope {
     id: root
@@ -1562,7 +1565,7 @@ Scope {
         const whom = talk?.whom ?? { to: "none", said: String(said ?? "") };
         // A link is a page's words, so its line says whom by kind with reports off.
         console.info("launcher: asked from outside to talk to "
-            + Presented.whomShown(whom, Options.reports));
+            + ActsSaid.whomShown(whom, Options.reports));
         if (whom.to === "none")
             return { error: `the launcher has nothing called ${whom.said}` };
         if (inUse())
@@ -1592,15 +1595,17 @@ Scope {
     // takes Return only with the caret at the words' end, where he's read to (Prompt.qml's
     // linked), and the act starts only on his own Return (Sprouting.fromJoel), so no walk or
     // second link can start it. Like talkTo, it does nothing over a launcher in use, not even
-    // forget how his last start went. Says what it did as JSON, as talkTo does.
-    function newWork(words, from) {
+    // forget how his last start went. Says what it did as JSON, as talkTo does. `on` says where
+    // the page would start it, "cloud" or a machine by its name, which the act's name says and
+    // its Return asks; left out, the node places it as any start.
+    function newWork(words, from, on) {
         if (inUse())
             return inUseSaid;
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
-        const offer = agents ? agents.newWorkFor(words, from) : null;
+        const offer = agents ? agents.newWorkFor(words, from, on ?? "") : null;
         // A link names the session it's from, so with reports off its address is counted, as
-        // talkTo's is (Presented.whenceShown).
-        const whence = Presented.whenceShown(offer?.from?.address, Options.reports);
+        // talkTo's is (ActsSaid.whenceShown).
+        const whence = ActsSaid.whenceShown(offer?.from?.address, Options.reports);
         console.info("launcher: asked from outside to start new work, "
             + (offer === null ? "offering no plain words" : whence));
         if (offer === null)
@@ -1621,21 +1626,39 @@ Scope {
     // where it's parked (Agents' goToFor). Only the first word said names one, and nothing is
     // typed or sent. Like talkTo, it does nothing over a launcher in use, which an open act has
     // closed before its link reaches here. A session no longer here opens Agents, its foot
-    // saying so once, so a notice from an ended one never goes nowhere unsaid. Says what it
-    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
+    // saying so once, so a notice from an ended one never goes nowhere unsaid, and so does one
+    // it can't go to, as one on another machine no holder keeps (toldHere). Says what it did
+    // as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         console.info("launcher: asked from outside to go to "
             + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
-        const session = agents ? agents.goToFor(said) : null;
-        if (session === null) {
+        const going = agents ? agents.goToFor(said) : null;
+        if (going === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
             toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
-        return { done: true, said: String(session.title ?? "") };
+        // Agents opened the launcher to say why as it was refused (refusedGoing), so only
+        // the why it gave is answered here.
+        if (!going.went)
+            return { done: false, said: going.why };
+        return { done: true, said: String(going.session.title ?? "") };
+    }
+
+    // Opens the launcher on Agents to say what's held for its next opening, a Go To's why it
+    // couldn't go (Sessions.goTo, said by Agents' refusedGoing), with Joel's first keys held back,
+    // as toldGone does: every act shuts the launcher before it runs, and a link comes with it
+    // shut, so the why would otherwise wait until he next opened it himself. Over a launcher
+    // in use it says nothing (inUse), the foot having said it. Whether it said so.
+    function toldHere() {
+        if (inUse())
+            return false;
+        into("agents");
+        prompt.linked();
+        return true;
     }
 
     // Says a Go To's session is no longer here, in a notice's Go To's own words, opening the
@@ -1798,7 +1821,7 @@ Scope {
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
         console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} `
-            + Presented.pathShown(path, Options.reports));
+            + ActsSaid.pathShown(path, Options.reports));
         // One held still, as an ask hidden while Joel shares, is refused,
         // saying why, rather than run or said done for nothing: any step on
         // the way, or the last one's Return's act, asked first, so a held
@@ -2041,7 +2064,7 @@ Scope {
             // The shell's own failure, said in its log in the engine's words;
             // the terminal says it in words.json's (Y2YBTS's review of #2421).
             console.warn("launcher: a terminal's do failed: "
-                + Presented.failureShown(error, Options.reports));
+                + ActsSaid.failureShown(error, Options.reports));
             return { failed: true };
         } finally {
             cataloguing = false;
@@ -2077,7 +2100,7 @@ Scope {
         const names = trail.map(one => one.name);
         const ids = trail.map(one => steadyId(one));
         console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)} `
-            + Presented.pathShown(trail, Options.reports));
+            + ActsSaid.pathShown(trail, Options.reports));
         // One held still on the way, or as the last step's Return's act, is
         // refused, saying why, as the walk refuses it: first, so it's never
         // opened or asked about, and never said done.
@@ -2694,6 +2717,12 @@ Scope {
         restart(start);
     }
 
+    // Whether Ctrl+Y's completion fills the field with the selected row's
+    // start, a command's, rather than finishing what's typed.
+    function fillsStart(): bool {
+        return current !== -1 && selected?.start !== undefined;
+    }
+
     // What a collection says at its right, { side, sideItems }, its items
     // made once: said as items, its side is them joined, as Now's first
     // thing waiting is, else what it says whole (homeSays), null for
@@ -3114,15 +3143,35 @@ Scope {
         return `:${endsLine(choice)}`;
     }
 
+    // When the key or button being handled was pressed, on the monotonic
+    // clock, or now when it's handling none or its press came with no time
+    // (KeyTimes.pressed), so the doubled-key guards time two presses by when
+    // they were pressed: timed when the shell got to each, a stall between
+    // a bounced pair would part them past the wait, and the second would
+    // end the session the first armed.
+    function pressedNow() {
+        const pressed = KeyTimes.pressed();
+        return pressed > 0 ? pressed : KeyTimes.now();
+    }
+
     // When Return last wrote an ending row's line, so a Return doubled
-    // with it, a key bounced, doesn't run the line it opened.
+    // with it, a key bounced, doesn't run the line it opened. It's in
+    // milliseconds of the monotonic clock, as landedAt is, so a wall clock
+    // stepped back can't hold every Return after it as doubled.
     property real linedAt: 0
 
     // Return on a row that ends something: its command written on the :
     // line, the menu naming what it acts on, for a fresh Return to run.
-    function lineFor(choice) {
+    function lineFor(choice, at = pressedNow()) {
         commandLine({ typed: endsLine(choice) });
-        linedAt = Date.now();
+        linedAt = at;
+    }
+
+    // Whether a Return pressed at `at` comes so soon after the one that
+    // wrote an ending row's line that it's that one doubled, which runs
+    // nothing.
+    function linedJustNow(at = pressedNow()) {
+        return Arming.doubled(at, linedAt, Options.keyTiming.wait);
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
@@ -3133,7 +3182,8 @@ Scope {
     property var returned: ({})
 
     // The row Return last landed on, by its steady id, and the keys the
-    // line had taken then, so what it says lasts only until the next key.
+    // line had taken then, so what it says lasts only until the next key,
+    // and when, on the monotonic clock, for landedJustNow.
     property string landedKey: ""
     property int landedKeys: -1
     property real landedAt: 0
@@ -3155,11 +3205,11 @@ Scope {
         say([["\u21b5", (broken ? hints.closedBroken : hints.closedUnder) ?? ""]]);
     }
 
-    function land(choice) {
+    function land(choice, at = pressedNow()) {
         prompt.toNormal();
         landedKey = steadyId(choice);
         landedKeys = prompt.keysTaken;
-        landedAt = Date.now();
+        landedAt = at;
     }
 
     // Whether a row is the one landed on, until the next key.
@@ -3171,8 +3221,8 @@ Scope {
     // Whether Return comes so soon after a landing that it's the same
     // Return doubled, a key bounced or pressed twice for one, which does
     // nothing, as a confirm's second Return waits the same while.
-    function landedJustNow() {
-        return landedKey !== "" && Date.now() - landedAt < Options.keyTiming.wait;
+    function landedJustNow(at = pressedNow()) {
+        return landedKey !== "" && Arming.doubled(at, landedAt, Options.keyTiming.wait);
     }
 
     // The row that ends the session a first press armed (Arming.js), by
@@ -3203,9 +3253,9 @@ Scope {
     // between does it, past its confirm, since arming was the asking, and
     // one doubled with the first does nothing. Says "armed", "ran" or "",
     // as `returned` reads.
-    function pressArming(choice, counted) {
+    function pressArming(choice, counted, at = pressedNow()) {
         const did = Arming.pressed(armed, steadyId(choice), { keysTaken: prompt.keysTaken,
-            counted, now: Date.now(), wait: Options.keyTiming.wait });
+            counted, now: at, wait: Options.keyTiming.wait });
         armed = did.armed;
         if (did.act === "ends")
             run(Object.assign({}, choice, { confirm: false }), false);
@@ -3561,6 +3611,8 @@ Scope {
         tagsBack = left.tags;
         lastPlace = left.last;
         markLetGo(wasLetGo, had);
+        if (Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as the screen may be shared");
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
@@ -3580,6 +3632,10 @@ Scope {
         if (left.quiet)
             say([]);
         heldSaying = [];
+        // Said in the journal, never the row's name, which a source served;
+        // only while open, as closing runs this too, no share having turned.
+        if (open && Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as a screen share turned");
         armed = left.armed;
         forgetLetGo();
     }
@@ -4503,8 +4559,7 @@ Scope {
     // as an answer holding parts, where it stays the next row.
     function tabbedIn(mode) {
         const row = matches[current] ?? null;
-        const stepping = !!row && (stepsIn(row) || stepsThing(row));
-        if (goesIn(row) && !(mode === "find" && stepping)) {
+        if (tabGoesIn(row, mode)) {
             follow(row);
             return true;
         }
@@ -4512,6 +4567,12 @@ Scope {
             return false;
         say([[hintKey("into"), (Words.field.hints ?? {}).notHere ?? ""]]);
         return true;
+    }
+    // Whether Tab in `mode` goes into `row`, as tabbedIn takes it and the
+    // prompt's clock asks it (its intoHere).
+    function tabGoesIn(row, mode) {
+        const stepping = !!row && (stepsIn(row) || stepsThing(row));
+        return goesIn(row) && !(mode === "find" && stepping);
     }
     // Where Ctrl+] takes a row, as the old step in by l did, so no walk is
     // lost (Joel's rule): a found act into its program, a row into its
@@ -5063,7 +5124,9 @@ Scope {
     // level only stepped, as a board's lights, steps by it. The first word
     // it can't take says Vim's error and none of them changes. `sets` are
     // the options it sets, the machine's unless :setl gives each thing's.
-    function commandSet(arg, sets) {
+    // The line's key is timed as acting (`acting`) just before an option
+    // changes, since its source then changes; one only said changes none.
+    function commandSet(arg, sets, acting) {
         const unread = (Words.field.command ?? {}).unread ?? "";
         const planned = [];
         for (const options of sets ?? [setOptions]) {
@@ -5074,6 +5137,8 @@ Scope {
             }
             planned.push(plan);
         }
+        if (SetWords.changes(planned))
+            acting();
         const said = [];
         for (const { options, steps } of planned)
             said.push(...commandSetSteps(options, steps, unread));
@@ -5126,23 +5191,35 @@ Scope {
     // :setl's words, set on each thing the line's bound to, or on what the
     // cursor row is inside, as :set sets the machine's; one with no such
     // option says Vim's E518 and none changes.
-    function commandSetLocal(read, opened) {
+    function commandSetLocal(read, opened, acting) {
         const bound = commandBound(read, opened);
         if (bound.error !== undefined) {
             commandSay(bound.error, true);
             return;
         }
-        commandSet(read.arg, localOptions(bound.things));
+        commandSet(read.arg, localOptions(bound.things), acting);
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
     // From the drawer, :q closes its window, the keys back on the rows, as
     // his Neovim's :q closes a split, and :{n} stays in it.
-    function commandRan(read) {
+    function commandRan(read, from) {
         // A Return doubled with the one that wrote an ending row's line is
         // that one press, so it runs nothing; only a fresh Return does.
-        if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
+        if (commanding?.typed && linedJustNow())
             return;
+        // The command line's own Return, which the prompt never reads, runs
+        // what's typed, or says why not, as E492, closing the line either
+        // way. It's timed first as a move, as Down is, since closing the
+        // line, a row gone to, an error or :help changes no source: a
+        // share's change beside it is then no act of Joel's, and the
+        // Return after it is held where that change moved his step
+        // (Held.changeDoes). Just before it acts on a source, a player's
+        // time, an option set or a row's act, it's timed again as acting
+        // (`acting`), so the change it makes is his. An act that asks
+        // first is timed by the key that answers.
+        lineKeyActs(from, true);
+        const acting = () => lineKeyActs(from, false);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5161,6 +5238,7 @@ Scope {
             return;
         }
         if (read.go !== undefined && opened.go) {
+            acting();
             opened.go(read.go);
             return;
         }
@@ -5184,10 +5262,10 @@ Scope {
             listing = true;
             return;
         case "set":
-            commandSet(read.arg);
+            commandSet(read.arg, undefined, acting);
             return;
         case "setlocal":
-            commandSetLocal(read, opened);
+            commandSetLocal(read, opened, acting);
             return;
         case "history":
             commandLine({ earlier: true });
@@ -5199,12 +5277,13 @@ Scope {
             return;
         }
         if (entry.kind === "surface") {
+            acting();
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
                 things: bound.things, count: bound.things.length });
             return;
         }
         if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
-            commandAcross(entry, read, bound.things);
+            commandAcross(entry, read, bound.things, acting);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -5218,10 +5297,27 @@ Scope {
         const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
         if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
-            run(step.rows.find(one => one.key === act.key) ?? act, false);
+            const chosen = step.rows.find(one => one.key === act.key) ?? act;
+            // Timed as acting only where run acts at once: one that only
+            // asks is timed by the key that answers, as commandRan says.
+            const still = heldWhyOf([chosen], chosen.returns) !== null;
+            if (!Arming.changesNone(chosen, held.length > 0, still))
+                acting();
+            run(chosen, false);
             return;
         }
-        commandAsked(entry, [{ act, thing }], 1, read.bang);
+        commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
+    }
+
+    // Times the command line's key, `from`, as keyActs does an outside
+    // key, saying whether it only `moved`. @: comes with no key of its own,
+    // since the prompt timed it as commandAgain, so for it only the move
+    // is said.
+    function lineKeyActs(from, moved) {
+        if (from !== "")
+            keyActs(from, moved);
+        else
+            keyHeardMoved = moved;
     }
 
     // Runs a line's acts on what it's bound to, `found` each act with its
@@ -5229,7 +5325,9 @@ Scope {
     // rule, through the one ask (askOnce), in d's words for one thing or
     // many (Confirm.question), the rows it covers tinted: Return runs them
     // past their own confirm, as a ! does; any other key leaves them be.
-    function commandAsked(entry, found, all, bang) {
+    // The line's key is timed as acting (`acting`) only where they run at
+    // once: a line that finds none, arms a row or asks changes no source.
+    function commandAsked(entry, found, all, bang, acting) {
         const words = Words.field.command ?? {};
         const acts = found.map(one => one.act);
         const asked = CommandBinding.asking(entry, acts, { all, bang }, Options.commands ?? {});
@@ -5271,6 +5369,7 @@ Scope {
                 .filter(at => at >= 0));
             return;
         }
+        acting();
         if (bang) {
             sure();
             return;
@@ -5301,11 +5400,14 @@ Scope {
     function commandAgain() {
         const last = commandEarlier[commandEarlier.length - 1];
         if (last === undefined) {
+            // Saying so changes no source, so the key is a move, as
+            // commandRan times E492: a share's change beside it isn't his.
+            lineKeyActs("", true);
             commandSay("E30: No previous command line", true);
             return;
         }
         commandLine(null);
-        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }));
+        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }), "");
     }
 
     // The things a line acts on: those bound as : was pressed, or where a
@@ -5322,11 +5424,11 @@ Scope {
 
     // A line run on several things, or on one a range or :g found: each
     // thing's own act (CommandBinding.actFor), asked first where it asks.
-    function commandAcross(entry, read, things) {
+    function commandAcross(entry, read, things, acting) {
         const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
             commandWords), thing }))
             .filter(one => one.act !== undefined);
-        commandAsked(entry, found, things.length, read.bang);
+        commandAsked(entry, found, things.length, read.bang, acting);
     }
 
     // Where the launcher is now, kept on a way back: the line a page offered keeps none of its
@@ -5556,7 +5658,8 @@ Scope {
             // password's, is timed as where it ends, its last step's parts
             // saying what it passed.
             if (walked !== undefined && !passing && stepTimed())
-                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                    row.key);
             return true;
         }
         // A step in that Joel's key made is a look, so an opening that
@@ -5597,7 +5700,7 @@ Scope {
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
-                    thread);
+                    thread, row.key);
             return went();
         }
         if (steppedAsLed(row))
@@ -5655,7 +5758,8 @@ Scope {
         searchParts = trials.stepped(searchParts, { walked, began: stepAt, made, pushed, opened,
             ended: Date.now(), making: spent });
         if (timed)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                row.key);
         return went();
     }
 
@@ -5710,7 +5814,7 @@ Scope {
         }
         if (held.length > 0 && stepTimed())
             keyTimed(`\u2192 ${held[held.length - 1].row.name}`, begun.began, begun.heard,
-                begun.pressed, begun.collected, true, begun.thread);
+                begun.pressed, begun.collected, true, begun.thread, held[held.length - 1].row.key);
     }
 
     // Whether a step taken now is timed as its own: not while an opening
@@ -5732,6 +5836,11 @@ Scope {
     // held last, when its row hands what's typed to `given`.
     readonly property var asking: held.length > 0 && held[held.length - 1].row.given
         ? held[held.length - 1].row : null
+    // An ask for words of some length, Start New Work's, which writes them on lines of
+    // their own under the path, kept from the moment it opens, rather than on the path's
+    // line (Joel, 2026-11-25: "i have no room to type once i choose a folder";
+    // "growing as i type would look like shit").
+    readonly property bool composing: asking !== null && asking.composes === true
 
     // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
     // field where the rows go, as Super+S's line does (TalkSpoken.qml), from what its place
@@ -5776,7 +5885,8 @@ Scope {
     }
 
     // Hands over what was typed, and empties the field for another try
-    // while the footer says how it went. `pressed` is when its Return was
+    // while the footer says how it went, but for words that start work,
+    // which stay (below). `pressed` is when its Return was
     // pressed, or heard where no press was stamped, from which the frame
     // showing what became of the words is timed, held to design.md's 50 ms
     // as Super+S's line is.
@@ -5799,7 +5909,12 @@ Scope {
         offerHeld = null;
         prompt.endWaits = false;
         asking.given(words);
-        prompt.text = "";
+        // Words that start work stay where he wrote them, muted while it starts
+        // (Prompt's taken), so the screen shows his Return took and what it took,
+        // and a second Return of them is told it started rather than lost (Joel,
+        // 2026-11-25 14:33: "no confirmation that it took my enter").
+        if (!composing)
+            prompt.text = "";
         searchNow();
         wordsGiven = { from: pressed, framing: false };
     }
@@ -6023,15 +6138,18 @@ Scope {
     // key acting by what it read; one it gave over as meaning nothing, or
     // as Escape at rest, acts after all where the launcher does something
     // with it (doKeyed, the prompt's onRested), which times it before it
-    // does, so the rows that act changes count as Joel's.
-    function keyActs() {
+    // does, so the rows that act changes count as Joel's. A key the
+    // prompt's modes never read (`outside`, by its name), as a secret's
+    // keys and the command line's Return, is none of the prompt's counted
+    // keys, and only a move where its caller says so (`moved`).
+    function keyActs(outside = "", moved = false) {
         const heard = KeyTimes.now();
         keyHeardAt = heard;
-        keyHeardName = prompt.keyTaken;
+        keyHeardName = outside === "" ? prompt.keyTaken : outside;
         keyCollectedAt = Heap.collected();
-        keyHeardKeys = prompt.keysTaken;
-        keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
-            prompt.keyMoved);
+        keyHeardKeys = outside === "" ? prompt.keysTaken : -1;
+        keyHeardMoved = outside === "" ? Held.movedSaid(false, prompt.keysTaken,
+            prompt.keysTaken, prompt.keyMoved) : moved;
         // Its work is done once its handler has returned.
         Qt.callLater(() => {
             if (root.keyHeardAt === heard)
@@ -6186,7 +6304,7 @@ Scope {
             } catch (error) {
                 threw = true;
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + Held.thrown(error));
+                    + Thrown.shown(error));
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -6564,23 +6682,22 @@ Scope {
         // screen heard within keyedWithin of the work of the key the clock
         // is timed from, that key not a move (Pacing.keyed). A key that
         // acted on nothing leaves the clock at the key before, as the
-        // prompt reads it (KeyActs.acts): a modifier alone, a letter or
-        // Shift+Left typed into the find, a caret move or an edit on it, a
-        // count or a sequence begun. So such an act stays his across one,
-        // and only a key that acted ends it, but for Tab into a row with
-        // no parts, which acts by the table and opens nothing. A change
-        // heard past keyedWithin or after a move, or an answer heard so,
-        // joins the act, and an act whose source was already waiting on
-        // a refresh is recorded joined, either way no longer his alone
-        // (Held.changeDoes). A
-        // change heard within keyedWithin of an acting key is his
-        // whoever made it, a share's too: the leave off its row goes
-        // unheld. An answer heard so records nothing and leaves his acts
-        // as they stood, so its leave goes unheld only where his key's act
-        // of that source is on record. An answer records an act only
-        // through a hold it agrees to (heldAgreed), whose refresh is heard
-        // as a change is; past keyedWithin, a daemon's, as Release It's
-        // may be, holds one Return should it land off its row.
+        // prompt reads it; KeyActs.acts keeps the whole list, among them a
+        // modifier alone, a letter typed into the find, a caret move or an
+        // edit, a count or a sequence begun, and a key that only says a
+        // word. So such an act stays his across one, and only a key that
+        // acted ends it. A change heard past keyedWithin or after a move,
+        // or an answer heard so, joins the act, and an act whose source
+        // was already waiting on a refresh is recorded joined, either way
+        // no longer his alone (Held.changeDoes). A change heard within
+        // keyedWithin of an acting key is his whoever made it, a share's
+        // too: the leave off its row goes unheld. An answer heard so
+        // records nothing and leaves his acts as they stood, so its leave
+        // goes unheld only where his key's act of that source is on record.
+        // An answer records an act only through a hold it agrees to
+        // (heldAgreed), whose refresh is heard as a change is; past
+        // keyedWithin, a daemon's, as Release It's may be, holds one Return
+        // should it land off its row.
         const act = Held.actOf(keyedActs, source, keyHeardAt);
         const byKey = Held.keyed(keyedActs, source, keyHeardAt);
         try {
@@ -6850,7 +6967,7 @@ Scope {
         let stepped = null;
         try {
             stepped = stepBack(left, steps, timed, { began, heard, pressed, collected, thread,
-                name: leaving.name });
+                name: leaving.name, stepKey: leaving.key });
         } finally {
             steppingOut = outer;
             stepFits = { keys: footFitted.keys - fits.keys,
@@ -6861,7 +6978,8 @@ Scope {
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped.pushed,
             opened: stepped.pushed, ended: Date.now(), making: {}, holding: stepped.holding });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread,
+            leaving.key);
     }
 
     // back's step itself, from leaving `left`, `steps` back, to its rows
@@ -6899,7 +7017,8 @@ Scope {
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${key.name}`, began: key.began, heard: key.heard,
-                pressed: key.pressed, collected: key.collected, thread: key.thread } : null;
+                pressed: key.pressed, collected: key.collected, thread: key.thread,
+                stepKey: key.stepKey } : null;
         backTo = left;
         list.steppedLast = null;
         list.steppedKept = null;
@@ -7152,6 +7271,7 @@ Scope {
             searchParts = trials.stepped(searchParts, { began, made: at.made,
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             steppedByKey = named.name;
+            steppedByKeyInto = String(held[held.length - 1]?.row?.key ?? "");
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";
@@ -7435,10 +7555,13 @@ Scope {
     // which its line says whole, since nobody wrote it.
     // `thread` is the shell thread's clocks as the key began (threadNow), so
     // its line says what of its searching the thread ran, waited for a CPU
-    // and slept (launcher/Thread.js).
-    function keyTimed(typed, began, heard, pressed, collected, stepped, thread) {
+    // and slept (launcher/Thread.js). `stepKey` is the key of the row a
+    // step took, which its line says where it's the launcher's own place
+    // or a program (Presented.timedShown).
+    function keyTimed(typed, began, heard, pressed, collected, stepped, thread, stepKey) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
             step: stepped === true ? typed : "", own: stepped === "own",
+            stepKey: stepped === true ? String(stepKey ?? "") : "",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
@@ -7467,10 +7590,15 @@ Scope {
         const foot = selected === null ? list.fillAt(root.current)
             : selected.y + selected.height - root.rowTall;
         const onRow = root.current < 0 || Math.abs(list.pickY - foot) < 0.5;
+        // How many rows the frame lists, so a check sees what a key's own first frame drew,
+        // where what's showing is made once a turn, at its end, and a list drawn for one frame
+        // can go unsaid.
+        const listed = list.count;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
             key.onRow = onRow;
+            key.listed = listed;
             keysAwaited += 1;
             presentedAwait(key.pressed, (at, answered) =>
                 keyPresented(key.pressed, at, key, answered));
@@ -7566,7 +7694,8 @@ Scope {
                 keyFrame: newest.frame ?? 0,
                 keyHeard: newest.heard,
                 timesOf: frame => surface.FramePresentation.timesOf(frame)
-            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true);
+            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true,
+            newest.stepKey ?? "");
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -7607,8 +7736,13 @@ Scope {
         const due = afterFramesDrawing.concat(afterFrames);
         afterFramesDrawing = [];
         afterFrames = [];
-        for (const then of due)
-            then();
+        afterFramesRun(due);
+    }
+    // Each in turn, one that throws said and the rest run still
+    // (launcher/Thrown.js's runEach).
+    function afterFramesRun(due) {
+        Thrown.runEach(due, said => console.warn(
+            `launcher: what waited on a frame threw: ${said}`));
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -7738,13 +7872,19 @@ Scope {
         Report.say(`asked ${asked.question}`);
     }
 
-    // A key while the ask stands, as Prompt.qml hands it over.
-    function answerAsk(key) {
+    // A key while the ask stands, as Prompt.qml hands it over, with when
+    // it came. It answers only as the field times it (Confirm.takes). A
+    // key that came with no time, or an ask that can't be timed, is
+    // journalled whether or not reports are on, as neither can answer yes.
+    function answerAsk(key, at) {
         const ask = asked;
-        if (ask === null)
-            return;
-        const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early")
+        const said = askSaid(key, at);
+        const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
+        if (ask !== null && !Number.isFinite(at))
+            console.info("launcher: a key came to the ask with no time, so it was let by");
+        else if (untimed !== null)
+            console.info(`launcher: the ask can't be timed, as ${untimed}, so Return is let by`);
+        if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -7752,6 +7892,14 @@ Scope {
             ask.yes();
         else
             ask.no();
+    }
+
+    // What the ask standing makes of `key` come `at` (Confirm.answer), or ""
+    // with none standing: answerAsk answers by it, and the prompt times a
+    // key as acting by it (answerTaken), each told the one time the prompt
+    // read as the key came, so the two can't disagree.
+    function askSaid(key, at) {
+        return asked === null ? "" : Confirm.answer(asked, key, at, askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -8201,7 +8349,7 @@ Scope {
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
             pressed: out.pressed, collected: out.collected, step: out.text,
-            thread: out.thread }
+            stepKey: out.stepKey ?? "", thread: out.thread }
             : { text, began, heard, pressed, collected: Heap.collected(), step: "",
                 thread: threadNow(), untimed: untimed === true }]);
         if (searchedThisTurn)
@@ -8248,9 +8396,12 @@ Scope {
         const listedAt = KeyTimes.now();
         const collected = Heap.collected();
         steppedByKey = "";
+        steppedByKeyInto = "";
         search(prompt.text);
         const into = steppedByKey;
+        const intoKey = steppedByKeyInto;
         steppedByKey = "";
+        steppedByKeyInto = "";
         // Its key's time holds the wait, said apart in the journal, with
         // what the time past its bound went on, and the frame's work not
         // yet noted (Awaited.frameOpen).
@@ -8273,9 +8424,10 @@ Scope {
         if (into !== "" && timed.length > 0)
             trials.wentIn(timed[timed.length - 1].pressed);
         timed.forEach((key, at) => {
-            const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
+            const last = into !== "" && at === timed.length - 1;
+            const step = last ? `\u2192 ${into}` : key.step;
             keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,
-                key.thread);
+                key.thread, last ? intoKey : key.stepKey);
         });
     }
     // The place a key's word and space stepped into as it was searched,
@@ -8283,6 +8435,9 @@ Scope {
     // the step emptied as another key, one step counted twice (a council,
     // 2026-11-17).
     property string steppedByKey: ""
+    // And its key, which the step's line says where it's the launcher's own
+    // (Presented.timedShown).
+    property string steppedByKeyInto: ""
 
     // How long a key's list waits for the sources whose search awaits a
     // daemon's answer (Provider's awaits), from when they're asked, so a
@@ -8315,15 +8470,18 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
-            // A wait ended after its closing lists nothing, so it marks
-            // nothing late and says no key listed (onOpenChanged); the
-            // held key is let go as searchAwaited lets one go shut.
-            if (!root.open) {
+            // A wait ended after its closing marks nothing late and says no
+            // key listed (Awaited.lateOf); the held key is let go as
+            // searchAwaited lets one go shut. Only lateOf's choice is pinned
+            // (tests/awaited.qml); this call, given root.open, isn't: closing
+            // doesn't stop the wait, so it ends here only when a closing
+            // lands inside its answersWaitedFor, a timer's least, which no
+            // test times.
+            root.answersLate = Awaited.lateOf(waited, root.open);
+            if (root.answersLate === null) {
                 root.searchAwaited();
                 return;
             }
-            root.answersLate = { text: waited.text, sources: waited.sources,
-                began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
             const places = waited.sources.map(one => one.settings?.name ?? "");
             console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
@@ -8490,6 +8648,9 @@ Scope {
             picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 
+    // Arming.changesNone reads this order up to the words asked for, to
+    // time a line's key as acting, so a step added or moved there is said
+    // there too, with its case in tests/arming.qml.
     function run(choice, below) {
         if (!choice) {
             open = false;
@@ -8910,7 +9071,15 @@ Scope {
         // field, "words:" before them, and "from:" before the session it
         // came from, as a sprout link asks (root's newWork).
         function newWork(words: string, from: string): string {
-            return JSON.stringify(root.newWork(words, from));
+            return JSON.stringify(root.newWork(words, from, ""));
+        }
+
+        // newWork, for a link that says where its work starts, "on:"
+        // before "cloud" or a machine's name. A function of its own, so a
+        // link with no `on` keeps calling newWork with two arguments, as
+        // qs refuses a call whose count isn't the one declared.
+        function newWorkOn(words: string, from: string, on: string): string {
+            return JSON.stringify(root.newWork(words, from, on));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,
@@ -9611,8 +9780,9 @@ Scope {
             // not yet made, waits until they rest rather than holding the
             // next one; the key's own frame goes on without it
             // (Pacing.typingRests). A cheap one follows in the frame after
-            // the letter's, never in it, since up to 8 ms on every letter
-            // would be the letters' cost (Pacing.drawerRestsForLetters).
+            // the letter's, never in it, since up to 13 ms on
+            // every letter would be the letters' cost
+            // (Pacing.drawerRestsForLetters).
             // One not out yet rests too, since coming out costs more than
             // the makings, timed only for drawers already out, measure.
             drawerJoined = false;
@@ -10030,6 +10200,24 @@ Scope {
     // the hairline, the rows' bands, the hairline and the status line, now
     // its Title is the line's size (VKCF3Z, 2026-11-06).
     readonly property real headTall: rowTall
+    // What words composed under the path take of the rows' room (Prompt's composes).
+    readonly property real composedTall: composing ? prompt.wrapsTall : 0
+    // How a composed ask's start stands, said under its words: what its act's state
+    // says, the mark it wears, and when it began, so the wait is counted out loud.
+    readonly property string startSays: composing && typeof asking.state === "function"
+        ? asking.state() : ""
+    readonly property string startMark: startSays !== "" && typeof asking.mark === "function"
+        ? asking.mark() : ""
+    readonly property real startSince: startSays !== "" && typeof asking.since === "function"
+        ? asking.since() : 0
+    property real startNow: Date.now()
+    Timer {
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        running: root.open && root.startSince > 0
+        onTriggered: root.startNow = Date.now()
+    }
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
@@ -10139,6 +10327,45 @@ Scope {
             // Whether it's drawn from what it kept, not yet filled in.
             opening: root.opening,
             keys: root.open && prompt.Window.active,
+            // How many keys the line has taken, so a test sees one read before
+            // it presses the next: keys read in one turn are read together,
+            // and a move read with the Return after it times no ask's line
+            // (secret-asks/Shown.js's keyed).
+            taken: prompt.keysTaken,
+            // How many of them Asks has yet to read, as it reads each a turn
+            // after it's taken (secret-asks/Asks.qml's keyed), so a test
+            // presses Return only once the move before it is read alone.
+            // Null where Asks isn't there or isn't over passwords, as it
+            // then reads no keys, so a wait on it fails rather than passes.
+            asksUnread: root.sourcesNamed.asks?.overPasswords
+                ? root.sourcesNamed.asks.taken.length : null,
+            // Whether a frame has drawn the armed ask's line, as it's
+            // selected now, since it was armed, so its time runs
+            // (secret-asks/Asks.qml's noteSelected): a yes before that frame
+            // is refused as unread, which a test waits out rather than
+            // racing. A frame of the line before the ask was served anew
+            // doesn't count, since a yes counts only a frame of the digest
+            // it answers (Shown.js's stamped). Null where asksUnread is.
+            asksNoted: root.sourcesNamed.asks?.overPasswords
+                ? root.sourcesNamed.asks.armed !== ""
+                    && root.sourcesNamed.asks.seen[root.sourcesNamed.asks.armed]?.digest
+                        === row?.digest
+                : null,
+            // Whether a move of his has armed an ask's line at all, set as
+            // Asks reads the key and owing nothing to a frame, so a test can
+            // say nothing was armed however late the screen draws. Null
+            // where asksUnread is. These four, taken, asksUnread, asksNoted
+            // and asksArmed, are new to the showing, and are read over the
+            // launcher's ungated ipc by any process of his. That's accepted:
+            // taken says no more than keysPresented already does, and the
+            // three asks fields say only when his own move timed a line and
+            // when a frame drew it. An ask from outside forgets that arming
+            // (Asks.qml's forget), and a yes is timed only by a frame of the
+            // very row it answers (Shown.js's stamped), so knowing the
+            // moment releases nothing. The showing's own armed is the
+            // launcher's first Return, not asksArmed.
+            asksArmed: root.sourcesNamed.asks?.overPasswords
+                ? root.sourcesNamed.asks.armed !== "" : null,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
@@ -10178,7 +10405,7 @@ Scope {
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.
-            linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
+            linedFresh: root.linedJustNow(),
             returned: root.returned,
             // The landing a step that left by itself guessed, so a test can
             // tell a Return held under it ("waited") from one lost.
@@ -10247,6 +10474,9 @@ Scope {
                 drawn: card.height - listBox.height
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
+            // How a start stands under the words that began it, and how long it's waited.
+            start: { says: root.startSays, mark: root.startMark,
+                waited: StartSaid.waited(root.startSince, root.startNow) },
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
@@ -10322,6 +10552,10 @@ Scope {
             seen: root.rowsSaid(),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
+            // How many of them are kept dimmed where they were, gone from what
+            // their source answers last (Steady.kept's `went`), which `found`
+            // counts too; a row its source draws dimmed itself isn't among them.
+            went: root.matches.filter(row => row.went).length,
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
             things: root.matches.slice(0, 20).map(row => ({
@@ -10518,7 +10752,7 @@ Scope {
                 // drawnFacts' order: facts above is what was given, by label,
                 // and parts from it where the card drops a fact that repeats
                 // its title (DrawerValue.factsDrawn), where a fact's heading
-                // names it in place of its label, and while the card slides
+                // names it in place of its label, and while the card fades
                 // away with what it last showed, given nothing.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
                 // Each fact's figure drawn beside its value, by its shape,
@@ -10696,7 +10930,15 @@ Scope {
     // asked first, so the opening is asked here and timed as theirs are:
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
-    function into(name) {
+    //
+    // Given `way`, rows to step through once it's in, as the file chooser's
+    // folders on the way to where it opens, they're walked inside the ask,
+    // each passed through but the last (walkInto), so only that one is
+    // searched and drawn. Opened and then stepped in after the ask, its
+    // place and every folder on the way were each searched and listed for
+    // a frame showing only the last: 43 of a 108 ms opening went on the
+    // place alone (2026-11-25, 23:04).
+    function into(name, way) {
         // Put in a place from outside, as a chord does while the launcher
         // is open, it's no landing a leave guessed (walkTo).
         guessed = Held.unguessed();
@@ -10708,7 +10950,13 @@ Scope {
             askedToOpen();
         if (!open && !opening)
             openChord = name;
-        intoWhole(name);
+        if ((way ?? []).length > 0) {
+            const begun = stepBegun();
+            intoWhole(name, true);
+            walkInto(way, begun);
+        } else {
+            intoWhole(name);
+        }
         keepPlace(name);
         if (asked)
             askDone();
@@ -10788,12 +11036,14 @@ Scope {
     property string openInto: ""
     property string openChord: ""
     // A place that marks itself never kept, as asks do, isn't kept
-    // (Arming.keepsPlace); every other place is, and while the screen may
-    // be shared its kept rows are never drawn (Wanted.keptPlaceListed), nor
-    // left drawn once a share begins as it opens (sharedMidOpening).
+    // (Arming.keepsSteps, by its name's source and its steps'); every
+    // other place is, and while the screen may be shared its kept rows are
+    // never drawn (Wanted.keptPlaceListed), nor left drawn once a share
+    // begins as it opens (sharedMidOpening).
     function keepPlace(name) {
         if (held.length === 0
-            || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
+            || !Arming.keepsSteps(collections.find(one => one.settings.name === name) ?? null,
+                held))
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
             under: keptUnder(name), led: ledPlaces.includes(name) };
@@ -10939,15 +11189,7 @@ Scope {
         if (leading !== null && leading.settings.name !== name) {
             const begun = stepBegun();
             intoWhole(leading.settings.name, rows.length > 0);
-            for (const [depth, row] of rows.entries()) {
-                const stood = { typed: "", above: 0,
-                    at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
-                if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
-                    walkStopped(begun, true);
-                    break;
-                }
-            }
-            openedHere();
+            walkInto(rows, begun);
             return;
         }
         const source = collections.find(s => s.settings.name === name) ?? null;
@@ -10983,6 +11225,23 @@ Scope {
         if (lead)
             enter(lead);
         feltSpan("searching", searched);
+        openedHere();
+    }
+
+    // Steps from the place just opened through `rows`, each passed through
+    // but the last, as a walk is (walkTo), standing each where it's among
+    // what the step before offers, so - climbs back onto it; a step that
+    // can't be taken stops there, listing what's held. Where it ends is
+    // where it opened.
+    function walkInto(rows, begun) {
+        for (const [depth, row] of rows.entries()) {
+            const stood = { typed: "", above: 0,
+                at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
+            if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
+                walkStopped(begun, true);
+                break;
+            }
+        }
         openedHere();
     }
 
@@ -11516,6 +11775,7 @@ Scope {
             openWorkedClocks = null;
             openSettled = -1;
             openBegun = -1;
+            forgetFirstFrame();
             openKept = false;
             openAskedWeighings = keysWeighings;
             openAskedRedone = redone();
@@ -12089,8 +12349,7 @@ Scope {
         fillUnpresented.stop();
         openFramesSized = 0;
         openFramesWaited = 0;
-        openFirstDrawn = -1;
-        openFirstMade = null;
+        forgetFirstFrame();
         openAskedMade = tallies();
         openLap("tallying");
         // What the last closing left for later is put off, as the opening's
@@ -12143,12 +12402,29 @@ Scope {
     // When its first frame was swapped, so its drawing is that frame's
     // own, and the frames waited for niri's size are said apart as sizing.
     property real openFirstDrawn: -1
+    // And that frame's drawing said apart as a key's is (frameSplit), read
+    // as its swap is heard, since the render thread keeps only its last 16
+    // frames' times and an opening may wait 20 for its size: Joel's at
+    // 10:28 spent 121 ms drawing, unsplit, so nothing said whether its
+    // sync or its render held it (2026-11-26). Null where it wasn't read.
+    property var openFirstSplit: null
     // The rows each source had made by then, so what's said made before
     // the frame is made before that first one, not by a source while
     // niri's size was awaited. They're counted from the ask, as what the
     // last opening woke can answer after it closed.
     property var openFirstMade: null
     property var openAskedMade: null
+    // What an opening's first frame left is let go as it's asked, begun,
+    // shut or said, so a whole opening after a kept one shut before its
+    // size (unopened), or filled by a key and shut before its record
+    // (openDrawn), says its own drawing, not the kept one's frame's.
+    function forgetFirstFrame(): void {
+        openFirstDrawn = -1;
+        openFirstSplit = null;
+        openFirstMade = null;
+        openFirstWeighings = -1;
+        openFirstRedone = null;
+    }
     function drawnAsAsked() {
         const window = card.Window.window;
         return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
@@ -12172,6 +12448,7 @@ Scope {
         openFramesWaited += 1;
         if (openFirstDrawn < 0) {
             openFirstDrawn = KeyTimes.now();
+            openFirstSplit = frameSplit({ frame, begun }, openFirstDrawn);
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
             openFirstRedone = redone();
@@ -12588,6 +12865,7 @@ Scope {
         openWorkedClocks = null;
         fillEarly = null;
         wokeEarly = null;
+        forgetFirstFrame();
         markOpen(false);
         afterFramesDue();
     }
@@ -12706,11 +12984,12 @@ Scope {
     // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14). The heap
     // leaves room after every collection that ends later too, but no more
     // than twice the room past what its chunks held at the first ask since
-    // one ended (heap.h's leaveRoom), so one the shell starts while the
-    // launcher is shut can still leave less. Each closing's collection says
-    // how far the opening's chunks, and what's held outside the heap,
-    // reached against where the collector would start, weighed before it
-    // collects, so whether 32 is still ample is read there.
+    // one ended, and twice what its sweeps kept beyond what the last kept
+    // then (heap.h's leaveRoom), so one the shell starts while the launcher
+    // is shut can still leave less. Each closing's collection says how far
+    // the opening's chunks, and what's held outside the heap, reached
+    // against where the collector would start, weighed before it collects,
+    // so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
     function collectClosed() {
         // A count or a weighing already due would land within a second of
@@ -12760,13 +13039,17 @@ Scope {
         const chunks = Math.round(weight.chunks);
         const reachedChunks = Math.round(reached.chunks);
         const chunksAt = Math.round(reached.collectsAt);
+        // Where the rooms alone capped them, so a line whose collector
+        // started higher says what the sweeps kept, or Qt's own limit, set it.
+        const roomsAt = reached.roomsCapAt < 0 ? "no room"
+            : `the rooms ${Math.round(reached.roomsCapAt)} MB`;
         const reachedOutside = Math.round(reached.outside);
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${resident} of it resident, ${free} of it in free pages,`
             + ` ${outside} MB outside, chunks`
-            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
+            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB (${roomsAt}) and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
             + ` ${holding} of the shell lent`
@@ -12988,6 +13271,7 @@ Scope {
             wokeEarly = null;
             openAskedClocks = null;
             openWorkedClocks = null;
+            forgetFirstFrame();
         }
         if ((!open && !opening) || asked < 0)
             return;
@@ -13003,9 +13287,15 @@ Scope {
         const parts = partsSaid(openParts);
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
-        const after = { settling: Math.round(settled - asked - openWorked),
+        // A whole opening's first frame is the one it's told of here, as
+        // it's swapped, so it's split as a kept one's is in openShown, but
+        // only where its drawing is that frame (Thread.drawingIsFrame).
+        const split = openFirstSplit
+            ?? (frame === undefined || !Thread.drawingIsFrame(openFirstDrawn, openBegun, beganAt)
+                ? null : frameSplit({ frame, begun: beganAt }, sized));
+        const after = Object.assign({ settling: Math.round(settled - asked - openWorked),
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
-            sizing: Math.round(sized - drawn) };
+            sizing: Math.round(sized - drawn) }, split ?? {});
         const worked = Math.round(openWorked);
         const { thread, collecting } = Thread.workingSpent(openAskedClocks, openWorkedClocks);
         const workingSaid = Collector.workingSaid(collecting)
@@ -13016,8 +13306,6 @@ Scope {
         openingsDrawn += 1;
         const now = openFirstMade ?? tallies();
         const from = openFirstMade === null ? madeFrom.rows : openAskedMade;
-        openFirstMade = null;
-        openFirstDrawn = -1;
         const made = Object.keys(now).map(name => ({ name, rows: now[name]
             - (from[name] ?? 0) })).filter(each => each.rows > 0)
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
@@ -13026,13 +13314,12 @@ Scope {
         const kept = openKept;
         const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
             - openAskedWeighings;
-        openFirstWeighings = -1;
         const redoneBy = openFirstRedone ?? redone();
         const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
         const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
         const toldLate = redoneBy.toldLate - (openAskedRedone.toldLate ?? 0);
         const blocked = redone().blocked - (openAskedRedone.blocked ?? 0);
-        openFirstRedone = null;
+        forgetFirstFrame();
         // How long after the ask the mark said open, or -1 while it hasn't.
         const marked = markSays === "open" && markedOpenAt >= asked
             ? Math.round(markedOpenAt - asked) : -1;
@@ -13051,7 +13338,8 @@ Scope {
             fillSaidLate();
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
-            + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
+            + ` frame and ${after.drawing} drawing it${Thread.drawingApart(split)}, ${rows} rows`
+            + ` made (${most})`
             + (kept ? `, drawn from what was kept, at its size after ${openFramesWaited} frames`
                 + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
@@ -13245,8 +13533,13 @@ Scope {
         // finds it however fast it was; typed words are never said here.
         // Its clock's line says whether niri timed its press and how many
         // frames after its own niri answered (Presented.keyClockOf).
+        // `waited` when its search waited on answers (Awaited.heldFor), so a
+        // check tells a key listed by its own frame from one listed as they
+        // came, and null where its search recorded no parts to say.
+        const waited = key.parts ? typeof key.parts.waited === "number" : null;
         const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
-            onRow: key.onRow }, Presented.keyClockOf(key, answered), {
+            onRow: key.onRow, listed: key.listed ?? null, waited },
+            Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),
@@ -14020,13 +14313,14 @@ Scope {
             // said as the key's (Joel's down onto Slack, 28 ms before the
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
+            // Each is run as what waits on the frame is, so a throw timing
+            // one holds none of it back.
             function onFrameSwapped() {
-                root.keysFrameSwapped();
-                root.actsFrameSwapped();
+                Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
+                    said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
-                for (const then of due)
-                    then();
+                root.afterFramesRun(due);
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }
@@ -14163,7 +14457,9 @@ Scope {
                 // hairline, its line centred there by eye.
                 Item {
                     width: parent.width
-                    height: root.headTall
+                    // Words of some length take their lines under the path, which the
+                    // rows give up (listBox), so the frame keeps its height.
+                    height: root.headTall + root.composedTall
                     opacity: root.wordsShown
 
                     Prompt {
@@ -14212,6 +14508,13 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
+                        // Start New Work's words on lines of their own under the path, the
+                        // path's line keeping its band, and muted once given while it starts.
+                        wraps: root.composing
+                        composes: root.composing
+                        lineTall: root.headTall
+                        taken: root.composing && typeof root.asking.taken === "function"
+                            && root.asking.taken() === true
                         // The line stands on the rows' columns: a held
                         // thing's glyph, or the padlock, over their glyphs,
                         // where the find's / and the : line's : take its
@@ -14328,8 +14631,17 @@ Scope {
                         // and one that ends something, from either, only
                         // writes its command on the : line.
                         onAccepted: {
+                            // A secret's Return, which its line never reads,
+                            // hands over words, so it's timed as acting; with
+                            // none typed it hands over nothing (give).
+                            if (prompt.secret && prompt.text !== "")
+                                root.keyActs("Return");
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
+                            // When this Return was pressed, or heard when
+                            // its press came with no time, which every
+                            // guard below times it by (pressedNow).
+                            const at = pressed > 0 ? pressed : heard;
                             root.searchNow();
                             trials.pressed("returns");
                             // A held row is held before all else
@@ -14353,8 +14665,7 @@ Scope {
                             // pressed, not when the shell got to it.
                             const under = Held.returnUnder(root.guessed, {
                                 keys: prompt.keysTaken,
-                                at: pressed > 0 ? pressed : KeyTimes.now(),
-                                depth: root.held.length, asking: !!root.asking
+                                at, depth: root.held.length, asking: !!root.asking
                             }, Options.keyTiming.wait);
                             const broken = root.guessed.broken;
                             root.guessed = under.next;
@@ -14367,7 +14678,7 @@ Scope {
                             }
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
-                                landed: root.landedJustNow(),
+                                landed: root.landedJustNow(at),
                                 gone: !!one?.gone,
                                 held: root.heldWhyOf([one], one?.returns) !== null,
                                 arming: !!root.arms(one),
@@ -14376,7 +14687,7 @@ Scope {
                                 lands: root.lands(one)
                             });
                             const arming = chosen === "arming";
-                            const act = arming ? root.pressArming(one, 1) : chosen;
+                            const act = arming ? root.pressArming(one, 1, at) : chosen;
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)
@@ -14386,9 +14697,9 @@ Scope {
                             else if (act === "entered")
                                 root.enter(root.selected);
                             else if (act === "lined")
-                                root.lineFor(root.selected);
+                                root.lineFor(root.selected, at);
                             else if (act === "landed")
-                                root.land(root.selected);
+                                root.land(root.selected, at);
                             // Held still, run says why and does nothing.
                             else if (act === "ran" || act === "held")
                                 root.run(root.selected, false);
@@ -14413,7 +14724,7 @@ Scope {
                             if (root.completion === "")
                                 return;
                             // A command puts its start in the field.
-                            if (root.current !== -1 && root.selected?.start !== undefined)
+                            if (root.fillsStart())
                                 root.fill(root.selected.start);
                             // A question only started is finished first.
                             else if (root.question !== ""
@@ -14431,7 +14742,8 @@ Scope {
                         // the launcher closed, a popup, from any depth, as
                         // his Neovim closes its floats; it never steps out
                         // (the vi-paradigm spec, Normal).
-                        onCancelled: {
+                        onCancelled: key => {
+                            root.keyActs(key);
                             if (root.listing)
                                 root.listing = false;
                             // Words asked for, as a password, are given up,
@@ -14487,11 +14799,29 @@ Scope {
                         confirming: root.asked !== null
                         asking: root.asked?.question ?? ""
                         askingParts: root.asked?.parts ?? null
-                        onAnswered: key => root.answerAsk(key)
+                        onAnswered: (key, at) => root.answerAsk(key, at)
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
                         reselectable: root.lastVisual !== null
+                        // Where Tab goes into the row and - goes up, so
+                        // a key that only says it can't acts on nothing.
+                        // Tab is asked of the row it will find: a search
+                        // held back runs first, as onStepped runs it.
+                        intoHere: mode => {
+                            root.searchNow();
+                            return root.tabGoesIn(root.matches[root.current] ?? null, mode);
+                        }
+                        // Ctrl+Y on a command's row in a place leaves it,
+                        // asked of the row it will find, as intoHere is.
+                        fillLeaves: () => {
+                            root.searchNow();
+                            return root.held.length > 0 && root.completion !== ""
+                                && root.fillsStart();
+                        }
+                        upHere: root.canGoUp
+                        // The ask takes a key as answerAsk does.
+                        answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
@@ -14665,14 +14995,21 @@ Scope {
                             typedAt: card.inset + root.columns.text
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
-                            onRan: read => root.commandRan(read)
+                            onRan: read => root.commandRan(read, "Return")
                             // Let go from the drawer, the keys go back onto
                             // its page however it was let go, choosing
                             // nothing, as Vim's visual ends at its : line.
-                            onLetGo: how => root.commandLeft(
-                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                : how === "dropped" ? root.commanding?.from ?? "normal"
-                                : "normal")
+                            // The key that let it go, which the prompt
+                            // never reads, closes the line, changing no
+                            // source, so it's timed as a move, as the
+                            // line's Return is until it acts.
+                            onLetGo: (how, key) => {
+                                root.keyActs(key, true);
+                                root.commandLeft(
+                                    QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                    : how === "dropped" ? root.commanding?.from ?? "normal"
+                                    : "normal");
+                            }
                         }
                     }
 
@@ -14762,12 +15099,87 @@ Scope {
                         height: root.over !== null
                             ? Math.min(commandRows.count, 10) * root.rowTall
                             : root.talkAsked ? Math.min(root.tall, talksShown.tall)
-                            : root.tall
+                            : root.tall - root.composedTall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
                         // at its own, so a row's ground reaches out over the
                         // gutter to the frame.
                         clip: true
+
+                        // How a start stands, on the first row's band under the words that
+                        // began it: its mark where a row's glyph stands, what it says where a
+                        // row's name does, and how long it has waited at the far end, as a
+                        // row's figure, so Return is seen to take, once, and the wait to
+                        // run rather than hang (Joel, 2026-11-25 14:33: "no confirmation
+                        // that it took my enter, no feedback at all").
+                        Item {
+                            objectName: "startSays"
+                            width: parent.width
+                            // Two lines at most, so what it says is read whole rather than cut
+                            // at its point, a long folder's name with it; the second a Figure
+                            // pitch under the first, as a drawer's lines are, not a row's band.
+                            height: root.rowTall + Theme.level.figure.pitch
+                                * Math.max(0, startSaysText.lineCount - 1)
+                            visible: root.startSays !== ""
+
+                            // On the rows' glyph column, so the words under the path and the
+                            // start's own line both stand on the column the head's mark does.
+                            Text {
+                                x: card.inset + root.columns.mark
+                                width: Theme.level.name.pitch
+                                horizontalAlignment: Text.AlignHCenter
+                                y: startSaysText.y + startSaysText.baselineOffset - baselineOffset
+                                text: Theme.glyph[root.startMark] ?? ""
+                                color: root.startMark === "failed" ? Theme.alert
+                                    : root.startMark === "done" ? Theme.success : Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                            }
+
+                            Text {
+                                id: startSaysText
+                                x: card.inset + root.columns.text
+                                width: startWaited.x - x - Theme.space.rung.groups
+                                y: Bands.baseline(root.rowTall, startCaps.tightBoundingRect.height,
+                                    startSmalls.tightBoundingRect.height) - baselineOffset
+                                text: root.startSays
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                lineHeightMode: Text.FixedHeight
+                                lineHeight: Theme.level.figure.pitch
+                                elide: Text.ElideRight
+                                color: Theme.text
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.weight: Theme.level.figure.weight
+                                font.features: Theme.level.figure.features
+                            }
+
+                            Text {
+                                id: startWaited
+                                objectName: "startWaited"
+                                x: parent.width - card.inset - implicitWidth
+                                anchors.baseline: startSaysText.baseline
+                                text: StartSaid.waited(root.startSince, root.startNow)
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.features: Theme.level.figure.features
+                            }
+
+                            TextMetrics {
+                                id: startCaps
+                                text: "H"
+                                font: startSaysText.font
+                            }
+                            TextMetrics {
+                                id: startSmalls
+                                text: "x"
+                                font: startSaysText.font
+                            }
+                        }
 
                         // The command line's menu, while : is open: its lines
                         // are the list, in the rows' place, each a row as any

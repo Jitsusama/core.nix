@@ -9,7 +9,8 @@
 // its name, its server's domain and its password in turn, each set at its
 // place in the ask, and the ask is sent after the last; a step out partway
 // sends nothing and says so; a join's stages and a refusal are said in the
-// foot, never a card; and a secret is never shown. It exits 0 once every
+// foot, never a card; a secret is never shown; and a part claiming the
+// launcher's own kind is keyed under `row:`. It exits 0 once every
 // case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -136,6 +137,7 @@ ShellRoot {
             password();
             accounts();
             partway();
+            ownKind();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error} at ${error.stack}`);
@@ -225,5 +227,17 @@ ShellRoot {
             "the account's name");
         Expect.expect("the foot saying nothing of the last", foot(campus) !== Words.field
             .becoming.dropped, foot(campus));
+    }
+
+    // A network's part whose thing claims a kind of the launcher's own, as a name might, is
+    // keyed under `row:` as Presented.js's keyMade keys any served row, so the journal never
+    // says it whole as the launcher's id; one of wifid's own kinds keeps its thing.
+    function ownKind() {
+        const part = thing => wireless.madeFrom({ thing, parent: "wifi:Lantern", name: "Harbour",
+            acts: [] }, "row:wifi:part:Harbour");
+        Expect.same("a part claiming the launcher's own kind is kept under row:",
+            part("place:Harbour").key, "row:place:Harbour");
+        Expect.same("and one of wifid's kinds keeps its thing",
+            part("wifi:Lantern:Harbour").key, "wifi:Lantern:Harbour");
     }
 }

@@ -1,5 +1,6 @@
 //! How long a run took to be ready: from its start to its file first
-//! saying who holds the camera, said once in its log as `ready in N ms`.
+//! saying who holds the camera, as a read that worked found, said once in
+//! its log as `ready in N ms`.
 //! A switch restarts each watch, and health times a restart to the line a
 //! daemon says once it's ready (docs/design.md, under Latency); with none,
 //! the restart reads as one that never said it served again.
@@ -15,8 +16,8 @@ impl Ready {
         Self(Some(Instant::now()))
     }
 
-    /// The line saying it's ready, the first time its file is written,
-    /// and nothing after.
+    /// The line saying it's ready, the first time its file is right, and
+    /// nothing after.
     pub fn line(&mut self) -> Option<String> {
         self.0
             .take()

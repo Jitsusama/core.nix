@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Runs pi-claude (modules/pi/claude.nix) over stand-ins for pi and Claude
+# Runs pi-claude (modules/pi/claude) over stand-ins for pi and Claude
 # Code that write down how they were started. pi gets the provider, Sonnet
 # unless a model is asked for, the mesh off, and Claude Code and the plan's
 # own login folder, with nothing in its environment that would bill

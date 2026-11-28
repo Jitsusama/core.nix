@@ -1690,11 +1690,16 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
+    # Media is what the desktop plays, so it's Desktop's, never the hardware's. A place held
+    # always has its row, playing or not (Launcher.qml's resolved), so both ends are read.
+    assert "Media" not in [row["name"] for row in shown["rows"]], shown
+    desk = json.loads(desktop.as_account("launcher show desktop --json"))
+    assert "Media" in [row["name"] for row in desk["rows"]], desk
     # Only --drawers asks the shell to build each row's drawer, as each screen has.
-    screens = json.loads(desktop.as_account("launcher show --json desktop screens"))
+    screens = json.loads(desktop.as_account("launcher show --json machine screens"))
     assert screens["rows"], screens
     assert not any("drawer" in row for row in screens["rows"]), screens
-    drawn = json.loads(desktop.as_account("launcher show --drawers --json desktop screens"))
+    drawn = json.loads(desktop.as_account("launcher show --drawers --json machine screens"))
     held = {row["name"]: "drawer" in row for row in drawn["rows"]}
     assert any(held.values()), f"--drawers gave no row of Screens its drawer: {held}"
     # A step naming nothing is the convention's not-found.
@@ -1731,9 +1736,9 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
                 ("launcher show", "terminal-home"),
                 # Screens, which niri answers at once, where Disk waits on the
                 # machine's daemon in the VM.
-                ("launcher show desktop screens", "terminal-screens"),
+                ("launcher show machine screens", "terminal-screens"),
                 ("launcher show mahcine", "terminal-miss"),
-                ("launcher show desktop screens --drawers", "terminal-drawers"),
+                ("launcher show machine screens --drawers", "terminal-drawers"),
                 ("launcher do machine power reboot", "terminal-asks"),
                 ("launcher show network work-network", "terminal-warp"),
                 (
@@ -1858,7 +1863,7 @@ def each_read_cold(desktop: Desktop) -> None:
     assert cameras["Built-In Camera"].get("drawer"), cameras
     keyboards = rows("keyboard", "keyboards")
     assert keyboards["The Laptop's Keyboard"].get("drawer"), keyboards
-    screens = rows("desktop", "screens")
+    screens = rows("machine", "screens")
     lit = screens["Smithay Winit"].get("drawer") or {}
     assert "Brightness" in {fact.get("label") for fact in lit.get("facts", [])}, lit
 

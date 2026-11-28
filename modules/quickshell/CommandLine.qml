@@ -54,8 +54,9 @@ Item {
     // or { error }.
     signal ran(var read)
     // The line let go: "dropped" by Escape or Ctrl+C, putting back what it
-    // covered, or "normal" by Backspace on an empty line.
-    signal letGo(string how)
+    // covered, or "normal" by Backspace on an empty line, with the key's
+    // name, as key() says it.
+    signal letGo(string how, string key)
 
     implicitHeight: 4 * Theme.space.beat
     // On what's typed's baseline, so a surface can set the line on its own.
@@ -140,11 +141,12 @@ Item {
             event.accepted = true;
             return;
         }
-        switch (key(event)) {
+        const named = key(event);
+        switch (named) {
         case "Escape":
         case "Ctrl+c":
             if (!held)
-                line.letGo("dropped");
+                line.letGo("dropped", named);
             break;
         case "Return":
             if (!held)
@@ -175,7 +177,7 @@ Item {
             // leaves the line.
             if (input.text === "") {
                 if (!held)
-                    line.letGo("normal");
+                    line.letGo("normal", named);
             } else if (input.selectionStart !== input.selectionEnd) {
                 input.remove(input.selectionStart, input.selectionEnd);
             } else if (input.cursorPosition > 0) {

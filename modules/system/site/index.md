@@ -21,7 +21,10 @@ Every health is good, watch, bad or not read, each with its own mark.
 - **What is worth a look, under it:** a row for each thing a machine or
   a part has worth a look, the worst first: its mark, whose it is, and
   what. A machine's row goes to its section below, or to the map past
-  the eight drawn, and a part's to its own site. A part that couldn't be
+  the eight drawn, and a part's to its own site. Under a machine's, why
+  it matters, as the system daemon judges it, and a link opening that
+  machine in the launcher, where you update it or start a session
+  there. A part that couldn't be
   read has a row saying why, first. It lists eight at most, then how
   many more; with nothing worth a look, it says so, and until every part
   and machine has told and could be read, it says that isn't known yet.
@@ -66,7 +69,10 @@ Every health is good, watch, bad or not read, each with its own mark.
   that need you.
 - **Across them:** the mycelium, the network and the code, each with its
   mark, its name, what it says, what in it is worth a look, a link to
-  its whole page and the command that says more.
+  its whole page and the command that says more. Then the builders the
+  machines send Nix builds to, where the node names any: the worst
+  one's line, or how many there are while none is worth a look, each
+  other's line, and a link to them on the map.
 - **A legend at the foot:** each mark beside its word. The marks are
   hidden from a screen reader, which hears each machine's and each
   part's health after its name instead, as "osprey (watch)".
@@ -95,7 +101,7 @@ Every health is good, watch, bad or not read, each with its own mark.
 | a      | Go to the next thing worth a look, the first again after the last   |
 | j, k   | Step through what is worth a look, then each machine and its ties   |
 | 1 to 8 | Go to a machine in reach, in the order they're drawn                |
-| 0      | Go to the mycelium, the network and the code across them            |
+| 0      | Go to the mycelium, the network, the code and the builders          |
 | g, G   | Go to the first or the last                                         |
 | Return | Open what you're on: the map, the network, the code or the launcher |
 | y      | Copy the first command of the machine or part you're in             |
@@ -110,7 +116,7 @@ be coming, the page waits for it up to five seconds, or until you move.
 
 ## What the Data Holds
 
-The system daemon holds three kinds of record. The `summary` has
+The system daemon holds four kinds of record. The `summary` has
 `machine`, `read_at` (RFC 3339, UTC), `health` (good, watch, bad or
 not read), `side` (every part's, in order) and `parts`, the part names
 in order. Each `part:<name>` has `part` (machines, mycelium, network or
@@ -120,9 +126,15 @@ keys of its things) and `deeper`: `command`, `site` (from the sites'
 root) and `launcher` (its path there). Each `machine:<name>` has
 `name`, `health`, `says`, `side`, where its home publishes one,
 `address`, and `ties`: its cells, network, code, figures and acts, as
-the system skill says them. A tie that is null wasn't read.
+the system skill says them. A tie that is null wasn't read. Each
+`builder:<name>`, a builder the machines send Nix builds to, is in
+the machines part after them and has `name`, `health`, `says` and
+`side`; it has no ties, since no cell runs on it. It is worth a look
+only when it should take builds and can't: it isn't answering, or
+nix-offload has left it out.
 `system --json` says the same as one record.
 
 The system asks each owner rather than reading their sources:
 `mycelium machines`, `mycelium health`, `net --json` and `repos --json`,
-at once, each given ten seconds.
+at once, each given twenty seconds. `mycelium machines` says the
+builders on a line after its machines.

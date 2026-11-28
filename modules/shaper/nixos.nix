@@ -175,6 +175,41 @@ in
             line, so each call would hold it at nine tenths of the old one.
           '';
         };
+        options.links = lib.mkOption {
+          type = lib.types.attrsOf (
+            lib.types.submodule {
+              options.down = lib.mkOption {
+                # As the network's own, and for the same reasons.
+                type = lib.types.nullOr (lib.types.ints.between 6000 10000000);
+                default = null;
+                example = 20000;
+                description = ''
+                  What this link reaches the network's line at, down, in
+                  kbit/s, or null to take the network's `down`. While a
+                  call is on, the link's download is held under it as
+                  under `down`, and the hold goes when the call ends.
+                '';
+              };
+            }
+          );
+          default = { };
+          example = {
+            wlp0s20f3.down = 20000;
+          };
+          description = ''
+            The network's links that reach its line slower than the line
+            carries, by interface name as `ip link` says it, each with its
+            own `down`: Wi-Fi through an access point whose own queue
+            holds a call behind a download. A link not named takes the
+            network's `down`, so to leave a cable to the same router
+            unheld, leave the network's `down` null and name only the
+            links that need one. A link's line holds it on every access
+            point of that router it joins, so declare it for the slowest.
+            Where two links reach the router at once, the one following
+            the other isn't measured, so it's held under its own line
+            for the whole of a call, whether its download fills it or not.
+          '';
+        };
         options.most = lib.mkOption {
           # Under 4 Mb/s a value is most likely written in Mb/s, and one
           # that low starves agents' lane, as the shaper's trials refuse.

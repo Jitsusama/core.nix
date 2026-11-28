@@ -40,6 +40,7 @@ pub mod desktop;
 #[path = "notifier.rs"]
 pub mod desktop;
 pub mod discover;
+pub mod disk_reads;
 pub mod disks;
 pub mod finished;
 pub mod footprint;
@@ -63,6 +64,7 @@ pub mod locks;
 pub mod logs;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod memorystatus;
 pub mod moments;
 pub mod nix_builds;
 pub mod nix_database;

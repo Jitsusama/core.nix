@@ -46,13 +46,18 @@ pub struct Deeper {
 /// it matters to the reader, so no look is made without its why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Look {
+    /// How bad it is by itself. Its thing's health is the worst of its
+    /// looks', so a view ranking looks across things ranks each by its own
+    /// rather than by the worst beside it.
+    pub health: Health,
     /// Its words for a side, as a thing's side holds them.
     pub side: String,
     /// Why it matters, as a whole sentence.
     pub matters: String,
 }
 
-/// One thing in a part worth naming on its own: a machine, for now.
+/// One thing in a part worth naming on its own: a machine, or a builder
+/// the machines send builds to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thing {
     /// What kind of thing it is, as VKCF3Z's home addresses name kinds.
@@ -167,7 +172,7 @@ impl System {
 
     /// The record split as the daemon holds it, in the shell's daemon
     /// interface: the whole's `summary`, a `part` record for each part and
-    /// one for each thing in a part, a `machine` for now. Each holds only
+    /// one for each thing in a part, a `machine` or a `builder`. Each holds only
     /// what changes with it, so a part that stands as it stood isn't told
     /// again when another moves; only the summary says when it was read.
     pub fn records(&self) -> Vec<Value> {
@@ -217,12 +222,15 @@ fn thing_key(thing: &Thing) -> Value {
     json!(format!("{}:{}", thing.kind, thing.name))
 }
 
-/// A thing's looks, each an object holding its side's words and its why.
+/// A thing's looks, each an object holding its own health, its side's
+/// words and its why.
 fn looks_json(thing: &Thing) -> Value {
     thing
         .looks
         .iter()
-        .map(|look| json!({"side": look.side, "matters": look.matters}))
+        .map(|look| {
+            json!({"health": look.health.word(), "side": look.side, "matters": look.matters})
+        })
         .collect()
 }
 
@@ -333,25 +341,42 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_record_carries_its_side_and_each_looks_why() {
-        let mut machines = part("machines", Health::Watch);
-        let mut studio = machine("studio", Health::Watch);
-        studio.side = vec!["code wants a look".to_owned()];
-        studio.looks = vec![Look {
-            side: "code wants a look".to_owned(),
-            matters: "Its own check says so.".to_owned(),
-        }];
+    fn a_machine_record_carries_its_side_and_each_looks_health_and_why() {
+        let mut machines = part("machines", Health::Bad);
+        let mut studio = machine("studio", Health::Bad);
+        studio.side = vec!["code failing".to_owned(), "code wants a look".to_owned()];
+        studio.looks = vec![
+            Look {
+                health: Health::Bad,
+                side: "code failing".to_owned(),
+                matters: "Its own check fails.".to_owned(),
+            },
+            Look {
+                health: Health::Watch,
+                side: "code wants a look".to_owned(),
+                matters: "Its own check says so.".to_owned(),
+            },
+        ];
         machines.things = vec![studio, machine("laptop", Health::Good)];
         let system = system(vec![machines]);
         let records = system.records();
-        assert_eq!(records[2]["side"], json!(["code wants a look"]));
+        assert_eq!(
+            records[2]["side"],
+            json!(["code failing", "code wants a look"])
+        );
         assert_eq!(records[3]["side"], json!([]), "a ready machine's is empty");
-        let looks = json!([{"side": "code wants a look", "matters": "Its own check says so."}]);
-        assert_eq!(records[2]["looks"], looks, "each look with its why");
+        let looks = json!([
+            {"health": "bad", "side": "code failing", "matters": "Its own check fails."},
+            {"health": "watch", "side": "code wants a look", "matters": "Its own check says so."},
+        ]);
+        assert_eq!(
+            records[2]["looks"], looks,
+            "each look with its own health and why"
+        );
         assert_eq!(records[3]["looks"], json!([]), "a ready machine has none");
         assert_eq!(
             system.json()["parts"][0]["things"][0]["side"],
-            json!(["code wants a look"])
+            json!(["code failing", "code wants a look"])
         );
         assert_eq!(system.json()["parts"][0]["things"][0]["looks"], looks);
     }

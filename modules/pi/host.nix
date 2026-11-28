@@ -28,6 +28,10 @@ let
   launch = import ./host-launch.nix { inherit lib; };
   inherit (launch) kinds loadsCode stopSeconds;
   entry = launch.entry config;
+  growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
+  # The build proving a realm's node takes its conversations' growing
+  # percent, which each of its conversations' units names.
+  growthTakenOf = realm: host: growthTakenBy realm host.node host.conversationHeapGrowingPercent;
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -76,9 +80,10 @@ let
 
   # The command line a host and a conversation's own process share, up to
   # the harness's program: the realm's folders, the host's node with the
-  # inspector shut, and its heap. `rest` comes after the program.
+  # inspector shut, and its heap, then node's own `flags`. `rest` comes
+  # after the program.
   startOf =
-    host: heapMb: rest:
+    host: heapMb: flags: rest:
     lib.escapeShellArgs (
       # Environment= can only replace PATH, so env puts the realm's folders
       # before the user manager's; systemd expands ${PATH}, and env execs
@@ -93,7 +98,7 @@ let
         }:\${PATH}"
       ]
       ++ [ host.node ]
-      ++ launch.words config host heapMb rest
+      ++ launch.words config host heapMb flags rest
     );
 
   # A conversation's allocator tuning, for one in a unit of its own (so on
@@ -271,6 +276,7 @@ let
     realm: host: kind:
     let
       key = "${realm}-${kind}";
+      growthTaken = growthTakenOf realm host;
     in
     {
       name = "pi-conversation-${key}@";
@@ -290,11 +296,19 @@ let
           # instance that failed is forgotten rather than listed for good.
           # A [Unit] setting: systemd ignores it under [Service].
           CollectMode = "inactive-or-failed";
+        }
+        // lib.optionalAttrs (host.conversationHeapGrowingPercent != null) {
+          # Unread by systemd: it ties the generation to a build that runs the
+          # realm's node with the percent, so a node that refuses it fails the
+          # switch by name rather than ending each conversation as it starts.
+          X-HeapGrowthTakenBy = "${growthTaken}";
         };
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
-          ExecStart = startOf host host.conversationHeapMb [ "--child" ];
+          ExecStart = startOf host host.conversationHeapMb (lib.optional (
+            host.conversationHeapGrowingPercent != null
+          ) "--heap-growing-percent=${toString host.conversationHeapGrowingPercent}") [ "--child" ];
           Environment = environmentOf realm host false (
             {
               PI_HOST_CHILD_KEY = key;
@@ -365,7 +379,7 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = startOf host host.heapMb [ kind ];
+        ExecStart = startOf host host.heapMb [ ] [ kind ];
         # The stop limit below, which the host parks within, and what its
         # restart waits on (host-launch.nix's hostOwn).
         Environment = environmentOf realm host true (launch.hostOwn restartWaitsOn);
@@ -521,6 +535,54 @@ in
               conversation's own, so unlike heapMb they don't add up to a
               share of agents.slice: the slice's ceiling slows them all
               together once they pass it.
+            '';
+          };
+          conversationHeapGrowingPercent = lib.mkOption {
+            type = lib.types.nullOr (lib.types.ints.between 10 100);
+            default = null;
+            description = ''
+              How far each conversation's own process lets its heap grow past
+              what it held live after a full collection before it collects in
+              full again, in percent, as node's --heap-growing-percent: V8 then
+              grows each limit by one plus the percent over a hundred, in place
+              of the factor it would pick. It still grows a limit by at least a
+              few megabytes past what is live, adds room for the young
+              generation and stops halfway from what is live to the heap
+              limit, so a small heap grows by more than the percent. Unset,
+              with a heap limit of 2048 MB or more, as conversationHeapMb's
+              default is, V8 lets the heap reach up to four times what is live
+              while collections keep up, and carries that growth as resident
+              memory between collections, but grows by a tenth after a
+              collection that gives memory back. Set, the percent stands in for
+              both. A lower percent collects more often, keeping less resident
+              for more collection time; it starts at 10, the tenth V8 itself
+              grows by at its lowest, and stops at 100, since more would grow
+              past V8's own choice more often. It reaches only conversations in
+              a unit of their own, on Linux: hosts, and a Mac's pi, keep V8's
+              own growth. A node that doesn't know the flag refuses it as a bad
+              option, which would end each conversation as it starts, so the
+              generation builds the realm's node running with it first, and a
+              node that refuses it, fails another way or doesn't end within a
+              minute fails the switch by name. So the realm's node must be a
+              program its build can run, from the store and with its context,
+              as lib.getExe gives one. A machine built on another platform,
+              whose builder can't run its programs, goes without that proof,
+              and warns of it unless conversationHeapGrowthMayGoUnproven is
+              set.
+            '';
+          };
+          conversationHeapGrowthMayGoUnproven = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Whether a machine built on another platform may go without the
+              proof that the realm's node takes conversationHeapGrowingPercent,
+              saying nothing. Its builder can't run the node, so the proof
+              stands unproven, and the machine warns of it, which a check that
+              a machine evaluates without warnings refuses. Set it once the
+              node is known to take the percent, as one built the same way on
+              the machine's own platform shows. A machine built on its own
+              platform is proven either way.
             '';
           };
           asyncContextFrame = lib.mkOption {
@@ -679,9 +741,27 @@ in
         assertion = given == [ ];
         message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
           if one then "Drop it." else "Drop each one."
-        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
+        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
+
+  # A realm whose proof stands unproven, as on a machine built on another
+  # platform, says so here, since its switch can't.
+  config.warnings = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+    lib.concatLists (
+      lib.mapAttrsToList (
+        realm: host:
+        let
+          growthTaken = growthTakenOf realm host;
+        in
+        lib.optional (
+          host.conversationHeapGrowingPercent != null
+          && growthTaken ? unproven
+          && !host.conversationHeapGrowthMayGoUnproven
+        ) growthTaken.unproven
+      ) cfg
+    )
+  );
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (

@@ -1515,8 +1515,8 @@ in
         source = "sound";
         weight = 0.9;
       };
-      # Every media player and what it plays, beside Sound, which holds the
-      # devices it plays through.
+      # Every media player and what it plays, apart from Sound in Machine,
+      # which holds the devices it plays through.
       media = {
         order = 103;
         source = "media";

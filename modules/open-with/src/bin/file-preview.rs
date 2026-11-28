@@ -550,18 +550,20 @@ mod tests {
 
     #[test]
     fn text_cut_short_leaves_out_the_line_it_was_cut_in() {
-        let mut read = "a line\n".repeat(600).into_bytes();
+        // Lines of 300 bytes, so the read holds 13 whole and cuts the 14th,
+        // fewer than it would show.
+        let line = format!("{}\n", "a".repeat(299));
+        let mut read = line.repeat(20).into_bytes();
         read.truncate(READ + 1);
         let lines = lines_of(&read).unwrap();
-        assert_eq!(lines.len(), LINES);
-        assert!(lines.iter().all(|line| line == "a line"));
+        assert_eq!(lines.len(), READ / line.len(), "the line it cut was shown");
     }
 
     #[test]
     fn a_character_cut_by_the_read_is_still_text() {
         let mut read = vec![b'a'; READ - 1];
         read.extend("é\n".as_bytes());
-        assert!(lines_of(&read).is_some());
+        lines_of(&read).expect("a read ending in a character it cut was taken for no text");
     }
 
     #[test]
@@ -613,7 +615,16 @@ mod tests {
         assert_eq!(said.len(), 4);
         assert_eq!(said[0]["count"], 2);
         assert_eq!(said[1], json!({}));
-        assert!(said[2]["error"].as_str().unwrap().contains("gone"));
+        let error = said[2]["error"].as_str().unwrap_or_else(|| {
+            panic!(
+                "a missing path should be answered with an error: {}",
+                said[2]
+            )
+        });
+        assert!(
+            error.contains("gone"),
+            "a missing path's error should name it: {error}"
+        );
         assert_eq!(said[3]["error"], USAGE);
         fs::remove_dir_all(folder).unwrap();
     }
@@ -638,16 +649,20 @@ mod tests {
                 .unwrap();
         }
         fs::write(folder.join(".being-made.png"), [0; 10]).unwrap();
+        let left = || {
+            let mut left: Vec<String> = fs::read_dir(&folder)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            left.sort();
+            left
+        };
         pruned(&folder, 20);
-        let mut left: Vec<String> = fs::read_dir(&folder)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        left.sort();
-        assert_eq!(left, [".being-made.png", "mid.png", "new.png"]);
-        // However small the cap, the one just made, the newest, is kept.
+        assert_eq!(left(), [".being-made.png", "mid.png", "new.png"]);
+        // However small the cap, the one just made, the newest, is kept,
+        // and one still being made is left alone.
         pruned(&folder, 0);
-        assert!(folder.join("new.png").is_file());
+        assert_eq!(left(), [".being-made.png", "new.png"]);
         fs::remove_dir_all(folder).unwrap();
     }
 

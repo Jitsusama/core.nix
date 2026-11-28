@@ -10,7 +10,7 @@
       "id": "light:desk:warmth",
       "in": "light",
       "name": "Warmth",
-      "term": "Desktop/warmth"
+      "term": "Machine/warmth"
     },
     {
       "id": "light:desk:output",

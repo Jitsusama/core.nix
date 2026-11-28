@@ -28,10 +28,8 @@ pub fn pass(commit: &str, main: &str) -> Option<String> {
             .status()
             .is_ok_and(|status| status.success())
     };
-    let ready::Before::Clean(checked) = judged(commit, main, &on_main).ok()?.before else {
-        return None;
-    };
-    Some(ready::record(&checked))
+    let before = judged(commit, main, &on_main).ok()?.before;
+    Some(ready::record(before.speaker()?))
 }
 
 /// What `ready` knows of a head's change from its earlier commits: where
@@ -48,6 +46,25 @@ pub struct Judged {
 /// own, from the earlier commits of its change, `on_main` saying whether
 /// a run's base is on main.
 pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<Judged, String> {
+    judged_among(
+        commit,
+        main,
+        on_main,
+        &ready::recent_records(),
+        &ready::record,
+    )
+}
+
+/// [`judged`], reading the earlier runs from the `recent` commits that
+/// have a record and from what `record` says of each, as the train adds
+/// the reds it excused to nix-offload's passes.
+pub fn judged_among(
+    commit: &str,
+    main: &str,
+    on_main: &dyn Fn(&str) -> bool,
+    recent: &[String],
+    record: &dyn Fn(&str) -> String,
+) -> Result<Judged, String> {
     // The change is what the head adds to the main it branched from, which
     // is main itself unless the head is behind it.
     let branched = git(&["merge-base", main, commit])?;
@@ -116,32 +133,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
             shared_since(candidate, base)
         })
     };
-    let names_gone = |candidate: &str| {
-        let (since, taken_away) = since(&base_of(candidate)?)?;
-        let main_side = ready::Side {
-            changed: &since,
-            gone: &taken_away,
-            text: &at_main,
-        };
-        let mut naming = ready::names_gone(&branch, &main_side);
-        naming.extend(crates.beside(&files, &since));
-        Some(naming)
-    };
-    let candidates = ready::speakers(
-        commit,
-        behind,
-        &candidates(commit, main, &files, &ready::recent_records())?,
-    );
-    let before = match ready::checked_before(&candidates, &ready::record, on_main, &same) {
-        // Main renamed or deleted a path one side names, which neither
-        // run saw, so it runs again as a change checked once would.
-        ready::Before::Twice(newest, _, shared)
-            if !names_gone(&newest).is_some_and(|naming| naming.is_empty()) =>
-        {
-            ready::Before::Shares(newest, shared)
-        }
-        before => before,
-    };
+    let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files, recent)?);
+    let before = ready::checked_before(&candidates, record, on_main, &same);
     Ok(Judged {
         stands,
         behind,

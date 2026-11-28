@@ -475,6 +475,15 @@ impl Live {
         self.follow.heard()
     }
 
+    /// The ceiling the upload of the link the controller holds is held
+    /// under, in kbit/s, where one is: the lowest of a trial's, its
+    /// network's and its house's steady one, as `poll` caps the rate by,
+    /// from a stay's start, whether or not a second has been stepped on
+    /// (exact ceiling round 1's F3 and F13).
+    pub fn ceiling(&self) -> Option<u64> {
+        self.follow.tuning().most_kbit.map(crate::rate::whole)
+    }
+
     /// The link the recorder follows and what it carried down in its last
     /// second, while that second is fresh at `now` (`Follow::carried`).
     pub fn carried(&self, now: SystemTime) -> Option<Carried<'_>> {
@@ -878,6 +887,15 @@ mod tests {
         let lines = flow_queued(NOV3);
         follow.take(&parse(&lines[0]).expect("a sample"));
         assert_eq!(up(&follow, NOV3), Some(9_500), "the stay's first line");
+        // What `Live::ceiling` reads: the ceiling stands before a second
+        // is stepped on, when nothing is heard yet (exact ceiling round
+        // 2's F2).
+        assert!(follow.heard().is_none(), "nothing heard yet");
+        assert_eq!(
+            follow.tuning().most_kbit,
+            Some(9_500.0),
+            "the ceiling before a second"
+        );
         assert_eq!(follow.controller.up.limit(), Some(9_500), "its start");
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));

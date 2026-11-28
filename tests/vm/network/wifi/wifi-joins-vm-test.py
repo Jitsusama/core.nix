@@ -277,15 +277,43 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """And hears an account say a call is on, and over, naming the process that said it."""
+    # The ask comes the way wifid.acting sends it, from the backdoor's shell through runuser,
+    # whose PAM here starts no session, so its cgroup is the one this lands in: the
+    # backdoor's own unit (2026-11-26), never wifid's.
+    asker = machine.succeed("runuser -u guest -- cat /proc/self/cgroup").strip()
+    path = asker.removeprefix("0::/")
+    assert path.split("/")[0] in {"user.slice", "system.slice"}, f"in no slice: {asker}"
+    assert "/session-" not in path, (
+        f"runuser started a session, so the probe and the ask land in scopes of their own: {path}"
+    )
+    print(f"an ask from guest runs in {path}")
+    # A path holds only what a unit's name may, so a dot and a backslash are all grep's
+    # pattern must escape; re.escape's `\-` draws grep's stray-backslash warning.
+    # The backslash goes first, so the ones escaping the dots aren't doubled.
+    cgroup = path.replace("\\", "\\\\").replace(".", "\\.")
+    uid = machine.succeed("id -u guest").strip()
     for on, stands in ((True, "on"), (False, "over")):
         answer = wifid.acting({"act": "calling", "on": on})
         assert answer == {"id": 1, "done": True}, answer
-        # Any process of the wifi group's may say it, so each change names who did.
-        machine.wait_until_succeeds(
-            "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-            f" | grep -qE '^pid [0-9]+ \\([^)]+\\) says a call is {stands}$'",
-            timeout=timedelta(seconds=10),
-        )
+        # Any process of the wifi group's may say it, so each change names who did, by its
+        # uid and its cgroup's path, which tells a user's unit from a system one of a name.
+        who = f"^pid [0-9]+, uid {uid} \\({cgroup}\\)"
+        try:
+            machine.wait_until_succeeds(
+                "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+                f" | grep -E '{who} says a call is {stands}$'",
+                timeout=timedelta(seconds=10),
+            )
+        except Exception as missed:
+            # Every run of wifid's is read, each line with the pid that said it, beside the
+            # pid it runs as now, so a restart since the ask shows as one rather than as
+            # wifid having said nothing.
+            said = machine.succeed(
+                "systemctl show -p MainPID wifid;"
+                " journalctl -o short-precise -u wifid | grep -E 'says a call is|Started' || true"
+            )
+            message = f"no line names {path} saying the call is {stands}; wifid said:\n{said}"
+            raise AssertionError(message) from missed
 
 
 @pytest.mark.usefixtures("wifid")

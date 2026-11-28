@@ -78,14 +78,16 @@ Scope {
     // shell's thread did while it searched. A key slow enough to
     // feel is said in the journal too, with what was typed while reports
     // are on and how many letters otherwise, a `step` keeping its arrow
-    // (Presented.timedShown) and a key that's the launcher's `own`, an
-    // arrow or a vi move, said whole, so what's slow can be read as Joel
-    // types. Nothing asked for, such as a password, is ever timed.
-    function timed(searched, drawn, parts, typed, frame, step, own) {
+    // and saying the row it took by `stepKey` where that's the launcher's
+    // own place or a program (Presented.timedShown), and a key that's the
+    // launcher's `own`, an arrow or a vi move, said whole, so what's slow
+    // can be read as Joel types. Nothing asked for, such as a password, is
+    // ever timed.
+    function timed(searched, drawn, parts, typed, frame, step, own, stepKey) {
         trial = Trials.timed(trial, searched, drawn, parts);
         const whole = Options.reports || own === true;
         if (Trials.felt(drawn))
-            console.info(`launcher: ${Presented.timedShown(typed, step, whole)} took`
+            console.info(`launcher: ${Presented.timedShown(typed, step, whole, stepKey)} took`
                 + ` ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts
                     ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
@@ -97,7 +99,7 @@ Scope {
                         ? `, waiting ${parts.waited} on answers${Trials.behindSaid(parts)}`
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
-                    + " drawing it" + drawingApart(frame) + collecting(frame, drawn)
+                    + " drawing it" + Thread.drawingApart(frame) + collecting(frame, drawn)
                     + framesBeforeSaid(frame)
                     + Thread.said(searched, frame.thread, "its searching") : ""));
     }
@@ -112,19 +114,8 @@ Scope {
             : `, the collector ${frame.collecting} ms of the ${drawn}`;
     }
 
-    // What drawing it was, by the render thread's times of its frame where
-    // they were read: its polish and sync, its render and swap, and the GUI
-    // thread hearing the swap late, which the three add up to. The last is
-    // said as the swap heard, never the key, since a key's presented line
-    // says "before the shell heard it" of the key, and Joel's "wi", 64 ms
-    // here, was read as a key heard late (2026-11-12).
-    function drawingApart(frame) {
-        return frame.syncing === undefined ? "" : ` (${frame.syncing} syncing,`
-            + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it swapped)`;
-    }
-
     // The frames begun before a key's own, read only for a key slow enough
-    // to be said, and only where its frame's number held (drawingApart's
+    // to be said, and only where its frame's number held (Thread.drawingApart's
     // split), since they're counted back from it.
     function framesBeforeSaid(frame) {
         return frame.syncing === undefined || !frame.timesOf ? ""

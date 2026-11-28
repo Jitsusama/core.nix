@@ -16,7 +16,7 @@ diff --git a/drivers/gpu/drm/display/drm_dp_mst_topology.c b/drivers/gpu/drm/dis
 index 7ce9e21..7154589 100644
 --- a/drivers/gpu/drm/display/drm_dp_mst_topology.c
 +++ b/drivers/gpu/drm/display/drm_dp_mst_topology.c
-@@ -6104,6 +6104,14 @@ struct drm_dp_aux *drm_dp_mst_dsc_aux_for_port(struct drm_dp_mst_port *port)
+@@ -6118,6 +6118,14 @@ struct drm_dp_aux *drm_dp_mst_dsc_aux_for_port(struct drm_dp_mst_port *port)
  	if (!port)
  		return NULL;
  

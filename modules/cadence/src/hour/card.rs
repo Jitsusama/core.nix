@@ -1,9 +1,14 @@
 //! The hour's card: each measure against its target, the one biggest
 //! drag, what became of last hour's, and Joel's misses, open or fixed;
 //! and what the next hour keeps of it to say so.
+//!
+//! Long because its cases are over half of it: each way a card has told
+//! Joel wrong, or the next hour forgot what this one saw, has its own.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::path::Path;
+use std::{fs, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +49,32 @@ pub struct Kept {
     /// read as unread rather than as none of his asks.
     #[serde(default)]
     pub asks: Seen,
+    /// Why what the last hour kept couldn't be read, so this hour says the
+    /// asks list unread rather than read against nothing seen of it. Never
+    /// kept: the hour after reads what this one saw.
+    #[serde(skip)]
+    pub unread: Option<String>,
+}
+
+impl Kept {
+    /// What the last hour kept at `path`, or nothing kept when it isn't
+    /// there. One there that won't read is said, as starting from nothing
+    /// kept forgets what the hour saw of the asks list and so reads one
+    /// written over as whole, and leaves this hour's asks unread.
+    pub fn last(path: &Path) -> Self {
+        let read = match fs::read_to_string(path) {
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Self::default(),
+            Err(err) => Err(err.to_string()),
+            Ok(text) => serde_json::from_str(&text).map_err(|err| err.to_string()),
+        };
+        read.unwrap_or_else(|err| {
+            eprintln!("cadence: the hour kept can't be read, so it starts from nothing: {err}");
+            Self {
+                unread: Some("what the last hour saw of it can't be read".to_owned()),
+                ..Self::default()
+            }
+        })
+    }
 }
 
 /// How many misses told fixed the hour keeps, newest last.
@@ -186,6 +217,7 @@ pub fn compose(
         out: kept.out.clone(),
         out_told: kept.out_told.clone(),
         asks: kept.asks,
+        unread: None,
     };
     (card, next)
 }
@@ -773,6 +805,39 @@ mod tests {
         assert!(
             card.contains("to each file's owner by"),
             "a clean drag whose files have owners named one owner: {card}"
+        );
+    }
+
+    /// What the hour saw of the asks list goes on to the next through
+    /// `hour.json`, so a list written over is read as unread, not as none.
+    #[test]
+    fn what_the_hour_saw_of_the_asks_is_kept_for_the_next() {
+        let kept = Kept {
+            asks: Seen {
+                most: 853,
+                short_since: Some(1_794_700_000),
+            },
+            ..Kept::default()
+        };
+        let none_open = measure("misses", Class::Miss, 0.0, Some(0.0));
+        let (_, next) = compose("06:10", &[none_open], &kept, &none(), "");
+        assert_eq!(
+            next.asks, kept.asks,
+            "the hour forgot what it saw of the asks"
+        );
+        let written = serde_json::to_string(&next).expect("the hour is written");
+        let read: Kept = serde_json::from_str(&written).expect("the hour is read back");
+        assert_eq!(
+            read.asks, kept.asks,
+            "hour.json lost what the hour saw of the asks"
+        );
+        // As an hour.json already on the machine says it, so a renamed key
+        // isn't read as nothing seen by the first hour after a switch.
+        let on_disk = r#"{"asks":{"most":853,"short_since":1794700000}}"#;
+        let read: Kept = serde_json::from_str(on_disk).expect("an hour.json as kept");
+        assert_eq!(
+            read.asks, kept.asks,
+            "an hour.json as kept no longer reads what the hour saw of the asks"
         );
     }
 }

@@ -1,6 +1,8 @@
 # What more than one of the folder's checks uses: stand-ins, the shell as the
 # account gets it, and the harnesses that run the shell offscreen or on niri.
-# Each place's file takes what it needs of these by name.
+# Each place's file takes what it needs of these by name, as do the reader's,
+# mpv's, Inkscape's and Spotify's launcher checks, which import it with the
+# arguments every folder's checks get.
 {
   account,
   bareNixos,
@@ -15,47 +17,79 @@ let
   # What each file the checks copy imports of the shell's own (imports.nix).
   imports = import ./imports.nix;
   # A path under modules/quickshell, as an import in a file in folder names it.
+  # One climbing out of the folder keeps its leading .., so it names no file
+  # there rather than stopping evaluation.
   under =
     folder: path:
     lib.concatStringsSep "/" (
-      lib.foldl' (kept: part: if part == ".." then lib.init kept else kept ++ [ part ]) [ ] (
-        lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}")
-      )
+      lib.foldl' (
+        kept: part:
+        if part == ".." && kept != [ ] && lib.last kept != ".." then lib.init kept else kept ++ [ part ]
+      ) [ ] (lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}"))
     );
-  # What a QML or JavaScript file imports of the shell's own, as it says.
-  importing =
-    file:
-    lib.unique (
-      lib.concatMap (
-        line:
-        let
-          named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
-        in
-        if named == null then [ ] else [ (under (dirOf file) (lib.head named)) ]
-      ) (lib.splitString "\n" (builtins.readFile (../. + "/${file}")))
-    );
-  # Copies each file a check names into the folder it runs in, where the
-  # shell's folder holds it, with everything it imports, once each. A file
-  # whose imports aren't what imports.nix says fails the check instead,
-  # naming what differs, so the table can't drift from the files. The
-  # launcher's words.json is the one its places' files join to
-  # (launcher/words.nix), as the shell reads it. Options.qml, which the
-  # account's configuration writes, is a stand-in holding only whether
-  # reports are on, and they're off, as on a machine that hasn't chosen,
-  # for a check whose files say a line by it (Presented.rowShown).
-  copied =
-    files:
+  # Each import a QML or JavaScript file placed at file in the shell's
+  # folder names, as written and as the shell's folder places it.
+  importsOf =
+    source: file:
+    lib.concatMap (
+      line:
+      let
+        named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
+      in
+      if named == null then
+        [ ]
+      else
+        [
+          {
+            written = lib.head named;
+            placed = under (dirOf file) (lib.head named);
+          }
+        ]
+    ) (lib.splitString "\n" (builtins.readFile source));
+  # What a QML or JavaScript file placed at file in the shell's folder
+  # imports of the shell's own, as its source says.
+  importingFrom = source: file: lib.unique (map (named: named.placed) (importsOf source file));
+  # What one of the shell's own files imports of the shell's own.
+  importing = file: importingFrom (../. + "/${file}") file;
+  # Every file the walk from files reaches through the table, each once,
+  # sorted.
+  everyWith =
+    table: files:
     let
       bring =
         seen: file:
-        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (imports.${file} or [ ]);
-      every = lib.sort lib.lessThan (lib.foldl' bring [ ] files);
-      wrong = lib.filter (
-        file:
-        (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
-        && file != "Options.qml"
-        && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
-      ) every;
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
+    in
+    lib.sort lib.lessThan (lib.foldl' bring [ ] files);
+  # Of the files a walk reached, those whose imports aren't what the table
+  # says, in whatever order its row lists them.
+  wrongIn =
+    table:
+    lib.filter (
+      file:
+      (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+      && file != "Options.qml"
+      && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
+    );
+  # The files the walk from files reaches whose imports aren't what the
+  # table says, which copiedWith refuses.
+  wrongWith = table: files: wrongIn table (everyWith table files);
+  # Copies each file a check names into the folder it runs in, where the
+  # shell's folder holds it, with everything it imports, once each. A file
+  # whose imports aren't what imports.nix says, in whatever order its row
+  # lists them, fails the check instead, naming what differs, so the table
+  # can't drift from the files. The launcher's words.json is the one its
+  # places' files join to (launcher/words.nix), as the shell reads it.
+  # Options.qml, which the account's configuration writes, is a stand-in
+  # holding only whether reports are on, and they're off, as on a machine
+  # that hasn't chosen, for a check whose files say a line by it
+  # (Presented.rowShown). The table is given, so a check can give it another
+  # (core.nix's a-check-copies-what-each-file-imports).
+  copiedWith =
+    table: files:
+    let
+      every = everyWith table files;
+      wrong = wrongIn table every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
       options = singleton "Options.qml" "readonly property bool reports: false";
@@ -75,9 +109,103 @@ let
       )
     else
       ''
-        echo "imports.nix doesn't say what these import: ${lib.concatStringsSep ", " wrong}" >&2
+        # Named in full, since a program's check that fails here lives in another folder.
+        echo "modules/quickshell/checks/imports.nix doesn't say what these import:" \
+          "${lib.concatStringsSep ", " wrong}" \
+          "(under modules/quickshell; make each one's row there list what it imports)" >&2
         exit 1
       '';
+  copied = copiedWith imports;
+  # The shell's files a program's step in the launcher is drawn from, as
+  # Applications.qml holds it, for the reader's, mpv's and Inkscape's
+  # checks. imports.nix sees only a file's import lines, so a type taken
+  # from its own folder or through `import qs` is named here by hand, as
+  # Applications.qml takes Provider and ReadyRows, and a program's own file
+  # takes Listed and Words. What each imports comes with it, guarded.
+  programRoots = [
+    "Copied.qml"
+    "Daemon.qml"
+    "Files.qml"
+    "Options.qml"
+    "Words.qml"
+    "launcher/Applications.qml"
+    "launcher/Listed.qml"
+    "launcher/Provider.qml"
+    "launcher/ReadyRows.qml"
+    "launcher/Recents.qml"
+    "launcher/words.json"
+  ];
+  # Copies a program's step in the launcher: the roots, then the program's
+  # own files, by where the shell's folder holds each, with every shell file
+  # they import and what that imports, guarded as copied guards it, so an
+  # import added to Reader.js comes with it, as it does when the account's
+  # shell is made. An import the shell's folder doesn't hold as a file, nor
+  # the program, fails the check instead, naming the file, the import as
+  # written and what to do for its kind: a missing file, a folder, one
+  # above the shell's folder, or one written from the root. So does an own
+  # file given by anything but its plain place there, which would be copied
+  # elsewhere. The table and the roots are given, so a check can give it
+  # others: Spotify's, whose files nothing reaches through Applications.qml,
+  # and core.nix's a-check-copies-what-each-file-imports.
+  programStepWith =
+    table: roots: own:
+    let
+      placed = lib.attrNames own;
+      found = lib.concatLists (
+        lib.mapAttrsToList (file: source: map (one: one // { inherit file; }) (importsOf source file)) own
+      );
+      shells = lib.filter (file: !(lib.elem file placed)) (lib.unique (map (one: one.placed) found));
+      climbs = file: lib.elem ".." (lib.splitString "/" file);
+      # The program's own files given by anything but their plain place in
+      # the shell's folder (none climbing, none from the root, no . or
+      # empty part), which would be copied elsewhere than where it is said.
+      outside = lib.filter (file: climbs file || under "." file != file) placed;
+      rooted = one: lib.hasPrefix "/" one.written;
+      # Why the shell's folder can't give a check what an import names, and
+      # what can be done instead, or null when it can. A file above the
+      # shell's folder can't be given even as the program's own.
+      unheld =
+        file:
+        let
+          path = ../. + "/${file}";
+        in
+        if climbs file then
+          "above modules/quickshell, where a check can't be given a file; move it in"
+        else if !(builtins.pathExists path) then
+          "not in modules/quickshell; fix the import, or add it to the program's own files as ${file}"
+        else if builtins.readFileType path != "regular" then
+          "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)"
+        else
+          null;
+      strays = lib.filter (
+        one: rooted one || climbs one.placed || !(lib.elem one.placed placed) && unheld one.placed != null
+      ) found;
+      why =
+        one:
+        if rooted one then
+          "written from the root, where a check can't be given a file; write it from this file"
+        else
+          unheld one.placed;
+      said = one: "the program's file at ${one.file} imports \"${one.written}\": ${why one}";
+      saidOutside =
+        file:
+        "the program's own file given as \"${file}\": not its plain place in modules/quickshell; give it as that place, as launcher/Reader.js";
+      folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
+    in
+    if strays == [ ] && outside == [ ] then
+      lib.concatStringsSep "\n" (
+        [ (copiedWith table (lib.unique (roots ++ shells))) ]
+        ++ lib.optional (folders != [ ]) "mkdir -p ${lib.escapeShellArgs folders}"
+        ++ lib.mapAttrsToList (file: source: "cp ${source} ${lib.escapeShellArg file}") own
+      )
+    else
+      ''
+        echo "A program's own files can't be given to the check as they are:" >&2
+        ${lib.concatMapStrings (file: "echo ${lib.escapeShellArg (saidOutside file)} >&2\n") outside}
+        ${lib.concatMapStrings (one: "echo ${lib.escapeShellArg (said one)} >&2\n") strays}
+        exit 1
+      '';
+  programStep = programStepWith imports programRoots;
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -625,6 +753,11 @@ in
 {
   inherit
     copied
+    copiedWith
+    wrongWith
+    programRoots
+    programStep
+    programStepWith
     timedQml
     singleton
     qs

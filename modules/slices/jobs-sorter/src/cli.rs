@@ -5,7 +5,7 @@
 use terminal_kit::{Exit, Failure, Help};
 
 /// Every flag the sorter takes, each with a value, as its units give it.
-const FLAGS: [(&str, &str); 29] = [
+const FLAGS: [(&str, &str); 31] = [
     (
         "--under SLICE[=CGROUP]",
         "a slice of terminals it watches, and where their busy work goes; app.slice",
@@ -84,6 +84,14 @@ const FLAGS: [(&str, &str); 29] = [
     (
         "--door CGROUP",
         "a cgroup whose new Nix work waits while memory is short",
+    ),
+    (
+        "--ceiling SLICE=PERCENT",
+        "a slice whose memory ceiling rises from PERCENT while --spare slices don't wait",
+    ),
+    (
+        "--spare SLICE",
+        "a slice whose wait on memory brings the --ceiling back down",
     ),
     (
         "--calls PW-DUMP",

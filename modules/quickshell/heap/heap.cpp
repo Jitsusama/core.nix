@@ -70,17 +70,21 @@
 // until the next collection let one opening of Joel's shell run two whole
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
 // (2026-11-19). A miss never starts the collector later than twice the room
-// past what the chunks held at the first ask since a collection ended, nor
-// sooner than Qt itself would, so a heap whose sweeps keep a few items in
-// each chunk it grew into doesn't grow by the room at every one; an ask
+// past what the chunks held at the first ask since a collection ended, and
+// twice what the sweeps kept beyond what the last kept then, nor sooner than Qt
+// itself would, so a heap whose sweeps keep a few items in each chunk it
+// grew into doesn't grow by the room at every one, and one kept past the
+// two rooms isn't collected at every miss: two of Joel's openings, their
+// items too large for the runs the sweeps left, spent 1955 and 1949 ms of
+// their 3269 and 3320 collecting once for each chunk (2026-11-25); an ask
 // with no collection since the last, the opening's after the closing's or
 // one for another room, shares its ceiling; and it reckons from what each
 // sweep left, not from where leaveRoom set it, so asking twice leaves the
 // room once. weigh() says where the next starts. Every ask after a
 // collection moves the ceiling, so such a heap may climb by twice the room
-// at each: four rooms between closings when one ran while the launcher was
-// shut, six with the census, where main let it climb by the room at each
-// ask. The closing's line says what it holds.
+// at each, and twice what its sweeps kept: four rooms between closings when
+// one ran while the launcher was shut, six with the census, besides what
+// was kept, where main let it climb by the room at each ask. The closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,
@@ -335,6 +339,10 @@ QVariantMap Heap::weigh() const {
     const std::optional<std::size_t> resident = residentHeld(*manager);
     const std::optional<std::size_t> freeObjects = freePages(manager->blockAllocator);
     const std::optional<std::size_t> freeShapes = freePages(manager->icAllocator);
+    // A chunk the kernel won't say the pages of makes free unknown, rather
+    // than nothing, as it does resident.
+    const double freeMB =
+        freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0;
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
@@ -343,9 +351,7 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
-        // A chunk the kernel won't say the pages of makes free unknown, rather
-        // than nothing, as it does resident.
-        {QStringLiteral("free"), freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0},
+        {QStringLiteral("free"), freeMB},
     };
 }
 
@@ -353,9 +359,17 @@ QVariantMap Heap::standing() const {
     const QV4::MemoryManager *manager = engine->handle()->memoryManager;
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    // Twice the room past what the chunks held at the ask, where the
+    // ceiling sits until the sweeps keep more than the last one did, so a
+    // line saying it beside `collectsAt` says which set where the collector
+    // starts; none while no room is left.
+    const std::size_t room = manager->roomAfterSweep / QV4::Chunk::SlotSize;
+    const std::size_t roomsCap = manager->slotsHeldWhenRoomLeft + 2 * room;
     return {
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("roomsCapAt"),
+         room == 0 ? -1.0 : megabytes(roomsCap * QV4::Chunk::SlotSize)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("collecting"), manager->gcStateMachine->inProgress()},
@@ -428,10 +442,12 @@ enum class Made : std::uint8_t { Unknown, Nothing, Closure, Context };
 
 // How many bytes and items of one class, shape or place are live, and for a
 // shape, what its items say of their code, worked out once for each shape
-// so no other item pays for it.
+// so no other item pays for it; and for a tally that asks for it, the bytes
+// of string text outside the heap that would go with its items.
 struct Tally {
     double bytes = 0;
     double count = 0;
+    double outside = 0;
     Made made = Made::Unknown;
 };
 
@@ -663,10 +679,13 @@ bool isA(const QV4::VTable *vtable, const QV4::VTable *kind) {
 }
 
 // A chunk whose marks are read, and for a large item's own chunk, its bytes,
-// since its slots run past what the chunk's bitmaps say.
+// since its slots run past what the chunk's bitmaps say; and whether its
+// items may be strings, as only the items' allocator's are, since a shape's
+// item is never read as an object.
 struct Marked {
     QV4::Chunk *chunk;
     std::size_t largeBytes;
+    bool strings;
 };
 
 // The chunks of every allocator, so what marking sets can be read and
@@ -674,13 +693,36 @@ struct Marked {
 std::vector<Marked> markedChunks(const QV4::MemoryManager *manager) {
     std::vector<Marked> chunks;
     for (QV4::Chunk *chunk : manager->blockAllocator.chunks)
-        chunks.push_back({chunk, 0});
+        chunks.push_back({chunk, 0, true});
     for (QV4::Chunk *chunk : manager->icAllocator.chunks)
-        chunks.push_back({chunk, 0});
+        chunks.push_back({chunk, 0, false});
+    // Qt makes every string in the items' allocator, a few slots each, so
+    // no large item is one.
     for (const auto &huge : manager->hugeItemAllocator.chunks)
-        chunks.push_back({huge.chunk, huge.size});
+        chunks.push_back({huge.chunk, huge.size, false});
     return chunks;
 }
+
+// The bytes of text a string keeps outside the heap that destroying it would
+// free, so a holder of long strings isn't read as small while it keeps
+// megabytes there. Qt counts a string's text into the heap's unmanaged size
+// as its length in QChars when it's made, and takes as much out when it's
+// destroyed (Heap::String::init and StringOrSymbol::destroy); one made by
+// adding or slicing others keeps no text of its own until it's flattened,
+// and the strings it's made of are items of their own. Text another QString
+// shares outlives the item, as does static text, which has no count, so
+// either is none. A symbol's text isn't counted, as Qt counts none in.
+std::size_t textFreed(const QV4::Heap::Base *item) {
+    if (item->internalClass == nullptr || item->internalClass->vtable->isString == 0)
+        return 0;
+    const auto *string = static_cast<const QV4::Heap::String *>(item);
+    return string->text().isShared() ? 0 : string->retainedTextSize();
+}
+
+// Whether a tally of what's newly marked counts the text its strings keep
+// outside the heap, which only freedBy() asks for: every other count reads
+// only the marks, and pays nothing for it.
+enum class Text : std::uint8_t { Skipped, Counted };
 
 // What's newly marked since it last looked, so each holder's share is what
 // marking from it alone added: it keeps a copy of every chunk's marks, and
@@ -700,7 +742,7 @@ public:
         return false;
     }
 
-    void take(Tally &into) {
+    template <Text text = Text::Skipped> void take(Tally &into) {
         using QV4::Chunk;
         for (std::size_t at = 0; at < chunks.size(); ++at) {
             const Marked &each = chunks[at];
@@ -716,11 +758,17 @@ public:
                 while (fresh != 0) {
                     const auto bit = static_cast<std::size_t>(std::countr_zero(fresh));
                     fresh &= fresh - 1;
+                    const std::size_t index = word * Chunk::Bits + bit;
                     into.bytes += static_cast<double>(
                         each.largeBytes != 0 ? each.largeBytes
-                                             : span(each.chunk, word * Chunk::Bits + bit) *
-                                                   Chunk::SlotSize);
+                                             : span(each.chunk, index) * Chunk::SlotSize);
                     into.count += 1;
+                    if constexpr (text == Text::Counted) {
+                        if (each.strings)
+                            into.outside += static_cast<double>(
+                                textFreed(reinterpret_cast<QV4::Heap::Base *>(
+                                    each.chunk->realBase() + index)));
+                    }
                 }
             }
         }
@@ -1093,6 +1141,7 @@ QVariantMap Heap::freedBy(const QString &holder) const {
     if (own.isEmpty())
         return {{QStringLiteral("held"), false},
                 {QStringLiteral("freed"), 0.0},
+                {QStringLiteral("outside"), 0.0},
                 {QStringLiteral("count"), 0.0},
                 {QStringLiteral("ms"), static_cast<double>(clock.nsecsElapsed()) / 1e6},
                 {QStringLiteral("said"), QStringLiteral("no property holds anything so named")}};
@@ -1145,19 +1194,24 @@ QVariantMap Heap::freedBy(const QString &holder) const {
             markHeld(Held{QString(), storage, index}, stack);
     }
     takeIn(true);
+    // Only what the holder's values add is read for the text its strings
+    // keep outside the heap, since what's kept keeps its text too.
     Tally alone;
-    marks.take(alone);
+    marks.take<Text::Counted>(alone);
     marks.clear();
     const double ms = static_cast<double>(clock.nsecsElapsed()) / 1e6;
     return {{QStringLiteral("holder"), holder},
             {QStringLiteral("held"), true},
             {QStringLiteral("freed"), megabytes(alone.bytes)},
+            {QStringLiteral("outside"), megabytes(alone.outside)},
             {QStringLiteral("count"), alone.count},
             {QStringLiteral("ms"), ms},
             {QStringLiteral("said"),
-             QStringLiteral("letting go of %1 would free %2 MB of the heap (%3), counted in %4 ms")
+             QStringLiteral("letting go of %1 would free %2 MB of the heap (%3) and %4 MB "
+                            "outside it, counted in %5 ms")
                  .arg(holder, sized(megabytes(alone.bytes)))
                  .arg(alone.count, 0, 'f', 0)
+                 .arg(sized(megabytes(alone.outside)))
                  .arg(ms, 0, 'f', 0)}};
 }
 

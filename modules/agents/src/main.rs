@@ -56,6 +56,7 @@ use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
+use agents::offers;
 use agents::places;
 use agents::reopen::Kept;
 use agents::row::Words;
@@ -307,14 +308,15 @@ fn own(
     })
 }
 
-/// Start New Work, where it can begin, Let Them Start and an answer to
-/// what a session asks, asked of `node` only for the shell, told apart by
-/// the connection each came on, so no agent lifts the stop Joel put on
-/// their starts, reads his places nor answers one of `wants` as him; what
-/// the node says of the starts once they're let start is `stood` at once,
-/// rather than at the next poll. Feedback, a sprout, the places, letting
-/// them start and an answer wait on the node, so none holds up an ask
-/// after it. Each start the shell names by a
+/// Start New Work, where it can begin, whether the cloud can take it, Let
+/// Them Start and an answer to what a session asks, asked of `node` only
+/// for the shell, told apart by the connection each came on, so no agent
+/// lifts the stop Joel put on their starts, reads his places nor answers
+/// one of `wants` as him; what the node says of the starts once they're
+/// let start is `stood` at once, rather than at the next poll. Feedback,
+/// a sprout, the places, the offers, letting them start and an answer
+/// wait on the node, so none holds up an ask after it. Each start the
+/// shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
@@ -331,6 +333,7 @@ fn for_the_shell_alone(
         &[
             sprout::ASK,
             places::ASK,
+            offers::ASK,
             starts::TOLD,
             starts::KEPT,
             starts_stopped::ASK,
@@ -339,6 +342,9 @@ fn for_the_shell_alone(
         Box::new(move |said, stream| {
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
+            }
+            if said["ask"] == offers::ASK {
+                return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
             }
             if said["ask"] == wants::ASK {
                 let asker = asker::the_shell(stream);
@@ -402,6 +408,7 @@ fn for_the_shell_alone(
         "feedback",
         sprout::ASK,
         places::ASK,
+        offers::ASK,
         starts::TOLD,
         starts_stopped::ASK,
         wants::ASK,

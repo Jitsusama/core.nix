@@ -137,6 +137,16 @@ let
           says only what moved in it, as the mycelium node's `deep` does.
         '';
       };
+      latest = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = ''
+          How many of the kind's records, the latest heard, the daemon is
+          asked to keep a page told of, as the mycelium node's `latest`
+          does; null asks for every one. A daemon that doesn't know it
+          sends every one anyway.
+        '';
+      };
     };
   };
   feed = lib.types.submodule {
@@ -179,6 +189,10 @@ let
   # source given in its place wins over the text, which then says words
   # the launcher never reads. Such a source isn't read, since reading it
   # would build it while the machine is evaluated, so it's refused below.
+  # Home-manager makes a text's source with writeTextFile, which carries the
+  # text; were it not to, every machine with the launcher's words would be
+  # refused, not let through, which local-sites-refuses-renamed-look-acts
+  # holds.
   fromText =
     wordsFile.text or null != null
     && lib.isAttrs wordsFile.source
@@ -429,14 +443,17 @@ in
       };
     };
     feeds = {
-      # The system daemon's summary, its parts and their things
-      # (modules/system), each told whole: a page shows all of each.
+      # The system daemon's summary, its parts and their things, the
+      # machines and the builders they send builds to (modules/system), each
+      # told whole: a page shows all of each. A kind the daemon keeps but
+      # this doesn't name never reaches a page.
       system = {
         socket = "daemons/system.sock";
         kinds = {
           summary = { };
           part = { };
           machine = { };
+          builder = { };
         };
       };
       # net's devices, the links between them, the sources it read them from,
@@ -464,7 +481,9 @@ in
       # it, from its lineage, though every page is passed what the forage
       # page reads. It reads its networks and cells whole, as `mycelium networks` draws them; of
       # each machine only what the map draws; of each message only who
-      # sent it, how and where, never its words; the balance service's
+      # sent it, how and where, never its words, and only the latest 20,
+      # all the map keeps (LATEST_MESSAGES in the map's model.ts), where
+      # the node held 12,179 that took 14 s to send; the balance service's
       # latest reading whole, for each machine's share of the work; and of
       # what waits on the mesh, each question waiting and hold standing,
       # who sent it, where and since when, and whom or until when it
@@ -512,12 +531,15 @@ in
             "declared"
             "measured_at"
           ];
-          message.fields = [
-            "at"
-            "from"
-            "intent"
-            "groups"
-          ];
+          message = {
+            fields = [
+              "at"
+              "from"
+              "intent"
+              "groups"
+            ];
+            latest = 20;
+          };
           murmur.fields = [
             "writer"
             "at"

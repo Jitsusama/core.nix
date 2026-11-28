@@ -207,7 +207,7 @@ function run(failures) {
     machine("unseen in a place the selection only passes",
         Seen.seen(opened({ selected: machinePlace, restsOn: null }), watcher, ["heat"]), false);
     machine("unseen in a rested place holding others",
-        Seen.seen(opened({ restsOn: machinePlace }), watcher, ["displays"]), false);
+        Seen.seen(opened({ restsOn: machinePlace }), watcher, ["windows"]), false);
     machine("seen as the place it says how things stand in",
         Seen.seen(opened({ matches: [{ category: { id: "energy" } }] }), watcher,
             ["energy", "power"]), true);

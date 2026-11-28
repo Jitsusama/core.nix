@@ -1,0 +1,109 @@
+A hosted screen draws its conversation before its extensions bind.
+
+pi's startup binds every extension, awaiting each one's session_start in
+turn, and only then draws the conversation. On a busy machine a host's
+opens spent 48 to 146 s in that bind, most of it in four extensions'
+session_start handlers reading shared state off a stalled disk, and the
+person's window stayed blank the whole time: nothing on it said which
+conversation it was or what had been said.
+
+A hosted screen now draws the conversation's messages first and sends
+that frame at once, since a session_start holding the thread would hold
+a frame only requested. That helps a viewer already attached; one who
+joins while a session_start holds the thread is drawn once it lets go,
+as before. It then binds, and after the bind draws only the entries the
+extensions' session_start added meanwhile, where startup would have
+drawn them all. Nothing already on the screen is cleared, so the
+notices startup made before the bind stay. Where the bind did more than
+add (a compaction, a move in the tree, a shorter branch), so the entries
+drawn are no longer the conversation's first, the chat is built again
+from the conversation as it now is, which drops those notices and any
+error the bind showed, rather than show a conversation the agent no
+longer holds. It is built again too where the early draw left a tool
+call waiting on its result and the bind added entries, since pi matches
+a result to its call only within one draw. The resources pi lists once
+its extensions bind still land above the conversation, in their own
+container. Tool and message renderers are registered as extensions load,
+before the bind, so the early draw has them; one that reads state its
+session_start loads draws those messages without it, and they stay so
+drawn until the chat is next built. One that throws for want of that
+state takes back only what the early draw added, so the notices before
+it stay and no prompt lands in the editor's history twice, and the
+conversation is drawn after the bind, as startup draws it. It hears the
+agent only once the bind ends, as before, so nothing reaches an
+extension before its hooks are live. A plain pi starts as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@ -1185,12 +1185,66 @@ export class InteractiveMode {
+ 		this.setupEditorSubmitHandler();
+ 		this.ui.requestRender();
+ 
+-		// Initialize extensions first so resources are shown before messages
++		// Initialize extensions first so resources are shown before messages. A hosted screen draws its
++		// messages before extensions bind, so a slow session_start leaves it readable; the resources
++		// still land above them, in their own container.
++		let drawn: string[] | undefined;
++		if (this.options.hosted) {
++			const shown = this.chatContainer.children.length;
++			const editor = this.editor;
++			const remember = editor.addToHistory;
++			// The draw's prompts reach the editor's history once it has drawn whole, so a throw part way
++			// leaves none there twice when the conversation is drawn again after the bind.
++			const prompts: string[] = [];
++			editor.addToHistory = (text: string) => void prompts.push(text);
++			try {
++				drawn = this.sessionManager.buildContextEntries().map((entry) => entry.id);
++				this.renderInitialMessages();
++				// Sent now rather than requested: a session_start that holds the thread, reading a stalled
++				// disk, would hold a requested frame with it.
++				this.ui.renderNow();
++			} catch (error) {
++				// A renderer wanting what its session_start loads: drawn after the bind, as startup draws.
++				// Only what this draw added goes; the notices startup showed before it stay.
++				this.chatContainer.children.splice(shown);
++				prompts.length = 0;
++				drawn = undefined;
++				// Said on stderr, which a host's journal keeps, so a window blank through its bind says
++				// which and why: one host draws many conversations, and the stack names the renderer.
++				// Quoted so it stays one line; a write that throws is lost, never the later draw.
++				try {
++					const where = JSON.stringify(this.sessionManager.getSessionFile?.() ?? "an unsaved conversation");
++					const why = JSON.stringify(error instanceof Error && error.stack ? error.stack : String(error));
++					process.stderr.write(`pi-host: ${where}: the early draw threw, so it draws after the bind: ${why}\n`);
++				} catch {
++					// Nothing to say it on, or nothing to say: the draw after the bind still comes.
++				}
++			} finally {
++				editor.addToHistory = remember;
++			}
++			for (const prompt of prompts) remember?.call(editor, prompt);
++		}
++		// pi matches a tool's result to its call only within one draw.
++		const settled = this.pendingTools.size === 0;
+ 		await this.rebindCurrentSession();
+ 		if (this.hostedStartupEnded()) return;
+ 
+ 		// Render initial messages AFTER showing loaded resources
+-		this.renderInitialMessages();
++		// A hosted screen drew them already, so it draws only what session_start added while it bound,
++		// or, where the bind did more than add, the whole conversation again as it now is.
++		if (drawn === undefined) {
++			this.renderInitialMessages();
++		} else {
++			const bound = this.sessionManager.buildContextEntries();
++			const early = drawn;
++			const kept = early.every((id, at) => bound[at]?.id === id);
++			const added = kept ? bound.slice(early.length) : [];
++			if (!kept || (added.length > 0 && !settled)) {
++				this.rebuildChatFromMessages();
++			} else if (added.length > 0) {
++				this.renderSessionEntries(added, { updateFooter: true, populateHistory: true });
++			}
++		}
+ 
+ 		// Set up theme file watcher
+ 		this.themeChangeUnsubscribe = onThemeChange(() => {

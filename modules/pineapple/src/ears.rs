@@ -240,6 +240,12 @@ impl Through {
         }
     }
 
+    /// The gateway it reads through, for Joel's phone to be told by, as
+    /// [`crate::phone::tell_self`] is the one thing that sends through it.
+    pub fn gateway(&mut self) -> &mut Gateway {
+        &mut self.gateway
+    }
+
     /// Joel's own Slack id, as the gateway says who it reads as.
     ///
     /// # Errors
@@ -294,7 +300,10 @@ impl Through {
                 {
                     Round::Deaf(Deafness::Refused)
                 }
-                Called::Unreachable(_) | Called::Failed(_) => Round::Unasked,
+                Called::NotReached(_)
+                | Called::Declined(_)
+                | Called::Unreachable(_)
+                | Called::Failed(_) => Round::Unasked,
             };
             eprintln!("<4>the gateway's {tool} said nothing: {called:?}");
             round

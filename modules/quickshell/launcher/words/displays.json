@@ -9,7 +9,7 @@
       "id": "displays:brightness",
       "in": "displays",
       "name": "Brightness",
-      "term": "Desktop/brightness",
+      "term": "Machine/brightness",
       "answers": [
         "brightness"
       ],
@@ -31,7 +31,7 @@
       "id": "displays:warmth",
       "in": "displays",
       "name": "Warmth",
-      "term": "Desktop/warmth",
+      "term": "Machine/warmth",
       "answers": [
         "screen warmth"
       ],
@@ -53,7 +53,7 @@
       "argument": "nonightlight",
       "in": "displays:warmth",
       "name": "Night Light",
-      "term": "Desktop/night light",
+      "term": "Machine/night light",
       "verb": "turn off",
       "glyph": "nightLight",
       "states": {
@@ -236,7 +236,7 @@
       "id": "displays:depth",
       "in": "displays",
       "name": "Colour Depth",
-      "term": "Desktop/colour depth",
+      "term": "Machine/colour depth",
       "answers": [
         "colour depth"
       ]
@@ -245,7 +245,7 @@
       "id": "displays:colours",
       "in": "displays",
       "name": "Colours",
-      "term": "Desktop/colours",
+      "term": "Machine/colours",
       "answers": [
         "colour gamut"
       ]
@@ -254,7 +254,7 @@
       "id": "displays:white",
       "in": "displays",
       "name": "White Point",
-      "term": "Desktop/white point",
+      "term": "Machine/white point",
       "answers": [
         "white point"
       ],
@@ -266,7 +266,7 @@
       "id": "displays:primaries",
       "in": "displays",
       "name": "Primaries",
-      "term": "Desktop/primaries",
+      "term": "Machine/primaries",
       "answers": [
         "primaries"
       ],
@@ -369,7 +369,7 @@
       "id": "displays:mode",
       "in": "displays",
       "name": "Screen Mode",
-      "term": "Desktop/screen mode"
+      "term": "Machine/screen mode"
     },
     {
       "id": "displays:variable",
@@ -404,7 +404,7 @@
       "id": "displays:modes",
       "in": "displays",
       "name": "Screen Modes",
-      "term": "Desktop/screen mode",
+      "term": "Machine/screen mode",
       "said": {
         "preferred": "preferred",
         "custom": "custom",

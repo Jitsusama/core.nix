@@ -299,10 +299,16 @@ mod tests {
 
     #[test]
     fn only_what_zathura_opens_is_counted() {
-        assert!(opens(OsStr::new("a.PDF")));
-        assert!(opens(OsStr::new("b.epub")));
-        assert!(!opens(OsStr::new("c.txt")));
-        assert!(!opens(OsStr::new("pdf")));
+        assert!(
+            opens(OsStr::new("a.PDF")),
+            "a PDF should count, whatever its case"
+        );
+        assert!(opens(OsStr::new("b.epub")), "an EPUB should count");
+        assert!(!opens(OsStr::new("c.txt")), "a text file shouldn't count");
+        assert!(
+            !opens(OsStr::new("pdf")),
+            "a name that's only pdf has no extension to count"
+        );
     }
 
     #[test]

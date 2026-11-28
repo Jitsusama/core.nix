@@ -28,7 +28,10 @@ const WAYS: { readonly [way: string]: string } = {
   "0,-1": "above",
 };
 
-/** The step just walked, so the opposite arrow retraces it. */
+/**
+ * The step just walked, so the opposite arrow retraces it while the map is
+ * drawn the same way.
+ */
 interface Trail {
   readonly from: string;
   readonly to: string;
@@ -79,6 +82,11 @@ class MapView {
 
   /** The drawing the view now shows, the keys kept where it still has them. */
   shows(drawn: Drawn): void {
+    // The way back an arrow retraces was walked across the old layout; drawn
+    // the other way, the device it would step back to is somewhere else.
+    if (this.#drawn !== undefined && this.#drawn.stacked !== drawn.stacked) {
+      this.#trail = null;
+    }
     this.#drawn = drawn;
     if (this.cursor !== null && !drawn.at.has(this.cursor)) {
       this.cursor = null;
@@ -214,7 +222,8 @@ class MapView {
    * Walks the keys the way `dx`, `dy` to the nearest device whose centre
    * lies within 45 degrees of it, by distance along it; the opposite arrow
    * retraces the step just walked even where the nearest device back that
-   * way is another. Answers where the keys landed, or, when no device lies
+   * way is another, unless the map has since been drawn the other way.
+   * Answers where the keys landed, or, when no device lies
    * that way, the words saying so, the keys staying where they are.
    */
   walk(dx: number, dy: number): { readonly to: string } | { readonly nothing: string } | null {

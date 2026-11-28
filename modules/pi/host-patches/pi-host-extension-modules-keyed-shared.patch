@@ -1,0 +1,523 @@
+A host's keyed packages evaluate each module once, not once an extension.
+
+A keyed package's extensions already share one factory each across
+folders, but jiti gives each extension's import a module cache of its
+own, so a library two of its extensions import is evaluated once for
+each. A keyed package's loads now share the modules the package has
+finished, so each file they reach is evaluated once for the package.
+Node's module cache is neither read nor written, and every other
+package's loads keep their modules their own.
+
+Each load evaluates in a cache of its own over the package's finished
+modules, and what it finishes joins those only once it succeeds, so no
+load is given a module another is still evaluating, or one a failed load
+left part-way. An import a module makes while its load is under way is
+that load's: it shares what the load has finished, is given part-way, as
+jiti gives it, what the load is still evaluating, and fails with it. An
+import an extension makes as it runs, once its load has ended, is given
+only finished modules too: one of a module the package hasn't finished
+evaluates it in a cache of its own over its load's and the package's
+finished modules, joining them once it succeeds, and only where each load
+it began from joined its own. Two such imports of one module at once from
+one load share one evaluation. Of two evaluations at once that each
+finish a copy of one module, the first to end joins the package's and the
+other joins none of what it finished, so no load is given both. What
+jiti doesn't evaluate itself, a builtin, a data URL, JSON or a module it
+leaves to Node, stays jiti's own.
+
+A package's loads take turns, so two loads don't both evaluate a library
+they share. A reload, and a link moving off a copy, give the package's
+next load fresh modules and let go of the loads waiting behind one that
+never ends; those import as an unkeyed package's do. A load that holds
+its turn past ten seconds lets the loads after it go on without waiting,
+sharing what the package has finished, until it ends. A factory is kept
+only from a load given modules still its package's, so none from a copy
+a link has moved off, or from modules let go of.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -5,5 +5,5 @@
+ 
+ import * as fs from "node:fs";
+-import { createRequire } from "node:module";
++import { builtinModules, createRequire } from "node:module";
+ import * as path from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -226,4 +226,5 @@
+ 	if (typeof pi === "object" && pi !== null) {
+ 		keyed = (pi as { sessionStateKeyed?: unknown }).sessionStateKeyed === true;
++		if (keyed) keyedRoots.add(folder);
+ 	} else {
+ 		const parent = path.dirname(folder);
+@@ -237,18 +238,410 @@
+ // package keeps a copy for each folder.
+ function sharedFileOf(extensionPath: string): string | undefined {
+-	let file: string;
++	let file = resolvedFileOf(extensionPath);
++	if (file !== undefined && !packageKeepsStateKeyed(path.dirname(file))) file = undefined;
++	const before = sharedFiles.get(extensionPath);
++	if (file === undefined) sharedFiles.delete(extensionPath);
++	else sharedFiles.set(extensionPath, file);
++	if (before !== undefined && before !== file) {
++		sharedFactories.delete(before);
++		forgetModulesOfUnusedRoot(keyedRootOf(before));
++	}
++	return file;
++}
++
++// The file a path resolves to now, if any.
++function resolvedFileOf(extensionPath: string): string | undefined {
+ 	try {
+-		file = fs.realpathSync(extensionPath);
++		return fs.realpathSync(extensionPath);
+ 	} catch {
+ 		// A path that doesn't resolve fails its import, which says so.
+ 		return undefined;
+ 	}
+-	if (!packageKeepsStateKeyed(path.dirname(file))) return undefined;
+-	const before = sharedFiles.get(extensionPath);
+-	if (before !== undefined && before !== file) sharedFactories.delete(before);
+-	sharedFiles.set(extensionPath, file);
+-	return file;
+ }
+ 
++// pi-host: a keyed package's extensions share the modules they import, too.
++// jiti gives each import of an extension a module cache of its own, so a
++// library its extensions share was evaluated once for each extension
++// importing it. A keyed package's loads share the modules they finish
++// instead, so each file they reach, inside the package or not, is evaluated
++// once for the package. Those modules are the package's own and never
++// Node's, so no other package's load reads them, and its loads read nothing
++// the host put in Node's. A reload, or the package's last shared extension
++// resolving elsewhere, lets go of them, so the package's next load begins
++// anew, and a load keeps the modules it began with, so nothing it finishes
++// reaches a load begun after.
++//
++// jiti hands an import any module its cache holds, finished or not, so no
++// module is shared before it has finished. Each load evaluates in a cache
++// of its own, which also gives it what the package has finished; once the
++// load ends, what it finished joins the package's, and a load that fails
++// adds nothing. An import a module makes once it has finished evaluates
++// in the evaluation that finished the module while that is under way, as
++// jiti's would, so what it adds joins the package's or is dropped with the
++// rest. Once that evaluation has ended, as the module's extension runs,
++// the import evaluates in a cache of its own the same way, given what the
++// evaluation that finished the module finished too, so the module stays one
++// graph with the load that evaluated it; two such imports of one file at
++// once from one evaluation share the one evaluation, and what it finishes
++// joins the package's only where each evaluation it was begun from joined
++// its own. Two evaluations at once may each finish a copy of one module:
++// the first to end joins the package's, and the other joins none of what
++// it finished, since some of it was evaluated over its own copy. So no
++// load or import is given a module another is still evaluating or one a
++// throw left part-way, and each is given the one instance of a module the
++// package has finished.
++//
++// The package's loads take turns, so a library is evaluated once rather
++// than by loads at once. A load that runs past TURN_HELD_MS gives up its
++// turn, and until it ends, the loads after it go on without waiting theirs,
++// so one that never ends holds them up no longer. A factory is kept only
++// from a load given modules that are still its package's, so none from a
++// copy a link moved off, or from modules let go of, is kept.
++type Jiti = ReturnType<typeof createJiti>;
++type ModuleCache = NonNullable<NonNullable<Parameters<Jiti["evalModule"]>[1]>["cache"]>;
++type CachedModule = ModuleCache[string];
++interface PackageModules {
++	// The package's folder.
++	root: string;
++	// Each module its loads and their imports have finished, by file.
++	finished: Map<string, CachedModule>;
++	// Settles once the package's latest load gives up its turn: as it ends,
++	// or as it goes on without waiting its turn.
++	turn: Promise<void>;
++	// Whether these modules have been let go.
++	dropped: boolean;
++	// Whether a load has run past TURN_HELD_MS and not yet ended.
++	overdue: boolean;
++	// Starts each load still waiting for its turn.
++	waiting: Set<() => void>;
++	// Each import a finished module makes, evaluating in an evaluation of
++	// its own, by file, for another import of it from the same evaluation
++	// to join.
++	alone: Map<string, { from: Evaluation; imported: Promise<unknown> }>;
++}
++
++// What one load, or one import a finished module makes, evaluates.
++interface Evaluation {
++	modules: PackageModules;
++	// The evaluation that finished the module making this one's import.
++	parent: Evaluation | undefined;
++	// The modules it has evaluated, finished or not, by file.
++	own: Map<string, CachedModule>;
++	ended: boolean;
++	// Whether what it finished joined its package's.
++	kept: boolean;
++	// What jiti is given as its cache: its own modules, then those finished
++	// before it.
++	cache: ModuleCache;
++}
++
++// How long a load may hold its package's turn before the loads after it
++// go on without waiting theirs: long past what evaluating one extension
++// takes.
++const TURN_HELD_MS = 10_000;
++
++function newPackageModules(root: string): PackageModules {
++	return {
++		root,
++		finished: new Map(),
++		turn: Promise.resolve(),
++		dropped: false,
++		overdue: false,
++		waiting: new Set(),
++		alone: new Map(),
++	};
++}
++
++function newEvaluation(modules: PackageModules, parent?: Evaluation): Evaluation {
++	const own = new Map<string, CachedModule>();
++	const evaluation: Evaluation = { modules, parent, own, ended: false, kept: false, cache: {} };
++	evaluation.cache = new Proxy(Object.create(null), {
++		get: (_, file) => (typeof file === "string" ? (own.get(file) ?? finishedBefore(evaluation, file)) : undefined),
++		set: (_, file, module: unknown) => {
++			if (typeof file === "string" && isCachedModule(module)) {
++				own.set(file, module);
++				importsAlone(module, evaluation);
++			}
++			return true;
++		},
++	});
++	return evaluation;
++}
++
++function isCachedModule(value: unknown): value is CachedModule {
++	return typeof value === "object" && value !== null && "loaded" in value && "exports" in value;
++}
++
++function isJiti(value: unknown): value is Jiti {
++	return typeof value === "function" && "import" in value && "evalModule" in value && "esmResolve" in value;
++}
++
++// The finished module at `file` that `evaluation` is given from outside its
++// own: one an evaluation it was begun from finished, or the package's.
++function finishedBefore(evaluation: Evaluation, file: string): CachedModule | undefined {
++	for (let from = evaluation.parent; from !== undefined; from = from.parent) {
++		const module = from.own.get(file);
++		if (module?.loaded) return module;
++	}
++	return evaluation.modules.finished.get(file);
++}
++
++// Whether each evaluation `evaluation` was begun from joined what it
++// finished to its package's, so what it finishes may join too. Each has
++// ended, since an import evaluates alone only once its evaluation has.
++function stands(evaluation: Evaluation): boolean {
++	for (let from = evaluation.parent; from !== undefined; from = from.parent) {
++		if (!from.kept) return false;
++	}
++	return true;
++}
++
++// Ends `evaluation`. Once it has succeeded, and stands, the modules it
++// finished join its package's, all of them or, where the package finished
++// another copy of one first, none: some of its modules were evaluated over
++// its own copy, so joining any of them could give a later load both.
++function endEvaluation(evaluation: Evaluation, succeeded: boolean): void {
++	evaluation.ended = true;
++	if (!succeeded || !stands(evaluation)) return;
++	const { finished } = evaluation.modules;
++	const done = [...evaluation.own].filter(([, module]) => module.loaded);
++	if (done.some(([file, module]) => (finished.get(file) ?? module) !== module)) return;
++	for (const [file, module] of done) finished.set(file, module);
++	evaluation.kept = true;
++}
++
++// Whether an import of `file` in `evaluation` needs an evaluation of its
++// own: once `evaluation` has ended, where jiti's would be given neither a
++// finished module nor one being evaluated in an evaluation still under way.
++// While `evaluation` is under way, jiti's own evaluates the import in it.
++function needsItsOwn(evaluation: Evaluation, file: string): boolean {
++	if (!evaluation.ended) return false;
++	const mine = evaluation.own.get(file);
++	if (mine !== undefined) return !mine.loaded;
++	return finishedBefore(evaluation, file) === undefined;
++}
++
++// The file `jiti`'s import of `id`, or its require when not `async`, would
++// evaluate itself, as jiti decides it, or undefined where it would import
++// natively, as a builtin, a virtual module or a file of a kind it doesn't
++// compile, JSON among them. A shared extension's jiti never tries a native
++// import first.
++function fileEvaluatedFor(jiti: Jiti, id: string, async: boolean): string | undefined {
++	const { options } = jiti;
++	if (id.startsWith("node:") || id.startsWith("data:") || builtinModules.includes(id)) return undefined;
++	if (options.virtualModules !== undefined && id in options.virtualModules) return undefined;
++	let resolved: unknown;
++	try {
++		resolved = async ? jiti.esmResolve(id, { try: true }) : jiti.resolve(id);
++	} catch {
++		// Unresolved: jiti's own import says so as it would.
++		return undefined;
++	}
++	const file =
++		resolved instanceof URL || (typeof resolved === "string" && resolved.startsWith("file:"))
++			? fileURLToPath(resolved)
++			: typeof resolved === "string" && path.isAbsolute(resolved)
++				? resolved
++				: undefined;
++	if (file === undefined) return undefined;
++	const ext = path.extname(file);
++	if (ext !== "" && !(options.extensions ?? []).includes(ext)) return undefined;
++	const native = ["typescript", "jiti", ...(options.nativeModules ?? [])];
++	return native.some((name) => file.includes(`node_modules/${name}/`)) ? undefined : file;
++}
++
++// Evaluates `file`, imported as `id` by a module `evaluation` finished, in
++// an evaluation of its own, or joins an import of it still evaluating in
++// one. A require can't wait, so it evaluates its own.
++function evaluateAlone(jiti: Jiti, evaluation: Evaluation, id: string, file: string, async: boolean): unknown {
++	const { modules } = evaluation;
++	// Only an import begun from the same evaluation joins one, since one
++	// begun from another may have been evaluated over another copy.
++	const evaluating = async ? modules.alone.get(file) : undefined;
++	if (evaluating?.from === evaluation) return evaluating.imported;
++	const alone = newEvaluation(modules, evaluation);
++	let evaluated: unknown;
++	try {
++		evaluated = jiti.evalModule(fs.readFileSync(file, "utf-8"), {
++			id,
++			filename: file,
++			ext: path.extname(file),
++			async,
++			cache: alone.cache,
++		});
++	} catch (error) {
++		endEvaluation(alone, false);
++		throw error;
++	}
++	if (!async) {
++		endEvaluation(alone, true);
++		return evaluated;
++	}
++	const imported: Promise<unknown> = Promise.resolve(evaluated)
++		.then(
++			(value) => {
++				endEvaluation(alone, true);
++				return value;
++			},
++			(error: unknown) => {
++				endEvaluation(alone, false);
++				throw error;
++			},
++		)
++		.finally(() => {
++			if (modules.alone.get(file)?.imported === imported) modules.alone.delete(file);
++		});
++	// One begun from an evaluation that kept nothing is joined by none, so
++	// no import is given that evaluation's graph.
++	if (stands(alone)) modules.alone.set(file, { from: evaluation, imported });
++	return imported;
++}
++
++// Has each import `module` makes once it has finished, in `evaluation`,
++// evaluate in an evaluation of its own where it needs one. jiti makes the
++// module's jiti before putting the module in the cache, and reads its
++// require and import only after, as it starts the module.
++function importsAlone(module: CachedModule, evaluation: Evaluation): void {
++	const jiti = module.require;
++	if (!isJiti(jiti)) return;
++	const imports = jiti.import.bind(jiti);
++	const own = (id: string, async: boolean): string | undefined => {
++		const file = module.loaded ? fileEvaluatedFor(jiti, id, async) : undefined;
++		return file !== undefined && needsItsOwn(evaluation, file) ? file : undefined;
++	};
++	Reflect.set(jiti, "import", async (id: string, options?: Parameters<Jiti["import"]>[1]) => {
++		const file = own(id, true);
++		if (file === undefined) return imports(id, options);
++		const imported = await evaluateAlone(jiti, evaluation, id, file, true);
++		return options?.default ? defaultOf(imported) : imported;
++	});
++	const requires = (id: string): unknown => {
++		const file = own(id, false);
++		return file === undefined ? jiti(id) : evaluateAlone(jiti, evaluation, id, file, false);
++	};
++	module.require = Object.assign(requires, jiti);
++}
++
++// Lets go of `modules`, starting each load waiting for its turn in them.
++function dropModules(modules: PackageModules): void {
++	modules.dropped = true;
++	for (const go of modules.waiting) go();
++	modules.waiting.clear();
++}
++
++// Each keyed package's modules, by its folder.
++const packageModules = new Map<string, PackageModules>();
++// The folder of each keyed manifest found since the last reload.
++const keyedRoots = new Set<string>();
++
++function keyedRootOf(file: string): string | undefined {
++	for (let folder = path.dirname(file); ; folder = path.dirname(folder)) {
++		if (keyedRoots.has(folder)) return folder;
++		if (path.dirname(folder) === folder) return undefined;
++	}
++}
++
++function isUnder(file: string, root: string): boolean {
++	return file.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
++}
++
++// Lets go of the keyed package at `root`'s modules once no shared extension
++// resolves into it still, with what a path that resolves elsewhere now kept.
++function forgetModulesOfUnusedRoot(root: string | undefined): void {
++	if (root === undefined) return;
++	const under = [...sharedFiles].filter(([, file]) => isUnder(file, root));
++	if (under.some(([extensionPath, file]) => resolvedFileOf(extensionPath) === file)) return;
++	for (const [extensionPath, file] of under) {
++		sharedFiles.delete(extensionPath);
++		sharedFactories.delete(file);
++	}
++	const modules = packageModules.get(root);
++	if (modules !== undefined) dropModules(modules);
++	packageModules.delete(root);
++}
++
++// The modules of the keyed package a shared extension's file belongs to.
++function packageModulesOf(file: string): PackageModules | undefined {
++	const root = keyedRootOf(file);
++	if (root === undefined) return undefined;
++	let modules = packageModules.get(root);
++	if (modules === undefined) {
++		modules = newPackageModules(root);
++		packageModules.set(root, modules);
++	}
++	return modules;
++}
++
++// Whether jiti's import of `file` would evaluate it itself: a file of a kind
++// it compiles, with no native import tried first. Any other file is imported
++// as pi imports it.
++function evaluatesItself(jiti: Jiti, file: string): boolean {
++	return !jiti.options.tryNative && (jiti.options.extensions ?? []).includes(path.extname(file));
++}
++
++// What jiti's import with `default: true` gives for a module's exports.
++function defaultOf(module: unknown): unknown {
++	if ((typeof module !== "object" && typeof module !== "function") || module === null) return module;
++	return Reflect.get(module, "default") ?? module;
++}
++
++// Imports the shared extension at `file` in an evaluation of its own over
++// its package's modules, in the package's turn, or without waiting it while
++// a load has run past TURN_HELD_MS and not yet ended; or as an unkeyed
++// package's is while the modules are let go.
++async function importShared(jiti: Jiti, file: string, modules: PackageModules): Promise<unknown> {
++	if (modules.dropped) return jiti.import(file, { default: true });
++	let go = (): void => undefined;
++	const ready = new Promise<void>((resolve) => {
++		go = resolve;
++	});
++	modules.waiting.add(go);
++	modules.turn.then(go);
++	let release = (): void => undefined;
++	const turn = new Promise<void>((resolve) => {
++		release = resolve;
++	});
++	const imported = ready.then(async () => {
++		modules.waiting.delete(go);
++		// Letting go started every load behind this one, and later ones never
++		// wait, so the turn needn't be released.
++		if (modules.dropped) return jiti.import(file, { default: true });
++		const holdsTurn = !modules.overdue;
++		if (!holdsTurn) release();
++		const held = holdsTurn
++			? setTimeout(() => {
++					modules.overdue = true;
++					release();
++				}, TURN_HELD_MS)
++			: undefined;
++		held?.unref();
++		const evaluation = newEvaluation(modules);
++		try {
++			const known = modules.finished.get(file);
++			const evaluated =
++				known !== undefined
++					? known.exports
++					: await jiti.evalModule(fs.readFileSync(file, "utf-8"), {
++							filename: file,
++							async: true,
++							cache: evaluation.cache,
++						});
++			endEvaluation(evaluation, true);
++			return defaultOf(evaluated);
++		} catch (error) {
++			endEvaluation(evaluation, false);
++			throw error;
++		} finally {
++			clearTimeout(held);
++			if (holdsTurn) {
++				modules.overdue = false;
++				release();
++			}
++		}
++	});
++	modules.turn = turn;
++	return imported;
++}
++
+ function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
+ 	const shared = sharedFileOf(extensionPath);
+@@ -257,6 +650,18 @@
+ }
+ 
+-function cacheFactory(extensionPath: string, cacheToken: ExtensionCacheToken, factory: ExtensionFactory): void {
++// pi-host: `loaded` is the shared file the factory was loaded from, if any,
++// and `through` the package modules it was loaded through. A factory loaded
++// from a file its path no longer resolves to, or through modules no longer
++// its package's, is kept for neither.
++function cacheFactory(
++	extensionPath: string,
++	cacheToken: ExtensionCacheToken,
++	factory: ExtensionFactory,
++	loaded: string | undefined,
++	through: PackageModules | undefined,
++): void {
+ 	const shared = sharedFileOf(extensionPath);
++	if (shared !== loaded) return;
++	if (through !== undefined && packageModules.get(through.root) !== through) return;
+ 	if (shared !== undefined) sharedFactories.set(shared, factory);
+ 	else cacheToken.cache.set(extensionPath, new WeakRef(factory));
+@@ -265,4 +670,7 @@
+ export function clearExtensionCache(): void {
+ 	extensionCaches.length = 0;
++	for (const modules of packageModules.values()) dropModules(modules);
++	packageModules.clear();
++	keyedRoots.clear();
+ 	sharedFactories.clear();
+ 	sharedFiles.clear();
+@@ -732,4 +1140,7 @@
+ 	}
+ 
++	// pi-host: a shared extension loads through its package's modules.
++	const shared = isCurrentCacheToken(cacheToken) ? sharedFileOf(extensionPath) : undefined;
++	const modules = shared === undefined ? undefined : packageModulesOf(shared);
+ 	const createJitiImpl = await getCreateJiti();
+ 	// Compiled binaries and the bundled Node distribution use embedded modules.
+@@ -754,5 +1165,9 @@
+ 	});
+ 
+-	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
++	const through = shared !== undefined && evaluatesItself(jiti, shared) ? modules : undefined;
++	const module =
++		shared !== undefined && through !== undefined
++			? await importShared(jiti, shared, through)
++			: await jiti.import(canonicalizePath(extensionPath), { default: true });
+ 	const factory = module as ExtensionFactory;
+ 	if (typeof factory !== "function") {
+@@ -760,5 +1175,5 @@
+ 	}
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		cacheFactory(extensionPath, cacheToken, factory);
++		cacheFactory(extensionPath, cacheToken, factory, shared, through);
+ 	}
+ 	return factory;

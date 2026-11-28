@@ -272,10 +272,10 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 /// A machine's last update, as a clause, when its node says one: how long
 /// ago it was, where its time reads and isn't ahead of this clock, and
 /// how it ended, with why when it didn't all go ahead: refused, failed, or
-/// done but booting what it booted before, the only steps `update_why`
-/// (parts/why.rs) carries one for. A why beside any other step, as a node
-/// that knows more steps might send, is left unsaid rather than read as
-/// this one's.
+/// done or unchanged but booting what it booted before, the only steps
+/// `update_why` (parts/why.rs) carries one for. A why beside any other
+/// step, as a node that knows more steps might send, is left unsaid rather
+/// than read as this one's.
 fn updated(figures: &Value, now: i64) -> Option<String> {
     let at = figures.get("updated_at").and_then(Value::as_str)?;
     let ago = moment(at)
@@ -291,7 +291,7 @@ fn updated(figures: &Value, now: i64) -> Option<String> {
                 .and_then(Value::as_str)
                 .filter(|why| !why.is_empty()),
         ) {
-            (Some("done"), Some(why)) => format!("{ended}, but {why}"),
+            (Some("done" | "unchanged"), Some(why)) => format!("{ended}, but {why}"),
             (Some("refused" | "failed"), Some(why)) => format!("{ended}: {why}"),
             _ => ended,
         },
@@ -670,6 +670,18 @@ mod tests {
             itself(&ahead, now),
             said("2 TB free", "updated"),
             "an update stamped ahead of this clock says no age rather than a false one"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_update_after_one_that_didnt_all_go_ahead_still_says_why() {
+        let now = 1_763_420_718; // 2025-11-17T23:05:18Z, 5 minutes after the update.
+        let still = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "unchanged",
+                                       "update_why": "the boot check failed"}});
+        assert_eq!(
+            itself(&still, now).aside,
+            "unchanged at its update 5 m ago, but the boot check failed"
         );
     }
 

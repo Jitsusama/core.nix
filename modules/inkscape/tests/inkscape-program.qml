@@ -58,6 +58,27 @@ ShellRoot {
         same(what, JSON.stringify(got), JSON.stringify(wanted));
     }
 
+    function among(what, got, wanted) {
+        expect(what, wanted.includes(got), `${got}, not one of ${wanted.join(" | ")}`);
+    }
+
+    // What a row may say of a moment `before` seconds before NOW: the rows
+    // read the clock as they're made, any moment from NOW to this one,
+    // which a loaded builder puts tens of seconds on (the daemon and
+    // Quickshell's start come between), so each minute that span crosses
+    // is as true as the first. drawings-lately.sh keeps each moment to
+    // the microsecond, up to a second younger than `before`. Whether a
+    // minute rounds down is file-facts.qml's to pin, on a fixed clock.
+    function agos(before) {
+        const passed = (Date.now() - root.now) / 1000;
+        const said = [];
+        for (let minutes = Math.max(0, Math.floor((before - 1) / 60));
+            minutes <= Math.floor((before + passed) / 60); minutes++) {
+            said.push(minutes === 0 ? "just now" : `${minutes}\u00a0min ago`);
+        }
+        return said;
+    }
+
     function names(rows) {
         return rows.map(row => row.name).join(", ");
     }
@@ -304,11 +325,12 @@ ShellRoot {
                 .map(name => `file:${root.drawn}/${name}`).join(" "));
         same("Recent counts each once", recent.side, "5");
         const [fresh, logo, exported, tom, icon] = files;
-        same("when it was opened beside it", logo.side, "12\u00a0min ago");
-        same("just now", fresh.side, "just now");
+        among("when it was opened beside it", logo.side, agos(750));
+        among("the one added as the check began, just now or as long since",
+            fresh.side, agos(0));
         same("days ago", icon.side, Qt.formatDate(new Date(root.now - 172800000), "dddd"));
-        same("an export is the shared list's row, saying when and then its folder",
-            exported.side, "16\u00a0min ago \u00b7 ~/Drawings");
+        among("an export is the shared list's row, saying when and then its folder",
+            exported.side, agos(1000).map(ago => `${ago} \u00b7 ~/Drawings`));
         same("its drawer says where it is and its kind", logo.drawer.eyebrow,
             "in ~/Drawings \u00b7 drawing");
         same("as written, since its folder is a name", logo.drawer.eyebrowNames, true);
@@ -330,9 +352,11 @@ ShellRoot {
             [Quickshell.env("INKSCAPE"), `${root.drawn}/logo.svg`]);
         same("inside, Open, then Copy the Path", names(logo.verbs()), "Open, Copy the Path");
 
-        json("its drawer in Programs", inkscape.programFacts(root.program).map(fact =>
-            `${fact.label} ${fact.value}`), ["Last Drawing new.svg \u00b7 just now",
-            "Recent Drawings 4"]);
+        const program = inkscape.programFacts(root.program).map(fact =>
+            `${fact.label} ${fact.value}`);
+        among("its drawer in Programs says the last", program[0],
+            agos(0).map(ago => `Last Drawing new.svg \u00b7 ${ago}`));
+        json("and how many", program.slice(1), ["Recent Drawings 4"]);
         same("another program's, nothing", inkscape.programFacts("mpv").length, 0);
 
         acts[at].run();

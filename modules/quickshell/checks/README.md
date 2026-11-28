@@ -18,7 +18,9 @@ which places a machine turns on.
 `helpers.nix` holds what more than one file uses: stand-ins for the shell's
 singletons, the shell as the account gets it, and the harnesses that run it
 offscreen or on niri. Each file takes what it needs of these by name, beside
-the folder's own arguments.
+the folder's own arguments. The reader's, mpv's and Inkscape's launcher
+checks import it too, for `programStep`, the shell's files a program's step
+is drawn from.
 
 A check copies the shell's own files with `copied` from `helpers.nix`,
 naming only the ones it uses. `imports.nix` says what each file imports of

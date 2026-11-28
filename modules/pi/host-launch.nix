@@ -68,10 +68,11 @@ rec {
       }) home.jitsusama.pi.hostRestartWaitsWhile
     );
 
-  # The words after node, for a process with a heap of `heapMb`: the
-  # harness's program, then `rest`, such as a host's kind.
+  # The words after node, for a process with a heap of `heapMb`: node's own
+  # `flags` after the heap, the harness's program, then `rest`, such as a
+  # host's kind.
   words =
-    home: host: heapMb: rest:
+    home: host: heapMb: flags: rest:
     [
       # Any process of the account may send SIGUSR1, which would open node's
       # inspector and let it run code as the host. mycelium takes the host's
@@ -90,8 +91,9 @@ rec {
       # The harness's package.json names no module type, on purpose.
       "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
       "--max-old-space-size=${toString heapMb}"
-      (entry home)
     ]
+    ++ flags
+    ++ [ (entry home) ]
     ++ rest;
 
   # The environment of a process of `realm`'s host in the account `home`:

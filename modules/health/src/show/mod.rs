@@ -183,12 +183,16 @@ fn typical(held: &Memory) -> String {
     )
 }
 
-/// What a watched program's copies held at the last look.
+/// What a watched program's copies held at the last look, and what they
+/// were counted by, since a copy's own share and all it has resident
+/// differ by the pages every copy shares.
 pub(super) fn holding(held: &Memory) -> String {
+    let measure = memory::measure(held);
     format!(
-        "{} hold {}, {} in swap",
+        "{} hold {}{}{measure}, {} in swap",
         held.copies,
         memory::size(held.kib + held.swap_kib),
+        if measure.is_empty() { "" } else { " " },
         memory::size(held.swap_kib)
     )
 }
@@ -664,6 +668,7 @@ mod tests {
             kib,
             swap_kib: 1 << 20,
             age,
+            by_rss: false,
         };
         let mut pi = Memory::default();
         pi.saw(0, &[copy(3 << 20, 600), copy(1 << 20, 79_200)]);
@@ -676,7 +681,8 @@ mod tests {
             .unwrap_or_else(|| panic!("a line for pi: {shown}"));
         assert!(
             line.starts_with(
-                "memory    pi: 2 hold 6.0 GiB, 2.0 GiB in swap; largest 4.0 GiB, oldest 22 h; \
+                "memory    pi: 2 hold 6.0 GiB by Pss, 2.0 GiB in swap; \
+                 largest 4.0 GiB, oldest 22 h; \
                  typical 2.0 GiB, heavy 4.0 GiB; at most 6.0 GiB at "
             ),
             "{shown}"
@@ -694,6 +700,11 @@ mod tests {
         assert!(
             quiet.most_kib > 0 && typical(&quiet).is_empty(),
             "ran earlier in the day, with no copies now"
+        );
+        assert_eq!(
+            holding(&quiet),
+            "0 hold 0 MiB, 0 MiB in swap",
+            "no copies now, so no measure and no gap left for one"
         );
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");

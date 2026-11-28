@@ -1,10 +1,12 @@
 .pragma library
+.import "Places.js" as Places
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
-// what each walk found gone (tallyOf). Where
-// each goes back is Places.js's, but for a named workspace's (namedBack);
-// tests/places.qml holds both to their cases.
+// what each walk found gone (tallyOf). Where each goes back is Places.js's;
+// here are a named workspace's (namedBack), the connectors sessions give
+// their windows from one screens answer (placedGiven, keptBack), and what's
+// noted away (notedAway). tests/places.qml holds both to their cases.
 
 // How much of the disk's time may be stalled, as the share of the last ten
 // seconds some task waited on it, before the next session waits too: past
@@ -243,6 +245,42 @@ function givenBy(kept, places, before, screens) {
         .filter(was => !said.has(keptOn(was)) && !now.has(was.output)));
 }
 
+// Reopen Them All's sessions placed (Places.js's placed, of the places `kept`, with the screen
+// `inUse` and each one's `moments`) and the connectors they were given (givenBy, after `before`),
+// both from the one `screens` answer, so its windows can't be given connectors by other screens
+// than its sessions were placed by.
+function placedGiven(kept, screens, inUse, { moments, before } = {}) {
+    const places = Places.placed(kept, screens, inUse, moments);
+    return { places, given: givenBy(kept, places, before, screens) };
+}
+
+// Where a window kept at `at` (of `moment`, the windows its boot kept) goes back by its kept
+// place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
+// `inUse`), and the one entry it adds to `given`, `gives`: givenOn's connector, not the one found,
+// which is last boot's while no screen is said, so its twin's windows aren't kept off it.
+function keptBack(at, moment, screens, { given, inUse } = {}) {
+    const kept = Places.whereKept(at, moment, screens, { given, inUse });
+    return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
+}
+
+// The workspaces noted away (Sessions.qml's awayFrom, by screen) once workspace `id` is noted
+// away as `away` (a place's, of Places.js's awayOf) says, or null when there's nothing to note:
+// no note, no id, or that id noted from that screen already. In a map with no prototype
+// (Places.js's byName), so a place kept on a prototype's name, even __proto__, is noted as any.
+function notedAway(awayFrom, away, id) {
+    if (!away || id === null || id === undefined) {
+        return null;
+    }
+    const next = Places.byName(awayFrom);
+    const kept = next[away.screen] ?? [];
+    if (kept.some(one => one.id === id)) {
+        return null;
+    }
+    next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+        others: away.others ?? {} }]);
+    return next;
+}
+
 // Reopen Them All's queue with `more` joined at its end, but for each one
 // it holds already or has `begun`, by id: an orchestrator handing over its
 // own sessions as it comes back, while the queue still holds them, would
@@ -271,7 +309,10 @@ function queuedOnce(queue, more, begun) {
 // it won't look for again (queuedOnce) and so can never find gone: a
 // folder found gone among them would otherwise be said reopened. One begun
 // and still findable, its folder looked for now or one queued afresh for
-// it, counts, so its folder found gone is told.
+// it, counts, so its folder found gone is told. So a list given just after
+// one the walk used up within the same turn, as one whose every session
+// another machine holds, counts afresh, none that walk began among them,
+// though the two were pressed as one.
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
     const idOf = entry => entry.one.afreshFor ?? entry.one.id;

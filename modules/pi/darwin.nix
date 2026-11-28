@@ -193,7 +193,9 @@ let
         ]
       )
     }  ${
-      lib.escapeShellArgs ([ "${named host}/bin/pi-host" ] ++ launch.words home host host.heapMb [ kind ])
+      lib.escapeShellArgs (
+        [ "${named host}/bin/pi-host" ] ++ launch.words home host host.heapMb [ ] [ kind ]
+      )
     }
   '';
 

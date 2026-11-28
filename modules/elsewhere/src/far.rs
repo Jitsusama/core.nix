@@ -75,8 +75,7 @@ const CROSSES_AT: u64 = 256 << 10;
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
 
-/// What marks a name in the far list that isn't UTF-8, in place of its
-/// size.
+/// What marks a name in the far list that isn't UTF-8, for its size.
 const UNREADABLE: &str = "?";
 
 /// How many of a kind of miss are named, before the rest are counted.
@@ -100,15 +99,10 @@ pub fn plain_quest(quest: &str) -> bool {
 const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
 
 /// The folder holding each quest's scratch, as the harness and mycelium
-/// both find it.
-pub fn scratches() -> PathBuf {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|it| !it.is_empty())
-        .map_or_else(
-            || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
-            PathBuf::from,
-        );
-    cache.join(WORKSPACE)
+/// both find it, or none where no cache is found ([`steps::cache`]).
+pub fn scratches() -> Option<PathBuf> {
+    let (xdg, home) = (std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"));
+    steps::cache(xdg.as_deref(), home.as_deref()).map(|cache| cache.join(WORKSPACE))
 }
 
 /// The tree a kind copies for a job in `folder`: the folder, or the
@@ -260,8 +254,7 @@ fn leave<'a>(
 /// strict fence lets it write, runs the kind's setup and then the job,
 /// its program found on the far path by its name, in the job's folder
 /// `within` the tree, then leaves what the kind brings back in the
-/// handover and takes its copy away. First it clears the copies of runs
-/// here that are gone.
+/// handover and takes its copy away, first clearing gone runs' copies here.
 pub fn script(
     quest: &str,
     id: &str,
@@ -271,12 +264,14 @@ pub fn script(
     kind: &Kind,
     command: &[String],
 ) -> String {
-    let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
+    let scratches = format!("\"$cache\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
-    let folder = match within.to_string_lossy() {
-        within if within.is_empty() => "\"$work\"".to_owned(),
-        within => format!("\"$work\"/{}", quoted(&within)),
+    let inside = quoted(&within.to_string_lossy());
+    let folder = if within.as_os_str().is_empty() {
+        "\"$work\"".to_owned()
+    } else {
+        format!("\"$work\"/{inside}")
     };
     let program = Path::new(&command[0]).file_name().map_or_else(
         || command[0].clone(),
@@ -298,15 +293,20 @@ pub fn script(
     let freed = freed();
     let setup = kind.setup.trim();
     format!(
-        r#"job={job}
+        r#"{CACHE}
+job={job}
 work={work}
-mine=
-tab=$(printf '\t')
+mine= place= tab=$(printf '\t')
 {CLEARING}
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+# With no cache found, no quest's scratch is either. That is this
+# machine's fault, not the tree's, so the job is left untaken for another.
+# Its word reaches the near terminal, so it names this machine.
+[ -n "$cache" ] || {{ printf 'elsewhere: no cache is found on %s\n' "$(uname -n)" >&2
+  say {untaken}; exit {UNTAKEN}; }}
 {stopping}
 {sweeping}
 {waiting}
@@ -325,15 +325,14 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  copies && cleared "$work" && mkdir "$work"; then copied; why=$?; else why=2; fi
+  copies && cleared "$work" && mkdir "$work" && pinned; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one. A
 # link standing at the copies' folder or at the copy as it's checked, or
 # a copy gone with one cleared, leaves it untaken, as this machine's, as
-# does a refusal that may have read through one; one put after is the
-# cd's to catch, where it fails.
+# does a refusal that may have read through one; one put after, the cd
+# asks of once it's in.
 [ -z "$mine" ] || if copies; then rm -f "$work.names"; cleared "$work.tar"
-  [ "$why" -eq 2 ] || placed ||
-    {{ printf "elsewhere: the job's copy was moved or linked from its place\n" >&2; why=2; }}
+  [ "$why" -eq 2 ] || placed || {{ moved; why=2; }}
 else why=2; fi
 # The tree and the copy go as `freed` says.
 if [ "$why" -ne 0 ]; then
@@ -345,11 +344,12 @@ if [ "$why" -ne 0 ]; then
 fi
 cd {folder} || {{
   placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
-  [ "$why" -eq 0 ] || printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
+  [ "$why" -eq 0 ] || moved
   {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 }}
+entered {inside} || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
 say {started}
 (
   {{ {setup}
@@ -791,7 +791,7 @@ mod steps;
 use names::within_tree;
 use names::{Folders, tracked};
 use steps::{
-    CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
+    CACHE, CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
 };
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};

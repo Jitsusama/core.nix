@@ -23,17 +23,17 @@ const jiti = source.endsWith(".ts")
       import.meta.url,
     )
   : undefined;
-function loadModule(path) {
-  return jiti ? jiti.import(path) : import(path);
-}
-function loadMode() {
-  return loadModule(source);
-}
-const { InteractiveMode } = await loadMode();
+const loadModule = (path) => (jiti ? jiti.import(path) : import(path));
+const { InteractiveMode } = await loadModule(source);
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
 
 afterEach(() => mock.restoreAll());
+// A conversation empty when first drawn, and one entry longer once a session_start ran.
+const grows = () => {
+  let asked = 0;
+  return () => (++asked === 1 ? [] : [{ id: "added" }]);
+};
 
 function screen() {
   const exits = [];
@@ -49,10 +49,11 @@ function screen() {
     getCrashExtensionHint: () => undefined,
     recordCrash: () => false,
     pendingUserInputs: [],
+    pendingTools: new Map(),
     runtimeHost: {
       dispose: mock.fn(),
       session: {
-        sessionManager: { isPersisted: () => false },
+        sessionManager: { isPersisted: () => false, buildContextEntries: grows() },
         modelRuntime: { getError: () => undefined },
         settingsManager: {
           getExternalEditorCommand: () => "false",
@@ -62,7 +63,7 @@ function screen() {
         prompt: mock.fn(),
       },
     },
-    editor: { getText: () => "draft", setText: mock.fn() },
+    editor: { getText: () => "draft", setText: mock.fn(), addToHistory: mock.fn() },
     themeController: { disableAutoSync: mock.fn() },
     ui: {
       stop: mock.fn(),
@@ -158,19 +159,14 @@ function startingScreen(quitAt) {
     updateEditorBorderColor: mock.fn(),
     updateTerminalTitle: mock.fn(),
     renderInitialMessages: mock.fn(),
+    renderSessionEntries: mock.fn(),
     footerDataProvider: { onBranchChange: mock.fn() },
   });
-  for (const part of [
-    "documentContainer",
-    "pendingMessagesContainer",
-    "statusContainer",
-    "widgetContainerAbove",
-    "editorContainer",
-    "widgetContainerBelow",
-    "footerContainer",
-  ]) {
-    mode[part] = {};
+  for (const part of ["document", "pendingMessages", "status", "editor", "footer"]) {
+    mode[`${part}Container`] = {};
   }
+  Object.assign(mode, { widgetContainerAbove: {}, widgetContainerBelow: {} });
+  mode.chatContainer = { children: [] }; // the early draw counts its lines, as pi has them
   mode.options.initialMessage = "hello";
   mode.runtimeHost.session.settingsManager.getFullscreenScrollbar = () => "auto";
   Object.assign(mode.themeController, {
@@ -196,14 +192,18 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     }
     assert.deepEqual(exits, [{ code: 0, error: undefined }]);
     assert.equal(mode.ui.start.mock.callCount(), 1);
-    // No theme listener outlives it in the host's one theme: its stop has
-    // run, so one still held here would never be released.
+    // No theme listener outlives it in the host's one theme: its stop has run,
+    // so one held here leaks.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // A subscription made before the quit is the screen's stop to release;
-    // none is made after, and nothing is prompted or drawn.
-    assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
+    // Drawn and sent once before the bind (its own patch); the tail only by a later quit.
+    const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
+    assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
+    const past = quitAt === "providers" ? 1 : 0;
+    assert.equal(mode.renderSessionEntries.mock.callCount(), past, "drew past its quit");
+    // None is subscribed, prompted or rendered after the quit; one before is its stop's to release.
+    assert.equal(mode.subscribeToAgent.mock.callCount(), past);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
-    assert.equal(mode.ui.renderNow.mock.callCount(), 0);
+    assert.equal(mode.ui.renderNow.mock.callCount(), drawn);
     // A late event never starts it again.
     await mode.init();
     assert.equal(mode.ui.start.mock.callCount(), 1);

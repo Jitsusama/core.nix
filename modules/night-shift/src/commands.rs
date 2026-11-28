@@ -39,6 +39,7 @@ fn run() -> Help {
         .option("--start-under PCT", "starts under this pressure; 3")
         .option("--stop SLICE=PCT", "stops past a slice's pressure")
         .option("--stop-machine PCT", "stops past the machine's; 25")
+        .option("--stop-io PCT", "starts under and stops past its io")
         .option("--rests HOURS", "does nothing this long after; 12")
         .option("--wait-at-most SECONDS", "waits this long for the turn")
         .option("--every SECONDS", "how often it looks; 5")
@@ -47,6 +48,12 @@ fn run() -> Help {
         .option("--memory-max SIZE", "the job's memory.max")
         .option("--swap-max SIZE", "the job's memory.swap.max")
         .option("--reads-at-most DISK=RATE", "the job's reads from a disk")
+        .option("--away-stop SLICE=PCT", "a slice's bar while Joel is away")
+        .option("--away-stop-machine PCT", "the machine's while he is")
+        .option("--away-mark FILE", "there while he's at the keys")
+        .option("--away-seen FILE", "rhythm's minutes he was there")
+        .option("--away-call PROGRAM", "exits 0 while a call is on")
+        .option("--away-after SECONDS", "how long gone is away; 1800")
         .exit(
             Exit::Failed,
             "its folders, lock or cgroup failed it, or the job didn't start",

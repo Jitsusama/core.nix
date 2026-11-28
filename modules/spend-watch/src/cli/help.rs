@@ -88,7 +88,7 @@ pub fn help() -> Help {
         .subcommand(
             reads("run", "the daemon")
                 .example("spend-watch run", "as its service runs it")
-                .exit(Exit::TryAgain, "another spend-watch holds the history"),
+                .exit(Exit::TryAgain, "the history is held or stayed busy"),
         )
         .subcommand(
             reads("serve", "serve the daemon's last files, for fixtures")
@@ -101,7 +101,7 @@ pub fn help() -> Help {
         .exit(Exit::BadInput, "a feed's line or a config doesn't hold")
         .exit(Exit::NotFound, "a file, finding or session isn't there")
         .exit(Exit::Unavailable, "the daemon isn't running to ask")
-        .exit(Exit::TryAgain, "another spend-watch holds the history")
+        .exit(Exit::TryAgain, "the history is held or busy")
         .exit(Exit::Config, "the config can't be read")
 }
 

@@ -87,3 +87,30 @@ function pageFaults(faulted) {
     }
     return `, with ${faulted} major page fault${faulted === 1 ? "" : "s"}`;
 }
+
+// What drawing a frame was, by the render thread's times of it where
+// they were read (Launcher.qml's frameSplit): its polish and sync, its
+// render and swap, and the GUI thread hearing the swap late, which the
+// three add up to. The last is said as the swap heard, never the key,
+// since a key's presented line says "before the shell heard it" of the
+// key, and Joel's "wi", 64 ms here, was read as a key heard late
+// (2026-11-12). A key's line and an opening's say it alike: his opening
+// at 10:28 spent 121 ms drawing its frame, which nothing then told
+// apart (2026-11-26).
+function drawingApart(split) {
+    if (split?.syncing === undefined) {
+        return "";
+    }
+    return ` (${split.syncing} syncing, ${split.rendering} rendering,`
+        + ` ${split.heard} before the shell heard it swapped)`;
+}
+
+// Whether an opening's drawing is the frame it's told of as it's sized,
+// so that frame's split adds up to it: none of its frames swapped before
+// (`firstDrawn` under 0), and its drawing begun as that frame began. A
+// kept opening a key fills while its first frame draws is sized a frame
+// later, its drawing timed from the first, so the later frame's split
+// would leave a frame out of the parts; it's said whole instead.
+function drawingIsFrame(firstDrawn, begun, frameBegun) {
+    return firstDrawn < 0 && begun === frameBegun;
+}

@@ -263,6 +263,21 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert named in first, first
 
 
+def testqc_gone(desktop: Desktop, title: str) -> None:
+    """End TESTQC's session, its presence first, whatever the case it served left.
+
+    Nothing here reads the launcher, which can be what failed: the area's
+    launcher_closed_after closes it without asking it, and a read that raised
+    here skipped the rest (round 1 on #7104, 1, 6, 10 and 11).
+    """
+    try:
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+    finally:
+        windows = [w for w in desktop.windows() if w["title"] == title]
+        for window in windows:
+            desktop.as_account(f"niri msg action close-window --id {window['id']}")
+
+
 def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     desktop: Desktop,
 ) -> None:
@@ -277,19 +292,22 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
     desktop.pi_window("TESTQC", long)
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True, "title": long}, "TESTQC")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.launcher_until(
-        lambda shown: any(
-            thing["is"] == "collection:agents"
-            and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
-            for thing in shown["things"]
+    # Its session goes however this ends, a wait for home failing as much as
+    # its shot: left, an open launcher and a busy session would wait on Joel
+    # in the cases after it, hiding its failure behind theirs.
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["is"] == "collection:agents"
+                and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
+                for thing in shown["things"]
+            )
         )
-    )
-    desktop.shoot("launcher-home-agents")
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
+    finally:
+        testqc_gone(desktop, long)
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -431,14 +449,17 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     try:
         holds_still()
     finally:
-        if desktop.showing()["open"]:
-            desktop.close_launcher()
-        desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+        testqc_gone(desktop, long)
 
 
 # Each quest keeps what only Joel can do in a file of its own, written by
 # the session that needs him.
+
+
+# Home's selected row is Now, whose drawer counts the seconds and the clock's offset from
+# its source as they run, so a home shot waits on the rest of the picture alone: the moving
+# shot's words said only these changed (the drawer's seconds, offset and minute).
+NOWS_CLOCK = "Now's drawer, its seconds and the clock's offset"
 
 
 def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
@@ -449,14 +470,20 @@ def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
     # The to-do's card away first, which would stand over the row and the plate.
     with desktop.told("gone notifications"):
         desktop.as_account("qs ipc call notices putAway")
-    desktop.shoot("launcher-home-now-waiting")
-    for scale in JOELS_SCALES:
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        desktop.launcher_until(
-            lambda shown: any(thing["reads"] == reads for thing in shown["things"])
-        )
-        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
-    desktop.as_account("niri msg output winit scale 1")
+    desktop.shoot("launcher-home-now-waiting", ticking=NOWS_CLOCK)
+    # Back at 1 however a shot ends, since a scale left at 2 would lay out
+    # every case after it at Joel's laptop's size.
+    try:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.launcher_until(
+                lambda shown: any(thing["reads"] == reads for thing in shown["things"])
+            )
+            desktop.shoot(
+                f"launcher-home-now-waiting-at-{scale.replace('.', '-')}", ticking=NOWS_CLOCK
+            )
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
 
 
 def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
@@ -1012,14 +1039,18 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
 # The heading over what TESTQA's session wants of Joel, in For You: its name and where it
 # stands, as the agents daemon says it (What Needs Me, 2026-11-18).
 WANTS_HEADING = "A quest of its own & whole \u00b7 needs you"
+# What sessions ask gathers under this one row at For You's own level, never loose there.
+AGENTS = "Agents"
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
     """A session wanting Joel is in For You as its Agents row, and Now has no pi row.
 
-    Super+O, Return, Return goes to its window: Now opens on For You, which counts it,
-    Return steps in to the session, selected under its cell's heading, which says where
-    it stands in the agents daemon's own words, and its Return goes to its window.
+    Now opens on For You, which counts it, and Return steps in to Agents, never a
+    session at For You's own level (Joel, 2026-11-25 21:52: "it also makes no sense for
+    the agents to be top level"). Its Return steps in to the session, selected under its
+    cell's heading, which says where it stands in the agents daemon's own words, and the
+    session's Return steps into what it asks, whose first goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
@@ -1047,6 +1078,14 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
+                and shown["rows"] == [AGENTS]
+                and (shown["selected"] or {}).get("side") == "1"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You", AGENTS]
                 and shown["rows"][:2] == [WANTS_HEADING, "A quest of its own & whole"]
                 and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
                 and shown["selected"]["verb"] == "more"
@@ -1057,7 +1096,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You", "A quest of its own & whole"]
+                shown["held"] == ["now", "For You", AGENTS, "A quest of its own & whole"]
                 and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
             )
         )
@@ -1073,9 +1112,10 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 
 
 def answered_in_place(desktop: Desktop, since: str) -> None:
-    """Answer a session's question from For You: in its row, Return on the recommended answer.
+    """Answer a session's question from For You, inside Agents, by its recommended answer.
 
-    The answer reaches the session's inbox as the harness takes one, by the want's id.
+    It's answered in its row, Return on the recommended answer. The answer reaches the
+    session's inbox as the harness takes one, by the want's id.
     """
     machine = desktop.machine
     desktop.as_account(f"mkdir -p {INBOX} && find {INBOX} -name '*.json' -delete")
@@ -1095,7 +1135,13 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["now", "For You"]
+            shown["held"] == ["now", "For You"] and (shown["selected"] or {}).get("name") == AGENTS
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now", "For You", AGENTS]
             and (shown["selected"] or {}).get("side") == "needs your answer \u00b7 2 choices"
         )
     )
@@ -1125,7 +1171,8 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
-    Under the session's heading, since the item is its own.
+    Under the session's heading inside Agents, since the item is its own and the
+    session asks it of him.
 
     And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06), and a session's want posts none now.
@@ -1161,8 +1208,12 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         retry(lambda _: tray_counted(desktop) == 1, timeout=dt.timedelta(seconds=10))
         desktop.machine.send_key("ret")
         desktop.launcher_until(
+            lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == [AGENTS]
+        )
+        desktop.machine.send_key("ret")
+        desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You"]
+                shown["held"] == ["now", "For You", AGENTS]
                 and shown["rows"] == [WANTS_HEADING, "Sign the Form"]
             )
         )
@@ -1190,6 +1241,38 @@ PAST_THE_WAIT = 0.5
 NOTICE_WITHDRAWN = dt.timedelta(seconds=15)
 
 
+def resumed_on_a_second_return(desktop: Desktop, stop: str) -> None:
+    """Go into the picked stop's verbs, arm Resume, then resume it, once the notice goes."""
+    machine = desktop.machine
+
+    def resumed() -> object:
+        """Say who resumed the stop, as its record says, or None while it stands."""
+        record = json.loads(desktop.as_account(f"cat {stop}"))
+        return (record.get("resumed") or {}).get("by")
+
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Resume" in shown["rows"])
+    desktop.down_to("Resume")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["returned"].get("act") == "armed"
+            and shown["armed"] == "again resumes"
+            and "\u21b5 again resumes" in (shown["selected"] or {}).get("told", [])
+        )
+    )
+    assert resumed() is None, "the first Return on Resume resumed the stop"
+    time.sleep(PAST_THE_WAIT)
+    machine.send_key("ret")
+    retry(lambda _: resumed() == "joel", timeout=dt.timedelta(seconds=10))
+    if desktop.showing()["open"]:
+        desktop.close_launcher()
+    # The live stop knocked with a critical notice, which stays until it's dealt with; once
+    # the stop is resumed the daemon withdraws it, so the alarm goes with what it was about,
+    # read rather than missed, and For You's tray stays out for the tests after.
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=NOTICE_WITHDRAWN)
+
+
 def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> None:
     """A live safe-word stop is in For You, and its Resume arms before it lifts it.
 
@@ -1198,7 +1281,6 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
     2026-11-13: "only require confirmation if it is really a dangerous action or an action of
     significant consequence").
     """
-    machine = desktop.machine
     stop = f"{SAFE_WORD}/stops/vm-safe-word.json"
     title = "Someone stopped your agents on quest SAFEQA"
     kept(
@@ -1218,39 +1300,70 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
             "resumed": None,
         },
     )
-
-    def resumed() -> object:
-        """Say who resumed the stop, as its record says, or None while it stands."""
-        record = json.loads(desktop.as_account(f"cat {stop}"))
-        return (record.get("resumed") or {}).get("by")
-
     try:
         retry(lambda _: title in waiting_inside(desktop)[1], timeout=dt.timedelta(seconds=30))
         waiting_opened(desktop)
         desktop.step_in("ret")
         picked(desktop, title)
-        # Return on the stop opens where it was said, so its verbs are gone into.
-        desktop.follow()
-        desktop.launcher_until(lambda shown: "Resume" in shown["rows"])
-        desktop.down_to("Resume")
-        machine.send_key("ret")
+        # It's a thing, so its drawer is out, saying what was said, and that Return opens
+        # where, Resume being inside it rather than Return's.
         desktop.launcher_until(
             lambda shown: (
-                shown["returned"].get("act") == "armed"
-                and shown["armed"] == "again resumes"
-                and "\u21b5 again resumes" in (shown["selected"] or {}).get("told", [])
+                (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["title"] == title
+                and "pineapple override" in shown["drawer"].get("values", [])
+                and shown["drawer"].get("acts", [])[:1] == ["\u21b5 Open"]
+                and "Resume" in shown["drawer"]["acts"]
             )
         )
-        assert resumed() is None, "the first Return on Resume resumed the stop"
-        time.sleep(PAST_THE_WAIT)
-        machine.send_key("ret")
-        retry(lambda _: resumed() == "joel", timeout=dt.timedelta(seconds=10))
+        # Return on the stop opens where it was said, so its verbs are gone into.
+        resumed_on_a_second_return(desktop, stop)
+    finally:
+        desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
         if desktop.showing()["open"]:
             desktop.close_launcher()
-        # The live stop knocked with a critical notice, which stays until it's dealt with; once
-        # the stop is resumed the daemon withdraws it, so the alarm goes with what it was about,
-        # read rather than missed, and For You's tray stays out for the tests after.
-        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=NOTICE_WITHDRAWN)
+
+
+def test_a_safe_word_stop_said_nowhere_to_open_names_no_open(desktop: Desktop) -> None:
+    """A stop whose where is words, as Joel's own stop on every agent's is, opens nothing.
+
+    So its drawer names no Open by Return, and says nothing of Return opening it, while Resume
+    is still inside it.
+    """
+    stop = f"{SAFE_WORD}/stops/vm-safe-word-here.json"
+    title = "Someone stopped your agents on quest SAFEQB"
+    kept(
+        desktop,
+        stop,
+        {
+            "id": "vm-safe-word-here",
+            "shadow": False,
+            "said_by": "U0OTHER001",
+            "where": "pineapple stop all on vm",
+            "words": "pineapple override",
+            "said_at": 10,
+            "heard_at": 10,
+            "by_joel": False,
+            "reaches": ["quest:SAFEQB"],
+            "fell_back": False,
+            "resumed": None,
+        },
+    )
+    try:
+        retry(lambda _: title in waiting_inside(desktop)[1], timeout=dt.timedelta(seconds=30))
+        waiting_opened(desktop)
+        desktop.step_in("ret")
+        picked(desktop, title)
+        desktop.launcher_until(
+            lambda shown: (
+                (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["title"] == title
+                and "Resume" in shown["drawer"].get("acts", [])
+                and not any(act.endswith("Open") for act in shown["drawer"]["acts"])
+                and shown["drawer"].get("body") == "Your agents stopped here until you resume them."
+            )
+        )
+        resumed_on_a_second_return(desktop, stop)
     finally:
         desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
         if desktop.showing()["open"]:

@@ -1,5 +1,5 @@
 //! Where the plan's sign-in is kept: the Claude Code config folder pi-claude
-//! signs in to (`modules/pi/claude.sh`).
+//! signs in to (`modules/pi/claude/claude.sh`).
 
 use std::path::{Path, PathBuf};
 

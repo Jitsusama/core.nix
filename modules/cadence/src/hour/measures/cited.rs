@@ -113,7 +113,8 @@ struct Cite {
 /// and today's morning note, named for `today`, with the mesh under
 /// `state_home` saying who sent each message cited and what it said.
 /// Whatever can't be read leaves it unjudged, saying why, rather than
-/// reading no lines as none uncited.
+/// reading no lines as none uncited; a line of `cited.jsonl` that can't
+/// be read backs nothing instead, and the card says so.
 #[must_use]
 pub fn read(state_home: &Path, now: i64, today: &str, orchestrator: Option<&str>) -> Measure {
     let writer = orchestrator.unwrap_or(WRITER);
@@ -190,7 +191,7 @@ fn absent_as_none(path: &Path) -> Result<String, String> {
 }
 
 /// Where pi keeps its sessions' logs, as the pis here run.
-fn agent_folder() -> Option<PathBuf> {
+pub fn agent_folder() -> Option<PathBuf> {
     env::var_os("PI_CODING_AGENT_DIR")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".pi/agent")))
@@ -223,7 +224,10 @@ fn logs_of(logs: &Path, sessions: &BTreeSet<String>) -> Vec<(String, PathBuf)> {
 /// are parsed, since the log holds far more than what it said, and the
 /// reading starts near `from`. An assistant entry with no time to read,
 /// or a line holding the assistant's words that isn't whole before the
-/// log's last, leaves the log unread.
+/// log's last, leaves the log unread, unless the next line with a time
+/// is from by `from`: entries are in time order, so the torn one was
+/// too, and a log torn by a crash and then resumed is unread for a day
+/// at most, not for good.
 fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
     let mut file = File::open(log)?;
     let start = start_of(&mut file, from)?;
@@ -234,16 +238,27 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
         reader.read_until(b'\n', &mut line)?;
     }
     let mut said = Vec::new();
-    let mut torn = false;
+    // A torn line, and whether lines with no time to read came after it.
+    let (mut torn, mut after) = (false, false);
     loop {
         line.clear();
         if reader.read_until(b'\n', &mut line)? == 0 {
             break;
         }
-        if torn {
-            return Err(io::Error::other("a line of the assistant's isn't whole"));
-        }
         let text = String::from_utf8_lossy(&line);
+        if torn {
+            let next = serde_json::from_str::<Value>(&text).ok();
+            match next.and_then(|entry| seconds(&entry["timestamp"])) {
+                Some(at) if at <= from => (torn, after) = (false, false),
+                Some(_) => {
+                    return Err(io::Error::other("a line of the assistant's isn't whole"));
+                }
+                None => {
+                    after |= !text.trim().is_empty();
+                    continue;
+                }
+            }
+        }
         if !text.contains("\"assistant\"") {
             continue;
         }
@@ -270,6 +285,11 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
             at,
             text: words.join("\n"),
         });
+    }
+    // Only the log's last line may still be being written; a torn one
+    // with more after it, none of which dates it, is torn within the day.
+    if torn && after {
+        return Err(io::Error::other("a line of the assistant's isn't whole"));
     }
     Ok(said)
 }
@@ -315,10 +335,10 @@ fn time_after(file: &mut File, offset: u64) -> io::Result<Option<i64>> {
 }
 
 /// The short ids of every message cited in `cited` and the morning note
-/// `note`, so the mesh opens only those, or why `cited` can't be read.
+/// `note`, so the mesh opens only those, or why the note can't be read.
 pub fn cited_ids(cited: &str, note: &str) -> Result<BTreeSet<String>, String> {
-    let from_cites = cites(cited)?.into_iter().map(|cite| cite.msgid);
-    let from_note = for_you(note)
+    let from_cites = cites(cited).0.into_iter().map(|cite| cite.msgid);
+    let from_note = for_you(note)?
         .into_iter()
         .filter_map(|item| owner_comment(&item).map(|(_, id)| id.to_owned()));
     Ok(from_cites.chain(from_note).collect())
@@ -339,7 +359,8 @@ pub fn uncited(
     senders: &BTreeMap<String, Sent>,
     writer: &str,
 ) -> Result<Measure, String> {
-    let backing: Vec<Cite> = cites(cited)?
+    let (all, unreadable) = cites(cited);
+    let backing: Vec<Cite> = all
         .into_iter()
         .filter(|cite| backed(cite, senders, writer))
         .collect();
@@ -356,8 +377,17 @@ pub fn uncited(
         );
         behind.extend(asked.into_iter().map(|line| format!("{line} · {writer}")));
     }
-    behind.extend(noted_uncited(note, senders, writer));
-    Ok(judged(behind, writer))
+    behind.extend(noted_uncited(note, senders, writer)?);
+    let mut measure = judged(behind, writer);
+    if let Some(first) = unreadable.first() {
+        let count = unreadable.len();
+        let lines = if count == 1 { "line" } else { "lines" };
+        measure.says = format!(
+            "{SAYS} ({count} {lines} of cited.jsonl can't be read, backing nothing; the first, \
+             line {first})"
+        );
+    }
+    Ok(measure)
 }
 
 /// The measure judged, with `behind` its lines, `writer` answering.
@@ -374,28 +404,32 @@ fn judged(behind: Vec<String>, writer: &str) -> Measure {
 }
 
 /// The citations in `cited`, each a line with its time, owner, message
-/// and words, or which line can't be read.
-fn cites(cited: &str) -> Result<Vec<Cite>, String> {
-    cited
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| !line.trim().is_empty())
-        .map(|(n, line)| {
-            let read = |line: &Value| {
-                Some(Cite {
-                    at: seconds(&line["ts"])?,
-                    owner: line["owner"].as_str()?.to_owned(),
-                    msgid: line["msgid"].as_str()?.to_owned(),
-                    item: line["item"].as_str()?.to_lowercase(),
-                })
-            };
-            serde_json::from_str::<Value>(line)
-                .ok()
-                .as_ref()
-                .and_then(read)
-                .ok_or_else(|| format!("line {} of cited.jsonl can't be read", n + 1))
+/// and words, and the number of each line that can't be read. One that
+/// can't is left out, backing nothing, rather than leaving every hour
+/// after it unjudged: the file only grows, so one bad line would
+/// otherwise take the measure off the card for good.
+fn cites(cited: &str) -> (Vec<Cite>, Vec<usize>) {
+    let read = |line: &Value| {
+        Some(Cite {
+            at: seconds(&line["ts"])?,
+            owner: line["owner"].as_str()?.to_owned(),
+            msgid: line["msgid"].as_str()?.to_owned(),
+            item: line["item"].as_str()?.to_lowercase(),
         })
-        .collect()
+    };
+    let (mut all, mut unreadable) = (Vec::new(), Vec::new());
+    let numbered = cited.lines().zip(1..);
+    for (line, number) in numbered.filter(|(line, _)| !line.trim().is_empty()) {
+        match serde_json::from_str::<Value>(line)
+            .ok()
+            .as_ref()
+            .and_then(read)
+        {
+            Some(cite) => all.push(cite),
+            None => unreadable.push(number),
+        }
+    }
+    (all, unreadable)
 }
 
 /// Whether `cite` names a message its owner sent, by `senders`, from an
@@ -495,10 +529,15 @@ fn heads(line: &str) -> bool {
 }
 
 /// Each item the morning note `note` puts to Joel with no message from a
-/// cell other than `writer` named, by `senders`.
-fn noted_uncited(note: &str, senders: &BTreeMap<String, Sent>, writer: &str) -> Vec<String> {
+/// cell other than `writer` named, by `senders`, or why the note can't be
+/// read.
+fn noted_uncited(
+    note: &str,
+    senders: &BTreeMap<String, Sent>,
+    writer: &str,
+) -> Result<Vec<String>, String> {
     let mut uncited = Vec::new();
-    for item in for_you(note) {
+    for item in for_you(note)? {
         let named = owner_comment(&item).is_some_and(|(owner, id)| {
             !owner.eq_ignore_ascii_case(writer)
                 && senders
@@ -513,37 +552,63 @@ fn noted_uncited(note: &str, senders: &BTreeMap<String, Sent>, writer: &str) -> 
             ));
         }
     }
-    uncited
+    Ok(uncited)
 }
 
 /// The items the morning note `note` lists under its line opening "For
-/// you", each with the indented lines that carry it on, until a line
-/// that is neither.
-fn for_you(note: &str) -> Vec<String> {
+/// you", each with the lines indented past it that carry it on, its own
+/// points among them, until a line that is neither; or why it can't be
+/// read, when a note is written with no such line, so a note in another
+/// shape is never read as putting nothing to Joel.
+fn for_you(note: &str) -> Result<Vec<String>, String> {
+    let mut lines = note.lines();
+    let opens = |line: &str| {
+        plain(line)
+            .to_lowercase()
+            .strip_prefix("for you")
+            .is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
+    };
+    if lines.by_ref().find(|line| opens(line)).is_none() {
+        return if note.trim().is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err("the morning note has no line opening \"For you\"".to_owned())
+        };
+    }
     let mut items: Vec<String> = Vec::new();
-    let mut listing = false;
-    for line in note.lines() {
-        if !listing {
-            listing = plain(line)
-                .to_lowercase()
-                .strip_prefix("for you")
-                .is_some_and(|rest| !rest.starts_with(char::is_alphanumeric));
+    let mut first: Option<usize> = None;
+    let mut led = false;
+    for line in lines {
+        if line.trim().is_empty() {
             continue;
         }
-        let indented = line.starts_with(char::is_whitespace);
-        if !indented && let Some(item) = point(line) {
+        let depth = line.len() - line.trim_start().len();
+        let carried = first.is_some_and(|first| depth > first);
+        if !carried && let Some(item) = point(line) {
+            first.get_or_insert(depth);
             items.push(item.to_owned());
-        } else if indented
-            && !line.trim().is_empty()
-            && let Some(last) = items.last_mut()
-        {
+        } else if carried && let Some(last) = items.last_mut() {
             last.push(' ');
             last.push_str(line.trim());
-        } else if !line.trim().is_empty() {
+        } else if first.is_none() && !led && !heading(line) {
+            // One line of words leading into the list, as "Two calls
+            // today:"; a second is the next part's, as "Overnight:".
+            led = true;
+        } else {
             break;
         }
     }
-    items
+    if items.is_empty() && led {
+        return Err("the morning note's \"For you\" holds words but no list".to_owned());
+    }
+    Ok(items)
+}
+
+/// Whether `line` opens the note's next part: a heading, or a line opening
+/// in bold, as "**For you:**" does.
+fn heading(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with('#') || line.starts_with("**") || line.starts_with("__")
 }
 
 /// The owner and message the last comment in an item names, as

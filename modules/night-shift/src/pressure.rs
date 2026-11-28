@@ -1,6 +1,7 @@
-//! Memory pressure as the kernel reports it, for the machine and for a
-//! cgroup: the share of the last ten seconds, and of the last minute, in
-//! which every task that wanted memory waited for it.
+//! Pressure as the kernel reports it: memory's, for the machine and for a
+//! cgroup, and the machine's io: the share of the last ten seconds, and
+//! of the last minute, in which every task that wanted memory, or the
+//! disk, waited for it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,6 +51,11 @@ impl Places {
     /// The machine's memory pressure file.
     pub fn machine(&self) -> PathBuf {
         self.proc.join("pressure").join("memory")
+    }
+
+    /// The machine's io pressure file.
+    pub fn machine_io(&self) -> PathBuf {
+        self.proc.join("pressure").join("io")
     }
 
     /// This process's cgroup, as `/proc/self/cgroup`'s unified line names

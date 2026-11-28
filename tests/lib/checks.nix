@@ -5,7 +5,9 @@
   bareDarwin,
   bareNixos,
   evaluates,
+  macosTools,
   onLinux,
+  onMacos,
   pkgs,
   ...
 }:
@@ -212,4 +214,15 @@ in
       ${pkgs.bash}/bin/bash ${./expect-test.sh} ${qt} $PWD
       touch $out
     '';
+}
+# macOS's own tools are on a Mac alone. check-descriptions.nix holds only
+# Linux's checks, so this one says what it proves here alone.
+// onMacos {
+  # macosTools runs a script with /usr/bin's tr, sed and find, and tr there
+  # refuses a byte that isn't UTF-8 unless LC_ALL=C says to read bytes, as a
+  # Mac's account runs it and stdenv's GNU tr doesn't.
+  a-mac-check-runs-macos-own-tools = macosTools {
+    name = "a-mac-check-runs-macos-own-tools";
+    script = ./macos-tools-test.sh;
+  };
 }

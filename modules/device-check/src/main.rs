@@ -701,6 +701,40 @@ mod tests {
     }
 
     #[test]
+    fn in_a_narrow_terminal_a_long_line_hangs_under_its_mark() {
+        // A device is named by its address and driver, as the walk writes
+        // it, and its line passes a narrow terminal. It wraps there, each
+        // later line under the first's words rather than under the mark.
+        // The first line's words with the next one come to 40 cells, so a
+        // wrap that forgot the mark's 2 would draw other lines.
+        let root = OsStr::new("/nonexistent");
+        let look = Look {
+            now: ["power\t0000:00:0a.0 (intel_vsec)".to_owned()].into(),
+            broke: Vec::new(),
+            fixed: Vec::new(),
+            sleeps: Vec::new(),
+            sleep: None,
+        };
+        let pen = Pen::plain();
+        let caution = pen.marked("caution", "warning");
+        let text = answer_text(&look, root, &pen, Room::Cells(40));
+        assert_eq!(
+            layout::overrun(&text, Room::Cells(40)),
+            None,
+            "a line passed 40 cells:\n{text}"
+        );
+        assert_eq!(
+            text.lines().collect::<Vec<_>>(),
+            [
+                format!("{caution}0000:00:0a.0 (intel_vsec) failed a"),
+                "  power change and won't wake until the".to_owned(),
+                "  next boot".to_owned(),
+            ],
+            "the line didn't wrap at 38 cells under its mark, each word kept:\n{text}"
+        );
+    }
+
+    #[test]
     fn reads_trouble_only_from_its_own_taints() {
         let dir = env::temp_dir().join(format!("device-check-test-{}", process::id()));
         let kernel = dir.join("proc/sys/kernel");

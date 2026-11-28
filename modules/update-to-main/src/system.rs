@@ -1024,9 +1024,13 @@ pub fn current(config: &Config) -> Option<PathBuf> {
 /// Whether the machine runs `built`, or one of its specialisations, which
 /// NixOS runs in its stead when the machine was switched to one.
 pub fn runs(config: &Config, built: &Path) -> bool {
-    let Some(current) = current(config) else {
-        return false;
-    };
+    current(config).is_some_and(|current| is_or_specialises(&current, built))
+}
+
+/// Whether `current`, a canonical path, is `built` or one of its
+/// specialisations, which NixOS runs or boots in its stead when the
+/// machine was switched to one.
+pub fn is_or_specialises(current: &Path, built: &Path) -> bool {
     fs::canonicalize(built).is_ok_and(|built| built == current)
         || fs::read_dir(built.join("specialisation")).is_ok_and(|mut specialisations| {
             specialisations.any(|entry| {
@@ -1069,11 +1073,7 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => {
-            let booted = &config.booted;
-            let waits = booted
-                .exists()
-                .then(|| for_next_boot(booted, system))
-                .flatten();
+            let waits = next_boot(config, system);
             let unbooted = waits.is_some() && config.boot_check.is_some();
             // It says what it stopped, started and restarted on its error
             // stream.
@@ -1109,6 +1109,23 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
             })
         }
     }
+}
+
+/// What only the next boot brings in switching to NixOS system `system`
+/// from the one the machine booted, as `for_next_boot` says it.
+fn next_boot(config: &Config, system: &Path) -> Option<String> {
+    let booted = &config.booted;
+    booted
+        .exists()
+        .then(|| for_next_boot(booted, system))
+        .flatten()
+}
+
+/// Whether switching to `system` makes it the boot default at once, as
+/// NixOS's switch does for one that needn't wait on its boot check.
+pub fn boots_at_once(config: &Config, system: &Path) -> bool {
+    matches!(config.kind, Kind::Nixos)
+        && (config.boot_check.is_none() || next_boot(config, system).is_none())
 }
 
 /// How many units a failed switch quotes, and how many of each one's
@@ -1151,14 +1168,19 @@ fn failed_units(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Switches back to `system`, the one the machine left.
-pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Switches back to `system`, the one the machine left. One `unchecked`,
+/// whose boot check failed or never ended, is only activated, as `switch`
+/// activates it: going back with `switch` made it the boot default that
+/// nothing had checked. Whether a system waits on its boot check can't
+/// say so, since the booted system may be many switches old, and a system
+/// that passed its check since would be left off the boot default.
+pub fn go_back(config: &Config, system: &Path, unchecked: bool) -> Result<(), Failure> {
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => run::output(
             run::command(&system.join("bin/switch-to-configuration"), &config.state),
             "switching back",
-            ["switch"],
+            [if unchecked { "test" } else { "switch" }],
         ),
         Kind::Darwin => run::logged(
             run::command(&system.join("activate"), &config.state),
@@ -1247,7 +1269,8 @@ pub fn healthy(config: &Config) -> Result<(), Failure> {
     }
 }
 
-fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Points the profile at `system`, as a generation of its own, newest of all.
+pub fn set_profile(config: &Config, system: &Path) -> Result<(), Failure> {
     let mut nix_env = run::command(&config.tools.nix_env, &config.state);
     nix_env.arg("--profile").arg(&config.profile).arg("--set");
     run::output(nix_env, "pointing the profile at the system", [system]).map(|_| ())

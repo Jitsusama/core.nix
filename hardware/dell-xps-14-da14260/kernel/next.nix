@@ -2,7 +2,8 @@
 # onto 7.3 so the laptop has it before 7.4. Each patch in ./next names the
 # commits it holds and the series they were posted as, and applies to 7.3
 # with no offset or fuzz. Moving the kernel to 7.4 fails here, and the way
-# through is to drop each patch that kernel has, then this file.
+# through is to drop each patch that kernel has, then this file and the
+# the-patches-from-linux-next-apply-exactly check that holds it.
 { config, lib, ... }:
 let
   next = name: {
@@ -41,13 +42,6 @@ in
       # a PWM signal this OLED ignores. The driver wakes the panel before
       # reading it.
       "edp-wakes-the-panel"
-      # A hibernate's thaw reset Bluetooth's controller and probed it again,
-      # and the probe waited on its firmware while user space was frozen, so
-      # the power-off asked a controller still in its bootloader for D3. It
-      # refused, and the hibernate rolled back with the laptop left on. Thaw
-      # is now a plain wake, and a missed interrupt is checked against the
-      # controller's own register.
-      "btintel-pcie-pm"
       # Bluetooth's firmware sends its debug traces to the Wi-Fi side rather
       # than to buffers on the host. Intel pointed at it for a controller
       # that stopped the way this one does, after its exception dump came

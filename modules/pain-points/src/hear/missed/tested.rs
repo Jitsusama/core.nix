@@ -11,7 +11,9 @@
 //! on its owner's word of why it's expected, a miss closes only on its
 //! owner's word, never by going quiet. A miss nothing heard, such as one a
 //! cell owns up to that Joel said nothing of, is written by its owner
-//! (owned.rs), which names its fix too, as nothing lands against it.
+//! (owned.rs), which names its fix too, as nothing lands against it. A
+//! miss whose fix another cell holds moves to that cell, as the hour asks
+//! its owner for the test, and its line keeps whose it was before.
 //! pain-points stays the ledger's only writer, so the line is changed
 //! under the ledger's lock and the ledger written whole.
 
@@ -52,12 +54,16 @@ pub fn help() -> Help {
             "pain-points test --miss AT --owner CELL --what \"a search walked his folders\"",
             "as a cell writes a miss of its own that nothing heard",
         )
+        .example(
+            "pain-points test --miss AT --owner CELL",
+            "as a miss moves to the cell holding its fix",
+        )
         .option("--miss AT", "the miss's time, as its line has it")
         .option("--test TEST", "its test, as REPO PATH NAME")
         .option("--none WHY", "why it was no miss, in place of a test")
         .option(
             "--owner CELL",
-            "whose miss it is, to write one nothing heard",
+            "whose miss it is: with --what, to write one; alone, to move one",
         )
         .example(
             "pain-points test --miss AT --fix \"core #6470\"",
@@ -121,12 +127,13 @@ impl Said<'_> {
     }
 }
 
-/// All an owner says of a miss at once: a test or why it was none, and
-/// the change that fixed one it wrote.
+/// All an owner says of a miss at once: a test or why it was none, the
+/// change that fixed one it wrote, and the cell it moves to.
 #[derive(Debug, Clone, Copy)]
 struct Saying<'a> {
     said: Option<Said<'a>>,
     fix: Option<&'a str>,
+    owner: Option<&'a str>,
 }
 
 impl Saying<'_> {
@@ -139,18 +146,38 @@ impl Saying<'_> {
             line["check"] = json!(fix);
             same
         });
-        said && fixed
+        let moved = self.owner.is_none_or(|owner| moved_to(line, owner));
+        said && fixed && moved
     }
 
     /// How the miss reads once this is said, or nothing for nothing said.
     fn says(self) -> String {
         let fixed = self.fix.map(|fix| format!("names its fix, {fix}"));
         let said = self.said.map(Said::says);
+        let moved = self.owner.map(|owner| format!("is {owner}'s"));
         said.into_iter()
             .chain(fixed)
+            .chain(moved)
             .collect::<Vec<_>>()
             .join(" and ")
     }
+}
+
+/// Moves the miss on `line` to `owner`, adding whose it was to its
+/// `owned_before`, and says whether it was `owner`'s already.
+fn moved_to(line: &mut Value, owner: &str) -> bool {
+    let was = line["owner"].as_str().map(str::to_owned);
+    if was.as_deref() == Some(owner) {
+        return true;
+    }
+    if let Some(was) = was {
+        match line.get_mut("owned_before").and_then(Value::as_array_mut) {
+            Some(before) => before.push(json!(was)),
+            None => line["owned_before"] = json!([was]),
+        }
+    }
+    line["owner"] = json!(owner);
+    false
 }
 
 impl<'a> From<Said<'a>> for Saying<'a> {
@@ -158,6 +185,7 @@ impl<'a> From<Said<'a>> for Saying<'a> {
         Saying {
             said: Some(said),
             fix: None,
+            owner: None,
         }
     }
 }
@@ -169,7 +197,8 @@ type Changed = Result<(Option<String>, String), Failure>;
 /// the fix `--fix` gives, on the line of the miss at `--miss`, in the
 /// ledger in `--ledgers`, or the mission's, and says so. With `--owner`
 /// and `--what`, it writes the miss at `--miss` first, which nothing
-/// heard, with its test and fix if they're given.
+/// heard, with its test and fix if they're given; with `--owner` alone,
+/// it moves the miss there to that cell.
 ///
 /// # Errors
 ///
@@ -181,7 +210,8 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
         .ok_or_else(|| wrongly("--miss names the miss"))?;
     let written = owned::given(given, at).map_err(|what| wrongly(&what))?;
     let fix = owned::fix(given).map_err(|what| wrongly(&what))?;
-    let neither = "give --test, --none with why it was no miss, or --fix";
+    let owner = owned::moved(given).map_err(|what| wrongly(&what))?;
+    let neither = "give --test, --none with why it was no miss, --fix, or --owner to move it";
     let said = match (given.get("--test"), given.get("--none")) {
         (Some(test), None) => Some(Said::Test(test.trim())),
         (None, Some(why)) => Some(Said::NoMiss {
@@ -206,13 +236,13 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
         .get("--ledgers")
         .map_or_else(|| crate::state_home().join("mission"), PathBuf::from);
     let ledger = folder.join("misses.jsonl");
-    let saying = Saying { said, fix };
+    let saying = Saying { said, fix, owner };
     match (written, said) {
         (Some(_), Some(Said::NoMiss { .. })) => Err(wrongly(
             "a miss its owner writes is one; say it was none once it's written",
         )),
         (Some(miss), _) => owned::own_in(&ledger, at, miss, saying),
-        (None, None) if fix.is_none() => Err(wrongly(neither)),
+        (None, None) if fix.is_none() && owner.is_none() => Err(wrongly(neither)),
         (None, _) => name_in(&ledger, at, saying),
     }
 }
@@ -429,6 +459,66 @@ mod tests {
                 "{what} wasn't refused as usage"
             );
         }
+    }
+
+    /// The flags of `pain-points test` for the miss at `AT` in the ledger
+    /// at `path`, with `given`.
+    fn flags(path: &Path, given: &[(&'static str, &str)]) -> BTreeMap<&'static str, String> {
+        let folder = path.parent().expect("the ledger's folder");
+        let mut flags: BTreeMap<&str, String> = given
+            .iter()
+            .map(|&(flag, value)| (flag, value.to_owned()))
+            .collect();
+        flags.insert("--miss", AT.to_owned());
+        flags.insert("--ledgers", folder.display().to_string());
+        flags
+    }
+
+    #[test]
+    fn a_heard_miss_moves_to_the_cell_holding_its_fix_and_keeps_whose_it_was() {
+        let heard = json!({"at": AT, "words": "stop", "owner": "WCJQSG", "heard_by": "x"});
+        let path = ledger("moved", &format!("{heard}\n"));
+        let read = |path: &Path| -> Value {
+            let kept = fs::read_to_string(path).expect("the ledger");
+            serde_json::from_str(kept.trim()).expect("the miss's line")
+        };
+        let said = named(&flags(&path, &[("--owner", "KP0L6A")])).expect("moved");
+        assert!(
+            said.contains("now is KP0L6A's"),
+            "it didn't say where the miss moved: {said}"
+        );
+        let line = read(&path);
+        assert_eq!(
+            (&line["owner"], &line["owned_before"], &line["words"]),
+            (&json!("KP0L6A"), &json!(["WCJQSG"]), &json!("stop")),
+            "the miss didn't move, keeping whose it was and his words: {line}"
+        );
+        let again = named(&flags(&path, &[("--owner", "KP0L6A")])).expect("moved again");
+        assert!(
+            again.contains("already"),
+            "moving it twice said nothing of it: {again}"
+        );
+        let test = "core modules/x/src/y.rs a_test";
+        named(&flags(&path, &[("--owner", "85PKB2"), ("--test", test)])).expect("tested");
+        let line = read(&path);
+        assert_eq!(
+            (&line["owner"], &line["owned_before"], &line["test"]),
+            (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"]), &json!(test)),
+            "a move with its test didn't take both, keeping each owner before: {line}"
+        );
+    }
+
+    #[test]
+    fn a_miss_with_no_owner_moves_with_none_before() {
+        let path = ledger("moved-unowned", &format!("{{\"at\":\"{AT}\"}}\n"));
+        named(&flags(&path, &[("--owner", "KP0L6A")])).expect("moved");
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert_eq!(
+            (&line["owner"], &line["owned_before"]),
+            (&json!("KP0L6A"), &Value::Null),
+            "a miss owned by no one gained an owner before: {line}"
+        );
     }
 
     #[test]

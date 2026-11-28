@@ -33,6 +33,7 @@ import {
   type Part,
   type System,
   type Thing,
+  thingsOf,
   WORDS,
 } from "./model.ts";
 
@@ -123,7 +124,18 @@ function homeHere(thing: Thing): string {
 
 /** The machines drawn whole, worst first as the machines part lists them. */
 function machinesOf(system: System): readonly Thing[] {
-  return system.parts.find((part) => part.part === "machines")?.things ?? [];
+  return thingsOf(
+    system.parts.find((part) => part.part === "machines"),
+    "machine",
+  );
+}
+
+/** The builders the machines send builds to, worst first as the machines part lists them. */
+function buildersOf(system: System): readonly Thing[] {
+  return thingsOf(
+    system.parts.find((part) => part.part === "machines"),
+    "builder",
+  );
 }
 
 /** The machines in reach, worst first, which the bridge and the sections draw whole. */
@@ -347,11 +359,44 @@ function bareOf(system: System): string {
     return "";
   }
   // Its machines' records still to come, its own words would say them read.
-  if (part.untold > 0) {
-    const awaited = `${capital(numbered(part.untold))} ${part.untold === 1 ? "machine" : "machines"}`;
+  if (part.machinesUntold > 0) {
+    const untold = part.machinesUntold;
+    const awaited = `${capital(numbered(untold))} ${untold === 1 ? "machine" : "machines"}`;
     return `<p class="bare health unread">${mark("unread")}${escaped(`${awaited} named, none read yet.`)}</p>`;
   }
   return `<p class="bare health ${part.health}">${mark(part.health)}${escaped(capital(part.says))}</p>`;
+}
+
+/** One builder's line: its name, then how it stands. */
+function builderLine(builder: Thing): string {
+  const name = `<span translate="no">${escaped(builder.name)}</span>`;
+  return `${name}${spoken(builder.health)} ${escaped(builder.says)}`;
+}
+
+/**
+ * The builders the machines send builds to, said across them as a part is:
+ * the worst one's line, or how many there are when none is worth a look,
+ * then the rest's, and the way to them on the map, which lands on the
+ * worst, or the first: the map draws its builders only once its address
+ * names one. None is drawn where the node names no builders, or the
+ * machines weren't read. The worst is found, not taken from the order:
+ * a builder's health and the part's order are two watches, so a builder
+ * can turn bad one push before the part puts it first.
+ */
+function buildersAcross(system: System): string {
+  const builders = buildersOf(system);
+  const health = worstOf(builders);
+  const worst = builders.find((builder) => builder.health === health) ?? builders[0];
+  if (worst === undefined) {
+    return "";
+  }
+  const noun = builders.length === 1 ? "builder" : "builders";
+  const count = `${capital(numbered(builders.length))} ${noun}`;
+  const said = health === "good" ? escaped(count) : builderLine(worst);
+  const rest = health === "good" ? builders : builders.filter((builder) => builder !== worst);
+  const aside = rest.length === 0 ? "" : `<p class="aside">${rest.map(builderLine).join("; ")}</p>`;
+  const hash = `#builder=${encodeURIComponent(worst.name)}`;
+  return `<section class="tie part ${health}" data-part="part-builders"><h3>${mark(health)}Builders${spoken(health)}</h3><p class="said">${said}</p>${aside}<div class="onward"><a class="row deeper" data-row="builders" data-health="${health}" href="../mycelium/${escaped(hash)}">See ${builders.length === 1 ? "it" : "them"} on the map</a></div></section>`;
 }
 
 /**
@@ -369,15 +414,30 @@ function partsOf(system: System, when: (at: string) => string): string {
   return `${bareOf(system)}${machines.join("\n")}${moreOf(system)}${awaySection(system, when)}
 <section class="across" id="across" data-part="across" aria-labelledby="name-across">
   <h2 class="name" id="name-across">Across <em>them</em></h2>
-  <div class="ties">${across}</div>
-  <p class="later">Not shown yet: the builders your machines lend work to.</p>
+  <div class="ties">${across}${buildersAcross(system)}</div>
 </section>`;
 }
 
-/** One look, drawn as a row: its mark, whose it is, then what it is. */
+/**
+ * One look, drawn as a row: its mark, whose it is, then what it is, leading
+ * to where it is seen whole. Under its words, why it matters and its one
+ * act, the launcher's row for its machine, each where the daemon gives it.
+ * The act names its machine, so each reads alone in a list of links; it is
+ * no row of the cursor's, which steps from look to look, and Tab reaches it.
+ * Its words are one span, since the link is a flex box, which would make
+ * each run of text an item of its own and drop the spaces between them.
+ */
 function lookRow(look: Look): string {
-  const whose = `<span class="whose"${look.machine ? ' translate="no"' : ""}>${escaped(look.whose)}</span>`;
-  return `<li><a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a></li>`;
+  const machine = look.thing ? ' translate="no"' : "";
+  const whose = `<span class="whose"${machine}>${escaped(look.whose)}</span>`;
+  const row = `<a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a>`;
+  const matters = look.matters === "" ? "" : `<span>${escaped(look.matters)}</span>`;
+  const name = `<span${machine}>${escaped(look.whose)}</span>`;
+  const words = `<span>Open ${name} in the Launcher</span>`;
+  const act =
+    look.act === undefined ? "" : `<a class="launch" href="${escaped(look.act)}">${words}</a>`;
+  const why = matters === "" && act === "" ? "" : `<p class="why">${matters}${act}</p>`;
+  return `<li>${row}${why}</li>`;
 }
 
 /** What the list, and a, say once nothing is worth a look. */

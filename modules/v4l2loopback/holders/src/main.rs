@@ -10,8 +10,9 @@
 //! writes one. OUTPUT gets one program name per line, sorted, and nothing
 //! while no program has it open; it's replaced whole, so a reader never
 //! sees half of it. A process in an ignored unit, such as the relay that
-//! fills the camera, is left out; a unit is a cgroup no program can put
-//! itself in, as it can take any name. With --card, only a loopback of
+//! fills the camera, is left out, since a program can take any name but
+//! can't put itself in a system service or scope. A unit a person's own
+//! manager starts by the same name doesn't count. With --card, only a loopback of
 //! that name counts, so a node number another camera has since been given
 //! isn't taken for this one.
 //!
@@ -47,12 +48,31 @@
 //! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
 //! names who reads it there (modules/machine's camera.rs). A node a link
 //! names, as the relay's is, changes with each plug-in, so the link is
-//! followed first.
+//! followed first. A loopback's `.devices/` file goes as its camera goes
+//! or the run is stopped, only once its own file says nobody, so a reader
+//! never finds a holder with no node to find it by; a nobody it couldn't
+//! write, or a node file it couldn't remove, is tried again, and once more
+//! as the run is stopped. A loopback whose camera changes, while its node
+//! file still says the one before, still says who holds the new camera, as
+//! a camera held never reads as off; until its node file is right, only
+//! the `PipeWire` readers a reader finds by that file may be the old
+//! camera's. A holders file removed while the run watches, as a USB
+//! camera's run given a moved loopback's old node removes it, is written
+//! again on the watch's next look.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
-//! holds costs nothing. Once its file is first written, its log says
-//! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
-//! failures and its exits take the terminal kit's shape (`help()`).
+//! holds costs nothing. A file it couldn't write, its own or the one in
+//! `.devices/`, or a read of the holders that failed, is looked at again
+//! until it's right, whoever holds the camera: each second, or every two
+//! while a loopback's camera is watched, and while nobody holds it, twice
+//! as long each try, up to sixteen seconds. A read that failed keeps what
+//! its file said, as it says nothing of who holds the camera now. What
+//! went wrong is said once as it begins and once as it clears, for each
+//! file. The first time its files say who holds the camera as a read that
+//! worked found, and which node it is, or nobody and no `.devices/` file
+//! where there's no camera, its log says `ready in N ms`, once a run
+//! (src/ready.rs says why). Its help, its failures and its exits take the
+//! terminal kit's shape (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -105,7 +125,10 @@ fn help() -> Help {
         .argument("SOURCE", "the camera's node, or a file naming it")
         .argument("OUTPUT", "the file to name them in; with --usb, its folder")
         .option("--card NAME", "only a loopback of this name counts")
-        .option("--ignore-unit UNIT", "leaves out this unit's processes")
+        .option(
+            "--ignore-unit UNIT",
+            "leaves out this system service's or scope's processes",
+        )
         .option("--usb", "SOURCE is a USB camera's node")
         .option(
             "--forget",
@@ -117,6 +140,24 @@ fn help() -> Help {
 /// A start asked wrongly, pointing at the help.
 fn wrongly(what: String) -> Failure {
     Failure::new(Exit::Usage, what).try_this("loopback-holders --help")
+}
+
+/// A unit to leave out, if it's a system service or scope holding only its
+/// own processes. A person's manager or session, or init.scope, holds
+/// everything they run, so leaving one out would hide every reader; and a
+/// slice or any other kind never names the unit a process is in.
+fn unit(name: String) -> Result<String, Failure> {
+    let own = name
+        .rsplit_once('.')
+        .is_some_and(|(stem, kind)| !stem.is_empty() && matches!(kind, "service" | "scope"));
+    let everyones =
+        name.starts_with("user@") || name.starts_with("session-") || name == "init.scope";
+    if !own || everyones || name.contains('/') {
+        return Err(wrongly(format!(
+            "--ignore-unit takes a system service or scope of its own, not {name}"
+        )));
+    }
+    Ok(name)
 }
 
 fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failure> {
@@ -136,7 +177,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         };
         match argument.as_str() {
             "--card" => card = Some(value()?),
-            "--ignore-unit" => units.push(value()?),
+            "--ignore-unit" => units.push(unit(value()?)?),
             "--sysfs" => sysfs = PathBuf::from(value()?),
             "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
@@ -200,10 +241,10 @@ fn device_file(output: &Path) -> Option<PathBuf> {
 
 /// Says which node the output's camera is, as its real path, or with none,
 /// removes what said it, so a reader never finds the camera by a node it
-/// no longer is.
-fn say_device(output: &Path, node: Option<&Path>) {
+/// no longer is; answering what went wrong, for its caller to say.
+fn say_device(output: &Path, node: Option<&Path>) -> Result<(), String> {
     let Some(file) = device_file(output) else {
-        return;
+        return Ok(());
     };
     let said = match node {
         Some(node) => {
@@ -214,14 +255,20 @@ fn say_device(output: &Path, node: Option<&Path>) {
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
                 .and_then(|()| replace(&file, &said))
         }
+        // A folder that isn't there, or isn't a folder, holds no node file.
         None => match fs::remove_file(&file) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            Err(error)
+                if !matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                Err(error)
+            }
             _ => Ok(()),
         },
     };
-    if let Err(error) = said {
-        complain(format_args!("{}: {error}", file.display()));
-    }
+    said.map_err(|error| format!("{}: {error}", file.display()))
 }
 
 /// Removes each file in the folder but this run's own that says this node,
@@ -363,10 +410,146 @@ fn say(line: &str) {
     }
 }
 
-/// Says the run is ready, once its file is first written.
-fn written(ready: &mut Ready) {
-    if let Some(line) = ready.line() {
-        say(&line);
+/// What went wrong on a watch's last look at its file, said once as it
+/// begins or changes and once as it clears, since a look comes each second
+/// while it lasts.
+#[derive(Default)]
+struct Trouble(Option<String>);
+
+impl Trouble {
+    /// Takes this look's troubles, none when all went right, saying them
+    /// only when they differ from the last look's.
+    fn now(&mut self, output: &Path, troubles: &[String]) {
+        let now = (!troubles.is_empty()).then(|| troubles.join("; "));
+        if now != self.0 {
+            match &now {
+                Some(what) => complain(format_args!("{what}")),
+                None => complain(format_args!("{}: right again", output.display())),
+            }
+            self.0 = now;
+        }
+    }
+}
+
+/// What a run has said of its files: whether it's ready, the trouble it
+/// last complained of in each, and the node `.devices/` is still owed.
+/// It's one for the whole run, so a trouble a loopback's nobody met is
+/// cleared by the watch that next writes the file right, and the other way
+/// round.
+struct Run {
+    ready: Ready,
+    trouble: Trouble,
+    owed: Option<PathBuf>,
+    device: Trouble,
+}
+
+impl Run {
+    fn begun() -> Self {
+        Self {
+            ready: Ready::begun(),
+            trouble: Trouble::default(),
+            owed: None,
+            device: Trouble::default(),
+        }
+    }
+
+    /// Owes `.devices/` the node, said on the watch's next look and each
+    /// after until it's written.
+    fn owe(&mut self, node: &Path) {
+        self.owed = Some(node.to_owned());
+    }
+
+    /// Says the node owed, answering whether `.devices/` says it now.
+    fn name(&mut self, output: &Path) -> bool {
+        let (Some(node), Some(file)) = (self.owed.take(), device_file(output)) else {
+            return true;
+        };
+        match say_device(output, Some(&node)) {
+            Ok(()) => {
+                self.device.now(&file, &[]);
+                true
+            }
+            Err(trouble) => {
+                self.device.now(&file, &[trouble]);
+                self.owed = Some(node);
+                false
+            }
+        }
+    }
+
+    /// Removes what says the node, as the camera goes or the run ends, so
+    /// nothing owed is said after, and a trouble the file had clears.
+    /// Says whether it's gone, so a removal that failed is tried again.
+    fn unname(&mut self, output: &Path) -> bool {
+        self.owed = None;
+        let Some(file) = device_file(output) else {
+            return true;
+        };
+        match say_device(output, None) {
+            Ok(()) => {
+                self.device.now(&file, &[]);
+                true
+            }
+            Err(trouble) => {
+                self.device.now(&file, &[trouble]);
+                false
+            }
+        }
+    }
+
+    /// Says the run is ready, the first time its file says who holds the
+    /// camera as a read that worked found.
+    fn written(&mut self) {
+        if let Some(line) = self.ready.line() {
+            say(&line);
+        }
+    }
+}
+
+/// How long a watch sleeps before its next look, when nothing wakes it.
+/// While anyone holds the camera it looks every interval, as a stream and
+/// a descriptor handed on show only then. While a file is wrong with
+/// nobody holding it, each try waits twice the last, up to sixteen
+/// seconds, since each look reads every process's open files, a tenth of
+/// a second on a busy machine, and a fault such as a full disk can last
+/// hours; a holder opening the camera still wakes a look at once. A read
+/// that failed says nothing of who holds the camera, so it's paced as the
+/// last read that worked found it.
+struct Retry {
+    every: Duration,
+    next: Duration,
+    held: bool,
+}
+
+impl Retry {
+    const MOST: Duration = Duration::from_secs(16);
+
+    /// A watch begins as if its camera were held, so a first read that
+    /// fails, whose file says nobody for want of anything known, is tried
+    /// again within the interval rather than leaving a camera held as the
+    /// run starts said off for up to sixteen seconds.
+    fn new(every: Duration) -> Self {
+        Self {
+            every,
+            next: every,
+            held: true,
+        }
+    }
+
+    /// How long to wait after a look: `seen` says whether its read found
+    /// anyone holding the camera, or is none when the read failed, and
+    /// `settled` whether its files are right.
+    fn next(&mut self, seen: Option<bool>, settled: bool) -> Option<Duration> {
+        if let Some(anyone) = seen {
+            self.held = anyone;
+        }
+        if self.held || settled {
+            self.next = self.every;
+            return self.held.then_some(self.every);
+        }
+        let wait = self.next;
+        self.next = (wait * 2).min(Self::MOST.max(self.every));
+        Some(wait)
     }
 }
 
@@ -380,7 +563,7 @@ fn watch(
     units: &[String],
     sysfs: Option<&Path>,
     mut record: Option<&mut Record>,
-    ready: &mut Ready,
+    run: &mut Run,
 ) -> Ended {
     if let Err(error) = events.watch(node) {
         complain(format_args!("can't watch {}: {error}", node.display()));
@@ -392,27 +575,53 @@ fn watch(
     // Whether a USB camera streams shows only in sysfs, so while anyone
     // holds it, it's looked at every second.
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
+    let mut retry = Retry::new(every);
+    // What the file holds, as last written, and what it was last meant to
+    // say, written or not, which a read that fails keeps.
     let mut said = None;
+    let mut meant = None;
     let mut pids = HashSet::new();
     loop {
-        let names = match holders::holders(node, units, &pids) {
+        let mut troubles = Vec::new();
+        // A read that fails keeps what was said, or with nothing said yet,
+        // says nobody, which is a guess, so only a read that worked counts
+        // toward the watch being ready.
+        let read = match holders::holders(node, units, &pids) {
             Ok((names, now)) => {
                 pids = now;
-                names
+                Some(names)
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ended::Gone,
             Err(error) => {
-                complain(format_args!("{}: {error}", node.display()));
-                BTreeSet::new()
+                troubles.push(format!("{}: {error}", node.display()));
+                None
             }
         };
-        let anyone = !names.is_empty();
-        let shown = listed(names, sysfs, node);
-        if said.as_ref() != Some(&shown) {
-            match write(output, &shown) {
-                Ok(()) => written(ready),
-                Err(error) => complain(format_args!("{}: {error}", output.display())),
-            }
+        let seen = read.as_ref().map(|names| !names.is_empty());
+        // The node first, so a reader that finds a holder can find the
+        // camera by it, and a run killed between the two leaves the node
+        // file that finds the holders file, as the removals keep it.
+        let found = run.name(output);
+        // Said even while the node file still says the camera before, which
+        // it couldn't replace or remove, since a camera held never reads as
+        // off. Until it's right, only the PipeWire readers its node file
+        // finds for a reader may be that camera's.
+        let named = read.map(|names| listed(names, sysfs, node));
+        let shown = to_say(named, meant.as_ref());
+        // A file removed since it was written is written again, since
+        // nothing else would bring it back while its holders stay the same.
+        let right = (said.as_ref() == Some(&shown) && output.exists())
+            || match write(output, &shown) {
+                Ok(()) => true,
+                Err(error) => {
+                    troubles.push(format!("{}: {error}", output.display()));
+                    false
+                }
+            };
+        run.trouble.now(output, &troubles);
+        let settled = seen.is_some() && right && found;
+        if settled {
+            run.written();
         }
         // The record asks the camera itself, which a stalling camera can
         // keep waiting, so it comes after the file is right.
@@ -422,8 +631,12 @@ fn watch(
                 say(&line);
             }
         }
-        said = Some(shown);
-        match events.wait(anyone.then_some(every)) {
+        // A file that couldn't be written, either of them, or a read that
+        // failed, is tried again on the next look, which comes on a timer
+        // even while nobody holds the camera.
+        said = right.then(|| shown.clone());
+        meant = Some(shown);
+        match events.wait(retry.next(seen, settled)) {
             Woken::Timeout | Woken::Changed => {}
             Woken::NodeGone => return Ended::Gone,
             Woken::Stopped => return Ended::Stopped,
@@ -431,9 +644,17 @@ fn watch(
     }
 }
 
+/// What a look's file says: who its read found, as listed, or when the
+/// read failed, what it was last meant to say, since a camera held is
+/// never said to be off (modules/machine's camera.rs); nobody only when
+/// nothing was meant yet.
+fn to_say(listed: Option<BTreeSet<String>>, meant: Option<&BTreeSet<String>>) -> BTreeSet<String> {
+    listed.or_else(|| meant.cloned()).unwrap_or_default()
+}
+
 /// Says who streams from a USB camera while it's there, in a file of its
 /// own that goes with it.
-fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), Failure> {
+fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Failure> {
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
@@ -456,7 +677,7 @@ fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), 
             forget_node(folder, Some(&file), &said_as(&node));
         }
     }
-    say_device(&output, Some(&node));
+    run.owe(&node);
     let mut record = Record::new(&options.sysfs, &options.debugfs);
     let ended = watch(
         events,
@@ -465,7 +686,7 @@ fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), 
         &options.units,
         Some(&options.sysfs),
         Some(&mut record),
-        ready,
+        run,
     );
     // A stream the watch ends during has its last seconds said too, since
     // a camera dropping off mid-call is what the record is for.
@@ -482,7 +703,7 @@ fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), 
         )
         .because(format!("{}: {error}", output.display()))),
         _ => {
-            say_device(&output, None);
+            run.unname(&output);
             // A watch that ended with the camera still there, as one that
             // couldn't be made does, fails, so the unit starts it again
             // rather than leaving the camera unwatched.
@@ -528,36 +749,65 @@ fn forget(options: &Options) {
     );
 }
 
+/// Writes that nobody holds a loopback, answering whether the file took it,
+/// so one it didn't is written again. It says nothing of ready: that's for
+/// its caller, since nobody is so only with no camera and its node file
+/// gone, and a guess for one it couldn't watch, until it's tried again.
+fn say_nobody(output: &Path, run: &mut Run) -> bool {
+    match write(output, &BTreeSet::new()) {
+        Ok(()) => {
+            run.trouble.now(output, &[]);
+            true
+        }
+        Err(error) => {
+            run.trouble
+                .now(output, &[format!("{}: {error}", output.display())]);
+            false
+        }
+    }
+}
+
+/// What a loopback's run still owes as it's stopped, tried once more: its
+/// nobody, then its node file once that's written. A stop can come while
+/// either waits for its next try, which would never come.
+fn last_try(output: &Path, run: &mut Run, told: bool, unnamed: bool) {
+    let told = told || say_nobody(output, run);
+    if told && !unnamed {
+        run.unname(output);
+    }
+}
+
 /// Says who holds a loopback, following the source to each node it names.
-fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
-    let nobody = BTreeSet::new();
-    // Nobody said is the watch serving only where it's so: no camera, or
-    // its node gone. One it couldn't watch is still there, and nobody is
-    // a guess until the watch is tried again, so it isn't ready.
-    let say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
-        Ok(()) => ready.into_iter().for_each(written),
-        Err(error) => complain(format_args!("{}: {error}", options.output.display())),
-    };
+fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     tidy(&options.output);
     if let Some(file) = device_file(&options.output) {
         tidy(&file);
     }
-    let mut gone = false;
+    // Whether nobody was written and the node unnamed since the last
+    // camera, each tried each second with no camera until it is.
+    let mut told = false;
+    let mut unnamed = false;
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
-            if !gone {
-                say_device(&options.output, None);
-                say_nobody(Some(&mut *ready));
-                gone = true;
+            // Its holders file first, as the removals keep it, so a node
+            // file goes only once no holder is said beside it.
+            if !told {
+                told = say_nobody(&options.output, run);
+            }
+            if told && !unnamed {
+                unnamed = run.unname(&options.output);
+            }
+            if told && unnamed {
+                run.written();
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
+                last_try(&options.output, run, told, unnamed);
                 return;
             }
             continue;
         };
-        gone = false;
-        say_device(&options.output, Some(&node));
+        run.owe(&node);
         let ended = watch(
             events,
             &node,
@@ -565,16 +815,24 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
             &options.units,
             None,
             None,
-            ready,
+            run,
         );
-        say_nobody((!node.exists()).then_some(&mut *ready));
-        if let Ended::Stopped = ended {
-            say_device(&options.output, None);
+        // A camera gone is said no more, so a node that comes next, which
+        // may not be sayable yet, never leaves the last one said: nobody
+        // first, then a node gone or stopping is unnamed. What fails is
+        // tried again by the pass with no camera, which these tell.
+        told = say_nobody(&options.output, run);
+        unnamed = false;
+        let stopped = matches!(ended, Ended::Stopped);
+        if told && (stopped || !node.exists()) {
+            unnamed = run.unname(&options.output);
+        }
+        if stopped {
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            say_device(&options.output, None);
+            last_try(&options.output, run, told, unnamed);
             return;
         }
     }
@@ -582,7 +840,7 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let mut ready = Ready::begun();
+        let mut run = Run::begun();
         let options = options(context.args.iter().cloned())?;
         // Forgetting watches nothing, so a watch it can't have mustn't
         // leave what it's there to remove.
@@ -595,9 +853,9 @@ fn main() -> ExitCode {
                 .because(format!("inotify: {error}"))
         })?;
         if options.usb {
-            usb(&mut events, &options, &mut ready)
+            usb(&mut events, &options, &mut run)
         } else {
-            loopback(&mut events, &options, &mut ready);
+            loopback(&mut events, &options, &mut run);
             Ok(())
         }
     })
@@ -628,6 +886,108 @@ mod tests {
                 "the camera went",
                 "the camera went"
             ]
+        );
+    }
+
+    #[test]
+    fn a_wrong_file_nobody_holds_is_tried_less_often_up_to_sixteen_seconds() {
+        let mut retry = Retry::new(Duration::from_secs(2));
+        let waits: Vec<_> = (0..6).map(|_| retry.next(Some(false), false)).collect();
+        let seconds = |all: &[u64]| all.iter().map(|s| Some(Duration::from_secs(*s))).collect();
+        let wanted: Vec<_> = seconds(&[2, 4, 8, 16, 16, 16]);
+        assert_eq!(
+            waits, wanted,
+            "a wrong file nobody holds was tried at other times"
+        );
+    }
+
+    #[test]
+    fn a_held_camera_is_looked_at_every_interval_and_a_right_file_waits() {
+        let every = Duration::from_secs(1);
+        let mut retry = Retry::new(every);
+        retry.next(Some(false), false);
+        retry.next(Some(false), false);
+        assert_eq!(
+            retry.next(Some(true), false),
+            Some(every),
+            "a camera someone holds wasn't looked at each interval"
+        );
+        assert_eq!(
+            retry.next(Some(false), false),
+            Some(every),
+            "a wrong file's tries didn't start again from the interval once it was held"
+        );
+        assert_eq!(
+            retry.next(Some(false), true),
+            None,
+            "a right file nobody holds was looked at on a timer"
+        );
+        assert_eq!(
+            retry.next(Some(false), false),
+            Some(every),
+            "a wrong file's tries didn't start again from the interval once it was right"
+        );
+    }
+
+    #[test]
+    fn a_failed_read_of_a_held_camera_is_tried_again_every_interval() {
+        let every = Duration::from_secs(2);
+        let mut retry = Retry::new(every);
+        retry.next(Some(true), true);
+        let waits: Vec<_> = (0..3).map(|_| retry.next(None, false)).collect();
+        assert_eq!(
+            waits,
+            [Some(every); 3],
+            "a held camera whose reads failed was looked at less often"
+        );
+    }
+
+    #[test]
+    fn a_failed_read_of_a_camera_nobody_holds_is_tried_less_often() {
+        let every = Duration::from_secs(2);
+        let mut retry = Retry::new(every);
+        assert_eq!(
+            retry.next(Some(false), true),
+            None,
+            "a right file nobody holds was looked at on a timer"
+        );
+        let waits: Vec<_> = (0..3).map(|_| retry.next(None, false)).collect();
+        assert_eq!(
+            waits,
+            [Some(every), Some(every * 2), Some(every * 4)],
+            "a camera nobody held whose reads failed wasn't tried less often"
+        );
+    }
+
+    #[test]
+    fn a_first_read_that_fails_is_tried_again_every_interval() {
+        let every = Duration::from_secs(2);
+        let mut retry = Retry::new(every);
+        let waits: Vec<_> = (0..3).map(|_| retry.next(None, false)).collect();
+        assert_eq!(
+            waits,
+            [Some(every); 3],
+            "a camera that may be held as the run starts was looked at less often"
+        );
+    }
+
+    #[test]
+    fn a_failed_read_keeps_what_the_file_was_meant_to_say() {
+        let held = named(&["firefox"]);
+        assert_eq!(
+            to_say(None, Some(&held)),
+            held,
+            "a read that failed said a held camera off"
+        );
+        assert_eq!(
+            to_say(Some(BTreeSet::new()), Some(&held)),
+            BTreeSet::new(),
+            "a read that worked didn't say who it found"
+        );
+        assert_eq!(
+            to_say(None, None),
+            BTreeSet::new(),
+            "a first read that failed didn't say nobody"
         );
     }
 
@@ -689,7 +1049,7 @@ mod tests {
         // Only a USB camera's run forgets another's file saying its node.
         let another = root.join(".devices/Another");
         fs::write(&another, format!("{}\n", real.display())).unwrap();
-        say_device(&output, Some(&link));
+        say_device(&output, Some(&link)).unwrap();
         assert!(
             another.exists(),
             "another camera's file, said by a loopback"
@@ -712,7 +1072,7 @@ mod tests {
             0o755
         );
         assert_eq!(fs::read_dir(root.join(".devices")).unwrap().count(), 1);
-        say_device(&output, None);
+        say_device(&output, None).unwrap();
         assert!(!file.exists(), "the camera gone, its node is said no more");
     }
 
@@ -768,10 +1128,10 @@ mod tests {
     fn the_arguments_are_read_as_the_units_give_them() {
         let given = |line: &str| options(line.split(' ').map(str::to_owned));
         let read =
-            given("--card Stand-in --ignore-unit a.service --ignore-unit b.service /run/d /run/o")
+            given("--card Stand-in --ignore-unit a.service --ignore-unit b.scope /run/d /run/o")
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
-        assert_eq!(read.units, ["a.service", "b.service"]);
+        assert_eq!(read.units, ["a.service", "b.scope"]);
         assert!(!read.usb);
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
@@ -798,6 +1158,13 @@ mod tests {
             "--forget /a /b",
             "--usb --forget --card Camera /a /b",
             "--usb --forget --ignore-unit a.service /a /b",
+            "--ignore-unit a.slice /a /b",
+            "--ignore-unit a.socket /a /b",
+            "--ignore-unit .service /a /b",
+            "--ignore-unit a/b.service /a /b",
+            "--ignore-unit user@1000.service /a /b",
+            "--ignore-unit session-2.scope /a /b",
+            "--ignore-unit init.scope /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),

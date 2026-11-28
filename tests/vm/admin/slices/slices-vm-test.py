@@ -54,6 +54,10 @@ LEAST_RATIO = 2.5
 MOST_RATIO = 6.5
 # How long a unit, a scope or a weight may take to appear.
 APPEARING = dt.timedelta(seconds=30)
+# How long jobs' ceiling may take to rise once jobs fills it: the 30 s nothing else must have
+# waited on memory, from the sorter's first quiet look, and the minute a loaded host may take to
+# read the file in.
+RISING = dt.timedelta(seconds=90)
 # The scopes held below jobs.slice by work an agent writes there, as the sorter names them.
 WORK_SCOPE = "jobs-work.slice/work-.*\\.scope$"
 # How many heavy starts come at once, as about thirteen sessions' builds did when a hold ended
@@ -232,6 +236,8 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     """Apps keep a hard share of memory, agents' sessions and system services a soft one.
 
+    Apps and the desktop keep what they swap out compressed in memory, never on the disk.
+
     Agents' sessions keep a hard floor as large as the sessions' kitty's own and jobs-sorter's
     three 512M hard floors on the windows Joel is at.
     Every slice above both claims them too. system.slice claims what its
@@ -256,6 +262,9 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     assert account.floor(f"{ACCOUNT}/agents.slice") == AGENTS_FLOOR
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.soft_floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
+    for kept in ("app", "session"):
+        writeback = account.read(f"{ACCOUNT}/{kept}.slice/memory.zswap.writeback")
+        assert writeback == "0", f"{kept}.slice writes what it swaps to the disk: {writeback}"
     assert account.floor(JOBS) == 0
     system = "/sys/fs/cgroup/system.slice"
     assert account.soft_floor(f"{system}/systemd-journald.service") == JOURNAL_FLOOR
@@ -266,11 +275,65 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     assert account.soft_floor(system) >= int(running) >= JOURNAL_FLOOR, running
 
 
-def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
-    """Work in jobs is slowed past 26% of memory, and never ended."""
-    high = int(account.read(f"{JOBS}/memory.high"))
-    assert abs(high - account.memory() * JOBS_HIGH) <= MIB
-    assert account.read(f"{JOBS}/memory.max") == "max"
+def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
+    jobs: Account,
+) -> None:
+    """Work in jobs is slowed past 26% of memory, never ended, and the ceiling follows room.
+
+    The ceiling rises while jobs fills it and nothing else waits, and goes back at a stop. When
+    it rises and falls is jobs-sorter's own tests' (src/ceiling.rs), and that it asks the
+    account's manager is theirs too (its call's argv). This proves the sorter's ceiling reaches
+    the slice's memory.high, and that its unit puts back the declared one as it stops,
+    since a ceiling it lifted would otherwise stay up with nothing to bring it down. It is one
+    subtest with the declared ceiling's, since both are about the one ceiling.
+    """
+    machine = jobs.machine
+    coreutils = jobs.sleep.rsplit("/", 1)[0]
+    declared = int(jobs.read(f"{JOBS}/memory.high"))
+    assert abs(declared - jobs.memory() * JOBS_HIGH) <= MIB, declared
+    assert jobs.read(f"{JOBS}/memory.max") == "max"
+    # A file as large as the ceiling, read from inside jobs, fills it with page cache, which
+    # still counts as available, so memory isn't short while it does.
+    machine.succeed(
+        f"head -c {declared} /dev/urandom > /var/tmp/filler && sync"
+        " && echo 1 > /proc/sys/vm/drop_caches"
+    )
+    # Whatever fails from here, the filler goes and the sorter runs again, so the subtests
+    # after this one start from a jobs holding nothing of it.
+    try:
+        jobs.write_into_jobs(
+            "fills",
+            f"{JOBS}/jobs.service",
+            f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1009; }}",
+        )
+        machine.wait_until_succeeds(
+            f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
+        )
+        # The sorter says so once busctl has answered, after memory.high has moved, so its
+        # line is waited for rather than read once.
+        machine.wait_until_succeeds(
+            "journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service"
+            " | grep -q 'memory ceiling to .*nothing it spares waiting on memory'",
+            timeout=RISING,
+        )
+        # Still lifted as the sorter stops, so only its unit can have put it back.
+        machine.succeed(
+            f"test $(cat {JOBS}/memory.high) -gt {declared}"
+            " && systemctl -M alice@ --user stop jobs-sorter.service"
+        )
+        put_back = int(jobs.read(f"{JOBS}/memory.high"))
+        assert abs(put_back - declared) <= MIB, (put_back, declared)
+    finally:
+        # The bracket keeps the pattern from matching this shell's own command line, while it
+        # still matches the filling shell and a cat not yet done; the file goes in a command
+        # of its own, since naming it here would match this shell too.
+        machine.succeed(
+            f"pkill -xf '{jobs.sleep} 1009' || true; pkill -f '/var/tmp/fille[r]' || true"
+        )
+        machine.succeed("rm -f /var/tmp/filler")
+        # A restart, not a start, since a failure before the stop leaves the sorter running
+        # with the ceiling lifted, and only its stop puts the declared one back.
+        machine.succeed("systemctl -M alice@ --user restart jobs-sorter.service")
 
 
 def test_timed_work_is_inside_idle_jobs(jobs: Account) -> None:
@@ -673,7 +736,7 @@ def test_on_the_disk_slices_weigh_as_on_the_cpu(jobs: Account) -> None:
     """On the disk, slices weigh as they do on the CPU."""
     for path, weight in [
         (f"{ACCOUNT}/session.slice", 1000),
-        (f"{ACCOUNT}/app.slice", 100),
+        (f"{ACCOUNT}/app.slice", 1000),
         (JOBS, 1),
         (TIMED, 10000),
         (f"{JOBS}/jobs-awaited.slice", 1000),

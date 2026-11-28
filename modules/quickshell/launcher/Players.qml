@@ -1,6 +1,6 @@
-// Media, a place: every media player that speaks MPRIS (Spotify, a
-// browser's tab, mpv), what each plays and how, beside Sound, which holds the
-// devices it plays through (VKCF3Z, 2026-11-08). It's launcher/Players.qml
+// Media, a place in Desktop: every media player that speaks MPRIS (Spotify, a
+// browser's tab, mpv), what each plays and how, apart from Sound in Machine,
+// which holds the devices it plays through (VKCF3Z, 2026-11-08). It's launcher/Players.qml
 // rather than Media.qml, since launcher/Media.js is a player's page. Each player is a row: its
 // program's mark, the track as its name and the artist after it, and at the
 // far end how it stands, "1:38 of 6:43" playing and "paused · 1:38 of 6:43"

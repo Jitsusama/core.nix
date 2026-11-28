@@ -12,8 +12,9 @@
 .import "Order.js" as Order
 
 // The kinds a filter names, in the order For You's bands are designed in:
-// `agent` is what agents ask, so :filter agent holds what Agents Asking
-// does, and :filter do none of it.
+// `agent` is what For You's Agents holds, every row a session raised
+// whatever its own kind (Now.qml's filterable), so :filter agent holds
+// what Agents does, and :filter do none of it.
 const KINDS = ["do", "agent", "look", "try"];
 // For You's own sources that give it one kind alone, so they're no source
 // to filter by: their kind already reaches them, and typed, each answers as
@@ -63,6 +64,15 @@ function saidFrom(ids, nameOf) {
 // of its items, as Later and History aren't.
 function fieldOf(row, field) {
     return String(row?.forYou?.[field] ?? "");
+}
+
+// Whether a row says `word` of a field: a row Agents holds stands under
+// an agent's kind as well as its own (Now's agentsOwn), so :filter agent
+// holds what Agents does and :filter do still holds a session's to-do
+// (#6777's sixth round).
+function says(row, field, word) {
+    return fieldOf(row, field) === word
+        || field === "kind" && String(row?.forYou?.also ?? "") === word;
 }
 
 function wordsOf(arg) {
@@ -118,7 +128,7 @@ function asked(arg, rows, said, from) {
 // Whether a row stands in a filter: of its kind, where it names one, and
 // from its source, where it names one.
 function holds(filter, row) {
-    return FIELDS.every(field => filter[field] === "" || fieldOf(row, field) === filter[field]);
+    return FIELDS.every(field => filter[field] === "" || says(row, field, filter[field]));
 }
 
 // The rows a filter keeps, in the order For You lists them.
@@ -179,7 +189,7 @@ function offered(rows, arg, said, from) {
         return [];
     }
     const kept = filtered(rows, so);
-    const count = (field, word) => kept.filter(row => fieldOf(row, field) === word).length;
+    const count = (field, word) => kept.filter(row => says(row, field, word)).length;
     const kinds = so.kind !== "" ? []
         : KINDS.map(kind => ({ value: kind, field: "kind", count: count("kind", kind),
             note: said?.kinds?.[kind] ?? kind }));

@@ -176,7 +176,7 @@
       "id": "shortcuts:desktop:screens",
       "in": "shortcuts",
       "name": "Screens",
-      "term": "Desktop/screen",
+      "term": "Machine/screen",
       "glyph": "display"
     },
     {

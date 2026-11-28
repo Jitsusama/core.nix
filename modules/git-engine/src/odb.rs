@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -70,6 +70,9 @@ struct Store {
     /// order.
     packs: Vec<Pack>,
     midx_packs: usize,
+    /// The own indexes of the packs the multi-pack-index covers, in its
+    /// order, read only once it can't answer a lookup.
+    covered: OnceLock<Vec<Option<Index>>>,
 }
 
 impl Store {
@@ -122,6 +125,7 @@ impl Store {
             midx,
             packs,
             midx_packs,
+            covered: OnceLock::new(),
         }
     }
 
@@ -157,24 +161,88 @@ impl Store {
             midx: None,
             packs,
             midx_packs: 0,
+            covered: OnceLock::new(),
         }
     }
 
-    fn locate(&self, oid: &Oid) -> io::Result<Option<(usize, u64)>> {
-        if let Some(midx) = &self.midx
-            && let Some((pack, offset)) = midx.locate(oid)?
-            && pack < self.midx_packs
-        {
-            return Ok(Some((pack, offset)));
-        }
-        for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
-            if let Some(index) = &pack.index
-                && let Some(offset) = index.offset(oid)?
-            {
-                return Ok(Some((at, offset)));
+    /// Where `oid` lies in this store's packs. An entry the
+    /// multi-pack-index refuses, or one naming a pack past those it covers,
+    /// can't say where the object is, so its packs' own indexes are read
+    /// instead. What any index refuses is kept in `refused` rather than
+    /// returned, the first kept standing, for the caller to let stand only
+    /// once no other store, nor the loose objects, holds the object: a
+    /// broken entry neither hides an object nor passes for a missing one.
+    /// The packs in `bad` held a copy that wouldn't unpack, and are passed
+    /// over as git passes over a copy it has marked bad.
+    fn locate(
+        &self,
+        oid: &Oid,
+        bad: &[usize],
+        refused: &mut Option<io::Error>,
+    ) -> Option<(usize, u64)> {
+        if let Some(midx) = &self.midx {
+            let found = match midx.locate(oid) {
+                // The multi-pack-index names one copy of each object, so
+                // past a bad one only the packs it doesn't cover are read.
+                Ok(Some((pack, offset))) if pack < self.midx_packs => {
+                    (!bad.contains(&pack)).then_some((pack, offset))
+                }
+                Ok(None) => None,
+                // The entry names a pack it doesn't cover, so the packs it
+                // does are read; should none hold the object, that stands.
+                Ok(Some(_)) => {
+                    refused.get_or_insert_with(|| {
+                        invalid("multi-pack-index names a pack past those it covers")
+                    });
+                    self.in_covered(oid, bad)
+                }
+                Err(error) => {
+                    refused.get_or_insert(error);
+                    self.in_covered(oid, bad)
+                }
+            };
+            if found.is_some() {
+                return found;
             }
         }
-        Ok(None)
+        for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
+            if bad.contains(&at) {
+                continue;
+            }
+            match pack.index.as_ref().map(|index| index.offset(oid)) {
+                Some(Ok(Some(offset))) => return Some((at, offset)),
+                Some(Err(error)) => {
+                    refused.get_or_insert(error);
+                }
+                Some(Ok(None)) | None => {}
+            }
+        }
+        None
+    }
+
+    /// Where `oid` lies by the own indexes of the packs the
+    /// multi-pack-index covers, read only once it can't answer and has
+    /// left its own refusal standing. That refusal is what's said should
+    /// none hold the object, so one that won't open or read is passed over
+    /// rather than hiding the packs after it. A pack keeps its place
+    /// whether or not its index opens, since the multi-pack-index numbers
+    /// them. The packs in `bad` are passed over, as `locate` says.
+    fn in_covered(&self, oid: &Oid, bad: &[usize]) -> Option<(usize, u64)> {
+        let indexes = self.covered.get_or_init(|| {
+            let pack_dir = self.dir.join("pack");
+            self.midx
+                .iter()
+                .flat_map(|midx| &midx.packs)
+                .map(|name| Index::open(&pack_dir.join(name)).ok())
+                .collect()
+        });
+        indexes.iter().enumerate().find_map(|(at, index)| {
+            if bad.contains(&at) {
+                return None;
+            }
+            let offset = index.as_ref()?.offset(oid).ok()??;
+            Some((at, offset))
+        })
     }
 
     fn loose(&self, oid: &Oid) -> io::Result<Option<Object>> {
@@ -204,26 +272,33 @@ impl Store {
 }
 
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
+///
+/// What it inflates to is grown as the stream inflates rather than made
+/// at the size its header says, so a size no stream fills, however large,
+/// takes no more memory than the stream gives before it ends.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let mut out = vec![0; size];
-    let mut written = 0;
-    let mut chunk = vec![0; (size + 64).clamp(256, 1 << 16)];
+    let mut out = Vec::with_capacity(size.min(TRUSTED_SIZE));
+    let mut window = vec![0; size.min(1 << 16)];
+    let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
     loop {
         let got = file.read_at(&mut chunk, offset)?;
         if got == 0 {
             return Err(invalid("pack ends inside an object"));
         }
         let mut input = &chunk[..got];
-        while !input.is_empty() {
-            let result = inflate(&mut state, input, &mut out[written..], MZFlush::None);
-            written += result.bytes_written;
+        // Read on past the chunk's end too, while the stream still holds
+        // what it inflated past the window's.
+        loop {
+            let room = (size - out.len()).min(window.len());
+            let result = inflate(&mut state, input, &mut window[..room], MZFlush::None);
+            out.extend_from_slice(&window[..result.bytes_written]);
             input = &input[result.bytes_consumed..];
             offset += result.bytes_consumed as u64;
             match result.status {
-                Ok(MZStatus::StreamEnd) if written == size => return Ok(out),
+                Ok(MZStatus::StreamEnd) if out.len() == size => return Ok(out),
                 Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if written == size => return Ok(out),
+                _ if out.len() == size => return Ok(out),
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(_) => return Err(invalid("pack object's stream")),
             }
@@ -235,6 +310,11 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
 }
 
 /// Applies a delta to its base.
+///
+/// Its sizes are refused once they'd run past a word, and a command
+/// writing past the size it says it makes is refused before it's written,
+/// as git's `patch_delta` refuses one, so a delta takes no more memory
+/// than the size it says, and the bytes its commands give.
 pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     let mut at = 0;
     let mut size = || -> io::Result<usize> {
@@ -242,6 +322,9 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
         let mut shift = 0;
         loop {
             let byte = *delta.get(at).ok_or_else(|| invalid("delta size"))?;
+            if shift > usize::BITS - 7 {
+                return Err(invalid("delta size"));
+            }
             at += 1;
             value |= usize::from(byte & 0x7f) << shift;
             shift += 7;
@@ -255,7 +338,7 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     if base_size != base.len() {
         return Err(invalid("delta's base size"));
     }
-    let mut out = Vec::with_capacity(out_size);
+    let mut out = Vec::with_capacity(out_size.min(TRUSTED_SIZE));
     while at < delta.len() {
         let cmd = delta[at];
         at += 1;
@@ -282,13 +365,13 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
             let piece = base
                 .get(offset..offset + len)
                 .ok_or_else(|| invalid("delta copy range"))?;
-            out.extend_from_slice(piece);
+            write_within(&mut out, piece, out_size)?;
         } else if cmd != 0 {
             let len = usize::from(cmd);
             let piece = delta
                 .get(at..at + len)
                 .ok_or_else(|| invalid("delta insert"))?;
-            out.extend_from_slice(piece);
+            write_within(&mut out, piece, out_size)?;
             at += len;
         } else {
             return Err(invalid("delta opcode"));
@@ -300,20 +383,53 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Writes a delta's `piece` to `out`, refused should it run `out` past the
+/// size the delta says it makes.
+fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> {
+    if piece.len() > size - out.len() {
+        return Err(invalid("delta's result size"));
+    }
+    out.extend_from_slice(piece);
+    Ok(())
+}
+
 /// Every store a repository reads, its own first.
 pub struct Odb {
     stores: Vec<Store>,
     pub stamps: Stamps,
+    /// Bases read for the deltas over them, by where each lies, and how
+    /// many bytes they hold.
     bases: HashMap<Place, Arc<(Kind, Vec<u8>)>>,
+    base_bytes: usize,
     /// Trees already read, which the staged comparison asks for again on
     /// every question while a folder differs from HEAD, and how many bytes
     /// they hold.
     trees: HashMap<Oid, Vec<u8>>,
     tree_bytes: usize,
+    /// The copies that wouldn't unpack, and what each said, passed over
+    /// from then on as git passes over a copy it has marked bad for as
+    /// long as it runs. Each copy is unpacked to its failure once, so a
+    /// chain of failing deltas, each with several copies, costs one
+    /// unpacking a copy rather than one for every path down to it.
+    bad: HashMap<Place, (io::ErrorKind, String)>,
 }
+
+/// The most deltas a chain may run through to its base, its bases named
+/// and placed alike, before it's refused rather than read: more than the
+/// 4095 git's pack-objects writes at most, so a chain an older git wrote
+/// deeper reads too.
+const CHAIN_LIMIT: usize = 10_000;
 
 /// How many bytes of trees are kept before starting again.
 const TREE_BUDGET: usize = 32 << 20;
+
+/// How many bytes of bases are kept before starting again: git's own
+/// `core.deltaBaseCacheLimit` by default.
+const BASE_BUDGET: usize = 96 << 20;
+
+/// How much of a size a pack's header or a delta says is made room for
+/// before anything is written: past it, room grows only as bytes come.
+const TRUSTED_SIZE: usize = 1 << 20;
 
 /// Where an object sits in a pack: the store, the pack and its offset.
 type Place = (usize, usize, u64);
@@ -352,125 +468,72 @@ impl Odb {
             stores: dirs.iter().map(|dir| Store::open(dir)).collect(),
             stamps,
             bases: HashMap::new(),
+            base_bytes: 0,
             trees: HashMap::new(),
             tree_bytes: 0,
+            bad: HashMap::new(),
         }
     }
 
     /// The object, or None when no store here has it (a partial clone's
     /// promised object, say).
     pub fn read(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
-        if let Some(data) = self.trees.get(oid) {
-            return Ok(Some(Object {
-                kind: Kind::Tree,
-                data: data.clone(),
-            }));
+        match self.tree(oid) {
+            Some(tree) => Ok(Some(tree)),
+            None => self.find(oid),
         }
-        let object = self.find(oid)?;
-        if let Some(object) = &object
-            && object.kind == Kind::Tree
+    }
+
+    /// The tree `oid`, if it's one already read.
+    fn tree(&self, oid: &Oid) -> Option<Object> {
+        self.trees.get(oid).map(|data| Object {
+            kind: Kind::Tree,
+            data: data.clone(),
+        })
+    }
+
+    /// Keeps `object`, read as `oid`, should it be a tree.
+    fn keep_tree(&mut self, oid: &Oid, object: &Object) {
+        self.keep_tree_within(oid, object, TREE_BUDGET);
+    }
+
+    /// The same, keeping no more than `budget` bytes of trees, and no tree
+    /// larger.
+    fn keep_tree_within(&mut self, oid: &Oid, object: &Object, budget: usize) {
+        if object.kind != Kind::Tree || object.data.len() > budget {
+            return;
+        }
+        if self.tree_bytes + object.data.len() > budget {
+            self.trees.clear();
+            self.tree_bytes = 0;
+        }
+        self.tree_bytes += object.data.len();
+        self.trees.insert(*oid, object.data.clone());
+    }
+
+    /// Keeps `object`, read at `place` as a delta's base, should it be one
+    /// deltas build on most: trees and commits.
+    fn keep_base(&mut self, place: Place, object: &Object) {
+        self.keep_base_within(place, object, BASE_BUDGET);
+    }
+
+    /// The same, keeping no more than `budget` bytes of bases, and no base
+    /// larger.
+    fn keep_base_within(&mut self, place: Place, object: &Object, budget: usize) {
+        if object.kind == Kind::Blob || object.data.len() > budget {
+            return;
+        }
+        if self.base_bytes + object.data.len() > budget {
+            self.bases.clear();
+            self.base_bytes = 0;
+        }
+        self.base_bytes += object.data.len();
+        if let Some(was) = self
+            .bases
+            .insert(place, Arc::new((object.kind, object.data.clone())))
         {
-            if self.tree_bytes + object.data.len() > TREE_BUDGET {
-                self.trees.clear();
-                self.tree_bytes = 0;
-            }
-            self.tree_bytes += object.data.len();
-            self.trees.insert(*oid, object.data.clone());
+            self.base_bytes -= was.1.len();
         }
-        Ok(object)
-    }
-
-    fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
-        for store in 0..self.stores.len() {
-            if let Some((pack, offset)) = self.stores[store].locate(oid)? {
-                let (kind, data) = self.unpack(store, pack, offset, 0)?;
-                return Ok(Some(Object { kind, data }));
-            }
-        }
-        for store in &self.stores {
-            if let Some(object) = store.loose(oid)? {
-                return Ok(Some(object));
-            }
-        }
-        Ok(None)
-    }
-
-    fn unpack(
-        &mut self,
-        store: usize,
-        pack: usize,
-        offset: u64,
-        depth: usize,
-    ) -> io::Result<(Kind, Vec<u8>)> {
-        if depth > 10_000 {
-            return Err(invalid("delta chain too long"));
-        }
-        if let Some(base) = self.bases.get(&(store, pack, offset)) {
-            return Ok((base.0, base.1.clone()));
-        }
-        let file = &self.stores[store].packs[pack].data;
-        let head = {
-            let mut buf = [0; 32];
-            let got = file.read_at(&mut buf, offset)?;
-            buf[..got].to_vec()
-        };
-        let mut at = 0;
-        let byte = *head.first().ok_or_else(|| invalid("pack entry"))?;
-        let code = (byte >> 4) & 7;
-        let mut size = usize::from(byte & 15);
-        let mut shift = 4;
-        let mut more = byte & 0x80 != 0;
-        at += 1;
-        while more {
-            let byte = *head.get(at).ok_or_else(|| invalid("pack entry size"))?;
-            at += 1;
-            size |= usize::from(byte & 0x7f) << shift;
-            shift += 7;
-            more = byte & 0x80 != 0;
-        }
-        let result = match code {
-            6 => {
-                let mut byte = *head.get(at).ok_or_else(|| invalid("delta offset"))?;
-                at += 1;
-                let mut back = u64::from(byte & 0x7f);
-                while byte & 0x80 != 0 {
-                    byte = *head.get(at).ok_or_else(|| invalid("delta offset"))?;
-                    at += 1;
-                    back = ((back + 1) << 7) | u64::from(byte & 0x7f);
-                }
-                let base_at = offset
-                    .checked_sub(back)
-                    .ok_or_else(|| invalid("delta base offset"))?;
-                let delta = inflate_at(file, offset + at as u64, size)?;
-                let (kind, base) = self.unpack(store, pack, base_at, depth + 1)?;
-                (kind, apply_delta(&base, &delta)?)
-            }
-            7 => {
-                let base_oid =
-                    Oid::from_slice(head.get(at..at + 20).ok_or_else(|| invalid("delta base"))?)
-                        .ok_or_else(|| invalid("delta base"))?;
-                let delta = inflate_at(file, offset + at as u64 + 20, size)?;
-                let base = self
-                    .read(&base_oid)?
-                    .ok_or_else(|| invalid("delta base missing"))?;
-                (base.kind, apply_delta(&base.data, &delta)?)
-            }
-            code => {
-                let kind = Kind::from_pack(code).ok_or_else(|| invalid("pack entry kind"))?;
-                (kind, inflate_at(file, offset + at as u64, size)?)
-            }
-        };
-        // Trees and commits are what deltas build on most; keep a few.
-        if depth > 0 && result.0 != Kind::Blob {
-            if self.bases.len() > 4096 {
-                self.bases.clear();
-            }
-            self.bases.insert(
-                (store, pack, offset),
-                Arc::new((result.0, result.1.clone())),
-            );
-        }
-        Ok(result)
     }
 }
 
@@ -564,64 +627,16 @@ pub fn parse_commit(data: &[u8]) -> io::Result<Commit> {
     })
 }
 
+mod chain;
+
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "odb_tests.rs"]
+mod tests;
 
-    #[test]
-    fn deltas_copy_and_insert() {
-        let base = b"hello, world";
-        // base 12, result 12: copy 7 from 0 ("hello, "), insert "there".
-        let delta = [12, 12, 0x90, 7, 5, b't', b'h', b'e', b'r', b'e'];
-        assert_eq!(apply_delta(base, &delta).unwrap(), b"hello, there");
-        assert!(apply_delta(b"short", &delta).is_err());
-    }
+#[cfg(test)]
+#[path = "odb_delta_tests.rs"]
+mod delta_tests;
 
-    #[test]
-    fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
-        use crate::pack_index::tests::{midx, moved, offsets, sorted, unique, version_2};
-        let objects = unique("objects");
-        let pack = objects.join("pack");
-        std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
-        let names = sorted();
-        // Its object names are said to run into its checksum.
-        let whole = midx(&["pack-a.idx"], 1, None);
-        let broken = moved(whole.clone(), 2, whole.len() as u64 - 21);
-        for (name, bytes) in [
-            ("multi-pack-index", broken),
-            ("pack-a.idx", version_2(&names)),
-            ("pack-a.pack", b"PACK".to_vec()),
-        ] {
-            std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
-        }
-        let store = Store::open(&objects);
-        assert!(
-            store.midx.is_none(),
-            "a multi-pack-index past its end was used"
-        );
-        assert_eq!(
-            store
-                .locate(&Oid(names[0]))
-                .expect("the pack's own index reads"),
-            Some((0, offsets(&names)[0])),
-            "the pack's own index wasn't read in the refused index's place"
-        );
-    }
-
-    #[test]
-    fn commits_read_their_parts() {
-        let tree = Oid::of("tree", b"");
-        let text = format!(
-            "tree {}\nparent {}\nauthor A <a@b> 1 +0000\ncommitter C <c@d> 1700000000 -0500\n\
-             encoding ISO-8859-1\n\n\nSummary line\n\nBody\n",
-            tree.hex(),
-            tree.hex()
-        );
-        let commit = parse_commit(text.as_bytes()).unwrap();
-        assert_eq!(commit.tree, tree);
-        assert_eq!(commit.parents, vec![tree]);
-        assert_eq!(commit.time, 1_700_000_000);
-        assert_eq!(commit.encoding, "ISO-8859-1");
-        assert_eq!(commit.summary, "Summary line");
-    }
-}
+#[cfg(test)]
+#[path = "odb_bound_tests.rs"]
+mod bound_tests;

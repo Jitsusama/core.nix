@@ -91,6 +91,7 @@ mod tests {
         let through = Line::Unchanged {
             commit: "c".to_owned(),
             followed: Followed::new(),
+            boots: None,
         };
         f.asked(at("a"), &through, "", None, t + FAILED_AGAIN);
         assert_eq!(f.to_tell(), None, "an update that went through was told");

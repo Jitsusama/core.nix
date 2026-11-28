@@ -36,6 +36,7 @@
 //! a look ahead and an act, through the private helpers they share.
 
 use std::collections::{BTreeMap, HashMap};
+use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -333,7 +334,12 @@ impl Face {
 
     /// Answers one connection until it hangs up.
     async fn answer(self: Arc<Face>, stream: UnixStream) {
-        let peer = Peer::at(stream.peer_cred().ok().and_then(|peer| peer.pid()));
+        let said = stream.peer_cred().ok();
+        let peer = Peer::on(
+            stream.as_fd(),
+            said.and_then(|said| said.pid()),
+            said.map(|said| said.uid()),
+        );
         let (reading, mut writing) = stream.into_split();
         let (told, mut telling) = mpsc::channel::<String>(WAITING);
         let writer = tokio::spawn(async move {
@@ -472,10 +478,18 @@ impl Connection {
                 // elsewhere can be told from the launcher's: from 19:00 on
                 // 23 Nov 2026 eight roams a minute apart moved the card, on
                 // connections that asked for no rows, and nothing said who.
-                // The unit is the last part of the asker's cgroup, which a
-                // process of the same user may name itself, so it's a hint.
-                // The pid is the kernel's word for who connected, as the
-                // connection was taken, not for who holds it since.
+                // The asker's uid and its cgroup's path are said: a process
+                // may name its own unit under its user's manager, but not
+                // move it out of user.slice, so a unit's name alone is only
+                // a hint. The uid is the kernel's, the effective one taken
+                // as the connection was; the pid is too, and the path is
+                // read by it as wifid answers, said as the asker's only
+                // while the kernel's pidfd shows the process that connected
+                // hasn't exited (`Peer::on`), and said as unproven on a
+                // kernel giving no pidfd for a socket, as a connection
+                // queued on the socket while wifid restarts may wait a
+                // minute (`RestartMaxDelaySec`).
+                // The fd a process holds can still be passed on.
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));
                 let asks = self.face.asks.clone();
                 let words = self.made_in.as_ref().and_then(|made_in| {

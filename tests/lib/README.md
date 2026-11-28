@@ -40,14 +40,17 @@ For other checks:
 | `bare-nixos.nix`             | the least NixOS machine, as a module a check adds others to       |
 | `bare-darwin.nix`            | the least nix-darwin machine, as a module a check adds others to  |
 | `evaluates.nix`              | the check that a machine evaluates and no module warns            |
+| `macos-tools.nix`            | a check run with macOS's own tools, not stdenv's GNU ones         |
+| `macos-tools-test.sh`        | that check's own: tr, sed and find are macOS's; tac isn't there  |
 
 Those three are also core's exports `core.lib.bareNixosModule`,
 `core.lib.bareDarwinModule` and `core.lib.evaluates`, so a repository built
 on core checks its own modules on the same machines. `checks.nix` here holds
 the checks these exports have of their own: that a machine that warns fails
 `evaluates` and one whose assertion fails does too, and that a module's own
-defaults win over the bare machine's. The rest are proven by every machine
-core's checks evaluate.
+defaults win over the bare machine's. It also holds, on a Mac alone, that
+`macosTools` runs macOS's own tools (`a-mac-check-runs-macos-own-tools`).
+The rest are proven by every machine core's checks evaluate.
 
 What belongs here is shared by more than one check. A helper one check needs
 stays in that check's own files.

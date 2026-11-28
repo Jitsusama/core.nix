@@ -848,7 +848,6 @@ mod tests {
 
     // A log written anew keeps no budget it couldn't draw on from before,
     // and reading it again doesn't write one twice.
-
     #[test]
     fn a_replaced_log_tells_its_unresolved_budgets_once() {
         let dir = tempfile::tempdir().unwrap();

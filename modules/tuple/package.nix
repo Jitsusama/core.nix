@@ -1,10 +1,22 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_19.0,
-# whose command is the one Tuple's docs describe (tuple call, contacts,
-# state), and the first to share a webcam from Linux. Every command
-# v2026_11_16.0 had answers its help the same; tuple webcam is new, and
-# lists the cameras, opens the app's camera picker on the call and stops
-# sharing it. The log lines and stream keys tuple-call reads, and the
-# contacts' keys and status words tuple-people reads, are in both builds.
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
+# tuple-completes-in-zsh fails unless Tab offers each command core runs
+# against it, and each flag tuple-call and tuple-people pass as they
+# follow it. That shows they're there, not that they do as before.
+# tuple-ends-its-flags fails unless "--" still ends tuple's flags before a
+# contact, which the launcher's call, join and star rows rely on. No check
+# reads the other arguments they take. On v2026_11_25.0, `tuple help <cmd>`
+# printed a command's arguments without running it, where `tuple new --help`
+# failed with "too many cmdline args"; no check holds either, so read the
+# help in the build sandbox, not on a machine signed in. This build calls
+# new and share deprecated, which tuple-call runs to open Joel's room and
+# share his screen, so a later one may drop them.
+# New strings say a camera's or a video's colour space isn't handled, one
+# adding that it's converted as BT.601 limited; nobody has yet seen Tuple
+# say them. The log lines and stream keys tuple-call reads, the contacts'
+# keys and status words tuple-people reads, and the window titles niri's
+# rules match are still among this build's strings. That shows they're
+# there, not that Tuple says or answers them as before. No check reads
+# them, so each bump looks for them by hand among the new build's strings.
 # Screen sharing through the portal was last seen working here on
 # v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
 # cameras through PipeWire, where the IR camera is hidden, and until the
@@ -23,15 +35,15 @@
   tuple,
 }:
 let
-  release = "v2026_11_19.0";
+  release = "v2026_11_25.0";
   builds = {
     x86_64-linux = {
       arch = "x86_64";
-      hash = "sha256-OGZl/cbpEsYa7wm1nDuZN8WAKJ1lGsvKXCVtkuXqS2o=";
+      hash = "sha256-HkQfchyjUtQvxfKfCN0rqiijO/U89SHuob1bn2dBveg=";
     };
     aarch64-linux = {
       arch = "arm64";
-      hash = "sha256-iS6Fv0S/hPnhS0PmFH2lFEoOenKHS7CzmpZhgl92Gt4=";
+      hash = "sha256-mmrhx5ECwoYtVbHevmVyKgBytAXGvjxD3Vo0g3RQcvY=";
     };
   };
   build = builds.${stdenv.hostPlatform.system} or null;
@@ -40,7 +52,7 @@ if build == null then
   tuple
 else
   tuple.overrideAttrs {
-    version = "0-unstable-2026-11-19";
+    version = "0-unstable-2026-11-25";
     src = fetchurl {
       url = "https://tuple-client-releases.s3.amazonaws.com/linux/${release}/${build.arch}/tuple";
       inherit (build) hash;

@@ -16,6 +16,24 @@ pub struct Pressure {
     pub io: Stall,
     pub memory: Stall,
     pub cpu: Stall,
+    /// How a Mac's kernel judges its memory, since macOS keeps no stall
+    /// averages to fill the rest with; none on Linux.
+    pub memory_room: Option<MemoryRoom>,
+}
+
+/// The share of memory a Mac's kernel counts free, as `memory_pressure`
+/// prints it, and the level it tells apps to shed memory by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MemoryRoom {
+    pub free_percent: u8,
+    pub level: MemoryLevel,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryLevel {
+    Normal,
+    Warning,
+    Critical,
 }
 
 /// Where the machine's power comes from: whether it's on the charger, and

@@ -63,9 +63,10 @@
       # Whether a realm's refusal names just these variables, each once in
       # whatever order host.nix lists them, as "A", "A and B" or "A, B and
       # C", and speaks of one as it and of several as each; then names each
-      # of loadsCode again where it says how they load code, and where a
-      # command gets one instead. How each loads code is the message's to
-      # word, so only its names are pinned.
+      # of loadsCode again where it says how they load code, the
+      # conversations' own node options a realm sets instead, and where a
+      # command gets one. How each loads code is the message's to word, so
+      # only its names are pinned.
       names =
         realm: given:
         let
@@ -90,10 +91,12 @@
         && lib.sort lib.lessThan said == lib.sort lib.lessThan given
         && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
         && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
+        && lib.hasInfix "conversationHeapMb" refused
+        && lib.hasInfix "conversationHeapGrowingPercent" refused
         && lib.hasSuffix " a command that needs one sets it itself." refused;
     in
     holds "pi-hosts-refuse-code-loading-variables"
-      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
+      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, name the options a conversation's own node takes instead, and say that a command needing one sets it itself."
       (
         refusalOf "plain" == null
         && lib.all (name: names (realmOf name) [ name ]) loadsCode

@@ -298,6 +298,18 @@ in
                 stretches, each counted from its own start.
               '';
             };
+            saysWhy = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether the last line it says on standard error while busy
+                says why, such as the readings a Mac's memory was judged
+                by, so a refusal ends with it. Another's is left out, since
+                a caution said beside, as a call check's that a peer went
+                unheard, is no reason it's busy. What a check that can't
+                tell says is kept either way.
+              '';
+            };
           };
         }
       );
@@ -538,8 +550,11 @@ in
         kernel parameters differ from the booted one's becomes what the
         machine boots, such as one that boots it in a VM and unlocks its
         disk. Until then the new system runs and the machine boots what it
-        did, and a failure is said in the update's ending. None to make it
-        the boot default at once. It is told what the system was built
+        did, and a failure is said in the update's ending. Going back to
+        such a system, from a later switch that made itself the boot
+        default and failed, makes the boot default again the one
+        update-to-main last left, unless the profile moved since by some
+        other hand. None to make it the boot default at once. It is told what the system was built
         from in its environment: UPDATE_TO_MAIN_COMMIT, main's commit;
         UPDATE_TO_MAIN_FLAKE, the flake reference without its output,
         root's copy locked at the commit, or on a hosted machine a path:
@@ -680,6 +695,7 @@ in
               every_ask_waits = busy.everyAskWaits;
               refuses_the_ask_alone = busy.refusesTheAskAlone;
               refuses_at_most = busy.refusesAtMost;
+              says = if busy.saysWhy then "why" else "beside";
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

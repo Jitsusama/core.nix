@@ -40,8 +40,8 @@ let
   # only while nixpkgs's is older, so it never holds the kernel back.
   # docs/kernel.md says why this release.
   stable = {
-    version = "7.3.4";
-    hash = "sha256-sRtt+Clejpkf8EC3GqpJlKi1XKojtrCSkH8ZW1hA/R8=";
+    version = "7.3.6";
+    hash = "sha256-gYPUdadqD6/6ktbNUAr0IfWJ39AwCg8QYLuHXhHUVyM=";
   };
 in
 linux_7_3.override {
@@ -105,13 +105,6 @@ linux_7_3.override {
       patch = ./edp-sdp-caps.patch;
     }
     {
-      # Keeps the name of the Wi-Fi network a card joined where networkd
-      # reads it, when the access point names no country. Written here;
-      # docs/kernel.md has the cause.
-      name = "cfg80211-ssid-without-country";
-      patch = ./cfg80211-ssid-without-country.patch;
-    }
-    {
       # Lets an Intel Wi-Fi card add a send queue, as it does on joining an
       # access point, when memory holds no 64 KiB block free in one piece.
       # Written here; docs/kernel.md has the cause.
@@ -138,6 +131,15 @@ linux_7_3.override {
       # nothing. Written here; docs/kernel.md has the cause.
       name = "virtio-gpu-panic-outside-panic";
       patch = ./virtio-gpu-panic-outside-panic.patch;
+    }
+    {
+      # Stops a sleep being counted as a wait for a processor when the
+      # sleeping task is moved to another one, which made schedstat show
+      # waits of up to a second that never happened. Upstream's fix, sent
+      # but not yet taken; docs/kernel.md has the cause, and the cases it
+      # leaves.
+      name = "sched-delayed-run-delay";
+      patch = ./sched-delayed-run-delay.patch;
     }
   ];
 }

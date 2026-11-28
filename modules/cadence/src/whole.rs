@@ -1,6 +1,7 @@
 //! Writing a file whole: cadence keeps each reading, ledger and note by
 //! staging it beside its place and renaming it in, so no reader ever sees
-//! half of one.
+//! half of one. And reading one another program writes whole the same
+//! way, as text line by line, naming the first line that isn't text.
 
 use std::fs;
 use std::io;
@@ -31,6 +32,23 @@ pub fn write_whole(path: &Path, text: &str) -> io::Result<()> {
         let _ = fs::remove_file(&staged);
     }
     done
+}
+
+/// The lines of `bytes` that are text, joined again, beside the number of
+/// the first line that isn't, counted from one, so a reader can say the
+/// file isn't whole rather than read its other lines as all of it. A file
+/// written whole and moved into place, as each read here is, is never
+/// caught half written, so a last line cut short is named like any other.
+pub fn text_lines(bytes: &[u8]) -> (String, Option<usize>) {
+    let mut kept = Vec::new();
+    let mut first_not = None;
+    for (n, line) in bytes.split(|&byte| byte == b'\n').enumerate() {
+        match std::str::from_utf8(line) {
+            Ok(text) => kept.push(text),
+            Err(_) => first_not = first_not.or(Some(n + 1)),
+        }
+    }
+    (kept.join("\n"), first_not)
 }
 
 /// Removes the copies staged beside `path` by runs long gone: those named
@@ -83,6 +101,30 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn lines_that_are_text_are_kept_as_written_and_the_first_that_is_not_is_named() {
+        assert_eq!(
+            text_lines(b"a\r\nb\n"),
+            ("a\r\nb\n".to_owned(), None),
+            "lines all text didn't come back as they were"
+        );
+        assert_eq!(
+            text_lines(b"a\n\xff\nb\n\xfe\nc"),
+            ("a\nb\nc".to_owned(), Some(2)),
+            "the lines that aren't text weren't left out, or the first wasn't named"
+        );
+        assert_eq!(
+            text_lines(b"a\nb\xc3"),
+            ("a".to_owned(), Some(2)),
+            "a last line cut short partway through a character wasn't named"
+        );
+        assert_eq!(
+            text_lines(b"a\nb\xff\n"),
+            ("a\n".to_owned(), Some(2)),
+            "a whole last line that isn't text wasn't named"
+        );
     }
 
     #[test]

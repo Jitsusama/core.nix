@@ -247,8 +247,8 @@ let
       "sharing"
     ];
   # keep.sh names none of them; answer.sh names only dns-sd, which it runs
-  # in one line alone, answering the name as a host of its own (-P), so no
-  # service names the Mac's own host, on one link (-i). dns-sd -R, or any
+  # in one line alone, answering the name as a host of its own (-P), on one
+  # link (-i); darwin.nix says what that leaves to macOS. dns-sd -R, or any
   # service without a host of its own, would bring the Mac's records back on
   # every interface. Its reports go to the log, since dns-sd says a name in
   # use on its stdout. Its lines are read with its comments left out.
@@ -330,8 +330,9 @@ in
   # The name answers the first wired or Wi-Fi link's address, past a tunnel
   # or a bridge, on that link alone and as a host of its own; a moved
   # address, another link or none ends it and its answer; with no link it
-  # waits, saying so once; and an answer that ends by itself ends it
-  # (tests/local-name-answers-on-its-link.sh).
+  # waits, saying so once; it says the name is offered before dns-sd says
+  # anything; and an answer that ends by itself ends it, each with stand-in
+  # scutil, dns-sd and date (tests/local-name-answers-on-its-link.sh).
   local-name-answers-on-its-link = pkgs.runCommandLocal "local-name-answers-on-its-link" { } ''
     ${lib.getExe pkgs.bash} ${./tests/local-name-answers-on-its-link.sh} \
       ${./answer.sh} ${lib.getExe pkgs.bash}

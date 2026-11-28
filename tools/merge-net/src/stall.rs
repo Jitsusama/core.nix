@@ -28,11 +28,16 @@ const EVERY: Duration = Duration::from_secs(60);
 
 /// Whether the kernel says a thread waits in a futex, as one blocked on a
 /// lock, a join or a channel does: `__futex_wait` on one kernel, and
-/// `futex_wait_queue` on another, where the first is inlined away. A
-/// timed wait is a futex wait too; the round's own sleep between rounds
-/// isn't one, so a net at rest still never reads as hung.
+/// `futex_wait_queue` on another, where the first is inlined away. The
+/// kept cloud room's kernel names it `futex_do_wait`, which holds neither,
+/// so on 26 November merge-net's own tests failed there and core.nix's
+/// dev shell wouldn't build. A timed wait is a futex wait too; the round's
+/// own sleep between rounds isn't one, so a net at rest still never reads
+/// as hung.
 pub fn on_a_lock(wait: &str) -> bool {
-    wait.contains("futex_wait")
+    ["futex_wait", "futex_do_wait"]
+        .iter()
+        .any(|name| wait.contains(name))
 }
 
 /// Whether a net quiet for `quiet`, running `children` processes, whose
@@ -117,7 +122,7 @@ mod tests {
 
     #[test]
     fn a_quiet_net_running_nothing_with_every_thread_on_a_lock_is_hung() {
-        let locked = waiting(&["__futex_wait", "futex_wait_queue", "__futex_wait"]);
+        let locked = waiting(&["__futex_wait", "futex_wait_queue", "futex_do_wait"]);
         assert!(
             hung(QUIET_FOR, 0, &locked),
             "the hang of 12 November wasn't seen"

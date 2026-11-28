@@ -11,13 +11,37 @@
 # the sockets open it still holds no cookie. The empty folder can't be
 # shown alone this way, since Xlib tries the abstract socket first and
 # gives up at Landlock's refusal, never trying the file socket. Only with
-# both walls taken away does it read the secret, which shows the reader
-# would. The fence here is shaped as
-# the harness's is (lib/internal/fence.ts: bubblewrap, then landrun with
-# only named sockets), and the harness's preflight holds the fence
-# itself to it.
-# usage: pi-fence-keeps-x11-from-secrets.sh
+# both walls taken away does the same reader reach X, which shows the
+# reader would. The fence here is shaped as the harness's is
+# (agentic-harness.pi/lib/internal/fence/fence.ts: bubblewrap, then
+# landrun with only named sockets), and the harness's preflight holds the
+# fence itself to it.
+#
+# The walls are tried twice. First as soon as X answers Joel's own client,
+# which needs no window to hold the focus, so a run whose focus never
+# comes still proves them. Then with a secret copy on the clipboard, which
+# the satellite is offered only while one of its windows holds the
+# keyboard. Each step says a line of its own once it holds ("WALLS HOLD",
+# "FOCUSED" and "READ", Joel's own client reading his copy), so the test
+# reads what was tried, never only that a failure went unsaid. Each wait
+# is bounded by the clock, not by tries, and stretched by X11_PACE, the
+# host's busyness as the test reads it, so the whole run ends inside the
+# four minutes the test gives it, stretched by the same pace.
+# usage: X11_PACE=<whole number> pi-fence-keeps-x11-from-secrets.sh
 set -euo pipefail
+
+pace=${X11_PACE:-1}
+# A pace of 0 would turn every fenced read's timeout off.
+[[ $pace =~ ^[1-9][0-9]*$ ]] || {
+  echo "FAIL: X11_PACE is a whole number from 1, not $pace" >&2
+  exit 2
+}
+# Seconds a wait of $1 may take on this host.
+paced() {
+  echo $(($1 * pace))
+}
+# How long one fenced read may take.
+read_wait=$(paced 10)
 
 fail() {
   echo "FAIL: $*" >&2
@@ -34,48 +58,64 @@ export XAUTHORITY
 [ -n "$XAUTHORITY" ] || fail "the session names no X11 cookie"
 runtime="${XDG_RUNTIME_DIR:?the session names no runtime folder}"
 
-# The satellite is offered niri's clipboard only while one of its windows
-# holds the keyboard, as any Wayland client is, and then holds it for every
-# X11 client, focused or not. So an X11 window of Joel's is open and
-# focused, as it is whenever he works in one. The first client starts the
-# satellite and Xwayland behind it, so it may wait for them: up to a
-# minute, in tenths.
 # The cookie, for the case that hands it to a fenced command, is a copy
 # outside the runtime folder. The window, the cookie and the secret copy
-# all go when this ends.
+# all go when this ends, the trap set before the cookie is copied so no
+# early end leaves one behind.
 cookie=$(mktemp)
+logo=
+leave() {
+  [ -z "$logo" ] || kill "$logo" 2> /dev/null || true
+  rm -f "$cookie"
+  wl-copy --clear || true
+}
+trap leave EXIT
+cp "$XAUTHORITY" "$cookie"
+
+# An X11 window of Joel's, as whenever he works in one. The first client
+# starts the satellite and Xwayland behind it, so X may take a while to
+# answer.
 xlogo -display "$display" &
 logo=$!
-trap 'kill "$logo" 2> /dev/null || true; rm -f "$cookie"; wl-copy --clear || true' EXIT
-for _ in $(seq 600); do
-  focused=$(niri msg focused-window 2> /dev/null || true)
-  case $focused in
-  *[Xx][Ll]ogo*) break ;;
-  *) ;;
+
+# Whether what a reader said is the refusal its case owes, in Xlib's and
+# xclip's words alone. Behind the walls ($1 walled) no socket is reached,
+# so xclip says only that it can't open the display; X saying the cookie
+# was wanted there would mean a socket was reached through them. With the
+# sockets open ($1 open) and no cookie, X says it wanted one, then xclip
+# that it can't open the display. Nothing else may be said, so no read
+# that got through and then failed passes for one, whatever its text held.
+unreached() {
+  local lines=() line
+  while IFS= read -r line; do
+    [ -z "$line" ] || lines+=("$line")
+  done <<< "$2"
+  local refusal="Error: Can't open display"
+  local unauthorised="Authorization required, but no authorization protocol specified"
+  case $1 in
+  walled) [ "${#lines[@]}" -eq 1 ] && [[ ${lines[0]} == "$refusal"* ]] ;;
+  *)
+    [ "${#lines[@]}" -eq 2 ] && [ "${lines[0]}" = "$unauthorised" ] &&
+      [[ ${lines[1]} == "$refusal"* ]]
+    ;;
   esac
-  sleep 0.1
-done
-case $focused in
-*[Xx][Ll]ogo*) ;;
-*) fail "niri focused no X11 window: $focused" ;;
-esac
+}
 
-secret="secret-$RANDOM-$RANDOM"
-wl-copy --sensitive "$secret"
+# Whether a reader with nothing to read reached X, which then says, in
+# xclip's own words, that the clipboard holds nothing of the kind asked.
+# Anything else, a reader that timed out and said nothing, or a fence or
+# reader that failed before trying, reached nothing.
+answered() {
+  case $1 in
+  *"Error: target "*" not available"*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
 
-# Joel's own X11 client, holding the cookie, reads his copy through the
-# satellite, once the satellite has been offered it: up to a minute, in
-# tenths.
-read=
-for _ in $(seq 600); do
-  read=$(timeout 10 xclip -o -selection clipboard -display "$display" 2> /dev/null) || read=
-  [ "$read" = "$secret" ] && break
-  sleep 0.1
-done
-[ "$read" = "$secret" ] ||
-  fail "Joel's own X11 client didn't read his copy, so a fenced one failing proves nothing"
-
-cp "$XAUTHORITY" "$cookie"
+# Whether the clock has passed a deadline, in the shell's seconds.
+past() {
+  [ "$SECONDS" -ge "$1" ]
+}
 
 # Runs xclip, as a fenced command would, given the display and a cookie,
 # in a runtime folder emptied as the fence empties it: $1 says whether the
@@ -93,35 +133,111 @@ fenced_read() {
   fi
   # env by its full path: landrun 0.1.17, given --env, finds no bare
   # command named env, and the read would fail without reaching X.
-  timeout 10 "${fence[@]}" -- "${landlock[@]}" \
+  timeout "$read_wait" "${fence[@]}" -- "${landlock[@]}" \
     "$env" DISPLAY="$display" XAUTHORITY="$auth" xclip -o -selection clipboard
 }
 env=$(command -v env)
 
 # Whether a fenced read is refused, saying what it read when it isn't.
+# What was read is quoted onto one line wherever it's told, so nothing
+# read can pass for a phase's line.
 refused() {
-  local said
+  local said ended=0
   # shellcheck disable=SC2310 # A read that fails is the refusal sought, not an error.
-  if said=$(fenced_read "$1" "$2" 2>&1); then
-    echo "the fenced command read: $said" >&2
+  said=$(fenced_read "$1" "$2" 2>&1) || ended=$?
+  if [ "$ended" -eq 0 ]; then
+    printf 'the fenced command read: %q\n' "$said" >&2
     return 1
   fi
+  # A read cut off says nothing, so its cause is told apart from X's refusal.
+  [ "$ended" -ne 124 ] ||
+    fail "the fenced read ($1, $2 cookie) ran past $read_wait s: a slow fence, or one that let it reach an X that never answered"
   # Only X refusing the connection counts, never a reader that didn't run.
-  case $said in
-  *"Can't open display"*) ;;
-  *) fail "the fenced read failed before it reached X ($1, $2 cookie): $said" ;;
-  esac
-  echo "refused ($1, $2 cookie): $said" >&2
+  # shellcheck disable=SC2310 # unreached is a test, read in a condition.
+  unreached "$1" "$said" ||
+    fail "the fenced command reached X ($1, $2 cookie), or failed before trying, ending $ended: $(printf '%q' "$said")"
+  echo "refused ($1, $2 cookie): $(printf '%q' "$said")" >&2
 }
 
-# shellcheck disable=SC2310 # refused is a step, read in a condition to say which failed.
-refused walled session || fail "a fenced command read Joel's secret through X11"
+# Each wall, then neither: $1 names the phase in what fails.
+walls() {
+  # shellcheck disable=SC2310 # refused is a step, read in a condition to say which failed.
+  refused walled session || fail "$1: a fenced command read Joel's clipboard through X11"
+  # shellcheck disable=SC2310 # As above.
+  refused walled handed || fail "$1: a fenced command handed the cookie reached X11's socket"
+  # shellcheck disable=SC2310 # As above.
+  refused open session ||
+    fail "$1: a command with X11's sockets open read through them without the cookie"
+}
+
+# X answers Joel's own client once the satellite is up, whatever the
+# clipboard holds: up to 40 seconds, paced.
+said=
+reached=
+until=$((SECONDS + $(paced 40)))
+# shellcheck disable=SC2310 # past only compares the clock, which is the loop's test.
+until past "$until"; do
+  # A read that succeeds reached X, though what it read was empty.
+  if said=$(timeout 5 xclip -o -selection clipboard -display "$display" 2>&1); then
+    reached=yes
+    break
+  fi
+  # shellcheck disable=SC2310 # A reader X didn't answer is the wait's to retry.
+  if answered "$said"; then
+    reached=yes
+    break
+  fi
+  sleep 0.1
+done
+[ -n "$reached" ] || fail "X never answered Joel's own X11 client on $display: $said"
+
+walls "before the focus"
+# With both walls taken away the same reader reaches X, so each refusal
+# above was the fence's and not the reader's.
+# shellcheck disable=SC2310 # A read X refused is said by the check below.
+said=$(fenced_read open handed 2>&1) || answered "$said" ||
+  fail "with no walls and the cookie, the reader still didn't reach X: $said"
+echo "WALLS HOLD: a fenced command reaches no X11 on $display" >&2
+
+# The satellite is offered niri's clipboard only while one of its windows
+# holds the keyboard, as any Wayland client is, and then holds it for every
+# X11 client, focused or not: up to 45 seconds, paced.
+focused=
+until=$((SECONDS + $(paced 45)))
 # shellcheck disable=SC2310 # As above.
-refused walled handed || fail "a fenced command handed the cookie reached X11's socket"
+until past "$until"; do
+  focused=$(timeout 5 niri msg focused-window 2> /dev/null || true)
+  case $focused in
+  *[Xx][Ll]ogo*) break ;;
+  *) ;;
+  esac
+  sleep 0.1
+done
+case $focused in
+*[Xx][Ll]ogo*) ;;
+*) fail "niri focused no X11 window: $(printf '%q' "$focused")" ;;
+esac
+echo "FOCUSED: niri focused Joel's X11 window" >&2
+
+secret="secret-$RANDOM-$RANDOM"
+wl-copy --sensitive "$secret"
+
+# Joel's own X11 client, holding the cookie, reads his copy through the
+# satellite, once the satellite has been offered it: up to 40 seconds,
+# paced.
+read=
+until=$((SECONDS + $(paced 40)))
 # shellcheck disable=SC2310 # As above.
-refused open session || fail "a command with X11's sockets open read through them without the cookie"
-# Both taken away, the same reader reads it, so each refusal above was
-# the fence's and not the reader's.
+until past "$until"; do
+  read=$(timeout 5 xclip -o -selection clipboard -display "$display" 2> /dev/null) || read=
+  [ "$read" = "$secret" ] && break
+  sleep 0.1
+done
+[ "$read" = "$secret" ] ||
+  fail "Joel's own X11 client didn't read his copy, so a fenced one failing proves nothing"
+echo "READ: Joel's own X11 client read his copy" >&2
+
+walls "with a secret copy"
 # shellcheck disable=SC2310 # A failed read is said by the check below.
 read=$(fenced_read open handed) || read=
 [ "$read" = "$secret" ] ||

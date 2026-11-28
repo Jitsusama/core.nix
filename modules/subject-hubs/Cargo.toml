@@ -1,0 +1,17 @@
+# subject-hubs: the subjects' hubs the realm's mycelium node names, and the
+# needs a sender puts to them kept in the harness's shape, a library each
+# sender names by path, so cadence and pain-points read hubs and keep needs
+# one way (src/lib.rs says how).
+[package]
+name = "subject-hubs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
