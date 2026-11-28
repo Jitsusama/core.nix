@@ -616,12 +616,15 @@ PanelWindow {
         }
         const now = Date.now();
         // As far into the scroll, or the move of the column it's carried
-        // by, as niri says, by its latest begin rather than an old word
-        // left on another window, or a guess at how late it hears of one
-        // where niri says nothing or tells of one ended.
+        // by, as niri says, by the later begin of the two that run
+        // (Tiles.slideBegan), rather than an old word left on another
+        // window, or a guess at how late it hears of one where niri says
+        // nothing or tells of one ended.
         const carrier = Carried.carriedBy(landedOn, sat);
-        const began = scrolling() ? scrollHeard.at
-            : columnMoving(carrier) ? Tiles.heardOf(columnHeard, carrier).at : null;
+        scrolling();
+        columnsHeard();
+        const began = Tiles.slideBegan([scrollHeard, Tiles.heardOf(columnHeard, carrier)],
+            now, slideMs);
         const behind = MarginCat.behindTold(frameMs, "slide", began === null ? null
             : now - began);
         carry = Carried.rides(carry, place, to, { at: now - behind, spring });

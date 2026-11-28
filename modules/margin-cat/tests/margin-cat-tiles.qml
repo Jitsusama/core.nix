@@ -163,5 +163,23 @@ QtObject {
             [true, false, false, false]);
         expect("a clock stepped back to before a scroll began runs none",
             Tiles.runs(first, 900, 230), false);
+        // niri says only each tile's latest begun motion, so a ride takes
+        // the later begin of a scroll and its window's column's move that
+        // run, never the scroll's alone, which would draw the cat ahead.
+        const scrolled = { at: 1000 };
+        const column = { at: 1100 };
+        const none = { at: null };
+        const slideCases = [
+            ["a scroll alone, its begin", [scrolled, none], 1000],
+            ["a column's move alone, its begin", [none, column], 1100],
+            ["a column's move begun inside a scroll, the move's", [scrolled, column], 1100],
+            ["a scroll begun inside a column's move, the scroll's", [{ at: 1150 }, column], 1150],
+            ["a scroll ended beside a column's move running, the move's",
+                [{ at: 700 }, column], 1100],
+            ["neither, none", [none, none], null]
+        ];
+        for (const [name, heard, want] of slideCases)
+            expect(`a slide under the cat begins at ${name}`, Tiles.slideBegan(heard, 1200, 230),
+                want);
     }
 }

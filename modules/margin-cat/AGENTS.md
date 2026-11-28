@@ -137,8 +137,11 @@ on it as niri slides it aside for a column opening, closing or resizing
 beside it, it rides there on niri's spring, as with a scroll. A
 ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
 runs for niri's spring from when niri says it began, so a scroll's word left
-on a window long after reads as ended. niri can say its window scrolled
-wholly off the screen before it says the keys left that window; the move is
+on a window long after reads as ended. A column's move begun inside a
+scroll's spring is ridden from its own begin, the later, since niri says
+only each tile's latest motion and draws its window by that one; ridden from
+the scroll's, the cat was drawn ahead of its window. niri can say its window
+scrolled wholly off the screen before it says the keys left that window; the move is
 taken then, as it would be after, since it's never heard again: sitting, it
 rides off with that window, a walk to it is caught and a puppy's visit over
 it cut. While the keys give it no seat, so on another screen or in the
@@ -155,6 +158,7 @@ windows; with its workspace emptied, it comes in at that edge along the floor.
 - Held by `margin-cat-one-screen.qml`: "a visit over A is cut"
 - Held by `margin-cat-tiles.qml`: "a column's move asked of long after keeps its begin and reads
   as ended"
+- Held by `margin-cat-tiles.qml`: "a column's move begun inside a scroll, the move's"
 - Owed since 2026-11-27: a case on niri that the cat rides back to its seat as a column
   opening beside its window slides it aside; the Qt cases hold only which word is heard.
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
