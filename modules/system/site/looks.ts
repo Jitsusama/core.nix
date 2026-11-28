@@ -141,7 +141,8 @@ function keptOf(system: System): string {
  * after those in reach, so many gone at once read as one thing to know and
  * leave room for the few that need Joel; anything else their sides say
  * stays a look of its own. A builder, which has no section here, leads to
- * itself on the map, after the machines in reach.
+ * itself on the map, by the name the map knows it by, after the machines in
+ * reach.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   const machines = thingsOf(part, "machine");
@@ -149,7 +150,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   const away = machines.filter((thing) => !thing.ties.reached);
   const hrefOf = (thing: Thing): string => {
     if (thing.kind !== "machine") {
-      return `../mycelium/#${thing.kind}=${encodeURIComponent(thing.name)}`;
+      return `../mycelium/#${thing.kind}=${encodeURIComponent(thing.called ?? thing.name)}`;
     }
     const at = reached.indexOf(thing);
     if (at < 0) {

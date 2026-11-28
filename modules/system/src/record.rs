@@ -210,6 +210,7 @@ impl System {
                     "says": thing.says,
                     "side": thing.side,
                     "looks": looks_json(thing),
+                    "called": thing.called,
                     "address": thing.address,
                     "ties": thing.ties,
                 })
@@ -254,6 +255,7 @@ fn part_json(part: &Part) -> Value {
             "says": thing.says,
             "side": thing.side,
             "looks": looks_json(thing),
+            "called": thing.called,
             "address": thing.address,
             "ties": thing.ties,
         })).collect::<Vec<_>>(),

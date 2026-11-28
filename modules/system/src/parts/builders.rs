@@ -106,9 +106,17 @@ fn joined(first: &mut (Thing, Vec<String>), other: Thing, words: Vec<String>) {
 /// reason whole, since what to do about a builder is in it. Its name is
 /// made plain as any text the system shows, and a state or lender's word is
 /// matched in the one form a look would show it (`plain`), so no look ever
-/// names a word this build knows.
+/// names a word this build knows. The map draws a builder by the node's own
+/// name, so where the plain one differs the builder is called by that too,
+/// for the page to find it there; a name the map drops, an empty one, it is
+/// called by none.
 fn builder(said: &Value) -> (Thing, Vec<String>) {
     let name = plain_name(said);
+    let called = said
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|own| !own.is_empty() && *own != name)
+        .map(str::to_owned);
     let lender = said.get("said").and_then(Value::as_str).and_then(plain);
     let proof = lender.as_deref().filter(|said| PROOFS.contains(said));
     let why = lender.clone().filter(|_| proof.is_none());
@@ -167,7 +175,7 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
             })
             .collect(),
         side: look.into_iter().collect(),
-        called: None,
+        called,
         address: None,
         ties: Value::Null,
     };

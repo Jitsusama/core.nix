@@ -395,7 +395,8 @@ function buildersAcross(system: System): string {
   const said = health === "good" ? escaped(count) : builderLine(worst);
   const rest = health === "good" ? builders : builders.filter((builder) => builder !== worst);
   const aside = rest.length === 0 ? "" : `<p class="aside">${rest.map(builderLine).join("; ")}</p>`;
-  const hash = `#builder=${encodeURIComponent(worst.name)}`;
+  // The map knows a builder by the node's name, which a plain one may not be.
+  const hash = `#builder=${encodeURIComponent(worst.called ?? worst.name)}`;
   return `<section class="tie part ${health}" data-part="part-builders"><h3>${mark(health)}Builders${spoken(health)}</h3><p class="said">${said}</p>${aside}<div class="onward"><a class="row deeper" data-row="builders" data-health="${health}" href="../mycelium/${escaped(hash)}">See ${builders.length === 1 ? "it" : "them"} on the map</a></div></section>`;
 }
 
