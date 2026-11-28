@@ -3,9 +3,10 @@
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
-// what each walk found gone (tallyOf). Where
-// each goes back is Places.js's, but for a named workspace's (namedBack);
-// tests/places.qml holds both to their cases.
+// what each walk found gone (tallyOf). Where each goes back is Places.js's;
+// here are a named workspace's (namedBack), the connectors sessions give
+// their windows from one screens answer (placedGiven, keptBack), and what's
+// noted away (notedAway). tests/places.qml holds both to their cases.
 
 // How much of the disk's time may be stalled, as the share of the last ten
 // seconds some task waited on it, before the next session waits too: past
@@ -248,7 +249,7 @@ function givenBy(kept, places, before, screens) {
 // `inUse` and each one's `moments`) and the connectors they were given (givenBy, after `before`),
 // both from the one `screens` answer, so its windows can't be given connectors by other screens
 // than its sessions were placed by.
-function placedGiven(kept, screens, inUse, { moments, before }) {
+function placedGiven(kept, screens, inUse, { moments, before } = {}) {
     const places = Places.placed(kept, screens, inUse, moments);
     return { places, given: givenBy(kept, places, before, screens) };
 }
@@ -257,7 +258,7 @@ function placedGiven(kept, screens, inUse, { moments, before }) {
 // place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
 // `inUse`), and the one entry it adds to `given`, `gives`: givenOn's connector, not the one found,
 // which is last boot's while no screen is said, so its twin's windows aren't kept off it.
-function keptBack(at, moment, screens, { given, inUse }) {
+function keptBack(at, moment, screens, { given, inUse } = {}) {
     const kept = Places.whereKept(at, moment, screens, { given, inUse });
     return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
 }
@@ -308,7 +309,10 @@ function queuedOnce(queue, more, begun) {
 // it won't look for again (queuedOnce) and so can never find gone: a
 // folder found gone among them would otherwise be said reopened. One begun
 // and still findable, its folder looked for now or one queued afresh for
-// it, counts, so its folder found gone is told.
+// it, counts, so its folder found gone is told. So a list given just after
+// one the walk used up within the same turn, as one whose every session
+// another machine holds, counts afresh, none that walk began among them,
+// though the two were pressed as one.
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
     const idOf = entry => entry.one.afreshFor ?? entry.one.id;

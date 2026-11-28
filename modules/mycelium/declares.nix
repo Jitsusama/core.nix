@@ -115,6 +115,31 @@ rec {
                   that predates it ignores it.
                 '';
               };
+              ioFull = lib.mkOption {
+                type = lib.types.nullOr (lib.types.ints.between 0 100);
+                default = null;
+                description = ''
+                  The disk pressure it stays at or under, in percent of the
+                  last minute all work at once waited on its disks,
+                  machine-wide or in the groups of ioFullFrom; null where it
+                  holds to none. A node that measures no disk stall, a Mac's
+                  or one whose kernel keeps no pressure files, is never past
+                  it, and a mycelium that predates it ignores it.
+                '';
+              };
+              ioFullFrom = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                example = [ "agents.slice" ];
+                description = ''
+                  The control groups, as paths below the kernel's root of
+                  them, whose disk pressure is read in place of the
+                  machine's, the worst of them; empty reads the machine's.
+                  Machine-wide counts a task held back by its own cap, as a
+                  capped disk survey, so a machine can read past a ceiling
+                  its work never feels.
+                '';
+              };
             };
           }
         );

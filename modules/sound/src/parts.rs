@@ -391,7 +391,7 @@ mod tests {
     // no Profile.
     #[test]
     fn a_headset_and_its_microphone_say_its_profile() {
-        let address = "AC:80:0A:2E:AA:01";
+        let address = "02:00:00:00:C0:00";
         let profiled = |profile: &str| {
             device(
                 &format!("bluez_output.{address}.1"),

@@ -73,7 +73,7 @@ ShellRoot {
     Device {
         id: mouse
         name: "Mouse"
-        address: "C3:9C:E3:2A:F3:6E"
+        address: "C2:00:00:00:C3:00"
         icon: "input-mouse"
         paired: true
         connected: true
@@ -497,7 +497,7 @@ ShellRoot {
                 root.expect("facts named first, in order", root.said(told) === "Buttons=5",
                     root.said(told));
                 root.expect("facts keyed and copied", told[0].key
-                    === "fact:bluetooth:C3:9C:E3:2A:F3:6E:buttons" && told[0].verb === "copy"
+                    === "fact:bluetooth:C2:00:00:00:C3:00:buttons" && told[0].verb === "copy"
                     && told[0].glyph === undefined, told[0].key);
                 root.expect("another device has none", bluetooth.verbs(known)
                     .every(row => !row.key.endsWith(":input")), "a stranger got facts");

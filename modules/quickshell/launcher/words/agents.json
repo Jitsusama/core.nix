@@ -368,8 +368,8 @@
         "startedUntaken": "started in its host \u00b7 its window didn't open when asked",
         "stillComing": "not viewed yet \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
         "startedStillComing": "started in its host \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
-        "comeAfterAll": "viewed \u00b7 its window came after all, though no answer came in a minute when it was asked for",
-        "startedComeAfterAll": "started in its host \u00b7 viewed, its window came after all, though no answer came in a minute when it was asked for",
+        "cameAfterAll": "viewed \u00b7 its window came after all, though no answer came in a minute when it was asked for",
+        "startedCameAfterAll": "started in its host \u00b7 viewed, its window came after all, though no answer came in a minute when it was asked for",
         "askedAgain": "asked again \u00b7 its own window didn't come for its first ask",
         "startedAskedAgain": "started in its host \u00b7 its window was asked for once more",
         "cameAgain": "viewed \u00b7 its own window came when asked for once more",
@@ -674,12 +674,15 @@
         "leadless": "a network has no one lead",
         "answerAsk": "your answer?",
         "answerWalked": "what {name} asks is answered only from your own Return in the launcher",
+        "answeredAlready": "you answered this already, and {name} takes only your first answer",
         "asks": "{name} asks you",
         "choices": "{choices}, or your own words",
         "only": "{choices}",
         "takesOnly": "it takes only {choices}",
         "answered": "answered",
-        "working": "working on it"
+        "working": "working on it",
+        "unheard": "not known whether it arrived",
+        "unheardWhy": "{name} may not have your answer: nothing said whether it arrived"
       }
     },
     {

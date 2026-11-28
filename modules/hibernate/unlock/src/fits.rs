@@ -17,8 +17,9 @@
 //! 7.3's mm/zswap.c scales its count down by the compression ratio and by
 //! recent swap-ins from the disk, gives entries stored lately a second
 //! chance, and takes a whole page for each entry before freeing it.
-//! zswap.rs says when the shrinker runs, and why, once the image's reclaim
-//! takes what it wrote out, the image is no larger than `fits` reckons.
+//! zswap.rs says when the shrinker runs, and why what it writes out before
+//! the image's reclaim can only make the image smaller than `fits` reckons,
+//! while what it writes after may make it larger.
 //! Free pages waiting on each processor's own list count as in use there,
 //! since only the free lists mark a page free, but they're the first the
 //! image's own allocation takes, so here they're free: on a 1 GiB machine
@@ -385,7 +386,11 @@ mod tests {
             let memory = Memory::parse(meminfo).unwrap();
             Fit::of(memory, Zones::parse(ZONES), GIB, swap_room(SWAPS)).least
         };
-        assert_eq!(least(&pooled) - least(LAPTOP), 500_000 * 1024);
+        assert_eq!(
+            least(&pooled).checked_sub(least(LAPTOP)),
+            Some(500_000 * 1024),
+            "the pool wasn't counted as in use, at what it takes"
+        );
     }
 
     #[test]

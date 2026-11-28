@@ -357,16 +357,28 @@ mod tests {
     fn a_mapping_counts_only_by_the_nodes_inode_and_path() {
         let maps_text = b"7f00-7f10 rw-s 00000000 00:06 812 /dev/video0\n\
             7f10-7f20 r-xp 00000000 103:02 55 /usr/lib/libc.so\n";
-        assert!(maps(maps_text, Path::new("/dev/video0"), 812));
-        assert!(!maps(maps_text, Path::new("/dev/video0"), 55));
-        assert!(!maps(maps_text, Path::new("/dev/video1"), 812));
+        assert!(
+            maps(maps_text, Path::new("/dev/video0"), 812),
+            "a mapping of the node by its path and inode wasn't counted"
+        );
+        assert!(
+            !maps(maps_text, Path::new("/dev/video0"), 55),
+            "a mapping with the node's path but another inode was counted"
+        );
+        assert!(
+            !maps(maps_text, Path::new("/dev/video1"), 812),
+            "a mapping with the node's inode but another path was counted"
+        );
     }
 
     #[test]
     fn this_process_is_named_by_its_own_program() {
         let named = program(Path::new("/proc/self")).unwrap();
         assert_ne!(named, "");
-        assert!(!named.contains('\n'));
+        assert!(
+            !named.contains('\n'),
+            "the program's name kept its newline: {named:?}"
+        );
     }
 
     #[test]
