@@ -687,8 +687,15 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
 # copy's name is cleared from inside that very folder: a link put at
 # the handover, or above it, between a look and a clearing would
 # otherwise have the clearing take what it points at. The dot keeps a
-# name's trailing newlines, as `pinned`'s does.
-copies_at=$(cd -P "$job/{BACK}" && pwd -P && echo .) && copies_at=${{copies_at%?.}} ||
+# name's trailing newlines, as `pinned`'s does. The pin is then held to
+# where it must be, the folder the quests' scratches lie in, which the
+# fence keeps the job from writing, with the job's own names below it:
+# a link put from the quest's scratch down as it was read would have it
+# land elsewhere, so the far line stops rather than trust it.
+above=${{job%/*/*/*/*}}
+above_at=$(cd -P "$above" && pwd -P && echo .) && above_at=${{above_at%?.}} &&
+  copies_at=$(cd -P "$job/{BACK}" && pwd -P && echo .) && copies_at=${{copies_at%?.}} &&
+  [ "$copies_at" = "$above_at${{job#"$above"}}/{BACK}" ] ||
   {{ strayed; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
@@ -761,9 +768,6 @@ fn each_file() -> String {
     printf '%s\t%s\n' - "$file" || exit 1
     n=$((n + 1))
   }}
-  # One past what a share holds, alone or with what crossed before it,
-  # is listed marked with its size and never crosses, so the near side
-  # lands the rest and says why without waiting for it.
   # Takes away what stands at the copy's name by `$@`, from inside the
   # copies' folder only once the cd landed in the very one `copies_at`
   # pinned, by its path and by the folder itself, so a link put at the
@@ -778,6 +782,9 @@ fn each_file() -> String {
       exit 0
     ) || {{ strayed; exit 1; }}
   }}
+  # One past what a share holds, alone or with what crossed before it,
+  # is listed marked with its size and never crosses, so the near side
+  # lands the rest and says why without waiting for it.
   past() {{
     [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
       [ $(($bytes + $1)) -gt $most_bytes ]

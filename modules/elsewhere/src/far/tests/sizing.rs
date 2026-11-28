@@ -5,7 +5,7 @@
 //! only from inside the copies' folder the far line pinned.
 
 use super::{Left, WAITS, far_line, handover, kind};
-use crate::far::{Missed, bring_back};
+use crate::far::{BROUGHT, Missed, bring_back};
 use std::io::Read;
 use std::path::Path;
 
@@ -134,9 +134,10 @@ fn a_link_put_above_a_copy_before_it_is_cleared_clears_nothing_it_points_at() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
     let job = "mkdir out && printf a > out/a && printf bb > out/b && printf c > out/c";
-    let (_, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &[("wc", wc)]);
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &[("wc", wc)]);
     let swapped = home.join("moved").exists();
     let kept = home.join("outside/1/keep").exists();
+    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&home);
     assert!(swapped, "the copies' folder was never moved aside: {err}");
     assert!(
@@ -146,6 +147,14 @@ fn a_link_put_above_a_copy_before_it_is_cleared_clears_nothing_it_points_at() {
     assert!(
         err.contains("elsewhere: its folder for copies isn't where it was"),
         "the far line didn't say its folder for copies moved: {err}"
+    );
+    assert!(
+        code == Some(0)
+            && listed.starts_with("1\tout/a\n")
+            && !listed.contains("out/b")
+            && listed.ends_with("\ncut\n"),
+        "the far line didn't end its list cut after the file it copied, as a halt \
+         does ({code:?}): {listed:?} {err}"
     );
 }
 
