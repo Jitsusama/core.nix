@@ -720,8 +720,14 @@ mod tests {
         let refused = with(serde_json::json!([budget("a", true, &[])]), feed.clone()).unwrap_err();
         assert!(refused.contains("nowhere"), "{refused}");
         // With none declared, there's only the implicit one to name.
-        with(serde_json::json!([]), feed)
-            .expect_err("a feed named a budget though none was declared");
+        with(serde_json::json!([]), feed).expect_err(
+            "a feed for a budget other than the implicit one was taken with none declared",
+        );
+        let implicit = serde_json::json!([
+            {"name": "proxy", "label": "p", "command": ["f"], "budget": IMPLICIT},
+        ]);
+        with(serde_json::json!([]), implicit)
+            .expect("a feed couldn't name the implicit budget with none declared");
     }
 
     #[test]
