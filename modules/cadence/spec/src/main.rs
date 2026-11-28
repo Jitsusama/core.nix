@@ -152,10 +152,7 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
             let watched = shared.watches("row", place.name) || shared.watches("head", place.name);
             if watched && last[at].is_none_or(|made| made.elapsed() >= place.fresh) {
                 last[at] = Some(Instant::now());
-                let made = made(asking, place);
-                let moved = took(&mut kept[at], made, || {
-                    unread_head(&asking.words, place.name)
-                });
+                let moved = read(&mut kept[at], asking, place);
                 // Handed as soon as this place moves, before the next
                 // place's read, so Asked For isn't held back by Spec's;
                 // every place's rows are handed at once, since a record
@@ -198,6 +195,17 @@ fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Du
 /// another's longer wait is slept; none where no place is watched.
 fn soonest(waits: [Option<Duration>; 2]) -> Option<Duration> {
     waits.into_iter().flatten().min()
+}
+
+/// Reads `place` of cadence into its own `kept`, headed unread in its
+/// own words where cadence made nothing of it, saying whether what it
+/// serves moved. A place headed in another's words would serve over that
+/// place's own headline, as a failed Spec read heading Asked For unread
+/// would (review of #6875, 151).
+fn read(kept: &mut Kept, asking: &Asking, place: &Place) -> bool {
+    took(kept, made(asking, place), || {
+        unread_head(&asking.words, place.name)
+    })
 }
 
 /// What cadence made of a place: its rows in the order shown, or none
@@ -571,7 +579,63 @@ mod tests {
         assert_eq!(head["head"]["said"], "can't read it");
         assert_eq!(head["head"]["glyph"], "failed");
         assert_eq!(unread_head(&words, "spec"), None, "Spec's words say none");
+        let torn = words.with_extension("torn");
+        std::fs::write(&torn, r#"{"things": [{"id": "asked:head", "sa"#)
+            .expect("the torn words written");
+        assert_eq!(
+            unread_head(&torn, "asked"),
+            None,
+            "words that don't read as JSON serve no unread headline"
+        );
+        assert_eq!(
+            unread_head(&words.with_extension("missing"), "asked"),
+            None,
+            "words that aren't there serve no unread headline"
+        );
         let _ = std::fs::remove_file(&words);
+        let _ = std::fs::remove_file(&torn);
+    }
+
+    #[test]
+    fn a_failed_read_heads_its_own_place_unread_and_no_other() {
+        // `false` fails whatever it's asked, as a cadence whose read went
+        // wrong, and the words are the launcher's own as cadence's tests
+        // hold them, so each place's read runs as the serving loop runs it.
+        let asking = Asking {
+            cadence: PathBuf::from("false"),
+            words: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/words.json")),
+        };
+        let [asked, spec] = &PLACES;
+        let mut asked_kept = Kept::default();
+        assert!(
+            read(&mut asked_kept, &asking, asked),
+            "Asked For's failed read is headed unread, so it stops waiting"
+        );
+        assert_eq!(
+            asked_kept.get("head:asked").expect("Asked For's headline")["head"],
+            json!({"key": "head:asked", "place": "asked",
+                "said": "can't read the list now", "glyph": "failed"}),
+            "headed in Asked For's own words for an unread list"
+        );
+        let mut spec_kept = Kept::default();
+        spec_kept.take(
+            vec![json!({"key": "row:spec:a"})],
+            vec![json!({"key": "head:spec", "kind": "head", "head": {"said": "1 due"}})],
+        );
+        assert!(
+            !read(&mut spec_kept, &asking, spec),
+            "Spec's failed read moves nothing, since its words say no unread headline"
+        );
+        let keys: Vec<Value> = spec_kept
+            .all()
+            .map(|record| record["key"].clone())
+            .collect();
+        assert_eq!(
+            keys,
+            ["head:spec", "row:spec:a"],
+            "Spec keeps all it served and heads no other place, whose headline it would \
+             serve over"
+        );
     }
 
     #[test]
