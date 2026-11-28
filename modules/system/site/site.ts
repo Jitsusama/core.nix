@@ -70,10 +70,8 @@ const told = new Set<string>();
 // How long the page waits for every watch before it draws what it has, so
 // one stuck connecting never leaves it blank.
 const PATIENCE = 5000;
-// The longest the page stays unseen for its first draw, as site.css's fallback does.
-const UNSEEN_MS = 1000;
+// The page is shown once it first draws, or at site.css's cap, which index.html reads.
 const show = (): void => document.documentElement.classList.remove("waits");
-setTimeout(show, UNSEEN_MS);
 let waiting = true;
 setTimeout(() => {
   waiting = false;

@@ -28,7 +28,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import (
+    CAPPED_MS,
+    FIRST_SEEN,
+    LOOKS,
+    SIZES,
+    TABBED,
+    UNSEEN_MS,
+    Budget,
+    Opened,
+    Served,
+    readied,
+    serving,
+    shown_by_its_cap,
+    shows_at_a_tab,
+)
 from playwright.sync_api import Browser, Page, expect
 from stand_in_daemon import StandIn
 
@@ -60,11 +74,6 @@ new PerformanceObserver((list) => {
     globalThis.shifted += each.hadRecentInput ? 0 : each.value;
   }
 }).observe({ type: "layout-shift", buffered: true });"""
-# The longest the page is held unseen for its first draw, as site.ts's UNSEEN_MS and site.css's
-# fallback hold it. The still test passes only if the stand-in draws inside it: past it, the
-# page is shown before it has drawn, so neither its stillness nor its draw showing it is what
-# the test reads.
-UNSEEN_MS = 1000
 # What site.css makes of the body's opacity while the page is held, and once it is shown.
 UNSEEN = "0"
 SEEN = "1"
@@ -838,13 +847,10 @@ def test_the_system_page_holds_still_as_it_draws(
     browser: Browser, system_served: Served, size: tuple[int, int]
 ) -> None:
     root, _ = system_served
-    width, height = size
-    context = browser.new_context(viewport={"width": width, "height": height})
-    try:
-        page = context.new_page()
-        page.add_init_script(SHIFTS)
-        page.add_init_script(HELD)
-        page.goto(f"{root}system/")
+    width, _ = size
+    opened = Opened(browser, f"{root}system/", size, "dark", before=readied(SHIFTS, HELD))
+
+    def reading(page: Page) -> None:
         says_it_stands(page, "live")
         counted(page)
         html = page.locator("html")
@@ -857,6 +863,8 @@ def test_the_system_page_holds_still_as_it_draws(
         assert opacity == UNSEEN, f"the page was at opacity {opacity} before it drew"
         shown = page.evaluate("() => globalThis.shown")
         assert shown is not None, "the page's mark went before the page had loaded"
+        # Only a draw inside the cap shows the page, so past it neither its stillness nor its
+        # draw showing it is what this reads.
         at = shown["at"]
         assert at < UNSEEN_MS, f"the page was shown at {at:.0f} ms, by the cap, not its draw"
         assert shown["drawn"], "the page was shown before its machines drew"
@@ -865,8 +873,49 @@ def test_the_system_page_holds_still_as_it_draws(
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"the page at {width} px shifted {shifted} as it drew"
-    finally:
-        context.close()
+
+    opened.first(reading)
+    opened.close()
+
+
+def test_a_tab_while_the_page_waits_shows_it_and_its_ring(
+    browser: Browser, system_served: Served
+) -> None:
+    root, _ = system_served
+    ready = readied(TABBED, silent=True)
+    opened = Opened(browser, f"{root}system/", SIZES[-1], "dark", before=ready)
+    opened.first(lambda page: shows_at_a_tab(page, "Skip to each machine"))
+    opened.close()
+
+
+def test_a_page_whose_feeds_are_silent_is_shown_at_its_cap(
+    browser: Browser, system_served: Served
+) -> None:
+    root, _ = system_served
+    ready = readied(HELD, FIRST_SEEN, silent=True)
+    opened = Opened(browser, f"{root}system/", SIZES[-1], "dark", before=ready)
+
+    def reading(page: Page) -> None:
+        shown_by_its_cap(page, "#places a[data-place]", "with its feeds silent")
+        # Shown, the mark is gone too, so what reads it reads the page as it is.
+        expect(page.locator("html"), "the page kept its mark once shown").not_to_have_class(
+            WAITS, timeout=CAPPED_MS
+        )
+
+    opened.first(reading)
+    opened.close()
+
+
+def test_a_page_whose_script_never_runs_is_shown_at_its_cap(
+    browser: Browser, system_served: Served
+) -> None:
+    root, _ = system_served
+    ready = readied(HELD, FIRST_SEEN, emptied="**/system/site.js")
+    opened = Opened(browser, f"{root}system/", SIZES[-1], "dark", before=ready)
+    opened.first(
+        lambda page: shown_by_its_cap(page, "#places a[data-place]", "whose script never ran")
+    )
+    opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

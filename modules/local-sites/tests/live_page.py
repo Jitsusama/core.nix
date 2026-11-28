@@ -37,6 +37,7 @@ from playwright.sync_api import (
     WebSocket,
     sync_playwright,
 )
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -83,6 +84,43 @@ MOST_DRAWN = """() => {
   }
   return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 }"""
+# The longest a page held unseen until it draws (index.html's `waits`) stays so, as its
+# site.css alone holds it, and how long one that never draws may take to be seen: that, and
+# half a second's slack for a busy builder's frames.
+UNSEEN_MS = 1000
+CAPPED_MS = UNSEEN_MS + 500
+# How a page held unseen until it draws meets the reader's first Tab:
+# whether it still waited and when, read before the page's own listeners hear the key, then on
+# the frame after, once focus has moved, the body's opacity, what took focus, whether its ring
+# is drawn and whether it stands in the window.
+TABBED = """addEventListener("keydown", (event) => {
+  if (event.key !== "Tab" || globalThis.tabbed !== undefined) {
+    return;
+  }
+  const waits = document.documentElement.classList.contains("waits");
+  globalThis.tabbed = { waits, at: performance.now() };
+  requestAnimationFrame(() => {
+    const focused = document.activeElement;
+    const ring = getComputedStyle(focused);
+    const box = focused.getBoundingClientRect();
+    globalThis.seen = {
+      at: performance.now(),
+      opacity: getComputedStyle(document.body).opacity,
+      focused: focused.textContent.trim(),
+      ring: ring.outlineStyle !== "none" && Number.parseFloat(ring.outlineWidth) > 0,
+      inView: box.width > 0 && box.top >= 0 && box.bottom <= innerHeight,
+    };
+  });
+}, { capture: true });"""
+# When a page held unseen is first seen: each frame reads the body's opacity until it is whole.
+FIRST_SEEN = """const seeing = () => {
+  if (document.body !== null && getComputedStyle(document.body).opacity === "1") {
+    globalThis.seenAt = performance.now();
+  } else {
+    requestAnimationFrame(seeing);
+  }
+};
+requestAnimationFrame(seeing);"""
 # The web-design skill's checks a published page passes, each answering [] when it does.
 PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
 
@@ -164,6 +202,74 @@ def browser() -> Iterator[Browser]:
         launched.close()
 
 
+def readied(
+    *scripts: str, silent: bool = False, emptied: str | None = None
+) -> Callable[[Page], None]:
+    """Ready a tab, as Opened's `before`, to run each of `scripts` before the page's own.
+
+    `silent` answers every socket the page opens with one that never speaks, so
+    no feed draws and the page stands as it would with its daemons all slow.
+    `emptied` names a file, as a route's pattern, sent as an empty module, as
+    if the page's script never ran but without the error a refused file logs.
+    """
+
+    def ready(page: Page) -> None:
+        for script in scripts:
+            page.add_init_script(script)
+        if silent:
+            page.route_web_socket("**", lambda _socket: None)
+        if emptied is not None:
+            page.route(
+                emptied,
+                lambda route: route.fulfill(status=200, content_type="text/javascript", body=""),
+            )
+
+    return ready
+
+
+def shows_at_a_tab(page: Page, link: str) -> None:
+    """Press Tab on `page` while it's held unseen, finding it shown with `link` and its ring.
+
+    The tab must be readied with TABBED, and its feeds kept silent, so only the
+    Tab can show the page before its cap does.
+    """
+    page.keyboard.press("Tab")
+    page.wait_for_function("() => globalThis.seen !== undefined")
+    tabbed = page.evaluate("() => globalThis.tabbed")
+    at = tabbed["at"]
+    assert tabbed["waits"], f"the Tab came at {at:.0f} ms, once the page was shown"
+    seen = page.evaluate("() => globalThis.seen")
+    assert seen["at"] < UNSEEN_MS, f"the Tab was read at {seen['at']:.0f} ms, past the cap"
+    assert seen["focused"] == link, f"the first Tab went to {seen}, not {link}"
+    opacity = seen["opacity"]
+    assert opacity == "1", f"the page stayed at opacity {opacity} once Tab focused {seen}"
+    assert seen["ring"], f"the link took focus with no ring drawn: {seen}"
+    assert seen["inView"], f"the link took focus out of the window: {seen}"
+
+
+def shown_by_its_cap(page: Page, drawn: str, how: str) -> None:
+    """Hold `page`, which never draws, to its cap: unseen as it loads, then seen at the cap.
+
+    The tab must be readied with FIRST_SEEN, and with a script setting
+    `globalThis.loaded` to what the page held at DOMContentLoaded. `drawn` finds
+    what the page draws, so a draw can't pass for the cap, and `how` says how
+    the page came to draw nothing.
+    """
+    loaded = page.evaluate("() => globalThis.loaded")
+    assert loaded is not None, f"the page {how} was never read as it loaded"
+    assert loaded["opacity"] == "0", f"the page {how} was at {loaded} as it loaded"
+    try:
+        page.wait_for_function("() => globalThis.seenAt !== undefined", timeout=CAPPED_MS)
+    except PlaywrightTimeoutError:
+        seen = page.evaluate("() => getComputedStyle(document.body).opacity")
+        message = f"the page {how} was still at opacity {seen} past its cap, {CAPPED_MS} ms"
+        raise AssertionError(message) from None
+    at = page.evaluate("() => globalThis.seenAt")
+    assert UNSEEN_MS <= at < CAPPED_MS, f"the page {how} was seen at {at:.0f} ms, not its cap"
+    found = page.evaluate("(drawn) => document.querySelector(drawn) !== null", drawn)
+    assert not found, f"the page {how} drew {drawn}, so its cap went unread"
+
+
 def _crashed(error: Exception) -> bool:
     # Playwright's own error says a crash in its message. A failed expect says
     # it on a line of its own, after the text the page drew, so only that line
@@ -180,9 +286,21 @@ class Opened:
     context: BrowserContext
     page: Page
 
-    def __init__(self, browser: Browser, address: str, size: tuple[int, int], look: str) -> None:
-        """Open `address` at `size` in `look`, listening before it loads."""
+    def __init__(
+        self,
+        browser: Browser,
+        address: str,
+        size: tuple[int, int],
+        look: str,
+        before: Callable[[Page], None] | None = None,
+    ) -> None:
+        """Open `address` at `size` in `look`, listening before it loads.
+
+        `before` readies each tab before it loads, as a script to run first or
+        a route, so a tab opened once more after a crash is readied alike.
+        """
         self.size, self.look = size, look
+        self.before = before
         self.logged: list[str] = []
         # Words a test expects the page to log from some line on, each with
         # where in the log it began expecting them (see expecting).
@@ -249,6 +367,8 @@ class Opened:
         self.page.on("websocket", self._opened)
         self.page.on("console", self._heard)
         self.page.on("pageerror", lambda error: self.logged.append(f"thrown: {error}"))
+        if self.before is not None:
+            self.before(self.page)
         self.page.goto(address)
 
     def _asked(self, request: Request) -> None:

@@ -36,7 +36,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import (
+    CAPPED_MS,
+    FIRST_SEEN,
+    LOOKS,
+    SIZES,
+    TABBED,
+    UNSEEN_MS,
+    Budget,
+    Opened,
+    Served,
+    readied,
+    serving,
+    shown_by_its_cap,
+    shows_at_a_tab,
+)
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -54,11 +68,6 @@ ASKED_AGAIN_MS = 20_000
 STILL = 0.01
 # How long page.ts holds the last visit's room before letting it go anyway.
 ROOM_HELD_MS = 3000
-# The longest a first visit is held unseen, as page.ts's ROOM_WAIT_MS and site.css's fallback
-# hold it. The first visit's still test passes only if the stand-in draws inside it: past it,
-# the page is shown before it has drawn, so neither its stillness nor its draw showing it is
-# what the test reads.
-UNSEEN_MS = 1000
 # What site.css makes of the body's opacity while a first visit is held, and once it is shown.
 UNSEEN = "0"
 SEEN = "1"
@@ -83,8 +92,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads. One is what holds a first visit unseen until it draws.
-BUDGET = Budget(files=37, kilobytes=537, elements=276)
+# every page reads. One is what holds a first visit unseen until it draws, and one more shows
+# it at a reader's first act, lets the cap be site.css's alone and waits for a part kept no room.
+BUDGET = Budget(files=37, kilobytes=538, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -742,13 +752,10 @@ def test_a_first_visit_holds_the_page_still(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
     root, _ = code_served
-    width, height = size
-    context = browser.new_context(viewport={"width": width, "height": height})
-    try:
-        page = context.new_page()
-        page.add_init_script(SHIFTS)
-        page.add_init_script(HELD)
-        page.goto(f"{root}code/")
+    width, _ = size
+    opened = Opened(browser, f"{root}code/", size, "dark", before=readied(SHIFTS, HELD))
+
+    def reading(page: Page) -> None:
         says_it_stands(page, "live")
         expect(row(page, "github:owl/core"), "a first visit drew no row").to_be_visible()
         html = page.locator("html")
@@ -761,6 +768,8 @@ def test_a_first_visit_holds_the_page_still(
         assert opacity == UNSEEN, f"a first visit was at opacity {opacity} before it drew"
         shown = page.evaluate("() => globalThis.shown")
         assert shown is not None, "a first visit's mark went before the page had loaded"
+        # Only a draw inside the cap shows the page, so past it neither its stillness nor its
+        # draw showing it is what this reads.
         at = shown["at"]
         assert at < UNSEEN_MS, f"a first visit was shown at {at:.0f} ms, by the cap, not its draw"
         assert shown["drawn"], "a first visit was shown before its repositories drew"
@@ -769,8 +778,47 @@ def test_a_first_visit_holds_the_page_still(
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
-    finally:
-        context.close()
+
+    opened.first(reading)
+    opened.close()
+
+
+def test_a_tab_while_a_first_visit_waits_shows_it_and_its_ring(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(TABBED, silent=True)
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+    opened.first(lambda page: shows_at_a_tab(page, "Skip to the repositories"))
+    opened.close()
+
+
+def test_a_first_visit_whose_feeds_are_silent_is_shown_at_its_cap(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(HELD, FIRST_SEEN, silent=True)
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+
+    def reading(page: Page) -> None:
+        shown_by_its_cap(page, "#list .row", "with its feeds silent")
+        # Shown, the mark is gone too, so what reads it reads the page as it is.
+        expect(page.locator("html"), "a first visit kept its mark once shown").not_to_have_class(
+            WAITS, timeout=CAPPED_MS
+        )
+
+    opened.first(reading)
+    opened.close()
+
+
+def test_a_first_visit_whose_script_never_runs_is_shown_at_its_cap(
+    browser: Browser, code_served: Served
+) -> None:
+    root, _ = code_served
+    ready = readied(HELD, FIRST_SEEN, emptied="**/code/site.js")
+    opened = Opened(browser, f"{root}code/", SIZES[-1], "dark", before=ready)
+    opened.first(lambda page: shown_by_its_cap(page, "#list .row", "whose script never ran"))
+    opened.close()
 
 
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
@@ -794,6 +842,20 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
         "() => document.documentElement.style.getPropertyValue('--room-list')"
     )
     assert room == "", f"the list's room, {room}, was held after every feed had drawn"
+
+
+def test_a_reload_with_its_room_kept_is_seen_at_once(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+    code_page.add_init_script(HELD)
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    loaded = code_page.evaluate("() => globalThis.loaded")
+    assert loaded is not None, "the reload was never read as it loaded"
+    # Every part's room is held from the first paint, so nothing is gained by waiting unseen.
+    assert not loaded["waits"], "a reload with its room kept was marked to wait as it loaded"
+    opacity = loaded["opacity"]
+    assert opacity == SEEN, f"a reload with its room kept was at opacity {opacity} as it loaded"
 
 
 # What a page holds at DOMContentLoaded of each part's room, before any feed can draw.
@@ -824,6 +886,34 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     assert held["title"] != "", "the reload held no room at all"
     # The reload forgets what was found, so the list it draws is every repository.
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_reload_whose_list_kept_no_room_holds_the_page_still(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    root, _ = code_served
+    width, _ = size
+    opened = Opened(browser, f"{root}code/", size, "dark")
+
+    def reading(page: Page) -> None:
+        says_it_stands(page, "live")
+        # What was found is forgotten on a reload, so its list keeps no room while the rest do.
+        page.locator("#find").fill("notes")
+        expect(page.locator("#list .row"), "finding didn't narrow the list").to_have_count(1)
+        page.add_init_script(SHIFTS + HELD_ROOM)
+        page.reload()
+        says_it_stands(page, "live")
+        expect(row(page, "github:owl/core"), "the reload drew no row").to_be_visible()
+        held = page.evaluate("() => globalThis.held")
+        assert held["title"] != "", "the reload held no room at all, so proves nothing"
+        assert held["list"] == "", f"the reload held {held['list']} for a list it forgot"
+        page.wait_for_timeout(1000)
+        shifted = page.evaluate("() => globalThis.shifted")
+        assert shifted < STILL, f"a reload at {width} px shifted {shifted} as its list drew"
+
+    opened.first(reading)
+    opened.close()
 
 
 def test_a_reload_holds_no_room_for_a_place_the_address_left(
