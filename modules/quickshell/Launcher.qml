@@ -9313,7 +9313,18 @@ Scope {
             return drawn;
         const here = (trail ?? "") + "/" + String(item).replace(/\(0x[0-9a-f]+\)/, "")
             .replace(/_QMLTYPE_[0-9]+/, "");
-        const at = item.mapToItem(into, 0, 0);
+        // A mark says where its glyph's ink stands down its parent
+        // (Mark.qml's inkFrom), which a box its face's line tall, and
+        // taller than the name's, leaves empty above and below; judged
+        // by that box, a whole mark at a list's foot read as cut.
+        const marked = typeof item.inkFrom === "number" && typeof item.inkTo === "number"
+            && item.inkTo > item.inkFrom && item.parent !== null;
+        // A mark is placed from its parent, whose terms its ink is said in
+        // and which its own transform doesn't move: a turned mark's half
+        // turn (Mark.qml) maps its own top left to about twice its turn's
+        // origin, which put its room, its ink and its x that far off.
+        const at = marked ? item.parent.mapToItem(into, item.x, item.y)
+            : item.mapToItem(into, 0, 0);
         const own = { x: at.x, y: at.y, width: item.width, height: item.height };
         const shows = item.clip && item !== floor
             ? (clipped === null ? own : Contained.shared(clipped, own)) : clipped;
@@ -9335,16 +9346,6 @@ Scope {
             const down = item.height - item.contentHeight;
             const aligned = item.verticalAlignment === Qt.AlignBottom ? down
                 : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0;
-            // A mark says where its glyph's ink stands down its parent
-            // (Mark.qml's inkFrom), which a box its face's line tall, and
-            // taller than the name's, leaves empty above and below; judged
-            // by that box, a whole mark at a list's foot read as cut.
-            const marked = typeof item.inkFrom === "number" && typeof item.inkTo === "number"
-                && item.inkTo > item.inkFrom && item.parent !== null;
-            // Its ink is placed from its parent, whose terms those are and
-            // which its own transform doesn't move: a turned mark's half turn
-            // (Mark.qml) maps its own top left to about twice its turn's
-            // origin, which put its ink that far low.
             const inkTop = marked ? item.parent.mapToItem(into, 0, item.inkFrom) : null;
             const inkFoot = marked ? item.parent.mapToItem(into, 0, item.inkTo) : null;
             const inked = {

@@ -4754,6 +4754,9 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
             f"{down} turns by 35 passed the {rows} rows' tops short of the foot, at {places[-1]}: "
             f"{places}"
         )
+    # A list that fits its view stands at both bounds, so no turn is sent and nothing after
+    # this tests the wheel; it's said here rather than as an empty `places` further on.
+    assert down > 0, f"the list never left its top, so it fits its view: {rows} rows"
     # Twice the turns up by 70 that always moved the view, so it passes any row drawn today.
     passes_any_row = -140
     up = 0
