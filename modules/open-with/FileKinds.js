@@ -38,8 +38,9 @@ function wants(kinds, filter, name, mime) {
 
 function globbed(glob) {
     const said = glob.replace(LITERAL, "\\$&").replace(ANY, ".*").replace(ONE, ".");
-    // A program's glob is read as a pattern always read it: Unicode's flag
-    // refuses a lone ] in one, and folds its case further.
+    // A program's glob is read as a pattern always read it: with Unicode's
+    // flag, Qt's engine folds letters further, a Kelvin sign passing as a
+    // k (modules/quickshell/tests/file-kinds.qml).
     // biome-ignore lint/style/useUnicodeRegex: a program's glob is read as it always was.
     return new RegExp(`^${said}$`, "i");
 }

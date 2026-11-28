@@ -71,6 +71,13 @@
     previewed as it is; a file in the Nix store goes by its own name past its hash, kept whole
     where the store's own listing holds it
   '';
+  a-filter-passes-a-file-by-its-kind = ''
+    a program's filter in the launcher's chooser of files passes a file by a glob, in any letters
+    but folded as a program's glob always was, whole, a dot a dot, ? one letter, brackets a choice
+    and a lone ] itself, or by its kind: its whole name's, else its longest ending's, the heaviest
+    of shared-mime-info's globs for it, or a broader one it's said to be, kinds said in a loop
+    ending; a file whose kind is said goes by that; no filter passes every file
+  '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
