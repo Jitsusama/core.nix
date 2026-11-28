@@ -551,8 +551,8 @@ def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:
     says_it_stands(network_opened.page, "live")
 
 
-# What the find's placeholder is drawn in, beside the muted it should be
-# drawn in, as the browser computes both.
+# What the find's placeholder is drawn in and slanted by, beside the muted it
+# should be drawn in, as the browser computes both.
 PLACEHOLDER = """() => {
   const said = getComputedStyle(document.querySelector("#find"), "::placeholder");
   const probe = document.createElement("span");
@@ -560,7 +560,7 @@ PLACEHOLDER = """() => {
   document.body.append(probe);
   const muted = getComputedStyle(probe).color;
   probe.remove();
-  return { colour: said.color, opacity: said.opacity, muted };
+  return { colour: said.color, opacity: said.opacity, style: said.fontStyle, muted };
 }"""
 
 
@@ -568,16 +568,26 @@ PLACEHOLDER = """() => {
 def test_the_find_says_what_it_takes_in_words_that_read(
     browser: Browser, network_served: Served, look: str
 ) -> None:
+    """With no contrast asked for, the find's placeholder is told from typed words by muted alone.
+
+    The kit slants a placeholder only once more contrast raises it to the text's colour, so
+    here it stands upright as the words typed in it do. No preference is asked for outright, so
+    the case doesn't lean on what the browser assumes.
+    """
     root, _ = network_served
     opened = Opened(browser, f"{root}network/", SIZES[0], look)
     try:
         says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="no-preference")
         said = opened.page.evaluate(PLACEHOLDER)
         assert said["colour"] == said["muted"], (
             f"the find's placeholder wasn't drawn in muted in the {look} look: {said}"
         )
         assert said["opacity"] == "1", (
             f"the find's placeholder was faded below muted in the {look} look: {said}"
+        )
+        assert said["style"] == "normal", (
+            f"the find's placeholder slanted with no contrast asked for in the {look} look: {said}"
         )
     finally:
         opened.close()
