@@ -97,7 +97,10 @@ or launchd, and [`home.nix`][2] the account's.
   or use comes from it, and a walk a stop cut short keeps no size. The
   record is kept in `sizes.json` after each whole survey, so a restart
   walks only what changed while the guard was down; a file of another
-  version, or one that can't be read, starts it empty.
+  version, or one that can't be read, starts it empty. A size walked more
+  than six hours ago is walked again, oldest first, a tenth of the record
+  or a minute of walking per survey at most, which is what counts a
+  change deeper than the stamp reads.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a

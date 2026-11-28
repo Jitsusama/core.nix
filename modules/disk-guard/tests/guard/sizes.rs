@@ -4,7 +4,8 @@
 use crate::discover::{dir, file, stop_after};
 use crate::survey::{config, find, now, offers_sized, offers_stopping, real, src};
 use disk_guard::config::Config;
-use disk_guard::sizes::{FILE, SETTLED, Sizes, VERSION};
+use disk_guard::sizes::{FILE, REMEASURE_AFTER, REMEASURE_SHARE, SETTLED, Sizes, VERSION};
+use disk_guard::survey::Offer;
 use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -210,4 +211,72 @@ fn a_damaged_record_starts_empty_and_the_survey_sizes_everything() {
             "{damage} gave a size"
         );
     }
+}
+
+// A change deeper than a stamp reads, as a new incremental session is,
+// would leave a size behind for good without a walk again for age.
+#[test]
+fn an_old_size_is_walked_again_a_tenth_of_the_record_at_a_time() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let scratch = dir(&home.join("scratch"));
+    let entries = 2 * REMEASURE_SHARE;
+    let entry = |n: usize| scratch.join(format!("run-{n:02}"));
+    let deep = |n: usize| entry(n).join("a/b/c");
+    let config = config(&format!(
+        r#""scratch": {{ "kind": "scratch", "path": "{}" }}"#,
+        scratch.display()
+    ));
+    // The later half first, so the oldest sizes aren't the first by name.
+    let at = now();
+    for n in entries / 2..entries {
+        file(&deep(n).join("out"), &"x".repeat(1_000));
+    }
+    settle();
+    let (_, sizes) = offers_sized(&config, at, Sizes::default());
+    for n in 0..entries / 2 {
+        file(&deep(n).join("out"), &"x".repeat(1_000));
+    }
+    settle();
+    let (_, sizes) = offers_sized(&config, at + 3_600.0, sizes);
+    assert_eq!(sizes.walked, entries, "an entry wasn't sized once");
+    // Grown three levels down, so only a walk again sees it.
+    for n in 0..entries {
+        file(&deep(n).join("more"), &"y".repeat(200_000));
+    }
+    settle();
+    let later = at + REMEASURE_AFTER + 2.0 * 3_600.0;
+    let grown = |found: &[Offer]| -> Vec<usize> {
+        (0..entries)
+            .filter(|&n| find(found, &entry(n)).candidate.size > 100_000)
+            .collect()
+    };
+    let (found, mut sizes) = offers_sized(&config, later, sizes);
+    let share = entries.div_ceil(REMEASURE_SHARE);
+    assert_eq!(
+        sizes.walked,
+        entries + share,
+        "a survey walked other than a tenth of the record again"
+    );
+    let oldest: Vec<_> = (entries / 2..entries).take(share).collect();
+    assert_eq!(
+        grown(&found),
+        oldest,
+        "the oldest sizes weren't walked first"
+    );
+    let mut found = found;
+    for _ in 1..REMEASURE_SHARE {
+        (found, sizes) = offers_sized(&config, later, sizes);
+    }
+    assert_eq!(
+        grown(&found),
+        (0..entries).collect::<Vec<_>>(),
+        "a size walked again was walked once more before the rest"
+    );
+    let walked = sizes.walked;
+    let (_, sizes) = offers_sized(&config, later, sizes);
+    assert_eq!(
+        sizes.walked, walked,
+        "a size walked just now was walked again"
+    );
 }

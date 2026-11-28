@@ -6,10 +6,10 @@
 //! A size only says what taking an entry would free: whether it may be
 //! taken is dated afresh each survey, so a size kept from an earlier one
 //! never makes anything look idle or unused. A change deeper than its
-//! stamp reads leaves a size behind until a shallower one, and a size
-//! known this way adds nothing to the survey's shared blocks, so a block
-//! two entries share may count in both; either only misstates what a pass
-//! frees.
+//! stamp reads leaves a size behind until a shallower one or until the
+//! size is old enough to be walked again, and a size known this way adds
+//! nothing to the survey's shared blocks, so a block two entries share
+//! may count in both; either only misstates what a pass frees.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,6 +17,7 @@ use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// How many levels of folders below an entry its stamp reads.
 const STAMP_DEPTH: usize = 2;
@@ -36,6 +37,22 @@ pub const FILE: &str = "sizes.json";
 /// file of any other is read as no record at all.
 pub const VERSION: u32 = 1;
 
+/// How old a size may grow, in wall seconds, before a survey walks its
+/// entry again though its stamp holds, so a change deeper than the stamp
+/// reads, as a new incremental session of a cargo target is, is counted
+/// within hours rather than never.
+pub const REMEASURE_AFTER: f64 = 6.0 * 3_600.0;
+
+/// The share of the record, one in this many rounded up, a survey walks
+/// again for age at most, so walking every old size at once never comes
+/// back as the whole walk the record was kept to spare.
+pub const REMEASURE_SHARE: usize = 10;
+
+/// How long a survey may spend walking again for age, after which it
+/// takes the rest of the old sizes as known, since a few huge entries
+/// could take as long as walking everything.
+pub const REMEASURE_FOR: Duration = Duration::from_secs(60);
+
 /// The sizes of the entries surveys sized, each by the stamp it was sized
 /// at, kept by a daemon from one survey to the next.
 #[derive(Debug, Default)]
@@ -49,6 +66,11 @@ pub struct Sizes {
     /// When the survey under way began, in wall seconds, which each size
     /// it walks is kept as walked at.
     now: f64,
+    /// The entries the survey under way walks again for the age of their
+    /// sizes, while it has time left for it.
+    due: BTreeSet<PathBuf>,
+    /// How long the survey under way may still spend walking again.
+    left: Duration,
 }
 
 /// An entry's size, the stamp it was sized at, and when it was walked,
@@ -128,16 +150,33 @@ impl Sizes {
         crate::state::save(&state.join(FILE), &record)
     }
 
-    /// Starts a survey at `now`, in wall seconds.
+    /// Starts a survey at `now`, in wall seconds, choosing which sizes it
+    /// walks again for their age: those walked more than six hours ago,
+    /// oldest first, a tenth of the record at most, with a minute to do it.
     pub fn began(&mut self, now: f64) {
         self.now = now;
+        self.left = REMEASURE_FOR;
+        let mut old: Vec<_> = self
+            .known
+            .iter()
+            .filter(|(_, known)| now - known.walked > REMEASURE_AFTER)
+            .collect();
+        old.sort_by(|(_, one), (_, other)| one.walked.total_cmp(&other.walked));
+        let most = self.known.len().div_ceil(REMEASURE_SHARE);
+        self.due = old
+            .into_iter()
+            .take(most)
+            .map(|(path, _)| path.clone())
+            .collect();
     }
 
     /// What `path`, stamped `stamp`, holds: known when an earlier survey
-    /// sized it at that stamp, `measure`d otherwise. A stamp that isn't
-    /// finite is never known, as the entry may be changing. What a walk a
-    /// stop cut short gave, which `measure` answers as none, counted only
-    /// part of the entry, so it's kept nowhere and counts as nothing.
+    /// sized it at that stamp, `measure`d otherwise, as is one whose size
+    /// is due again for its age while the survey has time for it. A stamp
+    /// that isn't finite is never known, as the entry may be changing.
+    /// What a walk a stop cut short gave, which `measure` answers as none,
+    /// counted only part of the entry, so it's kept nowhere and counts as
+    /// nothing.
     pub(crate) fn of(
         &mut self,
         path: &Path,
@@ -145,16 +184,26 @@ impl Sizes {
         measure: impl FnOnce() -> Option<u64>,
     ) -> u64 {
         self.asked.insert(path.to_owned());
+        let again = self.due.remove(path) && !self.left.is_zero();
         let known = self
             .known
             .get(path)
             .filter(|known| known.stamp.to_bits() == stamp.to_bits())
             .copied();
-        if let Some(known) = known {
+        if let Some(known) = known
+            && !again
+        {
             return known.size;
         }
         self.walked += 1;
-        match measure() {
+        let began = Instant::now();
+        let measured = measure();
+        // Only a walk again for age spends the time for it: a changed
+        // entry is walked however long it takes, as before any was known.
+        if known.is_some() {
+            self.left = self.left.saturating_sub(began.elapsed());
+        }
+        match measured {
             Some(size) if stamp.is_finite() => {
                 let walked = self.now;
                 self.known.insert(
