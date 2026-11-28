@@ -149,7 +149,10 @@ fn a_new_test_that_fails_on_the_base_and_passes_at_the_head_goes_through() {
         "{}",
         text(&ran.stderr)
     );
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "a", "built": 1 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "a", "built": 1 }),
+    );
     assert!(
         !text(&ran.stderr).contains(SAID_ONLY),
         "a proven change was said as refused: {}",
@@ -202,7 +205,10 @@ fn one_check_failing_over_the_base_proves_tests_another_only_carries() {
         !said.contains("passes with the change's tests"),
         "a check only carrying the tests was refused beside one they fail: {said}"
     );
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "b", "built": 2 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "b", "built": 2 }),
+    );
 }
 
 #[test]
@@ -222,7 +228,10 @@ fn a_check_failing_over_the_base_leaves_the_rest_unbuilt_there() {
         !built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.b"),
         "b was built over the base after a failed there: {built}"
     );
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "a", "built": 1 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "a", "built": 1 }),
+    );
 }
 
 #[test]
@@ -233,7 +242,10 @@ fn a_change_whose_every_check_passes_over_the_base_is_said_refused_naming_each()
 
     let said = text(&ran.stderr);
     assert!(ran.status.success(), "a refusal failed the run: {said}");
-    noted_with(&stand_in, &json!({ "verdict": "would refuse", "checks": ["a", "b"], "built": 2 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "would refuse", "checks": ["a", "b"], "built": 2 }),
+    );
     for name in ["a", "b"] {
         assert!(
             said.contains(&format!(
@@ -332,7 +344,10 @@ fn a_check_failing_to_evaluate_over_the_base_proves_tests_another_only_carries()
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "a", "built": 0 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "a", "built": 0 }),
+    );
 }
 
 #[test]
@@ -358,7 +373,10 @@ fn a_lost_build_over_the_base_beside_a_passing_one_refuses_nothing() {
         !said.contains("passes with the change's tests"),
         "a check was refused beside a lost one: {said}"
     );
-    noted_with(&stand_in, &json!({ "why": "unbuilt", "check": "b", "built": 2 }));
+    noted_with(
+        &stand_in,
+        &json!({ "why": "unbuilt", "check": "b", "built": 2 }),
+    );
 }
 
 #[test]
@@ -385,7 +403,10 @@ fn the_checks_running_tests_are_built_over_the_base_before_the_systems() {
         !built.contains("?rev=a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.example-a"),
         "the system was built over the base before the check running the tests: {built}"
     );
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "z", "built": 1 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "z", "built": 1 }),
+    );
 }
 
 #[test]
@@ -481,7 +502,10 @@ fn a_lint_passing_over_the_base_is_never_named_in_a_refusal() {
         "the lint was built over the base: {}",
         stand_in.built()
     );
-    noted_with(&stand_in, &json!({ "verdict": "would refuse", "checks": ["a"], "built": 1 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "would refuse", "checks": ["a"], "built": 1 }),
+    );
 }
 
 #[test]
@@ -543,7 +567,10 @@ fn a_lint_reading_the_tests_is_said_and_not_built_over_the_base() {
         "a wasn't built over the base beside the lint: {}",
         stand_in.built()
     );
-    noted_with(&stand_in, &json!({ "verdict": "red", "check": "a", "built": 1 }));
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "red", "check": "a", "built": 1 }),
+    );
 }
 
 #[test]

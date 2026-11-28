@@ -364,13 +364,11 @@ fn a_build_left_unbuilt_says_nixs_last_error_cut_short() {
         said[0]
     );
     assert_eq!(
-        said[1],
-        "error: unable to download 'https://cache/x.narinfo'",
+        said[1], "error: unable to download 'https://cache/x.narinfo'",
         "a builder's line was read as nix's error"
     );
     assert_eq!(
-        said[2],
-        "nix said no error",
+        said[2], "nix said no error",
         "a log with no error line wasn't said as one"
     );
 }
