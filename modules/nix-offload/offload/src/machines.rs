@@ -14,8 +14,13 @@
 //! lent, the file for any work names stand-ins that passed theirs: the
 //! second lent builder, else the warm VM builders, in their own lines for
 //! any work. The one lent here is named alone again once it passes.
+//!
+//! A builder standing or beside whose owner holds it (src/holds.rs) is
+//! left out of every list while the hold lasts, as one that doesn't
+//! answer is, and the hold is said once.
 
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, TcpStream, ToSocketAddrs};
@@ -29,6 +34,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::cloud::{Cloud, Place};
 use crate::freeing::{self, Freeing};
+use crate::holds::{self, Holds};
 use crate::proof::{self, Health, Keeper, State};
 use crate::there;
 
@@ -119,6 +125,20 @@ fn offering(line: &str) -> (Vec<&str>, String) {
 pub struct Standing {
     pub address: String,
     pub line: String,
+}
+
+impl Standing {
+    /// The names its owner may hold it by (`holds.rs`): its address, and
+    /// the host its machines line names, with the user it logs in as and
+    /// without.
+    fn names(&self) -> Vec<String> {
+        let uri = self.line.split_whitespace().next().unwrap_or_default();
+        let rest = uri.split_once("://").map_or(uri, |(_, rest)| rest);
+        let host = rest.split(['?', '/']).next().unwrap_or(rest);
+        let mut names = holds::address_names(&self.address);
+        names.extend(holds::host_names(host));
+        names
+    }
 }
 
 /// The standing builders in a file of them, one a line, its address and
@@ -1001,6 +1021,12 @@ pub struct Machines {
     cloud: Option<Cloud>,
     /// Where the one lent is, as `placing` last said.
     place: Option<Place>,
+    /// The folder of holds its builders' owners put on them, read each
+    /// time it names who answers (`holds.rs`).
+    holds: PathBuf,
+    /// What it last said of the holds on its builders, so each is said
+    /// once while it lasts rather than every tick.
+    held: BTreeMap<String, String>,
 }
 
 impl Machines {
@@ -1039,7 +1065,44 @@ impl Machines {
             freeing: Vec::new(),
             cloud: None,
             place: None,
+            holds: holds::folder(),
+            held: BTreeMap::new(),
         }
+    }
+
+    /// With `folder` the holds on its builders are read from.
+    #[cfg(test)]
+    #[must_use]
+    pub fn holding_in(self, folder: PathBuf) -> Self {
+        Self {
+            holds: folder,
+            ..self
+        }
+    }
+
+    /// Say each hold on a builder standing or beside that's new since the
+    /// last time, and each that ended, and keep what's said.
+    fn say_held(&mut self, holds: &Holds) {
+        let held: BTreeMap<String, String> = self
+            .standing
+            .iter()
+            .chain(&self.beside)
+            .filter_map(|builder| holds.of(builder.names().iter().map(String::as_str)))
+            .map(|hold| (hold.machine.clone(), hold.to_string()))
+            .collect();
+        for (machine, said) in &held {
+            if self.held.get(machine) != Some(said) {
+                eprintln!("nix-offload: {said}, so no build is sent to it");
+            }
+        }
+        for machine in self
+            .held
+            .keys()
+            .filter(|machine| !held.contains_key(*machine))
+        {
+            eprintln!("nix-offload: {machine} is held no longer, so builds may go to it again");
+        }
+        self.held = held;
     }
 
     /// With `cloud`, where the one lent is said to be, written before
@@ -1270,10 +1333,19 @@ impl Machines {
         }
         let lent = lending.map(|lending| for_big_work(lending.line));
         let lent = lent.as_deref();
+        // A builder its owner holds is left out as one that doesn't answer
+        // is, and isn't asked whether it does.
+        let holds = holds::now(&self.holds);
+        self.say_held(&holds);
+        let free = |builder: &Standing| {
+            holds
+                .of(builder.names().iter().map(String::as_str))
+                .is_none()
+        };
         let answering = self
             .standing
             .iter()
-            .filter(|builder| answers(&builder.address))
+            .filter(|builder| free(builder) && answers(&builder.address))
             .map(|builder| builder.line.as_str());
         self.with_standing.say(text(answering, lent));
         // Proofs are kept only of those still listed.
@@ -1282,7 +1354,8 @@ impl Machines {
         let now = Instant::now();
         let mut beside: Vec<&str> = Vec::new();
         for builder in &self.beside {
-            if answers(&builder.address)
+            if free(builder)
+                && answers(&builder.address)
                 && !kept_beside(
                     (&mut self.kept, &self.earlier),
                     &builder.line,
@@ -1881,6 +1954,69 @@ mod tests {
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "");
+    }
+
+    // A builder its owner holds is named to no build while the hold lasts,
+    // standing or beside, though it answers, and is named again once the
+    // hold is taken away.
+    #[test]
+    fn a_builder_its_owner_holds_is_named_to_no_build_until_the_hold_ends() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let every = dir.path().join("machines");
+        let asked = dir.path().join("machines-with-standing");
+        let alone = dir.path().join("machines-beside");
+        let held = dir.path().join("held");
+        fs::create_dir(&held).expect("the holds");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let work = "ssh-ng://builder@work x86_64-linux - 8 1 big-parallel";
+        let mut machines = Machines::new(
+            every.clone(),
+            asked.clone(),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![Standing {
+                address: address.clone(),
+                line: "ssh-ng://home".to_owned(),
+            }],
+        )
+        .beside(
+            alone.clone(),
+            vec![Standing {
+                address,
+                line: work.to_owned(),
+            }],
+        )
+        .going_on_from(passed(work))
+        .holding_in(held.clone());
+        let read = |path| fs::read_to_string(path).expect("read");
+        fs::write(held.join("home"), "my own builds tonight\n").expect("a hold");
+        fs::write(held.join("work"), "").expect("a hold");
+        machines.show(None);
+        assert_eq!(read(&asked), "", "the held standing builder is named");
+        assert_eq!(read(&alone), "", "the held builder beside is named alone");
+        assert_eq!(
+            read(&every),
+            "",
+            "the held builder beside is named to every build"
+        );
+        fs::remove_file(held.join("home")).expect("the hold ended");
+        fs::remove_file(held.join("work")).expect("the hold ended");
+        machines.show(None);
+        assert_eq!(read(&asked), "ssh-ng://home\n");
+        assert_eq!(read(&alone), format!("{work}\n"));
+    }
+
+    #[test]
+    fn a_builder_standing_is_held_by_its_address_or_its_host() {
+        let builder = Standing {
+            address: "192.168.4.46:22".to_owned(),
+            line: "ssh-ng://builder@home?compress=true x86_64-linux".to_owned(),
+        };
+        assert_eq!(
+            builder.names(),
+            vec!["192.168.4.46:22", "192.168.4.46", "builder@home", "home"]
+        );
     }
 
     // A machine whose owner lets it take any of this one's work, such as a

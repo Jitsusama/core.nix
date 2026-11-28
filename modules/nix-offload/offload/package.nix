@@ -23,6 +23,7 @@ let
   # relay), and reading the boot (there), whose sysctl in /usr/sbin a
   # sandboxed build can't reach. Measured on 18 November.
   deniedInMacSandbox = [
+    "machines::tests::a_builder_its_owner_holds_is_named_to_no_build_until_the_hold_ends"
     "machines::tests::a_builder_beside_is_named_to_every_build_for_its_big_work_while_it_answers"
     "machines::tests::a_builder_beside_stands_as_roots_prover_says_where_one_writes"
     "machines::tests::a_lender_started_again_names_no_builder_beside_before_its_proof"

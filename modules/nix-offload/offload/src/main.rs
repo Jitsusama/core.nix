@@ -96,6 +96,14 @@
 //! Each ask, start, stop and leftover is a line in the journal under XDG's
 //! state folder, `nix-offload/journal.jsonl`, which `report` sums.
 //!
+//! A machine's owner holds it with a file in the same state folder,
+//! `nix-offload/held/<machine>`, whose first line says why, or nothing:
+//! while it's there, no work goes to that machine, whoever asks and
+//! however, as src/holds.rs says. A machine nearby, a builder standing or
+//! beside and an evaluator are each held by the name nix-offload knows it
+//! by. What only a held machine builds is left unbuilt, as when no machine
+//! that builds it answers, and the run says which machine is held and why.
+//!
 //! A lender's end ends the way to its builder, and every build reaching
 //! it with that, so a switch that changes its unit reloads it (SIGHUP)
 //! rather than restarting it. It then ends at once, leaving the builder
@@ -171,6 +179,7 @@ mod freeing;
 mod gate;
 mod held;
 mod help;
+mod holds;
 mod journal;
 mod keep;
 mod kept;
@@ -206,6 +215,7 @@ use terminal_kit::{Exit, Failure};
 use cloud::Place;
 
 use decide::{Hours, Restart, Tick};
+use holds::Hold;
 use journal::{Event, Ran};
 use machines::Machines;
 use proof::{Health, Keeper, State};
@@ -854,6 +864,49 @@ fn nearby_listed() -> Vec<there::Nearby> {
         .unwrap_or_default()
 }
 
+/// `machines` nearby parted into those that may be given work and those
+/// their owners hold, as the holds read now say (`holds.rs`). Every way a
+/// machine nearby is given work, a run's parts, a changed run's legs and a
+/// Mac's comparison, parts them here, so none forgets a hold.
+fn held_apart(machines: Vec<there::Nearby>) -> (Vec<there::Nearby>, Vec<(there::Nearby, Hold)>) {
+    holds::now(&holds::folder()).parted(machines, there::Nearby::names)
+}
+
+/// `left` of what `asked` sends to machines nearby, past what only a
+/// machine nearby builds, which is owed, and whether any is. A machine
+/// `held` that leaves a system with no other to build it says so, with its
+/// hold; a system no machine nearby that answers builds is said as owed.
+fn owed_nearby(
+    asked: &there::Asked,
+    left: Option<there::Asked>,
+    free: &[there::Nearby],
+    held: Vec<(there::Nearby, Hold)>,
+) -> (Option<there::Asked>, bool) {
+    let (said, alone) = there::held_said(asked, free, &held, &this_system());
+    for line in said {
+        eprintln!("nix-offload: {line}");
+    }
+    // A held machine still says which systems only machines nearby
+    // build, so what only it builds is owed rather than sent to a lent
+    // builder that can't build it.
+    let listed: Vec<there::Nearby> = free
+        .iter()
+        .cloned()
+        .chain(held.into_iter().map(|(machine, _)| machine))
+        .collect();
+    let (left, owed) = there::owed(left, &listed, &this_system());
+    let unanswered = there::owed_unheld(&owed, &alone);
+    if !unanswered.is_empty() {
+        let names: Vec<&str> = unanswered.iter().map(|name| name.as_str()).collect();
+        eprintln!(
+            "nix-offload: no machine nearby that builds for {} answers, and a lent builder \
+             can't, so it's left unbuilt, owed for when one does",
+            names.join(", ")
+        );
+    }
+    (left, !owed.is_empty())
+}
+
 /// Who stands in for a builder that doesn't come: a VM builder past the
 /// first leaves its tests to the first; the first and second lent builders
 /// stand in for each other, and the first stands in for a VM builder given
@@ -922,18 +975,11 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    let nearby = nearby();
+    let (nearby, held) = held_apart(nearby());
     let (near, left) = there::shared(&asked, &nearby, |machine| {
         machines::nearby_answers(&machine.address, &machine.host)
     });
-    let (left, owed) = there::owed(left, &nearby, &this_system());
-    if !owed.is_empty() {
-        eprintln!(
-            "nix-offload: no machine nearby that builds for {} answers, and a lent builder \
-             can't, so it's left unbuilt, owed for when one does",
-            owed.join(", ")
-        );
-    }
+    let (left, owed) = owed_nearby(&asked, left, &nearby, held);
     let (mut status, left) = built_nearby(&near, left, &dir, &scratch, &journal);
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
@@ -977,7 +1023,7 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     }
     // What's owed hasn't passed, so the run says it's unbuilt, as a
     // changed run with no builder does, and isn't kept.
-    if status == 0 && !owed.is_empty() {
+    if status == 0 && owed {
         status = i32::from(changed::UNBUILT);
     }
     // Which of a build that failed passed isn't known, so only a whole
@@ -2023,7 +2069,8 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     {
         return None;
     }
-    let mac = nearby_listed()
+    let (free, _) = held_apart(nearby_listed());
+    let mac = free
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
         .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
@@ -2143,6 +2190,12 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     };
     if there::lent_only() {
         return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
+    }
+    let (macs, held) = held_apart(macs);
+    if macs.is_empty()
+        && let Some((_, hold)) = held.first()
+    {
+        return skipped(format!("{hold}, so nothing goes to it"));
     }
     let answering =
         |machine: &&there::Nearby| machines::nearby_answers(&machine.address, &machine.host);
@@ -2751,9 +2804,23 @@ impl Sent<'_> {
         let github = match source {
             there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
         };
-        for evaluator in evaluators.iter().filter(|evaluator| {
-            evaluator.takes(github) && machines::nearby_answers(&evaluator.address, &evaluator.host)
-        }) {
+        // An evaluator's owner may hold it as any machine nearby's may.
+        let holds = holds::now(&holds::folder());
+        let unheld = |evaluator: &&changed::Evaluator| {
+            let mut names = holds::host_names(&evaluator.host);
+            names.extend(holds::address_names(&evaluator.address));
+            let hold = holds.of(names.iter().map(String::as_str));
+            if let Some(hold) = &hold {
+                eprintln!("nix-offload: {hold}, so it evaluates nothing");
+            }
+            hold.is_none()
+        };
+        let evaluating_here = evaluators
+            .iter()
+            .filter(|evaluator| evaluator.takes(github))
+            .filter(unheld)
+            .filter(|evaluator| machines::nearby_answers(&evaluator.address, &evaluator.host));
+        for evaluator in evaluating_here {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
                 changed::evaluated(
@@ -2860,6 +2927,9 @@ impl Sent<'_> {
 /// nearby does. Never while what the lent builders build for isn't known.
 fn built_only_nearby(system: &str, dir: &Path) -> bool {
     let lent = there::lent_systems(dir);
+    // A machine its owner holds counts, so its system is still only named
+    // on a lent builder rather than built whole there, where it could only
+    // fail; what's named is then owed, as `there` says of the hold.
     !lent.is_empty()
         && !lent.iter().any(|lent| lent == system)
         && nearby()

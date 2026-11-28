@@ -65,7 +65,10 @@
 //! tarball, and any input its lock pins to a store path is copied too, so
 //! the nearby machine fetches the rest itself and can read inputs only it
 //! has. There it waits for one of the machine's turns, [`NEARBY_AT_ONCE`]
-//! of them shared by every run sent to it, before it builds.
+//! of them shared by every run sent to it, before it builds. One its owner
+//! holds (`holds.rs`) takes nothing: another that builds the system takes
+//! it, and the hold is said once, and with none, the run says the hold
+//! and leaves it unbuilt, owed.
 //!
 //! A caller may rewrite any `nix build --no-link` into this without ever
 //! failing for the routing: with no builder, or none ssh can reach, the
@@ -88,6 +91,7 @@ use std::time::{Duration, Instant};
 
 use crate::archived;
 use crate::held;
+use crate::holds::{self, Hold};
 use crate::kept;
 use crate::passed;
 use crate::proof;
@@ -4521,6 +4525,14 @@ pub struct Nearby {
 }
 
 impl Nearby {
+    /// The names its owner may hold it by (`holds.rs`): its host as ssh
+    /// is given it and its address, as the nearby list gives them.
+    pub fn names(&self) -> Vec<String> {
+        let mut names = holds::host_names(&self.host);
+        names.extend(holds::address_names(&self.address));
+        names
+    }
+
     fn takes(&self, attribute: &str) -> bool {
         system_of(attribute).is_some_and(|system| self.systems.iter().any(|s| s == system))
             || self
@@ -4664,6 +4676,66 @@ pub fn owed(left: Option<Asked>, nearby: &[Nearby], system: &str) -> (Option<Ask
         left.attributes.iter().cloned().partition(only_nearby);
     let rest = (!rest.is_empty()).then(|| left.with(&left.flake, rest));
     (rest, owed)
+}
+
+/// What a run says of each machine nearby its owner holds that would have
+/// taken some of what was `asked`, with the systems a held machine alone
+/// builds here, which [`owed`] then leaves unbuilt rather than send a lent
+/// builder for `system`, which can't build them. A held machine another
+/// machine nearby stands in for is said once to be passed over. Nothing
+/// is said where nothing asked would have gone nearby at all.
+pub fn held_said(
+    asked: &Asked,
+    free: &[Nearby],
+    held: &[(Nearby, Hold)],
+    system: &str,
+) -> (Vec<String>, BTreeSet<String>) {
+    let mut said = Vec::new();
+    let mut alone = BTreeSet::new();
+    if asked.apply.is_some() || asked.out.is_some() || asked.derivations {
+        return (said, alone);
+    }
+    for (machine, hold) in held {
+        let taken: Vec<&String> = asked
+            .attributes
+            .iter()
+            .filter(|attribute| machine.takes(attribute))
+            .collect();
+        if taken.is_empty() {
+            continue;
+        }
+        let only_it: BTreeSet<&str> = taken
+            .iter()
+            .filter_map(|attribute| system_of(attribute))
+            .filter(|built_for| {
+                *built_for != system
+                    && machine.systems.iter().any(|s| s == built_for)
+                    && !free
+                        .iter()
+                        .any(|other| other.systems.iter().any(|s| s == built_for))
+            })
+            .collect();
+        if only_it.is_empty() {
+            said.push(format!(
+                "{hold}, so it's passed over, and what it would take goes elsewhere"
+            ));
+        }
+        for built_for in only_it {
+            said.push(format!(
+                "{hold}, so nothing goes to it: no other machine builds {built_for} here"
+            ));
+            alone.insert(built_for.to_owned());
+        }
+    }
+    (said, alone)
+}
+
+/// The attributes [`owed`] left whose system no held machine alone builds,
+/// as [`held_said`] named those: a run says why those are owed itself.
+pub fn owed_unheld<'a>(owed: &'a [String], alone: &BTreeSet<String>) -> Vec<&'a String> {
+    owed.iter()
+        .filter(|attribute| system_of(attribute).is_none_or(|system| !alone.contains(system)))
+        .collect()
 }
 
 /// What was asked, split: the VM tests, for a builder of their own so they
