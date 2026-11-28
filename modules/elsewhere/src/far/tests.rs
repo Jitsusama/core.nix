@@ -3,6 +3,7 @@ use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod cutting;
 mod handing;
 mod heard;
 mod holding;
@@ -247,7 +248,9 @@ pub(super) fn far_line(
 /// ahead of the rest on its path, in the tree's `folder`. What it said
 /// for the near side to hear, on stdout, is left in the home's `said`,
 /// the signal it died by, if one ended it, in its `signal`, and its own
-/// process's number in its `pid`.
+/// process's number in its `pid`. While `leaving::HOME_GONE` is set, as
+/// `home_gone` there sets it, the line's `HOME` names no folder and its
+/// cache is named by `XDG_CACHE_HOME`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
@@ -298,13 +301,18 @@ pub(super) fn far_line_in(
     );
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let far = std::process::Command::new(sh)
+    let mut far = std::process::Command::new(sh);
+    if leaving::HOME_GONE.get() {
+        far.env("HOME", home.join("gone"))
+            .env("XDG_CACHE_HOME", home.join(".cache"));
+    } else {
+        far.env("HOME", &home).env_remove("XDG_CACHE_HOME");
+    }
+    let far = far
         .args(["-c", &line])
-        .env("HOME", &home)
         .env("PATH", path)
         // As though inherited, so a line keeping it clears another's copy.
         .env("mine", "1")
-        .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

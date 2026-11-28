@@ -148,8 +148,9 @@ fn joels(lines: &[Line]) -> Vec<&Line> {
 
 /// Scores every meeting of `set` with the speech model in `model`, says
 /// each one's errors and the set's, and fails when the set's, as written
-/// down, are above `ceiling` tenths of a percent.
-pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), String> {
+/// down, are above `ceilings`' first in tenths of a percent, or Joel's
+/// side's above its second.
+pub fn score(model: &Path, set: &Path, ceilings: [Option<usize>; 2]) -> Result<(), String> {
     // Every reference and recording is read before the model loads, so a
     // bad one is refused at once rather than after the meetings before it
     // are heard.
@@ -175,12 +176,31 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
-    let rate = ceiling.map(|most| verdict(total.tenths(), most));
-    let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate]);
+    let [most, joels] = ceilings;
+    let [rate, joels] = rated(&all, most, joels);
+    let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate, joels]);
     for passed in held {
         println!("{passed}");
     }
     failed
+}
+
+/// Whether what `all` wrote down passes `most`, both sides together, and
+/// whether Joel's side alone passes `joels`, none for a ceiling not given.
+/// A rule that cuts his words with their echo can lower the whole rate
+/// while losing his own, so his side is held to a ceiling of its own.
+fn rated(
+    all: &Scored,
+    most: Option<usize>,
+    joels: Option<usize>,
+) -> [Option<Result<String, String>>; 2] {
+    let mut total = all.written[0];
+    total += all.written[1];
+    let his = all.written[index(Side::Mine)];
+    [
+        most.map(|most| verdict(total.tenths(), most, "the words")),
+        joels.map(|most| verdict(his.tenths(), most, "Joel's words")),
+    ]
 }
 
 /// Of the verdicts given, each that passed, and every one that failed in
@@ -252,10 +272,10 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     };
     let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
     for taken in &cuts {
-        let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
         println!(
-            "{name}: Joel's words at {} taken for an echo, {ms} ms after theirs: {}",
+            "{name}: Joel's words at {} taken for an echo, {}: {}",
             transcript::clock(taken.at),
+            taken.by(),
             taken.text
         );
     }
@@ -355,17 +375,17 @@ pub fn ceiling(text: &str) -> Option<usize> {
     (tenths < 1000).then_some(tenths)
 }
 
-/// Whether `tenths` of a percent wrong passes a ceiling of `most`, said
-/// either way, as the report says it.
-fn verdict(tenths: usize, most: usize) -> Result<String, String> {
+/// Whether `tenths` of a percent of `whose` wrong passes a ceiling of
+/// `most`, said either way, as the report says it.
+fn verdict(tenths: usize, most: usize, whose: &str) -> Result<String, String> {
     let (said, may) = (percent(tenths), percent(most));
     if tenths > most {
         Err(format!(
-            "it misheard {said} of the words, above the {may} it may"
+            "it misheard {said} of {whose}, above the {may} it may"
         ))
     } else {
         Ok(format!(
-            "it misheard {said} of the words, within the {may} it may"
+            "it misheard {said} of {whose}, within the {may} it may"
         ))
     }
 }
@@ -499,274 +519,5 @@ pub fn read(file: &Path) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use dictation::parakeet::Timings;
-
-    use super::*;
-
-    /// A model that hears each take as the next of `said`, or fails on
-    /// it where that's none.
-    struct Hearing {
-        said: Vec<Option<&'static str>>,
-    }
-
-    impl Hears for Hearing {
-        fn words(&mut self, _: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)> {
-            let said = self.said.remove(0).ok_or("the encoder failed")?;
-            let word = Word {
-                text: said.to_owned(),
-                at: 0,
-                level: 0.0,
-            };
-            let took = Timings {
-                mel: Duration::ZERO,
-                encoder: Duration::ZERO,
-                decoder: Duration::ZERO,
-                tokens: 0,
-            };
-            Ok((vec![word], took))
-        }
-
-        fn device(&self) -> &'static str {
-            "CPU"
-        }
-    }
-
-    #[test]
-    fn a_side_stops_at_a_take_not_heard_and_says_where_it_is() {
-        let take = |second: usize| Take {
-            start: second * RATE,
-            samples: vec![0.0; RATE],
-        };
-        let takes = [take(10), take(40)];
-        let (mut lines, mut words) = (Vec::new(), HashMap::new());
-        let mut heard = Hearing {
-            said: vec![Some("Yes."), Some("No.")],
-        };
-        hear_side(
-            &mut heard,
-            Side::Mine,
-            "mine.wav",
-            &takes,
-            &mut lines,
-            &mut words,
-        )
-        .expect("a side whose every take is heard failed");
-        assert_eq!(lines.len(), 2, "a heard take wasn't written as a line");
-        // The first take isn't heard and the next would be, so going on
-        // past it would write a third line.
-        let mut failing = Hearing {
-            said: vec![None, Some("Yes.")],
-        };
-        let failed = hear_side(
-            &mut failing,
-            Side::Theirs,
-            "theirs.wav",
-            &takes,
-            &mut lines,
-            &mut words,
-        );
-        assert_eq!(
-            failed,
-            Err("hearing theirs.wav at 10 s: the encoder failed".to_owned()),
-            "a take not heard didn't stop its side, or didn't say which file and second it was"
-        );
-        assert_eq!(lines.len(), 2, "a side went on past a take it didn't hear");
-    }
-
-    #[test]
-    fn a_reference_reads_its_times_speaker_and_words_past_its_comment() {
-        let lines =
-            reference("# AMI\n54.95 60.85 A Okay everybody ready\n55.70 56.03 D Okay\n").unwrap();
-        assert_eq!(lines.len(), 2);
-        assert!(
-            (lines[0].start - 54.95).abs() < 1e-9,
-            "the first line starts at 54.95, not {}",
-            lines[0].start
-        );
-        assert!(
-            (lines[1].end - 56.03).abs() < 1e-9,
-            "the second line ends at 56.03, not {}",
-            lines[1].end
-        );
-        assert_eq!(lines[0].speaker, "A");
-        assert_eq!(lines[0].text, "Okay everybody ready");
-        assert_eq!(whose(&lines[0], "A"), Side::Mine);
-        assert_eq!(whose(&lines[1], "A"), Side::Theirs);
-    }
-
-    #[test]
-    fn a_reference_line_without_its_times_is_refused() {
-        assert!(
-            reference("A Okay\n").is_err(),
-            "a line with no times was read"
-        );
-    }
-
-    #[test]
-    fn a_reference_line_ending_before_it_starts_or_past_a_take_is_refused() {
-        assert!(
-            reference("60.85 54.95 A Okay\n").is_err(),
-            "a line ending before it starts was read"
-        );
-        assert!(
-            reference("0.00 14.50 A Okay\n").is_err(),
-            "a line longer than a take was read"
-        );
-        assert!(
-            reference("0.00 14.00 A Okay\n").is_ok(),
-            "a line as long as a take was refused"
-        );
-        // 16.01 - 2.01 is a hair over 14 in f64, so only the hundredths
-        // read it as a take's length.
-        assert!(
-            reference("2.01 16.01 A Okay\n").is_ok(),
-            "a line as long as a take, not from the start, was refused"
-        );
-    }
-
-    #[test]
-    fn a_set_is_refused_before_the_model_loads() {
-        let set = tempfile::tempdir().unwrap();
-        let model = Path::new("/no/model/here");
-        let write = |file: &str, text: &str| std::fs::write(set.path().join(file), text).unwrap();
-        let refused = |why: &str| {
-            let said = score(model, set.path(), None).unwrap_err();
-            assert!(said.contains(why), "refused for {said:?}, not {why:?}");
-        };
-        write("sides", "\n");
-        refused("no meetings");
-        write("sides", "M\n");
-        refused("isn't a meeting and a speaker");
-        write("sides", "M A B\n");
-        refused("isn't a meeting and a speaker");
-        // A whole first meeting, so only reading every reference and
-        // recording before the model loads can refuse the second's.
-        let silent = |file: &str, samples| {
-            std::fs::write(set.path().join(file), silence(samples)).unwrap();
-        };
-        let blank = |file: &str| silent(file, 32_000);
-        write("M.ref", "0.50 1.00 A Okay\n");
-        blank("M.mine.wav");
-        blank("M.theirs.wav");
-        write("sides", "M A \nN A\n");
-        write("N.ref", "1.00 0.50 A Okay\n");
-        refused("N.ref: a reference line");
-        write("N.ref", "0.50 1.00 B Okay\n");
-        refused("N.ref: A never speaks");
-        write("N.ref", "0.50 1.00 A Okay\n");
-        refused(&format!(
-            "reading {}",
-            set.path().join("N.mine.wav").display()
-        ));
-        write("N.mine.wav", "");
-        refused("N.mine.wav: not a RIFF WAV");
-        // N's reference ends at 1 s, its 16,000th sample: a sample short
-        // is refused, and a recording ending just there is whole.
-        silent("N.mine.wav", 15_999);
-        refused("N.mine.wav ends before its reference's last line");
-        silent("N.mine.wav", 16_000);
-        refused(&format!(
-            "reading {}",
-            set.path().join("N.theirs.wav").display()
-        ));
-        silent("N.theirs.wav", 15_999);
-        refused("N.theirs.wav ends before its reference's last line");
-        blank("N.theirs.wav");
-        write("sides", "M A\nN A\nM A\n");
-        refused("M is named twice");
-    }
-
-    /// A WAV of `samples` of silence, in the one format `wav` reads: PCM,
-    /// mono, 16 kHz, 16-bit.
-    fn silence(samples: u32) -> Vec<u8> {
-        let data = samples * 2;
-        let mut bytes = b"RIFF".to_vec();
-        bytes.extend_from_slice(&(36 + data).to_le_bytes());
-        bytes.extend_from_slice(b"WAVEfmt ");
-        bytes.extend_from_slice(&16_u32.to_le_bytes());
-        for word in [1_u16, 1] {
-            bytes.extend_from_slice(&word.to_le_bytes());
-        }
-        for long in [16_000_u32, 32_000] {
-            bytes.extend_from_slice(&long.to_le_bytes());
-        }
-        for word in [2_u16, 16] {
-            bytes.extend_from_slice(&word.to_le_bytes());
-        }
-        bytes.extend_from_slice(b"data");
-        bytes.extend_from_slice(&data.to_le_bytes());
-        bytes.resize(bytes.len() + usize::try_from(data).unwrap(), 0);
-        bytes
-    }
-
-    #[test]
-    fn only_a_percentage_to_one_place_is_a_ceiling() {
-        assert_eq!(ceiling("19.9"), Some(199));
-        assert_eq!(ceiling("20"), Some(200));
-        assert_eq!(ceiling("0"), Some(0));
-        assert_eq!(ceiling("99.9"), Some(999));
-        let huge = "18446744073709551615";
-        for refused in [
-            "nan", "inf", "-1", "nineteen", "", "19.96", "19.", ".9", "100", huge,
-        ] {
-            assert_eq!(ceiling(refused), None, "{refused:?} was taken as a ceiling");
-        }
-    }
-
-    #[test]
-    fn a_rate_is_held_to_its_ceiling_as_it_is_said() {
-        assert_eq!(
-            verdict(199, 199),
-            Ok("it misheard 19.9% of the words, within the 19.9% it may".to_owned())
-        );
-        assert_eq!(
-            verdict(200, 199),
-            Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
-        );
-    }
-
-    #[test]
-    fn every_failed_verdict_is_said_and_one_failing_fails_them_all() {
-        let passed = || Some(Ok("held".to_owned()));
-        let failed = |why: &str| Some(Err(why.to_owned()));
-        assert_eq!(
-            say_each([passed(), None, passed()]),
-            (vec!["held".to_owned(), "held".to_owned()], Ok(())),
-            "the verdicts given, all passing, weren't each said"
-        );
-        let (_, both) = say_each([failed("times"), failed("rate")]);
-        assert!(
-            both.as_ref()
-                .is_err_and(|said| said.contains("times") && said.contains("rate")),
-            "a failed times verdict hid the rate's: {both:?}"
-        );
-        assert_eq!(
-            say_each([failed("times"), passed()]),
-            (vec!["held".to_owned()], Err("times".to_owned())),
-            "a failed times verdict hid the rate's that passed, or one failing passed"
-        );
-    }
-
-    #[test]
-    fn the_report_and_the_verdict_say_the_same_rate() {
-        let errors = Errors {
-            words: 4000,
-            substituted: 798,
-            ..Errors::default()
-        };
-        assert_eq!(rate(&errors), "20.0% of 4000 words");
-        assert!(
-            verdict(errors.tenths(), 199).is_err_and(|said| said.contains("20.0%")),
-            "the verdict says the rate the report does"
-        );
-    }
-
-    #[test]
-    fn a_time_before_the_start_is_the_start() {
-        assert_eq!(samples(-0.2), 0);
-        assert_eq!(samples(1.5), 24_000);
-    }
-}
+#[path = "score_tests.rs"]
+mod tests;

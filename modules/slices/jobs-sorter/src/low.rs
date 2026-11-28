@@ -93,8 +93,16 @@ impl Weighing {
 }
 
 /// What busctl is given to weigh a window's unit at `weight` for the
-/// processor, as a runtime property gone at the next boot. The disk's
-/// weight is left, since it acts only under a scheduler this disk lacks.
+/// processor and the disk alike, as runtime properties gone at the next
+/// boot. A disk a machine names in `jitsusama.slices.disks` is shared by
+/// io.cost, which reads the weight, and app.slice weighs ten times
+/// agents.slice there; with the processor's weight alone, the window Joel
+/// is at would share the disk evenly with every agent's. On a disk held
+/// only by latency targets the disk's weight does nothing, so setting it
+/// there costs nothing. On one BFQ runs, systemd scales a weight above its
+/// default of 100 down first, 1000 to 181, so a window starting gets under
+/// twice an attended one's share; a weight at or below 100 passes as it
+/// stands, so a window weighed low at 10 still keeps its tenth.
 pub fn weigh_call(unit: &str, weight: u64) -> Vec<String> {
     let weight = weight.to_string();
     [
@@ -108,8 +116,11 @@ pub fn weigh_call(unit: &str, weight: u64) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "1",
+        "2",
         "CPUWeight",
+        "t",
+        &weight,
+        "IOWeight",
         "t",
         &weight,
     ]
@@ -319,11 +330,21 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_weighed_for_the_processor_alone_until_the_next_boot() {
+    fn a_window_is_weighed_for_the_processor_and_the_disk_until_the_next_boot() {
         let call = weigh_call("kitty-1-1.scope", 10);
         assert_eq!(
             call[8..],
-            ["kitty-1-1.scope", "true", "1", "CPUWeight", "t", "10"]
+            [
+                "kitty-1-1.scope",
+                "true",
+                "2",
+                "CPUWeight",
+                "t",
+                "10",
+                "IOWeight",
+                "t",
+                "10"
+            ]
         );
     }
 }

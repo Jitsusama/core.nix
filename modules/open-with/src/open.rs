@@ -377,7 +377,8 @@ mod tests {
         let processes = &listed[0]["tabs"][0]["windows"][0]["foreground_processes"];
         assert_eq!(processes[0]["pgrp"], 7);
         assert_eq!(processes[1]["pgrp"], 7);
-        assert!(processes[2].get("pgrp").is_none());
+        // A process gone stays listed, with no group to give.
+        assert_eq!(processes[2], json!({ "pid": 9, "cmdline": ["gone"] }));
     }
 
     #[test]

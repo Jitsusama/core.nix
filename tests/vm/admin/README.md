@@ -20,12 +20,13 @@ a folder.
 | `fenced-runs.nix`, `-vm-test.py`                 | an agent's run reaching no socket, secret or home past its fence |
 | `firmware-asks.nix`, `-vm-test.py`               | writing firmware asking an administrator, even at the seat       |
 | `libvirt.nix`, `-vm-test.py`                     | libvirt's daemon stopping at once while its udev thread waits    |
-| `memory-tune.nix`, `-vm-test.py`                 | eight memory settings an administrator sets with no password     |
+| `memory-tune.nix`, `-vm-test.py`                 | nine memory settings an administrator sets with no password      |
 | `niri-off-cpu.nix`, `-vm-test.py`                | an account in wheel tracing its own niri, and nobody else        |
 | `offload-lines.nix`, `-vm-test.py`               | root's Nix given only the builders nix-offload's lines trust     |
 | `offload-lines-gcloud.sh`                        | that test's stand-in gcloud, saying what it lent                 |
 | `pi-conversations-come-back.nix`, `-vm-test.py`  | a pi host's conversations back after a kill -9 and a reboot      |
 | `pi-conversations-come-back-ask.mjs`             | that test's request to a pi host's socket                        |
+| `pi_conversations_read.py`, `-read-test.py`      | how that test's failures say what they read, and its cases       |
 | `pi-hosts-recover.nix`, `-vm-test.py`            | a wedged pi host restarted, one always crashing left down        |
 | `pi-hosts-recover-host.sh`                       | that test's stand-in node, ready and pinging as a host is        |
 | `switch-outruns-home-manager.nix`, `-vm-test.py` | a switch starting what it stopped while an account's setup hangs |

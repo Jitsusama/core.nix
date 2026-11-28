@@ -52,7 +52,10 @@ pub struct PixFormat {
     pub quantization: u32,
     pub xfer_func: u32,
 }
-const _: () = assert!(size_of::<PixFormat>() == 48);
+const _: () = assert!(
+    size_of::<PixFormat>() == 48,
+    "PixFormat isn't the kernel's v4l2_pix_format"
+);
 
 // The kernel's union of formats, of which only the single plane one is used.
 // The union also holds structures with pointers, so it's aligned to eight.
@@ -67,7 +70,10 @@ struct Format {
     kind: u32,
     formats: Formats,
 }
-const _: () = assert!(size_of::<Format>() == 208 && offset_of!(Format, formats) == 8);
+const _: () = assert!(
+    size_of::<Format>() == 208 && offset_of!(Format, formats) == 8,
+    "Format isn't laid out as the kernel's v4l2_format"
+);
 
 #[repr(C)]
 struct RequestBuffers {
@@ -78,7 +84,10 @@ struct RequestBuffers {
     flags: u8,
     reserved: [u8; 3],
 }
-const _: () = assert!(size_of::<RequestBuffers>() == 20);
+const _: () = assert!(
+    size_of::<RequestBuffers>() == 20,
+    "RequestBuffers isn't the kernel's v4l2_requestbuffers"
+);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -118,7 +127,8 @@ const _: () = assert!(
         && offset_of!(Buffer, memory) == 60
         && offset_of!(Buffer, offset) == 64
         && offset_of!(Buffer, length) == 72
-        && offset_of!(Buffer, request_fd) == 80
+        && offset_of!(Buffer, request_fd) == 80,
+    "Buffer isn't laid out as the kernel's v4l2_buffer"
 );
 
 #[repr(C)]
@@ -128,7 +138,10 @@ struct EventSubscription {
     flags: u32,
     reserved: [u32; 5],
 }
-const _: () = assert!(size_of::<EventSubscription>() == 32);
+const _: () = assert!(
+    size_of::<EventSubscription>() == 32,
+    "EventSubscription isn't the kernel's v4l2_event_subscription"
+);
 
 #[repr(C)]
 struct Event {
@@ -145,7 +158,8 @@ const _: () = assert!(
         && offset_of!(Event, data) == 8
         && offset_of!(Event, pending) == 72
         && offset_of!(Event, timestamp) == 80
-        && offset_of!(Event, id) == 96
+        && offset_of!(Event, id) == 96,
+    "Event isn't laid out as the kernel's v4l2_event"
 );
 
 /// An all-zero value of one of the structures above, each of which the
