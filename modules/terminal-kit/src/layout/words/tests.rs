@@ -111,23 +111,34 @@ fn hung_words_wrap_at_the_room_the_lead_leaves_to_the_cell() {
     // After a lead of 2, 17 cells leave 15. The first line's words fill
     // those 15 exactly, so a room one cell narrower parts them. The
     // second's with the next word come to 16, so a room one cell wider
-    // takes that word up. Each room draws its own lines, so a wrap off by
-    // one cell either way can't pass.
+    // takes that word up. A wrap a cell off either way draws the 17-cell
+    // room as one of the others, so the first assert is the one that
+    // catches it; the other two fail first only when the sentence or the
+    // wrap's rules move it off its edges. Only the first two lines are
+    // read, since they carry both edges, and the lines after them turn on
+    // the rule that no last word is left alone, which has its own case.
     let said = "a card failed a power change and won't wake until the next boot";
+    let edges = |cells| -> Vec<String> {
+        hung(said, 2, Room::Cells(cells))
+            .lines()
+            .take(2)
+            .map(str::to_owned)
+            .collect()
+    };
     assert_eq!(
-        hung(said, 2, Room::Cells(17)),
-        "a card failed a\n  power change\n  and won't wake\n  until the\n  next boot",
+        edges(17),
+        ["a card failed a", "  power change"],
         "hung words didn't wrap at exactly the room the lead leaves"
     );
     assert_eq!(
-        hung(said, 2, Room::Cells(16)),
-        "a card failed\n  a power change\n  and won't wake\n  until the\n  next boot",
-        "hung words ran a cell past the room the lead leaves"
+        edges(16),
+        ["a card failed", "  a power change"],
+        "the sentence's first line no longer fills the room the lead leaves to the cell"
     );
     assert_eq!(
-        hung(said, 2, Room::Cells(18)),
-        "a card failed a\n  power change and\n  won't wake until\n  the next boot",
-        "hung words wrapped a cell short of the room the lead leaves"
+        edges(18),
+        ["a card failed a", "  power change and"],
+        "the sentence's second line and its next word no longer come to a cell past the room"
     );
 }
 
