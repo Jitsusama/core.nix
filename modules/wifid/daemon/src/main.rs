@@ -1751,9 +1751,15 @@ fn keep_off_as_warned(
     for (card, point, until) in warned.lasting(now, boot) {
         arrivals.warned(&card, &point, until);
         state.kept_off(&card, &point, until);
-        let minutes = until.saturating_duration_since(now).as_secs().div_ceil(60);
+        // Rounded up from the milliseconds, as a warning lasts until one
+        // has none left, so even its last second reads as a minute.
+        let minutes = until
+            .saturating_duration_since(now)
+            .as_millis()
+            .div_ceil(60_000);
+        let unit = if minutes == 1 { "minute" } else { "minutes" };
         said.push(format!(
-            "{card} keeps off {point} for {minutes} more minutes, as it warned before"
+            "{card} keeps off {point} for {minutes} more {unit}, as it warned before"
         ));
     }
     said
@@ -4099,6 +4105,30 @@ mod tests {
                 "wlan2 keeps off {DESK} for 10 more minutes, as it warned before"
             )],
             "a point kept off as it warned before a restart wasn't said so"
+        );
+    }
+
+    #[test]
+    fn a_warning_kept_with_under_a_second_left_says_a_minute_more() {
+        const DESK: &str = "02:00:00:00:01:00";
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let now = Instant::now();
+        let boot = Boot::now().expect("the boot clock");
+        Warned::none(&file)
+            .warned("wlan2", DESK, now + Duration::from_millis(500), (now, boot))
+            .expect("kept");
+        let (warned, _) = Warned::kept_in(&file, boot);
+        let (mut arrivals, mut state) = (Arrivals::default(), State::default());
+
+        let said = keep_off_as_warned(&warned, &mut arrivals, &mut state, (now, boot));
+
+        assert_eq!(
+            said,
+            vec![format!(
+                "wlan2 keeps off {DESK} for 1 more minute, as it warned before"
+            )],
+            "a warning with under a second left wasn't said to last a minute more"
         );
     }
 
