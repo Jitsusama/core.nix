@@ -733,7 +733,11 @@ std::vector<Marked> markedChunks(const QV4::MemoryManager *manager) {
 // freed only with the last QString holding it, so text shared is counted
 // once, when every holder its count says it has is among the items, and
 // otherwise not at all; static text, which has no count, is never freed. A
-// symbol's text isn't counted, as Qt counts none in.
+// symbol's text isn't counted, as Qt counts none in. The count also holds
+// heap strings nothing reaches that no collection has freed yet, so text
+// shared with one reads as not freed until a collection frees it: telling
+// them apart would walk the whole heap again, for a reading that's true
+// after the next collection.
 class FreedText {
 public:
     void add(const QV4::Heap::Base *item) {

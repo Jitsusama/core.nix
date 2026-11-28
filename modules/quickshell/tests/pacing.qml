@@ -312,6 +312,9 @@ QtObject {
         check(failures, "a limit it doesn't know is left unsaid, the cap kept",
             Collector.limitSaid({ roomsCapAt: 310.2, collectsBy: "later" }),
             " (the rooms 310 MB)");
+        check(failures, "as is a name every object has, not one of the limits",
+            Collector.limitSaid({ roomsCapAt: 310.2, collectsBy: "constructor" }),
+            " (the rooms 310 MB)");
         check(failures, "and a cap that isn't a number says nothing",
             Collector.limitSaid({ roomsCapAt: NaN, collectsBy: "kept" })
             + Collector.limitSaid({ roomsCapAt: "310", collectsBy: "kept" })

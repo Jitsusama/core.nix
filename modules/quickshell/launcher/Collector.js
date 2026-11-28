@@ -25,13 +25,15 @@ function workingSaid(inWorking) {
 }
 
 // The limits Heap.standing says set where the collector starts, in the
-// words a line says them in.
-const LIMITS = {
+// words a line says them in. It has no prototype, so a name every object
+// inherits, as constructor, isn't read as a limit; Qt's engine has no
+// Object.hasOwn to ask with.
+const LIMITS = Object.freeze(Object.assign(Object.create(null), {
     sweep: "Qt's own limit",
     room: "the room past what they held",
     rooms: "the rooms",
     kept: "the rooms and what the sweeps kept since",
-};
+}));
 
 // Where the rooms alone cap the chunks, and which limit set where the
 // collector starts, as Heap.standing says them, said in brackets after
