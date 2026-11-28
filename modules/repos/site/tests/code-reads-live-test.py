@@ -47,6 +47,9 @@ HERE = Path(__file__).parent
 # Code draws on the frame after a record moves, then at most twice a second while records keep
 # coming, so a change must show well inside this.
 PACE_MS = 6000
+# Longer than any paced draw waits once asked for, at most 2 s after the last (pace.ts), with
+# room for the frames it measures across.
+SETTLED_MS = 5000
 # Long enough for Code to ask three times again for a cell with no home, 14 s, with room.
 ASKED_AGAIN_MS = 20_000
 # How far the page may shift unasked: a tenth of the web's "good" bound, which a font
@@ -499,6 +502,17 @@ def test_ages_move_on_while_nothing_is_written(
         page.locator(".head .keys").get_by_text("Return", exact=True).focus()
         page.keyboard.press("Enter")
         expect(stepped_in, "Return didn't step into the tree").to_be_focused()
+        # A draw still owed when the tree is marked lands in the fast-forward and draws the tree
+        # anew, ages and all, which reads as the minute redrawing it. So the feeds' last answers
+        # are let draw first, the cell's home and core's use, then every paced draw they owe.
+        expect(
+            page.locator(f'#open a[href="../{CELL_HOME}"]'), "the cell's home wasn't linked"
+        ).to_be_visible(timeout=PACE_MS)
+        expect(row(page, "github:owl/core"), "what works in core wasn't said").to_contain_text(
+            "of memory", timeout=PACE_MS
+        )
+        page.clock.run_for(SETTLED_MS)
+        expect(stepped_in, "the draws owed took focus off the tree").to_be_focused()
         stepped_in.evaluate("tree => { tree.kept = true; }")
         page.clock.fast_forward("02:00:00")
         expect(when, "an age stood still while nothing was written").to_have_text(
@@ -940,10 +954,11 @@ def test_a_phone_reads_every_word_code_draws(
 def test_a_name_stays_inside_its_stand_at_every_width(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
-    """No name spills past its stand, however long, and one that fits a phone keeps one line.
+    """No name spills past its stand or widens it, however long, and one that fits keeps a line.
 
     A name wraps at its dots and dashes, and one with neither breaks wherever it must
-    only when it is wider than the room it has, so it is never cut and never spills.
+    only when it is wider than the room it has, so it is never cut and never spills. Each
+    stand keeps the width the grove gives it, so a stand grown to hold its name fails too.
     """
     root, _ = code_served
     opened = Opened(browser, f"{root}code/", size, LOOKS[0])
@@ -953,13 +968,20 @@ def test_a_name_stays_inside_its_stand_at_every_width(
         expect(named, "Code drew no stand's name in its grove").to_be_visible(timeout=PACE_MS)
         opened.page.evaluate("document.fonts.ready.then(() => true)")
         for name in (LONG_NAME, WIDER_THAN_A_PHONE):
-            said = opened.page.evaluate(SPILT, name)
+            said = opened.page.evaluate(SPILT, [name, STAND_PX])
             assert said["stands"] > 0, f"Code drew no stand in its grove at {size}"
             assert said["named"] == said["stands"], f"a stand drew no name at {size}: {said}"
             assert said["spilt"] == [], f"{name} spilt past its stand at {size}: {said}"
+            assert said["resized"] == [], f"{name} resized its stand at {size}: {said}"
         if size == SIZES[0]:
-            said = opened.page.evaluate(SPILT, LONG_NAME)
+            said = opened.page.evaluate(SPILT, [LONG_NAME, STAND_PX])
             assert said["lines"] == 1, f"{LONG_NAME} broke though a phone has room: {said}"
+        else:
+            fitting = opened.page.evaluate(FITTING, [STAND_PX - FIT_SPARE, STAND_PX])
+            assert fitting is not None, f"no name could be made to just fit a stand: {size}"
+            said = opened.page.evaluate(SPILT, [fitting["name"], STAND_PX])
+            assert said["lines"] == 1, f"a name that fits its stand broke at a desk: {fitting}"
+            assert said["spilt"] == [], f"a name that fits spilt past its stand: {said}"
     finally:
         opened.close()
 
@@ -970,11 +992,51 @@ LONG_NAME = "infrastructure"
 # A name with nowhere to wrap that is wider than a phone, so no stand can
 # hold it on one line and only breaking it keeps it inside.
 WIDER_THAN_A_PHONE = LONG_NAME * 6
+# How wide grove.css sets each stand at a desk.
+STAND_PX = 100
+# How far under its stand's width a name that fits may be drawn: one wider than the 96 px a name
+# was once held to, yet narrower than its stand, drew on one line before names were let break,
+# so it must still.
+FIT_SPARE = 4
 
-# Each stand's name set to `name`, then how many stands and names there are,
-# each name drawn past its stand, and the most lines any name took.
-SPILT = """(name) => {
+# A name with nowhere to wrap, made of the long name's letters, that on one line draws more
+# than `least` and less than `most` pixels wide in the first stand's type, with its width, or
+# null when no such name could be made.
+FITTING = """([least, most]) => {
+  const nm = document.querySelector(".grove .stand .nm");
+  const was = nm.textContent;
+  nm.style.whiteSpace = "nowrap";
+  const words = document.createRange();
+  const width = (name) => {
+    nm.textContent = name;
+    words.selectNodeContents(nm);
+    return words.getBoundingClientRect().width;
+  };
+  const letters = "infrastructure".repeat(4);
+  let found = null;
+  for (let length = 1; length <= letters.length && found === null; length += 1) {
+    for (let narrow = 0; narrow < 8 && found === null; narrow += 1) {
+      const name = letters.slice(0, length) + "i".repeat(narrow);
+      const drawn = width(name);
+      if (drawn > least && drawn < most) {
+        found = { name, width: drawn };
+      }
+    }
+  }
+  nm.style.whiteSpace = "";
+  nm.textContent = was;
+  return found;
+}"""
+
+# Each stand's name set to `name`, then how many stands and names there are, each name drawn
+# past its stand, each stand not as wide as the grove gives it, and the most lines any name
+# took. A grid of stands, as on a phone, gives each its column, every column alike; otherwise
+# each stand is `given` wide.
+SPILT = """([name, given]) => {
   const spilt = [];
+  const resized = [];
+  const grove = getComputedStyle(document.querySelector(".grove"));
+  const width = grove.display === "grid" ? Number.parseFloat(grove.gridTemplateColumns) : given;
   const stands = document.querySelectorAll(".grove .stand");
   let named = 0;
   let lines = 0;
@@ -992,8 +1054,11 @@ SPILT = """(name) => {
     if (drawn.left < room.left - 0.5 || drawn.right > room.right + 0.5) {
       spilt.push(`${Math.round(drawn.width)} px in ${Math.round(room.width)}`);
     }
+    if (Math.abs(room.width - width) > 0.5) {
+      resized.push(`${Math.round(room.width)} px for ${Math.round(width)}`);
+    }
   }
-  return { stands: stands.length, named, lines, spilt };
+  return { stands: stands.length, named, lines, spilt, resized };
 }"""
 
 
@@ -1027,6 +1092,68 @@ def test_more_contrast_sets_the_finds_placeholder_upright_beside_its_italic_word
         said = opened.page.evaluate(SLANTS)
         assert said["saidInk"] == said["ink"], f"more contrast left the placeholder faint: {said}"
         assert said["said"] == "normal", f"the placeholder read as typed words: {said}"
+    finally:
+        opened.close()
+
+
+# WCAG's least contrast for what isn't text but must be seen to be used, such
+# as the edge that shows where a field is.
+NON_TEXT = 3
+
+# The find's underline against the page behind it, as the browser paints
+# both: each ground from the root down to the find laid on a pixel, then the
+# underline over them, so a faded colour reads as it shows. The underline is
+# the colour leading the find's computed shadow, as Chromium writes it.
+UNDERLINE = """() => {
+  const find = document.querySelector("#find");
+  const shadow = getComputedStyle(find).boxShadow;
+  const colour = shadow.match(/^[a-z-]+\\([^)]*\\)|^[a-z]+/i)?.[0] ?? null;
+  const grounds = [];
+  for (let at = find; at !== null; at = at.parentElement) {
+    grounds.unshift(getComputedStyle(at).backgroundColor);
+  }
+  const pixel = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const painted = (colours) => {
+    pixel.clearRect(0, 0, 1, 1);
+    for (const each of colours) {
+      pixel.fillStyle = each;
+      pixel.fillRect(0, 0, 1, 1);
+    }
+    return [...pixel.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  };
+  const luminance = (rgb) => {
+    const [red, green, blue] = rgb.map((value) => {
+      const part = value / 255;
+      return part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const ground = painted(grounds);
+  const line = painted([...grounds, colour]);
+  const [light, dark] = [luminance(line), luminance(ground)].sort((a, b) => b - a);
+  return { shadow, colour, ground, line, ratio: (light + 0.05) / (dark + 0.05) };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_draws_the_finds_underline_where_it_can_be_seen(
+    browser: Browser, code_served: Served, look: str
+) -> None:
+    """Under more contrast the find's underline, its only edge, stands out from the page.
+
+    The kit raises the rule and the field's border under more contrast but not the edge, so an
+    underline drawn in the edge kept the theme's faint line for the reader who asked for more.
+    """
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", SIZES[1], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(UNDERLINE)
+        assert said["colour"] is not None, f"the find drew no underline to measure: {said}"
+        assert said["ratio"] >= NON_TEXT, (
+            f"more contrast left the find's underline faint in the {look} look: {said}"
+        )
     finally:
         opened.close()
 

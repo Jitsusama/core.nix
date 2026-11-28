@@ -133,10 +133,11 @@
 }
 
 /* A long name wraps at its dots and dashes, never cut, since two names
-   alike differ at their ends; one with neither, wider than its room,
-   breaks where it must rather than spill past its stand. */
+   alike differ at their ends; one with neither breaks where it must only
+   once it is wider than its whole stand, so a name that fits keeps one
+   line, and a longer one never spills past. */
 .stand .nm {
-  max-inline-size: 96px;
+  max-inline-size: 100%;
   overflow-wrap: anywhere;
   font-family: var(--serif);
   font-style: italic;
