@@ -25,7 +25,8 @@ if [[ ${1:-} == ipc ]]; then
     echo true > "${runtime}/old-open"
     echo '{"open":false}'
   else
-    printf '{"open":%s}\n' "$(cat "${runtime}/old-open" 2> /dev/null || echo false)"
+    printf '{"open":%s,"opening":%s}\n' "$(cat "${runtime}/old-open" 2> /dev/null || echo false)" \
+      "$(cat "${runtime}/old-opening" 2> /dev/null || echo false)"
   fi
   exit 0
 fi
@@ -153,11 +154,12 @@ over
 
 # A chord sent to the old shell before its socket went, read only once the busy shell comes
 # to it, opens it after it was found shut: the handover waits for the shell to read it rather
-# than a fixed moment, which a loaded builder outlasted (2026-11-15).
+# than a fixed moment, which a loaded builder outlasted (2026-11-15). Its opening says
+# opening, not open, as one drawn from what the shell kept does until it's filled in.
 case_of
 rm -f run/launcher.sock
 # By its whole path, as the shell binds it, since the kernel lists a socket by the path bound.
-python3 "${late_chord}" "${here}/run/launcher.sock" run/old-open run/chord-sent &
+python3 "${late_chord}" "${here}/run/launcher.sock" run/old-opening run/chord-sent &
 late=$!
 for ((i = 0; i < 50; i++)); do
   [[ -e run/chord-sent ]] && break
@@ -169,7 +171,7 @@ hand_over
 # As above, the 2 s in which the old shell must not be ended.
 sleep 2
 ! handed_over || failures+=("the old launcher was ended as a chord read late opened it")
-echo false > run/old-open
+echo false > run/old-opening
 done_within || failures+=("the late chord's opening closed didn't hand the shell over: $(< run/said)")
 kill "${late}" 2> /dev/null || true
 over

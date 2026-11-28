@@ -880,11 +880,19 @@ def shown_by(pid: int) -> Json | None:
 
 
 def closed_in(*pids: int) -> None:
-    """Close the launcher of whichever of these shells has it open, and wait until none has."""
+    """Close the launcher of whichever of these shells has it up, and wait until none has.
+
+    Up while it's opening as well as open: one drawn from what it kept is presented before it's
+    filled in and says open, and left up, the next chord would shut it rather than open it.
+    """
     deadline = time.monotonic() + CHORD_OPENS.total_seconds()
     while True:
         shown = {pid: shown_by(pid) for pid in pids if running(pid)}
-        opened = [pid for pid, said in shown.items() if said is not None and said["open"]]
+        opened = [
+            pid
+            for pid, said in shown.items()
+            if said is not None and (said["open"] or said["opening"])
+        ]
         if not opened:
             return
         assert time.monotonic() < deadline, f"the launcher never closed: {shown}"

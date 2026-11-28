@@ -92,12 +92,16 @@ done
 # them, for up to a minute, past which a switch has waited long enough.
 # The new shell wrote "closed" in the line's mark as it loaded, and the old
 # one writes only as its line changes, so "open" there now is the old
-# shell's line, come up since.
+# shell's line, come up since. The launcher is up while it's opening as
+# well as open: a chord's opening is drawn from what it kept, on the screen
+# and waiting for niri to present it, frames before it says open. Read as
+# open alone, the fourth of four chords was drawn by the old shell, which
+# was ended before niri presented it (a gate of af931a2d).
 talking="$XDG_RUNTIME_DIR/quickshell-talk-line"
 shut() {
   local shown open line=""
   shown="$("$1" ipc --pid "$old" call launcher showing 2>/dev/null || true)"
-  open="$(jq -r .open <<<"$shown" 2>/dev/null || true)"
+  open="$(jq -r '.open or .opening' <<<"$shown" 2>/dev/null || true)"
   read -r line 2>/dev/null <"$talking" || true
   [ "$open" != true ] && [ "$line" != open ]
 }
