@@ -79,6 +79,15 @@ const SAID_AT_MOST: usize = 500;
 /// change named twice counts once toward it.
 const CHANGES_PER_LINE: usize = 10;
 
+/// The most changes one message counts across all its lines, since
+/// `CHANGES_PER_LINE` caps only one: a message of many lines, each at its
+/// cap, would keep hundreds of changes from one sender. A cell settles a
+/// few causes a message, each on a change or two, so a real one stays
+/// well under it. A change already counted still counts on a later
+/// line, which adds nothing to the message's count, so one change found
+/// under several classes loses none of them.
+const MESSAGE_CHANGES_AT_MOST: usize = 30;
+
 /// The most unfolded classes one message counts, so a message of many
 /// junk wordings can't put each over the bar; the folded classes are few
 /// by their making.
@@ -507,7 +516,8 @@ fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> 
 /// The cases the cells' cause lines in `heard` say, those sent to the
 /// keeper, each with when this machine wrote it, in ms, dated when its
 /// message was sent, or written where its stamp is later, and naming it.
-/// One message counts at most `UNFOLDED_PER_MESSAGE` unfolded classes.
+/// One message counts at most `UNFOLDED_PER_MESSAGE` unfolded classes,
+/// and `MESSAGE_CHANGES_AT_MOST` changes.
 fn said(heard: &[(Message, i64)]) -> Vec<Case> {
     let to_keeper = format!("@{KEEPER}");
     heard
@@ -516,6 +526,7 @@ fn said(heard: &[(Message, i64)]) -> Vec<Case> {
         .filter_map(|(m, written)| Some((stamped_at(&m.id)?.min(*written) / 1000, m)))
         .flat_map(|(at, m)| {
             let mut unfolded = BTreeSet::new();
+            let mut named = BTreeSet::new();
             m.text
                 .lines()
                 .flat_map(|line| cause_line(line, at))
@@ -524,6 +535,11 @@ fn said(heard: &[(Message, i64)]) -> Vec<Case> {
                         || unfolded.contains(&case.class)
                         || (unfolded.len() < UNFOLDED_PER_MESSAGE
                             && unfolded.insert(case.class.clone()))
+                })
+                .filter(|case| {
+                    named.contains(&case.change)
+                        || (named.len() < MESSAGE_CHANGES_AT_MOST
+                            && named.insert(case.change.clone()))
                 })
                 .map(|case| Case {
                     said_in: Some(m.id.clone()),

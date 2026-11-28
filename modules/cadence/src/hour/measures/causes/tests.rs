@@ -185,6 +185,41 @@ fn a_line_keeps_only_so_much_of_its_cause_and_so_many_changes() {
     );
 }
 
+/// One message of many lines, each at its own cap, counts only its first
+/// `MESSAGE_CHANGES_AT_MOST` changes, and a change it counted already
+/// still counts on a later line, under another class.
+#[test]
+fn one_message_counts_only_so_many_changes_across_its_lines() {
+    for named in [MESSAGE_CHANGES_AT_MOST, MESSAGE_CHANGES_AT_MOST + 1] {
+        let numbers: Vec<usize> = (1..=named).collect();
+        let mut text: Vec<String> = numbers
+            .chunks(CHANGES_PER_LINE)
+            .map(|chunk| {
+                let changes: Vec<String> = chunk.iter().map(|n| format!("core.nix#{n}")).collect();
+                format!("cause: flaky gate | change: {}", changes.join(", "))
+            })
+            .collect();
+        text.push("cause: stale docs | change: core.nix#1".to_owned());
+        let cases = said(&[heard(sent(&text.join("\n"), 60, "@1JQPPC"))]);
+        let counted: BTreeSet<&str> = cases.iter().map(|c| c.change.as_str()).collect();
+        let expected: BTreeSet<String> = (1..=MESSAGE_CHANGES_AT_MOST)
+            .map(|n| format!("core.nix#{n}"))
+            .collect();
+        assert_eq!(
+            counted,
+            expected.iter().map(String::as_str).collect(),
+            "a message naming {named} changes didn't count just its first \
+             {MESSAGE_CHANGES_AT_MOST}"
+        );
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.said == "stale docs" && c.change == "core.nix#1"),
+            "a change already counted was dropped from a later line past the cap: {named}"
+        );
+    }
+}
+
 #[test]
 fn a_change_is_read_by_its_repository_however_it_is_written() {
     assert_eq!(
