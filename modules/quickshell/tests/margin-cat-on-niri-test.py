@@ -65,7 +65,9 @@ RESTS = 2.0
 # shell to hear them on a loaded builder.
 SPARE = 0.5
 # How far, in ms, the shell's date of a scroll may fall before the keys that set it off were
-# sent, both read from the one wall clock: niri's whole milliseconds of how long ago it began.
+# sent, both read from the one wall clock. niri says how long ago it began to a fraction of a
+# millisecond, but the shell's clock, which it takes that from, reads in whole ones, up to one
+# short; the other is room for the clocks' reads on either side.
 CLOCKED = 2
 # The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
 # it may hide it.
@@ -675,8 +677,17 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     said, _ = shell.said_since(back)
     places = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
     # It rides back or sits there at once, never walks: its column is neither grown nor was it
-    # held short of its seat (MarginCatCarried.js's backOn).
-    walked = [at for at in places if at is not None and at.get("walk")]
+    # held short of its seat (MarginCatCarried.js's backOn). Only a walk to its seat on its own
+    # window counts. On a loaded builder the keys' rest on the other column can still set one
+    # off there, whose reports name the window it sat on until it arrives, departing it.
+    walked = [
+        at
+        for at in places
+        if at is not None
+        and at.get("walk")
+        and at.get("window") == third["id"]
+        and not at.get("departing")
+    ]
     assert not walked, f"the cat walked back to its seat rather than riding: {walked[:1]}"
     back_on = [
         at

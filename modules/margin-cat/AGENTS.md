@@ -132,15 +132,24 @@ Caught mid-walk by the scroll standing on its window's top, it stops where
 it's drawn and rides the same way, then walks on to its seat as the keys come
 back; caught mid-leap or anywhere else, or carried by a drag or a column
 moved beside it rather than a scroll, it walks on to that window where it
-moved. Back on its column grown or shrunk across, it walks to its seat. A
+moved. Back on its column grown or shrunk across, it walks to its seat; back
+on it as niri slides it aside for a column opening, closing or resizing
+beside it, it rides there on niri's spring, as with a scroll. A
 ride isn't a rest: no play sets off and no pet starts till it ends. A scroll
 runs for niri's spring from when niri says it began, so a scroll's word left
-on a window long after reads as ended. Moved to another workspace while it's
-off the edge, it holds out of sight through niri's slide, then comes in at
-that edge head first over the new workspace's windows; with its workspace
-emptied, it comes in at that edge along the floor.
+on a window long after reads as ended. niri can say its window scrolled
+wholly off the screen before it says the keys left that window; it rides off
+with it then, as it would after, since that move is never heard again. Moved
+to another workspace while it's off the edge, it holds out of sight through
+niri's slide, then comes in at that edge head first over the new workspace's
+windows; with its workspace emptied, it comes in at that edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
+- Held by `margin-cat-one-screen.qml`: "its window said off the screen first"
+- Held by `margin-cat-tiles.qml`: "a column's move asked of long after keeps its begin and reads
+  as ended"
+- Owed since 2026-11-27: a case on niri that the cat rides back to its seat as a column
+  opening beside its window slides it aside; the Qt cases hold only which word is heard.
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
   slides, there as it stops"
 - Held by `margin-cat-one-screen.qml`: "it comes in at the edge on the top there, head first"
@@ -177,6 +186,10 @@ emptied, it comes in at that edge along the floor.
 - Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
   `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
   plays; the choices are pinned in MarginCatCarried.js, not what the view passes them.
+- Owed since 2026-11-27: a case of the view's own wiring, that its window said scrolled
+  wholly off the screen before the keys' move rides it off (carriedOff); on nested niri
+  the order can't be chosen, so `the-margin-cat-follows-the-keys-on-niri` reaches it only
+  when the race goes that way, and the choice is pinned in MarginCatCarried.js alone.
 - Owed since 2026-11-27: a case that a column moved before its tile record keeps a
   scroll's date; a layout object made afresh from the stale tile reads as a scroll begun.
 - Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun
@@ -446,8 +459,9 @@ got to, or, with the keys on another column, goes back over the window it
 sat on until they rest there. Dozing off ends none by itself. A scroll that
 carries the window it sat on away ends one too, dozing or not: the puppy
 fades and the cat goes to its seat on that window, riding niri's scroll or
-there at once as a drag carries it, never left on the air where the window
-was. Under the launcher's card the puppy goes at once rather than fading.
+its column's slide aside, or there at once as a drag carries it, never left
+on the air where the window was. Under the launcher's card the puppy goes at
+once rather than fading.
 
 - Held by `margin-cat-puppy.qml`: "from just behind its column's edge, drawn only within it,
   facing the cat"
