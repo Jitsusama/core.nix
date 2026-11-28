@@ -16,6 +16,7 @@ import qs
 import Quickshell
 import QtQuick
 import "Expect.js" as Expect
+import "NiriWorkspaces.js" as NiriWorkspaces
 
 ShellRoot {
     id: root
@@ -34,11 +35,7 @@ ShellRoot {
     }
 
     function workspacesAre(listed) {
-        const now = {};
-        for (const one of listed)
-            now[one.id] = Object.assign({ is_focused: false, active_window_id: null }, one);
-        Niri.workspaces = now;
-        Niri.revision += 1;
+        NiriWorkspaces.are(Niri, listed);
     }
 
     // Answers every look at the screens waiting, with the screens connected
@@ -60,8 +57,7 @@ ShellRoot {
     }
 
     function movedHome(id) {
-        return Niri.acts.filter(act => act.MoveWorkspaceToMonitor?.reference?.Id === id)
-            .map(act => act.MoveWorkspaceToMonitor.output);
+        return NiriWorkspaces.homeward(Niri, id);
     }
 
     // What each workspace noted away is noted with, by the screen it waits

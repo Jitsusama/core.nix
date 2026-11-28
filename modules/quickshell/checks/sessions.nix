@@ -530,6 +530,7 @@ in
       cp ${report} Report.qml
       cp ${../tests/sessions-screen-comes-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/NiriWorkspaces.js} NiriWorkspaces.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -574,6 +575,7 @@ in
       cp ${report} Report.qml
       cp ${../tests/sessions-prototype-screens-come-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/NiriWorkspaces.js} NiriWorkspaces.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
