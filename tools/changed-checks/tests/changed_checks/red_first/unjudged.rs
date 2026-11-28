@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
+use super::super::evaluated;
 use super::{CHANGE, committed, noted_with, text, verdict};
 
 #[test]
@@ -190,6 +191,14 @@ fn red_first_turned_off_builds_nothing_over_the_base_and_says_so_once() {
         !stand_in.built().contains("?rev="),
         "red first turned off built over the base: {}",
         stand_in.built()
+    );
+    // Turned off, it costs nothing over the base: evaluating the checks
+    // there takes as long as a side of the comparison itself.
+    let run = &stand_in.runs()[0];
+    assert!(
+        !evaluated(run).contains(&"over base"),
+        "red first turned off evaluated the checks over the base: {:?}",
+        evaluated(run)
     );
     assert_eq!(
         verdict(&stand_in),
