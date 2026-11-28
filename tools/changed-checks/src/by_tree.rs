@@ -211,7 +211,10 @@ mod tests {
         let own = derivations(&[("a", "own.drv")]);
         written(&checks::keeping(&cache, "c", "x"), &own).expect("written");
         written(&keeping(&cache, "t1", "x"), &derivations(&[("a", "t.drv")])).expect("written");
-        assert!(!seeded(&cache, "c", "t1", "x"));
+        assert!(
+            !seeded(&cache, "c", "t1", "x"),
+            "a commit's own kept derivations were seeded over from its tree"
+        );
         assert_eq!(
             checks::read_kept(&checks::keeping(&cache, "c", "x")),
             Ok(Some(own))
@@ -225,8 +228,14 @@ mod tests {
             Ok(derivations(&[("a", "a.drv")]))
         });
         assert_eq!(found, Ok(derivations(&[("a", "a.drv")])));
-        assert!(checks::keeping(&cache, "c", "x").exists());
-        assert!(!cache.join("changed-checks/trees").exists());
+        assert!(
+            checks::keeping(&cache, "c", "x").exists(),
+            "a commit with no tree wasn't kept by its commit"
+        );
+        assert!(
+            !cache.join("changed-checks/trees").exists(),
+            "a commit with no tree was kept by a tree anyway"
+        );
     }
 
     #[test]
@@ -234,6 +243,9 @@ mod tests {
         let cache = Scratch::new("by-tree-failed");
         let failed = kept_in(&cache, ("c", Some("t1")), "x", || Err("no".to_owned()));
         assert_eq!(failed, Err("no".to_owned()));
-        assert!(!keeping(&cache, "t1", "x").exists());
+        assert!(
+            !keeping(&cache, "t1", "x").exists(),
+            "a failed evaluation was kept by its tree"
+        );
     }
 }
