@@ -80,9 +80,10 @@ in
     # unless told to. A VPN's DNS proxy and a development DNS server both
     # answer there, and neither caches, so every lookup paid a full trip, a
     # repeat a second later included. The default guards against caching
-    # twice what a local server caches already, and here that costs
-    # nothing, since resolved keeps each answer only for the TTL it was
-    # given.
+    # twice what a local server caches already. The cost is the one any
+    # cache has: resolved keeps each answer for the TTL it was given, so an
+    # answer a local server changes sooner shows only once that runs out, or
+    # at once after `resolvectl flush-caches`.
     services.resolved.settings.Resolve.CacheFromLocalhost = true;
 
     # mDNS asks and answers on UDP 5353, and the firewall dropped both the
