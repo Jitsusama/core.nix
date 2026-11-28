@@ -31,6 +31,7 @@
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "ActsSaid.js" as ActsSaid
 import "Order.js" as Order
 import "Presented.js" as Presented
 import "ReadyRows.js" as Ready
@@ -203,7 +204,9 @@ Provider {
         const acts = row.acts ?? [];
         const copied = acts.find(one => typeof one.copy === "string");
         const fields = {
-            key: row.thing ?? key,
+            // As ready.thing keys a served row, so one claiming the
+            // launcher's own kind is kept under `row:`.
+            key: Presented.keyMade(row, key),
             name: row.name ?? "",
             side: ready.sideOf(row),
             copy: copied ? copied.copy : "",
@@ -315,12 +318,12 @@ Provider {
     // Asks an act of wifid, on its rows' own connection, and puts each row
     // it held as it will be back if wifid won't, or isn't there, saying why
     // in wifid's words; one holding no row journals its code, as ReadyRows'
-    // refusals say it (Presented.codeShown).
+    // refusals say it (ActsSaid.codeShown).
     function actOn(ask, keys) {
         provider.askWifid(ask, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "" && keys.length === 0)
-                console.info(`launcher: wifi ${ask.act} refused: ${Presented.codeShown(answer)}`);
+                console.info(`launcher: wifi ${ask.act} refused: ${ActsSaid.codeShown(answer)}`);
             for (const key of keys)
                 provider.refused(key, why);
         });

@@ -92,7 +92,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
-| agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | |
+| agent | a model working for Joel, as a session or a subagent; For You's Agents holds what they raise | AI, assistant, bot, agents asking | `for-you:kind:agent` |
 | sandbox | the fence around a command an agent runs: what it may read, write, reach and be told | | `PI_SANDBOX`, landrun |
 | broker | a program outside the sandbox holding a credential or a door the sandbox shuts, which hands what's inside only a short-lived or narrow part of it | | `github-broker`, `gcloud-broker`, `jobs-broker` |
 | quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | `QEST-` ids, the `quest` tool |
@@ -181,6 +181,8 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | `agents:budgets`, AI spend's Budgets |
 | Spec | the bars Joel set for how the agents deliver, read on ten axes; an axis or a reading is in spec or out of spec | | `agents:spec`, cadence-spec |
+| Asked For | what Joel asked the agents for in his own words that hasn't landed, each with the quest answering for it, when it's due, how often its date moved and whether its probe passes | Your Asks | `agents:asked-for`, `cadence axes --asked`, `mission/asks.jsonl` |
+| probe | a check run after each switch, showing in Joel's terms whether what he asked for works on his machine; it passes or fails since its first fail | | `mission/probes.jsonl` |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a budget one window allows: a share of a Claude plan's five hours or week, or dollars of the AI proxy's week | limit | `5h`, `wk` |
@@ -342,7 +344,6 @@ screens themselves are the machine's, in Machine.
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
-| agents asking | For You's row gathering the sessions waiting on Joel, once two are, the most pressing first | | `for-you:kind:agent` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | asker | who a look comes from, in plain words: what its session writes, else its quest's name without its id, said in its row's note and its drawer's eyebrow | the quest's title, its id | a look's `asker` |
 | ask | what a look asks of Joel, at its row's side, with its choices first in its step, each answered by one Return once Joel has stepped in; Return on the row opens it and never answers | | a look's `ask` |
@@ -670,6 +671,7 @@ The words core.nix is built from. Never a launcher place.
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
 | terminal kit | the library every Rust command builds on for its shared flags, ink, layout, help, errors and exit codes | | `modules/terminal-kit/` |
+| subject hubs | the library cadence and pain-points read the mycelium's hubs through, each a subject's cells, and keep each need they put to one | | `modules/subject-hubs/` |
 | crate reach | which of core's Rust crates read which, by their manifests' paths, so merge-net and a gate's replay judge alike what main moved beside a change | | `modules/crate-reach/` |
 | colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |

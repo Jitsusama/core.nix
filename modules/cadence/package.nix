@@ -16,6 +16,8 @@ rustPlatform.buildRustPackage rec {
       ./good.md
       ./src
       ./tests
+      ../subject-hubs/Cargo.toml
+      ../subject-hubs/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

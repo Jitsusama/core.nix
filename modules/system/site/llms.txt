@@ -9,8 +9,9 @@
   stand, the machines drawn as the piers of a bridge, a section for
   each machine in reach with its four ties and what can be done with it
   through the launcher, those out of reach named together with when each
-  was last heard, then the other three parts across them, each with its
-  health (good, watch, bad or not read), walked by keyboard or pointer.
+  was last heard, then the other three parts across them and the
+  builders the machines send Nix builds to, each with its health (good,
+  watch, bad or not read), walked by keyboard or pointer.
 - [The page as text](index.md): how each is judged, the keys, and what
   the data holds.
 - A machine's address on the page: `#machine=` and its name, which

@@ -1250,8 +1250,9 @@ def walk_passwords(desktop: Desktop) -> None:
 
     The passwords daemon the shell runs runs 1Password's own manager, which asks a stand-in for
     op (tests/desktop/stand-ins/op-stand-in.sh), and copies through the wl-copy the VM alone names
-    as its copier to the session's clipboard, since a real machine copies nothing yet. One path
-    through that wiring is all this walks: what the place lists, says and copies, case by case, is
+    as its copier to the session's clipboard, since a real machine copies nothing yet;
+    keeps-copies pastes what it copies, and holds it clearing. One path through that wiring is
+    all this walks: what the place lists, says and copies, case by case, is
     the-passwords-show-every-figure-but-the-secret's and
     the-passwords-place-copies-through-its-daemon-on-niri's.
     """

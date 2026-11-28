@@ -59,6 +59,7 @@
         "launcher/Provider.qml"
         "launcher/Quests.qml"
         "launcher/ReadyRows.qml"
+        "launcher/Thrown.js"
         "launcher/words.json"
       ]}
       cp ${../tests/quests.qml} shell.qml

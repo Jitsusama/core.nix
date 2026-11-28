@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, said_by, shown, until_heard
+from heard import diagnosed, ended, flattened, moved_over, said_by, shown, until_heard, whole
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -661,11 +661,16 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         does, so the shot waits for the rest of the picture to hold still. Outside the gallery
         it takes nothing and waits for nothing, so a test must never lean on it to let the
         screen settle.
+
+        A shot that fails says too what the launcher's laid-out words did meanwhile
+        (what_moved), since the picture of it goes with the failed build, and the box the
+        screen changed in names no word: the waits-on-joel gallery's home shots failed so on
+        25 and 26 Nov, a box a glyph wide changing about three times a second.
         """
         if self.values["shots"]:
             why = self.unsettled(timeout, shell_only=bool(moving), ticking=bool(ticking))
             self.machine.screenshot(name)
-            assert why is None, f"{name} was shot moving: {why}"
+            assert why is None, f"{name} was shot moving: {why}; {what_moved(self)}"
 
     def screen_now(self) -> Image.Image:
         """Give the screen as it is, from QEMU's own picture of it."""
@@ -1565,6 +1570,37 @@ def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
         f"mkdir -p $(dirname {path}) && printf %s {shlex.quote(json.dumps(read))} > {path}.q"
         f" && mv {path}.q {path}"
     )
+
+
+def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
+    """Say which of the launcher's laid-out words changed over a few reads, for a moving shot.
+
+    Each read is the launcher's own laidOut and showing, once each, unlike laid_out, which
+    waits for two to agree; a word whose text or place differs between any two reads is one
+    that moved. Showing holds the drawer's facts, which laidOut leaves out. It runs inside a
+    shot's failure, so a read that hangs is cut short and one that isn't whole is passed
+    over: neither may raise in place of the failure it explains. A read is kept only when
+    both calls came back whole, since one holding only showing's paths would read every
+    laidOut path as moved, burying the words that did (round 1 on #6998, F1, F7 and F19).
+    What it compares and says is heard.py's, whose cases run off any VM.
+    """
+    seen: list[dict[str, object]] = []
+    calls = ("laidOut", "showing")
+    for n in range(reads):
+        parts: list[dict[str, object]] = []
+        for call in calls:
+            status, said = desktop.machine.execute(
+                desktop.in_session(f"timeout 5 qs ipc call launcher {call}"), timeout=15
+            )
+            part = flattened(whole(said), call) if status == 0 else {}
+            if part:
+                parts.append(part)
+        if len(parts) == len(calls):
+            seen.append({path: value for part in parts for path, value in part.items()})
+        if n < reads - 1:
+            # Apart by a span the shot found the screen changing within.
+            time.sleep(apart)
+    return moved_over(seen)
 
 
 def laid_out(desktop: Desktop) -> Json:

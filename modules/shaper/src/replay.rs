@@ -2106,9 +2106,9 @@ mod tests {
                 windows: None,
             })
         );
-        let most = asked(&args("--most 6C:AE:F6:C2:D6:B2=9500 a.jsonl")).expect("a ceiling");
+        let most = asked(&args("--most 02:00:00:00:AA:00=9500 a.jsonl")).expect("a ceiling");
         assert_eq!(
-            most.ceilings.get("6c:ae:f6:c2:d6:b2"),
+            most.ceilings.get("02:00:00:00:aa:00"),
             Some(&9_500),
             "the ceiling, by the network's name in lower case: {most:?}"
         );
@@ -2129,12 +2129,12 @@ mod tests {
             "a ceiling the trace already holds"
         );
         let judged = asked(&args(
-            "--controller held --heard t --anchor 6C:AE:F6:C2:D6:B2=12000 --windows w a.jsonl",
+            "--controller held --heard t --anchor 02:00:00:00:AA:00=12000 --windows w a.jsonl",
         ))
         .expect("a replay of what was held, judged");
         assert_eq!(judged.controller, Choice::Held, "held: {judged:?}");
         assert_eq!(
-            judged.anchors.get("6c:ae:f6:c2:d6:b2"),
+            judged.anchors.get("02:00:00:00:aa:00"),
             Some(&12_000),
             "the anchor, by the network's name in lower case: {judged:?}"
         );

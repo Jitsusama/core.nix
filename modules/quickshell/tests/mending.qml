@@ -72,6 +72,15 @@ QtObject {
             Mending.deepByKind(undefined, ["presence"]), {});
         Expect.same("a watch asking nothing deep is said nothing deep",
             Mending.deepByKind(offered, undefined), {});
+        // Parsed, since a literal's `__proto__` sets what it inherits rather than a key.
+        const odd = Mending.deepByKind(JSON.parse(
+            '{"__proto__": {"deep": ["presence"]}, "constructor": {"deep": ["step"]}}'),
+            ["presence", "step"]);
+        Expect.same("a kind the hello names as what every object inherits is a kind of its own",
+            [Mending.deepOf(odd, { key: "__proto__:kestrel" }),
+                Mending.deepOf(odd, { key: "machine:tern", kind: "constructor" }),
+                Mending.deepOf(odd, { key: "toString" })],
+            [["presence"], ["step"], []]);
 
         const by = { session: ["presence"] };
         Expect.same("a change's kind is the one it says",
@@ -80,5 +89,13 @@ QtObject {
             Mending.deepOf(by, { key: "session:kestrel:two" }), ["presence"]);
         Expect.same("a kind offering nothing deep has nothing deep",
             Mending.deepOf(by, { key: "machine:tern" }), []);
+        Expect.same("a key naming what a plain object inherits has nothing deep",
+            ["constructor", "toString", "__proto__", "hasOwnProperty:kestrel"]
+                .map(key => Mending.deepOf(by, { key })),
+            [[], [], [], []]);
+        Expect.same("and a change to it is mended whole",
+            Mending.mended({ key: "constructor", step: 1 },
+                { key: "constructor", step: 2 }, Mending.deepOf(by, { key: "constructor" })),
+            { key: "constructor", step: 2 });
     }
 }

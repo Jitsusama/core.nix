@@ -1,4 +1,5 @@
 .pragma library
+.import "Presented.js" as Presented
 
 // Carry Back on a carry Agents lists under Carried, which an orchestrator
 // made in Joel's stead: one act, asked of the realm's node by the shell
@@ -13,6 +14,39 @@
 // name.
 const QUEST = /^QEST-[0-9]{8}-[A-Z0-9]{6}$/u;
 const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+
+// The key a carried row reads as carrying back under, and has its refusal
+// said on: the one ReadyRows.qml made it with from its record's key
+// (Presented.js's keyMade), so what it becomes is that row, and a thing
+// claiming a kind of the launcher's own stays under `row:`.
+function keyed(row, key) {
+    return Presented.keyMade(row, key);
+}
+
+// Carry Back as `served` holds it, its `row` served under `key` with the
+// node's `ask`: the row, keyed as keyed says, reads as carrying back in
+// `said`'s words until the
+// node says the carry has ended, and a refusal is said on it in the node's
+// own words. All of it is here, where carry-back.qml reaches it, so Agents.qml
+// only hands over the provider's becomes and refused and the node's find;
+// left in Agents.qml, the key it chose went unchecked (core.nix#7099's round).
+function carry(served, said, shell) {
+    const { row, key, ask } = served;
+    const shown = keyed(row, key);
+    let answered = false;
+    shell.becomes(shown, {
+        side: said.carrying ?? "",
+        sideItems: [{ said: said.carrying ?? "", keep: 4 }]
+    }, row.name ?? "", "carry back", { done: () => answered });
+    shell.find(ask, answer => {
+        const end = ended(answer, said);
+        if (end.done) {
+            answered = true;
+        } else {
+            shell.refused(shown, end.why);
+        }
+    });
+}
 
 // The node's ask `served` names, or null for anything but a carry of a
 // quest to a machine.

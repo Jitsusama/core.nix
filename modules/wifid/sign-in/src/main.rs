@@ -545,25 +545,43 @@ mod tests {
 
     #[test]
     fn a_sign_in_is_still_wanted_while_wifid_checks_again() {
-        assert!(still_wanted(&inn("signIn"), &portal()));
-        assert!(still_wanted(&inn("checking"), &portal()));
+        assert!(
+            still_wanted(&inn("signIn"), &portal()),
+            "a network still asking for its sign-in should still want it"
+        );
+        assert!(
+            still_wanted(&inn("checking"), &portal()),
+            "a network wifid is checking again should still want its sign-in"
+        );
     }
 
     #[test]
     fn a_network_reaching_beyond_itself_wants_no_more() {
-        assert!(!still_wanted(&inn("online"), &portal()));
+        assert!(
+            !still_wanted(&inn("online"), &portal()),
+            "a network that's online should want no more sign-in"
+        );
     }
 
     #[test]
     fn a_network_reaching_nowhere_sensible_may_still_need_its_page() {
-        assert!(still_wanted(&inn("limited"), &portal()));
+        assert!(
+            still_wanted(&inn("limited"), &portal()),
+            "a network of limited reach may still need its sign-in page"
+        );
     }
 
     #[test]
     fn a_card_that_left_the_network_wants_no_more() {
         let moved = json!({"cards": [{"name": "wlan2", "network": "Lantern", "reach": "signIn"}]});
 
-        assert!(!still_wanted(&moved, &portal()));
-        assert!(!still_wanted(&json!({"cards": []}), &portal()));
+        assert!(
+            !still_wanted(&moved, &portal()),
+            "a card now on another network should want no more sign-in"
+        );
+        assert!(
+            !still_wanted(&json!({"cards": []}), &portal()),
+            "with no cards left, no sign-in should be wanted"
+        );
     }
 }

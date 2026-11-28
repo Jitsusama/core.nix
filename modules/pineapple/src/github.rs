@@ -310,11 +310,16 @@ pub fn next_page(link: &str) -> Option<&str> {
 }
 
 /// A page added to a list read so far: a list's own, or a search's
-/// items. A page of another shape adds nothing.
+/// items. A search's later page GitHub couldn't finish leaves the whole
+/// search unfinished, as it may have dropped any of its matches, not only
+/// the oldest. A page of another shape adds nothing.
 pub fn add_page(list: &mut Value, page: Value) {
     let (kept, more) = match (list, page) {
         (Value::Array(kept), Value::Array(more)) => (kept, more),
         (Value::Object(kept), Value::Object(mut more)) => {
+            if more.get("incomplete_results") == Some(&Value::Bool(true)) {
+                kept.insert("incomplete_results".to_owned(), Value::Bool(true));
+            }
             match (kept.get_mut("items"), more.remove("items")) {
                 (Some(Value::Array(kept)), Some(Value::Array(more))) => (kept, more),
                 _ => return,
@@ -330,8 +335,8 @@ pub fn add_page(list: &mut Value, page: Value) {
 /// again, or in its message that it is a rate limit (or, as GitHub once
 /// worded one, abuse detection), since a secondary limit may come with
 /// neither header. Joel's limit is shared with gh and
-/// every agent signed in as him, so it runs out, and a round it stops has
-/// to be tried again whole.
+/// every agent signed in as him, so it runs out, and what a round it stops
+/// hasn't read has to be read again.
 #[must_use]
 pub fn rate_limited(
     status: u16,
@@ -630,6 +635,14 @@ mod tests {
             list,
             json!([1, 2, 3]),
             "a page of another shape adds nothing"
+        );
+        let mut cut = json!({"incomplete_results": false, "items": [1]});
+        add_page(&mut cut, json!({"incomplete_results": true, "items": [2]}));
+        add_page(&mut cut, json!({"incomplete_results": false, "items": [3]}));
+        assert_eq!(
+            cut,
+            json!({"incomplete_results": true, "items": [1, 2, 3]}),
+            "a later page GitHub couldn't finish leaves the search unfinished"
         );
     }
 

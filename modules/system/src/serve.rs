@@ -23,10 +23,11 @@ use system::record::{Health, System};
 use terminal_kit::{Exit, Failure, flags};
 
 /// The daemon as its clients know it: the whole's one summary, a record
-/// for each part, and one for each machine.
+/// for each part, and one for each machine and each builder the machines
+/// send builds to.
 const DOMAIN: Domain = Domain {
     name: "system",
-    kinds: &["summary", "part", "machine"],
+    kinds: &["summary", "part", "machine", "builder"],
     sole: &["summary"],
     named_only: &[],
 };
@@ -123,6 +124,36 @@ mod tests {
             assert!(
                 refused.is_some_and(|failure| failure.exit == Exit::Usage),
                 "{said:?} is a usage error"
+            );
+        }
+    }
+
+    #[test]
+    fn every_record_is_of_a_kind_its_clients_may_watch() {
+        let said = json!({"Ok": {
+            "Machines": [{"name": "laptop", "state": "ready", "disk_band": "healthy",
+                           "room": {"over": []}}],
+            "Builders": [{"name": "gull", "state": "not answering"}],
+        }});
+        let none: parts::Answer = Err(String::new());
+        let read = System {
+            machine: "laptop".to_owned(),
+            read_at: "2026-11-15T19:00:00Z".to_owned(),
+            parts: vec![parts::machines(&Ok(said), &none, None, None, None)],
+        };
+        let kinds: Vec<String> = read
+            .records()
+            .iter()
+            .map(|record| record["kind"].as_str().unwrap_or("").to_owned())
+            .collect();
+        assert!(
+            kinds.iter().any(|kind| kind == "builder"),
+            "no builder's record was made to check: {kinds:?}"
+        );
+        for kind in &kinds {
+            assert!(
+                DOMAIN.kinds.contains(&kind.as_str()),
+                "a {kind} record is of a kind no client may watch"
             );
         }
     }

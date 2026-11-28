@@ -232,6 +232,8 @@ def interrupted(joel: Joel, call: dict[str, Any]) -> dict[str, bool]:
 @pytest.fixture(scope="module")
 def written(joel: Joel, call: dict[str, Any], interrupted: dict[str, bool]) -> dict[str, Any]:
     """Let the summary started again after the other call go on, giving the record once done."""
+    # Asked for only so the other call has stopped the first summary before the gate opens.
+    del interrupted
     try:
         joel.wait_for(f"test $(grep -cx started {SUMMARIZER_LOG}) -ge {STARTS}", ANSWERS_WITHIN)
         joel.run(f"echo open > {GATE}")
@@ -239,7 +241,6 @@ def written(joel: Joel, call: dict[str, Any], interrupted: dict[str, bool]) -> d
     except Exception:
         joel.explain()
         raise
-    assert interrupted
     record = joel.record(call["key"])
     assert record["key"] == "call:e1"
     return record
@@ -300,15 +301,18 @@ def test_a_call_ended_is_no_longer_served_as_recorded(call: dict[str, Any]) -> N
 def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[str, Any]) -> None:
     """Joel asks, the others answer, Joel thanks them: three turns, each its speaker's."""
     turns = [line for line in transcript(joel, call).splitlines() if line.startswith("**")]
-    asked, answered, thanked = turns
-    assert not asked.startswith("**Others**")
+    try:
+        asked, answered, thanked = turns
+    except ValueError:
+        pytest.fail(f"the transcript holds {len(turns)} turns, not three: {turns}")
+    assert not asked.startswith("**Others**"), f"Joel's question is written as the others': {asked}"
     # A speech model on the VM's processor can hear a word wrong (Whisper heard "review" as
     # "renew"), so each turn is known by a word it hears every time; dictation's checks hold
     # the words.
     assert "thursday" in asked.lower()
-    assert answered.startswith("**Others**")
+    assert answered.startswith("**Others**"), f"the others' answer is written as Joel's: {answered}"
     assert "morning" in answered.lower()
-    assert not thanked.startswith("**Others**")
+    assert not thanked.startswith("**Others**"), f"Joel's thanks are written as theirs: {thanked}"
     assert "thank" in thanked.lower()
 
 
@@ -333,15 +337,15 @@ def test_an_ended_call_lets_the_machine_go_idle(joel: Joel, call: dict[str, Any]
 
 def test_a_summary_holds_off_sleep_while_it_runs(interrupted: dict[str, bool]) -> None:
     """While the model's process runs, a delay on sleep is held; it's let go once stopped."""
-    assert interrupted["held while summing"]
+    assert interrupted["held while summing"], "no delay on sleep was held while the model ran"
 
 
 def test_a_call_starting_stops_a_summary_which_writes_nothing(
     interrupted: dict[str, bool],
 ) -> None:
     """Another call starting ends the model's process, nothing is written, none starts again."""
-    assert not interrupted["written once stopped"]
-    assert not interrupted["started during the call"]
+    assert not interrupted["written once stopped"], "a summary stopped by another call was written"
+    assert not interrupted["started during the call"], "a summary started again during the call"
 
 
 def test_the_summary_is_the_calls_own_words(joel: Joel, written: dict[str, Any]) -> None:
@@ -375,7 +379,7 @@ def test_the_model_is_let_go_once_the_summary_is_written(
     """Nothing of the summarizer stays: neither its process nor its delay on sleep."""
     assert written["summary"] is not None
     joel.wait_for(f"! kill -0 $(cat {SUMMARIZER_PID})", ANSWERS_WITHIN)
-    assert not joel.sleep_held()
+    assert not joel.sleep_held(), "the summarizer holds a delay on sleep once it's written"
     assert joel.starts() == STARTS
 
 

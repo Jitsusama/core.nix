@@ -60,6 +60,34 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    // Each of the relay's four judged, the share between two tallies.
+    shown.extend(measures::way_out::relay::relay(Some(
+        "model-relay: 10 asked, 0 refused, 0 failed\nmodel-relay: 19 asked, 0 refused, 0 failed",
+    )));
+    // The calls judged with one call in the hour, and a path of three samples.
+    let call = measures::way_out::calls::Turn {
+        at_ms: NOW * 1000 - 60_000,
+        error: None,
+    };
+    shown.extend(measures::way_out::calls::calls(Some(&[call]), NOW));
+    let sample = |ago: i64| {
+        serde_json::json!({"at": NOW - ago, "origin": "forge.example", "tls_s": 0.25}).to_string()
+    };
+    let samples = [sample(60), sample(660), sample(1260)].join("\n");
+    shown.extend(measures::way_out::path::path(
+        &samples,
+        &["forge.example".to_owned()],
+        NOW,
+    ));
+    // The site judged on three samples of the four watches its page waits
+    // on, since one left out counts as the whole wait.
+    let live = |ago: i64| {
+        let kinds =
+            serde_json::json!({"network": 0.3, "cell": 0.4, "machine": 0.4, "message": 0.5});
+        serde_json::json!({"at": NOW - ago, "kinds": kinds}).to_string()
+    };
+    let site_lines = [live(60), live(660), live(1260)].join("\n");
+    shown.push(measures::site::site(&site_lines, NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the

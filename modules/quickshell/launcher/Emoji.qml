@@ -75,9 +75,10 @@ Provider {
             return ready.thing(served, key,
                 { hue: "text", nested: true, finds: provider.findsIn(key) });
         const held = served.held ?? {};
+        // Keyed by ready.thing's keyMade, its thing as every served row's,
+        // so one claiming the launcher's own kind is kept under `row:`.
         const readied = ready.thing(served, key, {
             thing: true,
-            key: served.thing,
             hue: served.hue ?? "text",
             // Every emoji says the same keys where it isn't selected, its
             // verb being the window under's, so the foot weighs one of a

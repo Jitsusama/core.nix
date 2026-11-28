@@ -112,9 +112,12 @@ body {
   color: var(--tint);
 }
 
+/* A separator is a glyph read with its words, so it takes muted, as the
+   kit's own page head does, rather than the rule's shade, which a line may
+   wear and a word may not: in it the dot read at 2.00:1. */
 .eyebrow .sep,
 .standing .sep {
-  color: var(--rule);
+  color: var(--muted);
   padding-inline: var(--mark);
 }
 

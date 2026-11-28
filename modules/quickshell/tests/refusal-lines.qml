@@ -25,6 +25,11 @@ ShellRoot {
         id: standIn
 
         property bool open: true
+        // What Wireless.qml reads of the launcher besides, as Launcher.qml has them, so its
+        // bindings run as in the shell rather than throwing on what's missing.
+        property var held: []
+        property var selected: null
+        property var terminalSees: ({ walked: [] })
         property var sources: [wireless]
         property var toldWhys: []
         function wants(source) {
