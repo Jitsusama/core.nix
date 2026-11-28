@@ -299,15 +299,16 @@ fn this_machines_boot_is_in_the_past() {
 
 const PATIENCE: Duration = Duration::from_millis(100);
 
-/// Patience no commit in these tests uses up: a commit that answers at
-/// once is heard at once, so its case can't lose a race with a thread
-/// started late on a loaded machine, and a wait shows as a minute.
+/// Patience no commit in time uses up: a commit that answers at once is
+/// heard at once, so its case can't lose a race with a thread started late
+/// on a loaded machine, and a patience run out instead shows as a minute.
 const UNSPENT: Duration = Duration::from_secs(60);
 
 #[test]
 fn a_commit_in_time_is_all_settling_takes() {
     let stuck = Arc::new(AtomicBool::new(false));
     let fell_back = Cell::new(false);
+    let started = Instant::now();
     patiently(
         &stuck,
         UNSPENT,
@@ -321,6 +322,11 @@ fn a_commit_in_time_is_all_settling_takes() {
     assert!(!fell_back.get(), "fell back on a commit in time");
     let failing = patiently(&stuck, UNSPENT, || Err(io::Error::other("no")), || Ok(()));
     assert_eq!(failing.unwrap_err().to_string(), "no");
+    let took = started.elapsed();
+    assert!(
+        took < UNSPENT / 2,
+        "two commits in time took {took:?}: their patience ran out before they were heard"
+    );
 }
 
 #[test]
@@ -365,7 +371,7 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
     let started = Instant::now();
     patiently(
         &stuck,
-        UNSPENT,
+        PATIENCE,
         move || {
             beginning.send(()).unwrap();
             Ok(())
@@ -379,8 +385,8 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
     assert!(fell_back.get(), "didn't fall back while one was stuck");
     let waited = started.elapsed();
     assert!(
-        waited < UNSPENT / 2,
-        "waited {waited:?} on a commit known stuck"
+        waited < PATIENCE,
+        "waited {waited:?} on a commit known stuck, where no wait is made"
     );
     begun
         .recv_timeout(Duration::from_millis(200))
