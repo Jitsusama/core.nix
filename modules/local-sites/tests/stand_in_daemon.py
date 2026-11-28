@@ -7,7 +7,10 @@ socket from records it is handed by kind, and the test moves it as a real
 daemon moves: `tell` sends a change to every watch of a kind, `leave` closes
 every connection and the socket, as a daemon stopping does, and `start` opens
 it again. `withhold` keeps a kind's first answer back until `answer`, as a
-node slow to read one kind is. docs/daemons.md says what each answer holds.
+node slow to read one kind is, and `cut` closes one kind's watches alone, as a
+node dropping them does. `asked` holds what each kind's latest watch asked, so
+a test reads what a feed asks its daemon for. docs/daemons.md says what each
+answer holds.
 """
 
 import json
@@ -41,6 +44,8 @@ class StandIn:
         self.watches: list[tuple[socket.socket, object, str]] = []
         # The watches of each kind held back, waiting for their first answer.
         self.withheld: dict[str, list[tuple[socket.socket, object]]] = {}
+        # What the latest watch of each kind asked, whole, whether it was answered or not.
+        self.asked: dict[str, dict[str, object]] = {}
         self.connections: list[socket.socket] = []
         self.server: socket.socket | None = None
 
@@ -101,6 +106,21 @@ class StandIn:
                 self.watches.append((conn, ask, kind))
                 self._send(conn, {"id": ask, "records": records})
 
+    def cut(self, kind: str) -> None:
+        """Close each connection watching `kind`, answered or held back, as a node dropping it."""
+        with self.lock:
+            held = [conn for conn, _ in self.withheld.get(kind, [])]
+            watching = [conn for conn, _, watched in self.watches if watched == kind]
+            cut = held + watching
+            if kind in self.withheld:
+                # Still withheld, so the watch asked again is held back as the first was.
+                self.withheld[kind] = []
+            self.watches = [watch for watch in self.watches if watch[0] not in cut]
+            self.connections = [conn for conn in self.connections if conn not in cut]
+            for conn in cut:
+                conn.shutdown(socket.SHUT_RDWR)
+                conn.close()
+
     def _accept(self, server: socket.socket) -> None:
         while True:
             try:
@@ -123,6 +143,9 @@ class StandIn:
 
     def _answer(self, conn: socket.socket, ask: dict[str, object]) -> None:
         ask_id, verb, kind = ask.get("id"), ask.get("ask"), str(ask.get("kind"))
+        if verb == "watch":
+            with self.lock:
+                self.asked[kind] = ask
         if verb == "hello":
             kinds: dict[str, dict[str, list[str]]] = {
                 k: {"live": [], "deep": []} for k in self.records

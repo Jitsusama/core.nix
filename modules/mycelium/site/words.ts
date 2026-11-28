@@ -398,22 +398,33 @@ export interface Named {
   readonly carries: string;
 }
 
+/** Each network's told name, or label, by its key. */
+type Told = ReadonlyMap<string, string>;
+
 /**
  * Each network's name, told apart from the others': networks whose titles
  * share their name, as several slices of one project do, are named with
  * what each carries too, so no two read alike on the map, in the tree or in
  * Now; whole titles that repeat are told apart by their ids, the part of
  * the key after its kind, and any still alike, as a title written to read
- * as another's told name is, by their whole keys until none are.
+ * as another's told name is, by their whole keys until none are. A title
+ * that reads as one of `own`, the names the page gives its own groups, is
+ * told apart from it as from another network's; those names are kept in
+ * what it gives too, keyed as the page keys its own groups (#own.0, #own.1
+ * and on), so labelsApart tells labels from them as well.
  */
-export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
-  const names = new Map(networks.map((n) => [n.key, n.name]));
-  tell(networks, names, (n) => (n.carries && n.carries !== n.name ? `: ${n.carries}` : ""));
-  tell(networks, names, (n) => ` ${idHint(n)}`);
-  // Keys are unique, so each pass leaves fewer alike; one per network
-  // bounds it whatever the titles say.
+export const toldApart = (networks: readonly Named[], own: readonly string[] = []): Told => {
+  const groups = own.map((name, at) => ({ key: `#own.${at}`, name }));
+  const names = new Map([...networks, ...groups].map((n) => [n.key, asDrawn(n.name)]));
+  tell(networks, names, ": ", (n) => {
+    const carries = asDrawn(n.carries);
+    return carries === asDrawn(n.name) ? "" : carries;
+  });
+  tell(networks, names, " ", idHint);
+  // Keys are unique, and stay so with their spaces and % written as a link has them, which a
+  // page can't run together; each pass leaves fewer alike, and one per network bounds it.
   for (let pass = 0; pass < networks.length; pass++) {
-    if (!tell(networks, names, (n) => ` [${n.key}]`)) {
+    if (!tell(networks, names, " ", (n) => `[${n.key.replace(/[\s%]/gu, encodeURIComponent)}]`)) {
       break;
     }
   }
@@ -426,15 +437,18 @@ export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, strin
  * name clipped shorter with its id after it, so none read alike there
  * either. A label kept whole that reads like another's id-hinted one, as a
  * title written to does, takes its own id in turn; hinted labels still
- * alike, as two long ids clipped alike are, are numbered in order.
+ * alike, as two long ids clipped alike are, are numbered in order. `told`
+ * is as toldApart gives it, so a label clipped alike to a name it keeps for
+ * the page's own groups takes its id too, since those are counted with the
+ * rest.
  */
 export const labelsApart = (
   networks: readonly Named[],
-  told: ReadonlyMap<string, string>,
+  told: Told,
   clip: (text: string, room: number) => string,
   room: number,
-): ReadonlyMap<string, string> => {
-  const labels = new Map(networks.map((n) => [n.key, clip(told.get(n.key) ?? n.name, room)]));
+): Told => {
+  const labels = new Map([...told].map(([key, name]) => [key, clip(name, room)]));
   const hinted = new Set<string>();
   // Each pass hints at least one more network or ends, so one per network
   // bounds it.
@@ -513,11 +527,34 @@ const hintedLabel = (
 ): string => {
   const hint = idHint(n);
   const left = room - hint.length - 1;
-  return left < LEAST_NAME ? clip(hint, room) : `${clip(n.name, left)} ${hint}`;
+  const name = asDrawn(n.name);
+  // A name that draws as nothing leaves the id alone, so no label starts on a space.
+  if (left < LEAST_NAME || name === "") {
+    return clip(hint, room);
+  }
+  return `${clip(name, left)} ${hint}`;
 };
 
-/** A network's id as a hint: the part of its key after its kind. */
-const idHint = (n: Named): string => `(${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`;
+// Any run of the white space a page runs together: spaces, tabs and line breaks, as CSS has
+// it. JavaScript's \s takes in a no-break space too, which a page keeps as it is, so two names
+// apart only by one would be counted alike though a page never draws them so.
+const SPACES = /[ \t\n\r\f]+/gu;
+// The space a page drops at either end, once each run is one; trim() would drop a
+// no-break space there too.
+const EDGE_SPACES = /^ | $/gu;
+
+/**
+ * A name as a page draws it, each run of spaces as one and none at its
+ * ends, so two that read alike there are alike here too.
+ */
+const asDrawn = (text: string): string => text.replace(SPACES, " ").replace(EDGE_SPACES, "");
+
+/**
+ * A network's id as a hint: the part of its key after its kind, as drawn,
+ * since a key can hold spaces or a line break the map runs together.
+ */
+const idHint = (n: Named): string =>
+  `(${asDrawn(n.key.slice(n.key.indexOf(".") + 1)).toUpperCase()})`;
 
 /** How many times each text comes. */
 const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
@@ -529,20 +566,26 @@ const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
 };
 
 /**
- * Adds `more` to each name that repeats, and says whether any did; a
- * network `more` has nothing for keeps its name.
+ * Adds what `more` tells to each network's name that repeats among
+ * `names` or draws as nothing, after `between`, and says whether any did;
+ * a network `more` has nothing for keeps its name, and a blank one is its
+ * tell alone.
  */
 const tell = (
   networks: readonly Named[],
   names: Map<string, string>,
+  between: string,
   more: (n: Named) => string,
 ): boolean => {
   const seen = timesEach(names.values());
   let any = false;
   for (const n of networks) {
     const name = names.get(n.key) ?? n.name;
-    if ((seen.get(name) ?? 0) > 1) {
-      names.set(n.key, `${name}${more(n)}`);
+    if ((seen.get(name) ?? 0) > 1 || name === "") {
+      const told = more(n);
+      if (told !== "") {
+        names.set(n.key, name === "" ? told : `${name}${between}${told}`);
+      }
       any = true;
     }
   }

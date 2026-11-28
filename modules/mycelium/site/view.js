@@ -336,6 +336,11 @@ import {
   // The receptors stand together at the realm's edge, as one group of
   // their own: the sources the network hears from, never a network.
   const OUTSIDE = "#outside";
+  // The names of the page's own groups, the receptors and the cells
+  // working alone, which a network is told apart from as from another.
+  const RECEPTORS = "Receptors";
+  const ALONE = "Working alone";
+  const aloneOn = (machine) => `${ALONE} on ${machine}`;
   // What a receptor heard, in the node's own counts: how much came in
   // today and this hour, and how much of it was addressed to him.
   const sensedWords = (n) => {
@@ -509,7 +514,12 @@ import {
     // No two networks read alike (words.ts), nor on the map, where a name
     // is clipped and what told it apart could be cut off.
     const named = [...hubs.values()].map(({ key, name, carries }) => ({ key, name, carries }));
-    const told = toldApart(named);
+    // The groups of cells working alone are named by the machines they run
+    // on, so a network is told from each that could be drawn.
+    const runOn = new Set(
+      now.cells.map((c) => standOf.get(c.machine) ?? c.machine).filter(Boolean),
+    );
+    const told = toldApart(named, [RECEPTORS, ALONE, ...[...runOn].map(aloneOn)]);
     const labels = labelsApart(named, told, clipped, NAME_ROOM);
     for (const h of hubs.values()) {
       h.label = labels.get(h.key) ?? clipped(h.name);
@@ -577,7 +587,7 @@ import {
     // with the others like it on its own machine, so each cell stays under
     // the machine it runs on.
     const loose = new Map();
-    const outside = { key: OUTSIDE, name: "Receptors", carries: "", shape: "circle", within: null, children: [], cells: [], edge: true };
+    const outside = { key: OUTSIDE, name: RECEPTORS, carries: "", shape: "circle", within: null, children: [], cells: [], edge: true };
     for (const s of cells) {
       if (s.kind === "receptor") {
         s.hub = null;
@@ -590,12 +600,12 @@ import {
         continue;
       }
       const on = s.machine || "";
-      if (!loose.has(on)) loose.set(on, { key: on ? `#loose.${on}` : "#loose", name: on ? `Working alone on ${on}` : "Working alone", carries: "cells that work alone, in no network", shape: "circle", within: null, children: [], cells: [], alone: true });
+      if (!loose.has(on)) loose.set(on, { key: on ? `#loose.${on}` : "#loose", name: on ? aloneOn(on) : ALONE, carries: "cells that work alone, in no network", shape: "circle", within: null, children: [], cells: [], alone: true });
       s.loose = loose.get(on);
       s.loose.cells.push(s);
     }
     // Where they run is said only to tell two such groups apart.
-    if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
+    if (loose.size === 1) for (const h of loose.values()) h.name = ALONE;
     // A network the node sets within none grows out of the network whose
     // cells started or split more of its cells than any other, as a hypha
     // branches from another: who started each cell comes from its own
@@ -657,7 +667,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], messagesHeard: Array.isArray(now.messages), judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], messagesHeard: Array.isArray(now.messages), unread: now.unread || null, judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3082,17 +3092,34 @@ import {
       (more > 0 ? `<p class="hint">and ${esc(plural(more, "more", "more"))} in the last ten minutes.</p>` : "")
     );
   };
+  // What a drawer says of messages the node has yet to give, in the words
+  // the standing line says it in (site.ts): reading them, waiting on them
+  // past its patience, or unable to read them once their watch broke or the
+  // map went stale. A reading that says none is still being read.
+  const UNREAD_WORDS = {
+    reading: "Still reading the node's latest messages.",
+    waiting: "Still waiting on the node's latest messages.",
+    broken: "Couldn't read the node's latest messages.",
+  };
+  const unreadHint = () => `<p class="hint">${UNREAD_WORDS[current.unread] || UNREAD_WORDS.reading}</p>`;
+  // Where the node serves no waits, who owes an answer is guessed from the
+  // messages (owing), so until they are read nobody owing one is unknown,
+  // not all clear.
+  const owedUnknown = `<h3>Answers Owed</h3><p class="hint">Not known until the node's latest messages are read: the page guesses who owes an answer from them.</p>`;
   const heldUp = (cells) => {
     const held = heldFirst(cells);
     const holding = holdingFirst(cells);
     return (
-      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
+      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : !current.judged && !current.messagesHeard ? owedUnknown : "") +
       (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")
     );
   };
 
-  // Signal against noise, in doing.ts's words.
+  // Signal against noise, in doing.ts's words. Until the messages are
+  // heard there is no talk to weigh, and no line would read as though none
+  // passed, so it says they are unread as a cell's drawer does.
   const talkLine = (messages, among) => {
+    if (!current.messagesHeard) return unreadHint();
     const said = talkLineWords(messages, current.messages.length, Boolean(among));
     return said ? `<p class="talk-line">${esc(said)}</p>` : "";
   };
@@ -3472,7 +3499,7 @@ import {
       factList(facts) +
       where +
       `<h3>Lately</h3>` +
-      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : m.messagesHeard ? `<p class="hint">No message to or from it among the latest the node keeps.</p>` : `<p class="hint">Still reading the node's latest messages.</p>`)
+      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : m.messagesHeard ? `<p class="hint">No message to or from it among the latest the node keeps.</p>` : unreadHint())
     );
   };
 
@@ -3528,7 +3555,7 @@ import {
           (current.messagesHeard ? `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` : "")) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
-      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? `<p class="hint">Still reading the node's latest messages.</p>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
+      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? unreadHint() : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
     );
   };
   // What has no place of its own on the map, named in words.
