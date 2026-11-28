@@ -432,24 +432,34 @@ pub fn hour_here() -> u8 {
     terminal_kit::local::now().map_or(0, |here| u8::try_from(here.hour).unwrap_or(0))
 }
 
+/// The kernel's clock that counts the machine's sleep, named once so a
+/// test can pin it: nothing short of a suspend can show a clock counts
+/// sleep, and the monotonic clock in its place would pass every other case.
+const BOOT_CLOCK: libc::clockid_t = libc::CLOCK_BOOTTIME;
+
 /// How long the machine has been up, its sleep counted, by the kernel's
 /// boot clock. An `Instant` is of the monotonic clock, which stops while
 /// the machine sleeps, so a day asleep would read as no time at all
 /// (`just_left`).
 pub fn booted() -> Duration {
+    read_clock(BOOT_CLOCK)
+}
+
+/// The time on one of the kernel's clocks.
+fn read_clock(clock: libc::clockid_t) -> Duration {
     let mut time = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
     };
     // SAFETY: it writes the one timespec, held for the call.
-    let read = unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &raw mut time) };
+    let read = unsafe { libc::clock_gettime(clock, &raw mut time) };
     // Linux has had the boot clock since 2.6.39, so reading it fails only
     // as reading the monotonic clock would, which `Instant::now` panics on
     // too.
     assert_eq!(
         read,
         0,
-        "the boot clock can't be read: {}",
+        "clock {clock} can't be read: {}",
         io::Error::last_os_error()
     );
     let seconds = u64::try_from(time.tv_sec).unwrap_or(0);
@@ -1005,27 +1015,34 @@ mod tests {
     }
 
     #[test]
-    fn a_point_last_on_a_weekend_asleep_ago_is_not_just_left() {
+    fn a_point_last_measured_59_minutes_of_boot_time_ago_is_just_left() {
         let learned = all_of_nine();
         let last = NINE + Duration::from_hours(1);
-        let monday = last + Duration::from_hours(72) + Duration::from_mins(10);
 
         assert_eq!(
-            just_left_p95(&learned, 10, monday),
-            None,
-            "a lid shut over a weekend read as ten minutes on, \
-             so Friday's hour 9 stood in as just left"
+            just_left_p95(&learned, 10, last + Duration::from_mins(59)),
+            Some(35),
+            "a point last measured 59 minutes ago read as left longer than an hour ago"
         );
     }
 
+    // That the boot clock counts sleep can't be shown without a suspend, so
+    // this pins which clock is read, and that it reads at least what the
+    // monotonic clock does, read first: a constant below the machine's
+    // uptime fails it.
     #[test]
-    fn the_boot_clock_goes_on() {
-        let first = booted();
-        let second = booted();
-        assert!(first > Duration::ZERO, "the machine read as just booted");
+    fn booted_reads_the_boot_clock_and_no_less_than_the_monotonic() {
+        assert_eq!(
+            BOOT_CLOCK,
+            libc::CLOCK_BOOTTIME,
+            "booted reads a clock other than the boot clock, which may not count sleep"
+        );
+        let monotonic = read_clock(libc::CLOCK_MONOTONIC);
+        let booted = booted();
         assert!(
-            second >= first,
-            "the boot clock went back: {first:?} then {second:?}"
+            booted >= monotonic,
+            "the boot clock read less than the monotonic clock read before it: \
+             {booted:?} against {monotonic:?}"
         );
     }
 
