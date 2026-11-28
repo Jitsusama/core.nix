@@ -161,12 +161,23 @@ def test_an_administrator_turns_zswaps_shrinker_on_and_off_without_a_password(
 def test_an_administrator_sets_huge_pages_defrag_without_a_password(
     reverted: BaseMachine,
 ) -> None:
-    # defer+madvise reaches systemd as defer\x2bmadvise, which the unit has to unescape.
-    for defrag in ("never", "defer+madvise"):
+    # defer+madvise reaches systemd as defer\x2bmadvise, which the unit has to unescape, and
+    # madvise is the way back the module names.
+    for defrag in ("never", "defer+madvise", "madvise"):
         status, said = start(reverted, "someone", f"memory-thp-defrag@{defrag}")
         assert status == 0, said
         chose = chosen(read(reverted, HUGEPAGES_DEFRAG))
         assert chose == defrag, f"huge pages' defrag read {chose} after {defrag}"
+
+
+def test_an_instance_is_written_as_a_value_never_run(reverted: BaseMachine) -> None:
+    # Root may start any instance, and the writer gets it unescaped, so one holding a `;`
+    # would run what follows it if the shell read the instance as part of its command.
+    unit = reverted.succeed(
+        "systemd-escape --template=memory-thp-defrag@.service 'never; touch /run/ran'"
+    ).strip()
+    reverted.execute(f"systemctl start '{unit}'")
+    reverted.fail("test -e /run/ran")
 
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
@@ -212,3 +223,9 @@ def test_a_huge_pages_defrag_the_rules_dont_list_needs_a_password(
     status, said = start(reverted, "someone", "memory-thp-defrag@sometimes")
     assert status != 0, said
     assert read(reverted, HUGEPAGES_DEFRAG) == before, "an unlisted defrag was written"
+    # The kernel would refuse sometimes too, so what shows polkit refused is that the unit
+    # never ran at all.
+    ran = reverted.succeed(
+        "systemctl show -p InvocationID --value memory-thp-defrag@sometimes.service"
+    ).strip()
+    assert not ran, f"an unlisted defrag's unit ran, as invocation {ran}"
