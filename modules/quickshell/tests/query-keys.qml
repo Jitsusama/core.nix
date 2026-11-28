@@ -399,12 +399,61 @@ QtObject {
                 undefined)], ["no", "no"]);
         holds("but a key of no time to such an ask is let by too",
             Confirm.answer(timeless, "Escape", undefined, 300), "early");
+        // NaN and -Infinity rule out a looser check, typeof "number" or != null, under
+        // which either time or guard falls through to a yes.
+        const untimable = [NaN, -Infinity].map(at => Confirm.asked("Close Notes?", run, run, at));
+        holds("as is a Return to an ask put at a time no clock gives, or with a guard of none",
+            untimable.map(one => Confirm.answer(one, "Return", 1400, 300))
+                .concat([Confirm.answer(ask, "Return", 1400, NaN)]), ["early", "early", "early"]);
+        holds("and a modifier alone lets no such ask go",
+            [Confirm.answer(timeless, "", 1400, 300), Confirm.answer(ask, "", 1400, NaN)],
+            ["early", "early"]);
+        // Return before its ask was early before the rule too, as its gap is
+        // under the guard; this holds it against a looser rule, one reading
+        // the gap whole (Math.abs), which would answer it yes. The Escape
+        // case after it is the one the rule turns from early to no.
+        holds("a key timed before its ask, as a clock gone back gives, holds its Return",
+            [Confirm.answer(ask, "Return", 999, 300), Confirm.answer(ask, "Return", -5000, 300)],
+            ["early", "early"]);
+        holds("while any other key still lets that ask go, Escape among them",
+            ["Escape", "y", "n"].map(key => Confirm.answer(ask, key, 999, 300)),
+            ["no", "no", "no"]);
+        holds("but a key at the ask's own time is in its guard, as one typed on from it",
+            ["Escape", "Return"].map(key => Confirm.answer(ask, key, 1000, 300)),
+            ["early", "early"]);
+        holds("a key let by says why where its Return can't answer, and only there",
+            [Confirm.letBy(ask, "Return", undefined, 300), Confirm.letBy(timeless, "Return",
+                1400, 300), Confirm.letBy(ask, "Return", 1400, undefined),
+                Confirm.letBy(ask, "Return", 999, 300), Confirm.letBy(ask, "y", undefined, 300),
+                Confirm.letBy(timeless, "Return", undefined, 300)],
+            ["Return came to the ask with no time, so it was let by",
+                "the ask can't be timed, as it was put at no time, so Return was let by",
+                "the ask can't be timed, as it has no guard, so Return was let by",
+                "Return was timed before its ask, so it was let by",
+                "a key came to the ask with no time, so it was let by",
+                "Return came to the ask with no time, so it was let by"]);
+        // Of an ask that can't be timed as of one that can, so neither reason
+        // is said of a key that answered or of a modifier alone.
+        holds("never of a key early in its guard, a modifier alone, or one that answers",
+            [Confirm.letBy(ask, "Return", 1100, 300), Confirm.letBy(ask, "", 999, 300),
+                Confirm.letBy(ask, "Escape", 999, 300), Confirm.letBy(ask, "Return", 1400,
+                    300), Confirm.letBy(timeless, "Escape", 1400, 300),
+                Confirm.letBy(ask, "y", 1400, undefined), Confirm.letBy(timeless, "", 1400,
+                    300), Confirm.letBy(ask, "", undefined, 300)],
+            [null, null, null, null, null, null, null, null]);
         holds("and such an ask says why it can't be timed, where a timed one says nothing",
             [Confirm.untimed(timeless, 300), Confirm.untimed(ask, undefined),
                 Confirm.untimed(ask, 300)],
             ["it was put at no time", "it has no guard", null]);
         holds("the ask takes a yes or a no, never an early key, nor one with no ask",
             ["yes", "no", "early", ""].map(Confirm.takes), [true, true, false, false]);
+        holds("an ask standing says what it says of a key, and none says nothing",
+            [Confirm.said(ask, "Return", 1300, 300), Confirm.said(ask, "j", 1299, 300),
+                Confirm.said(null, "Return", 1300, 300)], ["yes", "early", ""]);
+        holds("and takes it only where it answers, never with no ask standing",
+            [Confirm.taken(ask, "Return", 1300, 300), Confirm.taken(ask, "y", 1400, 300),
+                Confirm.taken(ask, "Return", 1299, 300),
+                Confirm.taken(null, "Return", 1300, 300)], [true, true, false, false]);
         pending(holds);
         visual(holds);
         changes(holds);

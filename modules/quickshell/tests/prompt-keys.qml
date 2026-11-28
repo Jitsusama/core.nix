@@ -87,6 +87,10 @@ Item {
         function init() {
             line.confirming = false;
             line.answerTaken = () => true;
+            line.keyNow = () => Date.now();
+            // A link's quiet left by a case that failed inside it would
+            // drop the next case's keys.
+            line.unlinked();
             line.drawerHere = false;
             line.reselectable = false;
             line.registers = false;
@@ -388,15 +392,16 @@ Item {
             compare(stepped.signalArguments[0][0], "next");
         }
 
-        // The ask as the launcher asks it (Launcher.qml's answerTaken and
-        // askSaid): any named key past its guard answers, x as no, and a key
-        // inside the guard is early and taken as nothing.
+        // The prompt's timing, given the launcher's rule (Confirm.taken, what
+        // Launcher.qml's answerTaken reads through askSaid), not the launcher's
+        // own binding: any named key past its guard answers, x as no, and a
+        // key inside the guard is early and taken as nothing.
         function test_anAskActsWhereItTakesTheKey() {
             toNormal();
             line.confirming = true;
             const ask = { at: Date.now() };
             let guard = 0;
-            line.answerTaken = (key, at) => Confirm.takes(Confirm.answer(ask, key, at, guard));
+            line.answerTaken = (key, at) => Confirm.taken(ask, key, at, guard);
             keyClick("x");
             compare(answered.count, 1);
             verify(line.keyActed, "x past the guard, answering no");
@@ -434,6 +439,71 @@ Item {
             compare(answered.count, 1);
             verify(asked[0] >= before && asked[0] <= after, "asked with when the key came");
             compare(answered.signalArguments[0][1], asked[0], "answered at that time");
+        }
+
+        // The ask and visual's operator are timed on the clock the prompt is
+        // given, as the launcher gives KeyTimes' and puts its ask on it, never
+        // the wall clock: a clock read nowhere else gives each key its time.
+        function test_aKeyIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            toNormal();
+            keyClick("V");
+            keyClick("d");
+            compare(line.visualOperated?.at, 5000, "visual's operator timed on it");
+            line.confirming = true;
+            const asked = [];
+            line.answerTaken = (key, at) => {
+                asked.push(at);
+                return true;
+            };
+            line.keyNow = () => 5400;
+            keyClick(Qt.Key_Return);
+            compare(asked.join(" "), "5400", "the ask asked with the key's time on it");
+            compare(answered.count, 1);
+            compare(answered.signalArguments[0][1], 5400, "and answered at that time");
+        }
+
+        // A link's quiet is timed on that clock too, so a wall clock
+        // stepped back inside it can't drop every key for as long as the
+        // step: a key in its 700 ms is dropped, and one after is taken.
+        function test_aLinksQuietIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            line.linked(false);
+            line.keyNow = () => 5100;
+            keyClick(Qt.Key_Left);
+            compare(line.quietDropped, 1, "a key inside the quiet, dropped");
+            line.keyNow = () => 5800;
+            keyClick(Qt.Key_Left);
+            compare(line.quietDropped, 1, "and one after it, taken");
+            line.unlinked();
+        }
+
+        // The operator again is timed on that clock too, both its own time
+        // and the one it's taken against. d 100 ms after visual's, on that
+        // clock, is still taken with it, where the wall's would read it as
+        // long after. d 400 ms after, past the wait on that clock though
+        // the wall's barely moved, begins an operator, which j then ends
+        // as dj, so neither read can go back to the wall unseen.
+        function test_theOperatorAgainIsTimedOnTheClockThePromptIsGiven() {
+            line.keyNow = () => 5000;
+            toNormal();
+            keyClick("V");
+            keyClick("d");
+            compare(operated.count, 1);
+            line.keyNow = () => 5100;
+            keyClick("d");
+            verify(!line.keyActed, "d again, swallowed on the given clock");
+            keyClick("j");
+            compare(operated.count, 1, "j after it only moves");
+            compare(stepped.count, 1);
+            line.keyNow = () => 6000;
+            keyClick("V");
+            keyClick("d");
+            compare(operated.count, 2);
+            line.keyNow = () => 6400;
+            keyClick("d");
+            keyClick("j");
+            compare(operated.count, 3, "d past the wait on the given clock, an operator");
         }
 
         // Unhurried, the ask hears d again only if it's asked before the

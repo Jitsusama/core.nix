@@ -7864,8 +7864,15 @@ Scope {
 
     // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
+    // It's put on the clock the prompt times its keys on, read from the
+    // prompt itself (its keyNow, KeyTimes' monotonic clock as given below),
+    // so a wall clock stepped back can't hold every key early, and the ask
+    // and its keys can never be timed on two clocks: were the prompt's
+    // clock lost, both would fall back to the wall's together, rather than
+    // a key on the wall's reading as far past an ask on KeyTimes', which
+    // would let the Return that asked, bounced, answer yes.
     function askOnce(question, yes, no, covering) {
-        asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
+        asked = Confirm.asked(question, yes, no ?? (() => {}), prompt.keyNow());
         askedOver = covering ?? [];
         askTaking = false;
         askReady.restart();
@@ -7874,16 +7881,17 @@ Scope {
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
     // it came. It answers only as the field times it (Confirm.takes). A
-    // key that came with no time, or an ask that can't be timed, is
-    // journalled whether or not reports are on, as neither can answer yes.
+    // key let by as it came with no time, as its ask can't be timed, or as
+    // it was timed before its ask, is journalled, naming it, whether or not
+    // reports are on, as none can answer yes (Confirm.letBy); a key that
+    // answers is said by the answer alone, and a modifier alone, early to
+    // every ask, isn't journalled.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
-        const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
-        if (ask !== null && !Number.isFinite(at))
-            console.info("launcher: a key came to the ask with no time, so it was let by");
-        else if (untimed !== null)
-            console.info(`launcher: the ask can't be timed, as ${untimed}, so Return is let by`);
+        const why = ask === null ? null : Confirm.letBy(ask, key, at, askReady.interval);
+        if (why !== null)
+            console.info(`launcher: ${why}`);
         if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
@@ -7894,12 +7902,13 @@ Scope {
             ask.no();
     }
 
-    // What the ask standing makes of `key` come `at` (Confirm.answer), or ""
+    // What the ask standing makes of `key` come `at` (Confirm.said), or ""
     // with none standing: answerAsk answers by it, and the prompt times a
-    // key as acting by it (answerTaken), each told the one time the prompt
-    // read as the key came, so the two can't disagree.
+    // key as acting by it too (answerTaken, Confirm.takes of it), each told
+    // the one time the prompt read as the key came. The ask and its guard
+    // are picked here alone, so the two can't disagree.
     function askSaid(key, at) {
-        return asked === null ? "" : Confirm.answer(asked, key, at, askReady.interval);
+        return Confirm.said(asked, key, at, askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -14820,8 +14829,10 @@ Scope {
                                 && root.fillsStart();
                         }
                         upHere: root.canGoUp
-                        // The ask takes a key as answerAsk does.
+                        // The ask takes a key as answerAsk does, through
+                        // askSaid, timed on the clock askOnce puts it on.
                         answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
+                        keyNow: () => KeyTimes.now()
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
