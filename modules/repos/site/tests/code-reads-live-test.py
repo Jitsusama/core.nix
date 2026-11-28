@@ -940,7 +940,7 @@ def test_a_phone_reads_every_word_code_draws(
 def test_a_name_stays_inside_its_stand_at_every_width(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
-    """No name spills past its stand, however long, and one that fits a phone keeps one line.
+    """No name spills past its stand, however long, and one that fits keeps one line.
 
     A name wraps at its dots and dashes, and one with neither breaks wherever it must
     only when it is wider than the room it has, so it is never cut and never spills.
@@ -960,6 +960,12 @@ def test_a_name_stays_inside_its_stand_at_every_width(
         if size == SIZES[0]:
             said = opened.page.evaluate(SPILT, LONG_NAME)
             assert said["lines"] == 1, f"{LONG_NAME} broke though a phone has room: {said}"
+        else:
+            fitting = opened.page.evaluate(FITTING, [STAND_PX - FIT_SPARE, STAND_PX])
+            assert fitting is not None, f"no name could be made to just fit a stand: {size}"
+            said = opened.page.evaluate(SPILT, fitting["name"])
+            assert said["lines"] == 1, f"a name that fits its stand broke at a desk: {fitting}"
+            assert said["spilt"] == [], f"a name that fits spilt past its stand: {said}"
     finally:
         opened.close()
 
@@ -970,6 +976,41 @@ LONG_NAME = "infrastructure"
 # A name with nowhere to wrap that is wider than a phone, so no stand can
 # hold it on one line and only breaking it keeps it inside.
 WIDER_THAN_A_PHONE = LONG_NAME * 6
+# How wide grove.css sets each stand at a desk.
+STAND_PX = 100
+# How far under its stand's width a name that fits may be drawn: one wider than the 96 px a name
+# was once held to, yet narrower than its stand, drew on one line before names were let break,
+# so it must still.
+FIT_SPARE = 4
+
+# A name with nowhere to wrap, made of the long name's letters, that on one line draws more
+# than `least` and less than `most` pixels wide in the first stand's type, with its width, or
+# null when no such name could be made.
+FITTING = """([least, most]) => {
+  const nm = document.querySelector(".grove .stand .nm");
+  const was = nm.textContent;
+  nm.style.whiteSpace = "nowrap";
+  const words = document.createRange();
+  const width = (name) => {
+    nm.textContent = name;
+    words.selectNodeContents(nm);
+    return words.getBoundingClientRect().width;
+  };
+  const letters = "infrastructure".repeat(4);
+  let found = null;
+  for (let length = 1; length <= letters.length && found === null; length += 1) {
+    for (let narrow = 0; narrow < 8 && found === null; narrow += 1) {
+      const name = letters.slice(0, length) + "i".repeat(narrow);
+      const drawn = width(name);
+      if (drawn > least && drawn < most) {
+        found = { name, width: drawn };
+      }
+    }
+  }
+  nm.style.whiteSpace = "";
+  nm.textContent = was;
+  return found;
+}"""
 
 # Each stand's name set to `name`, then how many stands and names there are,
 # each name drawn past its stand, and the most lines any name took.
