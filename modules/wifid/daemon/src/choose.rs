@@ -272,9 +272,12 @@ pub enum Refusal {
     /// asked.
     Undone,
     /// It was the way back from a trial, which the card was sent on. The
-    /// card never went back, so it isn't held where it would have been;
-    /// the trial's point stays kept off and the move's settle holds, as
-    /// the trial was judged no better all the same.
+    /// card never went back, so it isn't held where it would have been.
+    /// The move's settle holds, as the trial was judged no better all the
+    /// same, and the trial's point stays kept off where `judge` kept it
+    /// off: a trial worse than the point left, or worse than its usual a
+    /// second time within `SPURNED`. A first trial worse only than the
+    /// usual was never kept off, so the settle alone holds it.
     WayBack,
     /// It was of a move since replaced, or one found where it went, so
     /// nothing changes.
