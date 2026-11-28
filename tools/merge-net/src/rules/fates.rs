@@ -38,19 +38,26 @@ pub fn fates() -> Vec<Fate> {
 }
 
 /// The fates a head is judged by: those built in, from the tree the
-/// program was built from, with every folder each of `lists` names, each
-/// a copy of `fates.txt` (empty where there's none) with whose it is, as
-/// "the merge base's" or "main's". Reading the merge base's, a head can
-/// add a fate but take none away from its own judgement, as
-/// `lock-after.txt` is read from the merge base alone; reading main's, a
-/// head whose base lacks main's newest fates is still judged by them, so
-/// an edit of the list sends no head to rebase.
-pub fn judging(lists: &[(&str, &str)]) -> Result<Vec<Fate>, String> {
+/// program was built from, with every folder `based`, the merge base's
+/// copy of `fates.txt`, and `newest`, main's, name (each empty where
+/// there's none). Reading the merge base's, a head can add a fate but take
+/// none away from its own judgement, as `lock-after.txt` is read from the
+/// merge base alone; reading main's, a head whose base lacks main's newest
+/// fates is still judged by them, so an edit of the list sends no head to
+/// rebase. One that changes how the list reads does: a head built before
+/// it can't read main's list, and is told to rebase onto main's parser.
+pub fn judging(based: &str, newest: &str) -> Result<Vec<Fate>, String> {
     let mut judged = fates();
-    for (whose, text) in lists {
-        let named = parse(text).map_err(|why| format!("{whose} {FATES_TXT}: {why}"))?;
-        join(&mut judged, named);
-    }
+    let based = parse(based).map_err(|why| format!("the merge base's {FATES_TXT}: {why}"))?;
+    join(&mut judged, based);
+    let newest = parse(newest).map_err(|why| {
+        format!(
+            "main's {FATES_TXT} doesn't read by this head's merge-net ({why}), since \
+             main's list takes a form the head's base predates; rebase onto origin/main, \
+             push, and merge again"
+        )
+    })?;
+    join(&mut judged, newest);
     Ok(judged)
 }
 
@@ -232,15 +239,14 @@ mod tests {
     fn a_head_is_judged_by_every_fate_its_merge_base_or_main_names_too() {
         let built = fates();
         assert_eq!(
-            judging(&[("the merge base's", ""), ("main's", "")]).as_ref(),
+            judging("", "").as_ref(),
             Ok(&built),
             "a base with no list added a fate"
         );
         let map = &built[0].name;
         let based = format!("{map}: modules/lost/\ngone: modules/gone/\n");
         let newest = format!("{map}: modules/newest/\nnew: modules/new/\n");
-        let judged =
-            judging(&[("the merge base's", &based), ("main's", &newest)]).expect("both lists read");
+        let judged = judging(&based, &newest).expect("both lists read");
         let holding = |name: &str, folder: &str| {
             judged
                 .iter()
@@ -262,12 +268,25 @@ mod tests {
             holding(map, "modules/newest/") && holding("new", "modules/new/"),
             "a fate main added since the head's base wasn't judged"
         );
-        let refused = judging(&[("the merge base's", ""), ("main's", "no colon")]);
+    }
+
+    #[test]
+    fn a_list_of_main_s_the_head_cant_read_sends_it_to_rebase() {
+        // A list main reads in a newer form ships with main's parser, which
+        // a rebase brings; a base's list the head can't read, it never will.
+        let newer = judging("", "no colon");
         assert!(
-            refused
+            newer.as_ref().is_err_and(
+                |why| why.starts_with("main's ") && why.contains("rebase onto origin/main")
+            ),
+            "main's list the head can't read was let pass, or named no rebase: {newer:?}"
+        );
+        let broken = judging("no colon", "");
+        assert!(
+            broken
                 .as_ref()
-                .is_err_and(|why| why.starts_with("main's ")),
-            "a list that doesn't read was let pass, or wasn't said as whose: {refused:?}"
+                .is_err_and(|why| why.starts_with("the merge base's ") && !why.contains("rebase")),
+            "the base's list that doesn't read was let pass, or sent to rebase: {broken:?}"
         );
     }
 

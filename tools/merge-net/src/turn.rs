@@ -538,7 +538,7 @@ fn judged_by(commit: &str) -> Vec<Fate> {
         .and_then(|base| list_at(&base))
         .unwrap_or_default();
     let newest = list_at(main).unwrap_or_default();
-    fates::judging(&[("the merge base's", &based), ("main's", &newest)]).unwrap_or_else(|why| {
+    fates::judging(&based, &newest).unwrap_or_else(|why| {
         eprintln!("merge-net: {why}; the turn reads the built-in fates alone");
         fates::fates()
     })

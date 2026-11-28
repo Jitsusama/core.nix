@@ -74,10 +74,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // (`fates.txt`), which the change's own files never show, with those
     // its merge base names, so it can't judge itself by fewer, and those
     // main names, so a base lacking main's newest needs no rebase.
-    let fates = rules::fates::judging(&[
-        ("the merge base's", &at(&branched, rules::fates::FATES_TXT)),
-        ("main's", &at_main(rules::fates::FATES_TXT)),
-    ])?;
+    let fates = fates::judging(&at(&branched, fates::FATES_TXT), &at_main(fates::FATES_TXT))?;
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
