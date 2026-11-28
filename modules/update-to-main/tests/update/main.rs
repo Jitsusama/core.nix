@@ -2452,6 +2452,71 @@ fn a_token_that_cant_see_main_lifts_no_hold_of_main_s_commit() {
         why.contains("couldn't be told"),
         "a hold judged with a token that couldn't see main was refused for another reason: {why}"
     );
+    assert!(
+        why.contains(&format!("the host didn't show main at {}", &two[..12])),
+        "a hold judged with a token that couldn't see main didn't say so: {why}"
+    );
+}
+
+/// A host that times out on the hold's comparison, and again on showing
+/// main, has said nothing of the token: the hold stays untold, in the
+/// host's own words for both asks, rather than as a token that can't see
+/// main, which would send a person after the wrong fault.
+#[test]
+fn a_host_timing_out_on_a_hold_says_so_rather_than_blaming_the_token() {
+    let mut world = api_on(World::hosted_from(following(), counted_token));
+    world.config.tools.curl = slowed_curl(&world.root);
+    let pinned = world.core_commit("pinned", true);
+    let zero = world.hosted_commit("zero", Some(&pinning(&pinned)));
+    let one = world.hosted_commit("one", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, following_done(&one, &pinned));
+    let origin = format!("file://{}", world.origin.display());
+    let copy = world.config.follows_folder().join("core.git");
+    git(&copy, &["fetch", "--quiet", &origin, "main"]);
+    held::ask(&world.config, &format!("hold {zero}"), Some(1000));
+    let two = world.hosted_commit("two", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&two);
+    let kept = world.config.reads().join(&two);
+    fs::write(world.root.join("slow"), kept.display().to_string()).unwrap();
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a host that timed out lifted the hold of main's own commit")
+    };
+    assert!(
+        why.contains("couldn't be told"),
+        "a hold the host timed out on was refused for another reason: {why}"
+    );
+    assert_eq!(
+        why.matches("(exit status: 28)").count(),
+        2,
+        "a hold the host timed out on didn't say how both asks failed: {why}"
+    );
+    assert!(
+        !why.contains("to the account's token"),
+        "a host that timed out was blamed on the token: {why}"
+    );
+}
+
+/// A curl that, once the world's `slow` file names where the read of a
+/// head's folder is kept and that read is there, times out on every ask,
+/// as curl does past its `--max-time`.
+fn slowed_curl(world_root: &Path) -> PathBuf {
+    let root = world_root.display();
+    let slowed = world_root.join("slowed-curl");
+    write_program(
+        &slowed,
+        &format!(
+            "{}\nif [ -e {root}/slow ]; then read -r kept < {root}/slow; \
+             if [ -e \"$kept\" ]; then \
+             echo 'curl: (28) Operation timed out after 60001 milliseconds' >&2; exit 28; \
+             fi; fi; exec {} \"$@\"\n",
+            stand_in_head(),
+            program("curl").display()
+        ),
+    );
+    slowed
 }
 
 /// A token command that gives a token, and once the world's `blind` file
