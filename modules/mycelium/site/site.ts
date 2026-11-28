@@ -46,6 +46,16 @@ const DRAWN_WITH: readonly Kind[] = ["network", "cell", "machine"];
 /** What the standing line adds while the map is drawn and its messages aren't read. */
 const READING_TALK = " Reading what passed between cells.";
 
+/** What it adds once they have taken longer than a busy node takes to answer. */
+const WAITING_TALK = " Still waiting on what passed between cells.";
+
+/**
+ * How long messages may take to first answer once the map is drawn before
+ * the line says it is waiting on them rather than reading them: a node
+ * took 14 s on 26 November, its machine at its busiest.
+ */
+const TALK_PATIENCE_MS = 10_000;
+
 const found = document.querySelector("#asof");
 if (!(found instanceof HTMLParagraphElement)) {
   throw new Error("the page has no #asof, where the map says how it stands");
@@ -61,6 +71,10 @@ let handed = Number.NEGATIVE_INFINITY;
 let waiting: number | undefined;
 let owed = false;
 let expires: number | undefined;
+// When the map was first drawn with its messages yet to answer.
+let readingSince: number | undefined;
+// What the standing line last said, so a line the drawing wrote since is told apart.
+let saidLast: string | undefined;
 
 /**
  * The worst of the watches' states, the one the map says. Messages still
@@ -104,13 +118,39 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  // A message watch that broke is said by the standing, not as one reading.
-  const broke = standings.get("message")?.state === "broken";
-  const reading = readingTalk() && !broke ? READING_TALK : "";
-  asof.textContent = `${sayStanding(now)}${reading}${trouble}`;
+  saidLast = `${sayStanding(now)}${talkWords(now)}${trouble}`;
+  asof.textContent = saidLast;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
   asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
+}
+
+/**
+ * What the line says of messages the map is drawn without: that it is
+ * reading them, and past its patience that it is still waiting on them,
+ * said again then so the words move without a reading to move them. A
+ * map that isn't live reads nothing, and its standing says why.
+ */
+function talkWords(now: Standing | undefined): string {
+  if (!readingTalk() || now?.state !== "live" || standings.get("message")?.state === "broken") {
+    return "";
+  }
+  if (readingSince === undefined) {
+    readingSince = Date.now();
+    globalThis.setTimeout(sayPastPatience, TALK_PATIENCE_MS + 1);
+  }
+  return Date.now() - readingSince > TALK_PATIENCE_MS ? WAITING_TALK : READING_TALK;
+}
+
+/**
+ * Says how the map stands once its patience with messages has run out,
+ * unless the drawing has written the line since, as when a reading
+ * couldn't draw: that stays until the next reading says otherwise.
+ */
+function sayPastPatience(): void {
+  if (asof.textContent === saidLast) {
+    sayHow();
+  }
 }
 
 /** Hands the drawing the map as it stands now. */
