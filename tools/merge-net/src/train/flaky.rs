@@ -470,7 +470,7 @@ pub(super) fn excuses(
     let words = String::from_utf8_lossy(&fs::read(log).unwrap_or_default()).into_owned();
     let flake = format!("github:{}/{}", super::slug_of(url), red.base);
     let mut base_build = |check: &str| {
-        let log = built_log(root, red.candidate, check, "at-base");
+        let log = built_log(root, red.candidate, check, AT_BASE);
         let (code, words) = build(red.checkout, &flake, &log, &[check], red.base);
         (at_base(code, &words), words)
     };
@@ -540,7 +540,7 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
             ),
             Blame::Main => (
                 "train-failed-before",
-                built_log(root, red.candidate, check, "at-base"),
+                built_log(root, red.candidate, check, AT_BASE),
             ),
         };
         let finding = json!({
@@ -608,9 +608,13 @@ fn moved_between(checkout: &Path, base: &str, candidate: &str) -> Option<Vec<Str
     )
 }
 
+/// What names a check's build at the base in its log's name, which
+/// `blame.rs` reads too for the files main already fails.
+pub(super) const AT_BASE: &str = "at-base";
+
 /// Where a build of `check` for a candidate writes its words, `how` saying
 /// which build it is.
-fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
+pub(super) fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
     super::folder(root).join(format!("{candidate}-{check}-{how}.log"))
 }
 

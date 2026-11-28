@@ -77,3 +77,7 @@ pub(super) fn hand_over(newer: &Path) -> String {
         .exec();
     format!("the train couldn't go on as {}: {why}", newer.display())
 }
+
+#[cfg(test)]
+#[path = "installed/tests.rs"]
+mod tests;

@@ -14,7 +14,9 @@
 //! the state folder's `installed` as it starts, never as the build that
 //! asked, which may be a tree's or a profile's from before the last
 //! switch; and between candidates a ride a switch replaced goes on as the
-//! new build, in the same unit.
+//! new build, in the same unit. A train stopped while a candidate's gate
+//! ran, and started again, runs that candidate again while main hasn't
+//! moved and its riders are all still aboard (`running.rs`).
 //! The train cuts a candidate at origin's main in a checkout of its own,
 //! merges every rider still its pull request's head into it in the order
 //! they boarded, as GitHub's merge button words a merge, and runs the gate
@@ -42,7 +44,9 @@
 //! A candidate that fails otherwise first asks whose its failed checks
 //! are: one whose failures are each on the quarantine list runs once more
 //! with the same riders, and otherwise the riders whose own passes moved
-//! what failed, or keep no pass to say they didn't, fall at once while
+//! what failed, or keep no pass to say they didn't, or for a check every
+//! rider moved, whose own diffs touched a file its words name that main
+//! doesn't fail, fall at once while
 //! the rest ride on, unless that would be all of them or a failure is no
 //! rider's (`blame.rs`). Otherwise it splits: the train takes the first
 //! half of its riders to board, and halves again while they fail, so the
@@ -64,7 +68,7 @@
 //! Long because one ride, from boarding through each run to landing, is
 //! read here in order; its parts that stand alone are modules below.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -85,6 +89,7 @@ mod installed;
 mod landed;
 mod landing;
 mod pulls;
+mod running;
 mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
@@ -522,6 +527,25 @@ fn fall_conflicting(root: &Path, conflicted: &[String], base: &str) {
     }
 }
 
+/// The candidate the train runs next on `base` through `git`: the one
+/// `kept` from a ride a stop cut short, when it still speaks for its
+/// riders (`running.rs`), or else one cut afresh of `mergings`, each rider
+/// that conflicts falling from the train under `root`.
+fn cut_or_resume(
+    root: &Path,
+    kept: Option<running::Running>,
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    base: &str,
+    mergings: &[Merging],
+) -> Result<Cut, String> {
+    if let Some(done) = running::resumed(root, kept, git, base, mergings) {
+        return Ok(done);
+    }
+    let done = cut(git, base, mergings)?;
+    fall_conflicting(root, &done.conflicted, base);
+    Ok(done)
+}
+
 /// Open the train's run under `root`, `began` then, to changes that would
 /// merge alone. Only a clear run takes them, so none boards a red's search
 /// or an outage only to fall with its riders. One that boards rides the
@@ -560,6 +584,9 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let mut waits = pulls::Waits::new();
     let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
     let mut flakes = flaky::Flakes::default();
+    // Taken at the first cut, so only a candidate a stop cut short runs
+    // again.
+    let mut kept = running::kept(&root);
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -588,8 +615,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // Read from main rather than the candidate, whose riders could
         // otherwise excuse their own red by listing it.
         let quarantine = git(&["show", &format!("{base}:{}", crate::world::QUARANTINE)]);
-        let done = cut(&git, &base, &mergings)?;
-        fall_conflicting(&root, &done.conflicted, &base);
+        let done = cut_or_resume(&root, kept.take(), &git, &base, &mergings)?;
         if done.merged.is_empty() {
             continue;
         }
@@ -600,7 +626,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             open_the_run(&root, began);
         }
         say_it_runs(&candidate, &done.merged);
-        let (ended, code) = gate(&checkout, &log);
+        let (ended, code) = gate_kept(&root, &checkout, &log, &candidate, &base, &done.merged);
         match ended {
             Gated::Passed => splitting.taken(),
             // A red that is main's or a flake's, every part of it run,
@@ -624,6 +650,8 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 splitting.taken();
                 way(&root, &Ended::Otherwise);
                 let red_of = Red {
+                    checkout: &checkout,
+                    base: &base,
                     candidate: &candidate,
                     log: &log,
                     merged: &done.merged,
@@ -871,9 +899,12 @@ fn shorts(heads: &[String]) -> String {
         .join(", ")
 }
 
-/// A candidate that failed: its commit, the log its words went to, the
-/// riders merged into it, and main's quarantine list as it was cut on.
+/// A candidate that failed: the train's checkout it was cut in, the main
+/// it was cut on, its commit, the log its words went to, the riders merged
+/// into it, and main's quarantine list as it was cut on.
 struct Red<'a> {
+    checkout: &'a Path,
+    base: &'a str,
     candidate: &'a str,
     log: &'a Path,
     merged: &'a [String],
@@ -885,6 +916,8 @@ impl<'a> Red<'a> {
     /// A red cut on a main whose quarantine list is empty.
     fn unexcused(candidate: &'a str, log: &'a Path, merged: &'a [String]) -> Self {
         Red {
+            checkout: Path::new("/nonexistent"),
+            base: "main",
             candidate,
             log,
             merged,
@@ -895,16 +928,20 @@ impl<'a> Red<'a> {
 
 /// Whether the red `red_of` was settled by what failed in it: run once
 /// more, being wholly on main's quarantine list, once for the same
-/// riders, or put on the riders whose own passes moved what failed, which
-/// fall while the rest ride on. Neither, and the search halves as before.
+/// riders, or put on the riders whose own passes moved what failed, or
+/// for a check every rider moved, whose own diffs touched a file its words
+/// name, which fall while the rest ride on. Neither, and the search halves
+/// as before.
 fn blamed(root: &Path, red_of: &Red, splitting: &mut Splitting) -> bool {
     let Red {
         candidate,
         log,
         merged,
         quarantine,
+        ..
     } = *red_of;
-    let Some(failing) = blame::failed(&words_of(log)) else {
+    let words = words_of(log);
+    let Some(failing) = blame::failed(&words) else {
         return false;
     };
     let failing_said = failing.iter().cloned().collect::<Vec<_>>().join(", ");
@@ -922,25 +959,24 @@ fn blamed(root: &Path, red_of: &Red, splitting: &mut Splitting) -> bool {
     if merged.len() < 2 {
         return false;
     }
-    let riders: Vec<(String, Option<BTreeSet<String>>)> = merged
-        .iter()
-        .map(|head| (head.clone(), blame::moved_in(&passes_of(root, head))))
-        .collect();
-    let Some(owners) = blame::owners(&failing, &riders) else {
+    let riders = suspects(root, red_of);
+    let named = named_anew(root, candidate, &words, &failing);
+    let Some(owners) = blame::owners(&failing, &riders, &named) else {
         return false;
     };
     splitting.blamed();
     println!(
         "merge-net: the candidate {} failed changed-checks in {failing_said}, which {} of its \
-         {} riders moved, or can't say they didn't, so they fall back to running again alone \
-         and the rest ride on",
+         {} riders moved, or touched a file its words name that main doesn't fail, or can't \
+         say they didn't, so they fall back to running again alone and the rest ride on",
         short(candidate),
         owners.len(),
         merged.len()
     );
     let said = format!(
-        "the candidate {} failed changed-checks in {failing_said}, which its own pass moved or \
-         can't say it didn't; its words are in {}",
+        "the candidate {} failed changed-checks in {failing_said}, which its own pass moved, \
+         or its own diff touched a file those checks' words name that main doesn't fail, or \
+         it can't say it didn't; its words are in {}",
         short(candidate),
         log.display()
     );
@@ -948,6 +984,39 @@ fn blamed(root: &Path, red_of: &Red, splitting: &mut Splitting) -> bool {
         let _ = fall(root, head, &said);
     }
     true
+}
+
+/// Each rider of the red `red_of` as blame reads it: what its own pass
+/// moved, and what its own diff from the candidate's main touched.
+fn suspects(root: &Path, red_of: &Red) -> Vec<blame::Suspect> {
+    red_of
+        .merged
+        .iter()
+        .map(|head| blame::Suspect {
+            head: head.clone(),
+            moved: blame::moved_in(&passes_of(root, head)),
+            touched: blame::touched(red_of.checkout, red_of.base, head),
+        })
+        .collect()
+}
+
+/// The files each of the `failing` checks of `candidate` names in its
+/// gate's `words` that it doesn't name where the train built it at the
+/// candidate's base, under the state folder `root`.
+fn named_anew(
+    root: &Path,
+    candidate: &str,
+    words: &str,
+    failing: &BTreeSet<String>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    failing
+        .iter()
+        .map(|check| {
+            let at_base = flaky::built_log(root, candidate, check, flaky::AT_BASE);
+            let named = blame::named_anew(words, &blame::said_at_base(&at_base), check);
+            (check.clone(), named)
+        })
+        .collect()
 }
 
 /// What nix-offload kept of the passes that speak for the rider at `head`:
@@ -959,6 +1028,31 @@ fn passes_of(root: &Path, head: &str) -> String {
         .map(|passed| crate::ready::record(&passed))
         .unwrap_or_default();
     format!("{}\n{earlier}", crate::ready::record(head))
+}
+
+/// Run the gate at `candidate`, which merged `merged` on `base`, in
+/// `checkout`, its words going to `log`, kept under `root` as running
+/// while it runs, so a train stopped meanwhile runs it again
+/// (`running.rs`): how it ended.
+fn gate_kept(
+    root: &Path,
+    checkout: &Path,
+    log: &Path,
+    candidate: &str,
+    base: &str,
+    merged: &[String],
+) -> (Gated, Option<i32>) {
+    running::keep(
+        root,
+        &running::Running {
+            candidate: candidate.to_owned(),
+            base: base.to_owned(),
+            merged: merged.to_vec(),
+        },
+    );
+    let gated = gate(checkout, log);
+    running::ended(root);
+    gated
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
