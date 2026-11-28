@@ -26,11 +26,12 @@
   "modules/pi/github-door/tests/door.rs" = 1;
   "modules/pineapple/tests/reader/deaf.rs" = 4;
   "modules/pineapple/tests/reader/gateway/live.rs" = 11;
+  "modules/pineapple/tests/reader/gateway/live/let_go.rs" = 1;
   "modules/pineapple/tests/reader/gateway.rs" = 4;
-  "modules/pineapple/tests/reader/github/late.rs" = 10;
+  "modules/pineapple/tests/reader/github/late.rs" = 11;
   "modules/pineapple/tests/reader/github/partial.rs" = 1;
   "modules/pineapple/tests/reader/github.rs" = 6;
-  "modules/pineapple/tests/reader/github/watch.rs" = 1;
+  "modules/pineapple/tests/reader/github/watch.rs" = 3;
   "modules/pineapple/tests/reader/guard.rs" = 2;
   "modules/pineapple/tests/reader/keyring.rs" = 2;
   "modules/pineapple/tests/reader/late.rs" = 1;
@@ -41,7 +42,7 @@
   "modules/quickshell/tests/launcher_on_niri.py" = 3;
   "modules/quickshell/tests/margin-cat-on-niri-test.py" = 1;
   "modules/quickshell/tests/margin-cat-plays-on-niri-test.py" = 2;
-  "modules/quickshell/tests/opening-on-niri-test.py" = 2;
+  "modules/quickshell/tests/opening-on-niri-test.py" = 1;
   "modules/quickshell/timers/tests/daemon.rs" = 1;
   "modules/repos/tests/serve.rs" = 3;
   "modules/slack/sign-in-program/tests/printed.rs" = 1;
