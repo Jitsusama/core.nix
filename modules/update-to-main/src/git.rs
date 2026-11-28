@@ -142,7 +142,7 @@ pub fn holds_file(repo: &Repo, commit: &str, path: &str) -> bool {
 pub fn fetch(repo: &Repo) -> Result<String, Failure> {
     make_copy(repo)?;
     let refspec = format!("+refs/heads/{}:{MAIN}", repo.branch);
-    retried(&FETCH_AGAIN, thread::sleep, || {
+    retried(&repo.config.fetch_again, thread::sleep, || {
         run::output(
             git(repo),
             &format!("fetching {}", repo.called),
@@ -170,7 +170,7 @@ pub fn fetch_commit(repo: &Repo, commit: &str) -> Result<(), Failure> {
         )));
     }
     make_copy(repo)?;
-    retried(&FETCH_AGAIN, thread::sleep, || {
+    retried(&repo.config.fetch_again, thread::sleep, || {
         run::output(
             git(repo),
             &format!("fetching {} for {}", short(commit), repo.called),

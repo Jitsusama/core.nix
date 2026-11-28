@@ -292,6 +292,9 @@ impl World {
             batches: None,
             memory: root.join("meminfo"),
             silent_for: 2,
+            // A fetch that fails is tried as many times as on a machine, but
+            // at once, so one that can never succeed fails in no time.
+            fetch_again: vec![Duration::ZERO; 2],
             tools: Tools {
                 git: program("git"),
                 gpg: program("gpg"),
