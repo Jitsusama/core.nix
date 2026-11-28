@@ -3,12 +3,13 @@
 //! refuses or lets go, and how it ends.
 
 use std::fs;
-use std::path::Path;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
-use pineapple::pause;
-use serde_json::Value;
+use pineapple::pause::{self, carry, carry::NODE_UNWRITTEN};
+use serde_json::{Value, json};
 
-use super::{FORKS, json, scratch};
+use super::{FORKS, at_home, json, node_stops, runs_as_root, scratch};
 
 /// Runs the script a machine runs for `act` of `said`, with a fake
 /// mycelium on its path that writes down what it's asked and says starts
@@ -74,7 +75,7 @@ fn script_in(
         .expect("chmod runs");
     let ran = std::process::Command::new("sh")
         .arg("-c")
-        .arg(pause::script(said, act, realm))
+        .arg(at_home(home, &pause::script(said, act, realm)))
         .env("HOME", home)
         .env_remove("XDG_STATE_HOME")
         .env(
@@ -120,7 +121,7 @@ fn script_bare(home: &Path, said: &Value, act: &str) -> Ran {
         .expect("chmod runs");
     let ran = std::process::Command::new(bin.join("sh"))
         .arg("-c")
-        .arg(pause::script(said, act, None))
+        .arg(at_home(home, &pause::script(said, act, None)))
         .env("HOME", home)
         .env_remove("XDG_STATE_HOME")
         .env("PATH", &bin)
@@ -170,6 +171,151 @@ fn the_stop_notes_its_realms_before_its_record_lands() {
     assert!(
         !stops.join("stop-all-1.json").exists(),
         "so no record lands that a resume would read as an older stop's"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// The record of the stop `said` in the account's stops folder of `home`.
+fn account_record(home: &Path, said: &Value) -> PathBuf {
+    let id = said["id"].as_str().expect("the stop's id");
+    home.join(".local/state/pineapple/stops")
+        .join(format!("{id}.json"))
+}
+
+#[test]
+fn a_machine_keeping_the_nodes_stops_folder_holds_a_copy_there_last() {
+    let home = scratch("script-node-stops");
+    let node = node_stops(&home);
+    fs::create_dir_all(&node).expect("the node's stops folder");
+    let said = pause::record("stop-all-1", "here", 1);
+    let asked = script_run(&home, &said, "stop", false);
+    assert_eq!(
+        asked, "starts list\nstarts stop\n",
+        "the stop refuses starts there"
+    );
+    assert_eq!(
+        json(&account_record(&home, &said)),
+        said,
+        "its record is kept in the account's folder, as on every machine"
+    );
+    assert_eq!(
+        json(&node.join("stop-all-1.json")),
+        said,
+        "and its copy in the node's, which the guards read"
+    );
+    let mut resumed = said.clone();
+    resumed["resumed"] = json!(2);
+    assert_eq!(
+        script_run(&home, &resumed, "resume", false),
+        "starts resume\n",
+        "its resume lets starts go"
+    );
+    assert_eq!(
+        json(&node.join("stop-all-1.json")),
+        resumed,
+        "and the node's copy reads as resumed"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_stop_the_nodes_folder_refuses_still_refuses_starts_and_fails_naming_it() {
+    let case = "a_stop_the_nodes_folder_refuses_still_refuses_starts_and_fails_naming_it";
+    let home = scratch("script-node-closed");
+    let node = node_stops(&home);
+    fs::create_dir_all(&node).expect("the node's stops folder");
+    if runs_as_root(&home, case) {
+        let _ = fs::remove_dir_all(&home);
+        return;
+    }
+    let said = pause::record("stop-all-1", "here", 1);
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o555)).expect("closed");
+    let ran = script_in(&home, &said, "stop", None, false, 0);
+    fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).expect("opened");
+    assert_eq!(
+        ran.asked, "starts list\nstarts stop\n",
+        "starts are refused before the node's folder is written: {:?}",
+        ran.said
+    );
+    assert!(
+        ran.ended == Some(1)
+            && ran
+                .said
+                .contains(&format!("{NODE_UNWRITTEN} {}", node.display())),
+        "the stop then fails naming the node's folder, so it's tried again: {:?} {:?}",
+        ran.ended,
+        ran.said
+    );
+    assert_eq!(
+        json(&account_record(&home, &said)),
+        said,
+        "its record is kept in the account's folder"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_stop_standing_across_the_upgrade_lets_starts_go_on_resume() {
+    let home = scratch("script-upgraded");
+    let said = pause::record("stop-all-1", "here", 1);
+    // As a stop made before the upgrade left them: its record and marks
+    // in the account's folder only, its starts refused.
+    let stops = home.join(".local/state/pineapple/stops");
+    fs::create_dir_all(&stops).expect("the account's stops folder");
+    fs::write(stops.join("stop-all-1.json"), said.to_string()).expect("its record");
+    for mark in ["stop-all-1.realms-noted", "stop-all-1.stopped"] {
+        fs::write(stops.join(mark), "").expect("its mark");
+    }
+    let node = node_stops(&home);
+    fs::create_dir_all(&node).expect("the node's stops folder, the upgrade's");
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "starts resume\n",
+        "its record and marks, in the account's folder only, let its starts go"
+    );
+    assert!(
+        !node.join("stop-all-1.json").exists(),
+        "and no copy is written in the node's folder, where the stop wrote none"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_machine_keeping_no_node_folder_writes_only_the_accounts() {
+    let home = scratch("script-no-node");
+    let said = pause::record("stop-all-1", "here", 1);
+    assert_eq!(
+        script_run(&home, &said, "stop", false),
+        "starts list\nstarts stop\n",
+        "the stop runs and refuses starts"
+    );
+    assert_eq!(
+        json(&account_record(&home, &said)),
+        said,
+        "its record is kept in the account's folder"
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "starts resume\n",
+        "its resume runs and lets starts go"
+    );
+    let _held = FORKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let give = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(at_home(
+            &home,
+            &carry::script("slack-C1-1.000000", &said, "listener"),
+        ))
+        .env("HOME", &home)
+        .env_remove("XDG_STATE_HOME")
+        .status()
+        .expect("sh runs");
+    assert!(give.success(), "a carried stop is given: {give}");
+    assert!(
+        !home.join("node").exists(),
+        "and nothing is made where the machine keeps no node folder"
     );
     let _ = fs::remove_dir_all(&home);
 }

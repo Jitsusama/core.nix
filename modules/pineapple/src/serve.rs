@@ -40,6 +40,7 @@ use daemon_serve::serve::{Shared, accept, listen};
 use serde_json::{Value, json};
 
 use crate::acts::{self, Refused};
+use crate::pause::carry::Away;
 use crate::pause::{self, Runs};
 use crate::peer::{Peer, may_act};
 use crate::phone::{self, Alert};
@@ -116,9 +117,10 @@ const PAUSE: &str = "pause";
 const STEP: Duration = Duration::from_secs(6);
 
 /// How often the other machines are given the stops they lack: a stop
-/// heard reaches them within this and a run, however many machines hang,
-/// since every machine lacking it is given it at once, and one that hangs
-/// then waits a minute; well inside the five minutes a stop has to land
+/// heard reaches them within this and a [`CARRY_STEP`] for each sixteen
+/// lacking it, since they're given it sixteen at a time, each lot waiting
+/// for the one before, and one that hangs then waits a minute; for a mesh
+/// of tens of machines, well inside the five minutes a stop has to land
 /// in.
 const CARRY_EVERY: Duration = Duration::from_secs(5);
 
@@ -262,6 +264,21 @@ fn carry_each(plan: &pause::Plan, state: &Path, host: &str) {
         }
         for one in gives {
             let what = one.gift.said();
+            match one.away {
+                Some(Away::Parked) => {
+                    eprintln!(
+                        "<4>{} has been gone from the mesh for an hour, so it isn't asked to \
+                         take {what} {} again until mycelium lists a session on it",
+                        one.machine, one.name
+                    );
+                    continue;
+                }
+                Some(Away::Back) => eprintln!(
+                    "{} is listed on the mesh again, so it's given {what} {} once more",
+                    one.machine, one.name
+                ),
+                None => {}
+            }
             match one.failed {
                 None => eprintln!("gave {} {what} {}", one.machine, one.name),
                 Some(why) if one.machine.is_empty() => {

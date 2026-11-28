@@ -1,19 +1,23 @@
 //! A stop a reader keeps here, given to each other machine running agents
 //! so their guards hold it too, and what follows it: who is given what,
-//! once, its end once it's kept here no longer, and the scripts that
-//! write and drop it there.
+//! once, its end once it's kept here no longer, a machine gone from the
+//! mesh parked till it's listed again, and the scripts that write and
+//! drop it there.
 
 use std::fs;
+use std::ops::RangeInclusive;
 use std::path::Path;
 
 use pineapple::pause::Plan;
-use pineapple::pause::carry::{AGAIN_MS, Carried, Carrier, Gift, script, taken_away};
+use pineapple::pause::carry::{
+    AGAIN_MS, Away, Carried, Carrier, GONE_MS, Gift, script, taken_away,
+};
 use serde_json::{Value, json};
 
-use super::{FORKS, Machine, asked_with, json, machine, plan, scratch};
+use super::{FORKS, Machine, asked_with, at_home, json, machine, plan, scratch};
 
 /// A live stop from Slack, standing, as a reader keeps it.
-fn heard(id: &str) -> Value {
+pub(super) fn heard(id: &str) -> Value {
     json!({
         "id": id,
         "shadow": false,
@@ -29,7 +33,7 @@ fn heard(id: &str) -> Value {
     })
 }
 
-fn keep(state: &Path, name: &str, record: &Value) {
+pub(super) fn keep(state: &Path, name: &str, record: &Value) {
     let stops = state.join("stops");
     fs::create_dir_all(&stops).expect("a stops folder");
     fs::write(stops.join(format!("{name}.json")), format!("{record:#}\n")).expect("kept");
@@ -55,6 +59,7 @@ fn gave(name: &str, machine: &str, gift: Gift) -> Carried {
         machine: machine.to_owned(),
         gift,
         failed: None,
+        away: None,
     }
 }
 
@@ -65,6 +70,53 @@ fn runs_on_mac(here: &Machine) -> usize {
 
 fn on_mac(script: &str) -> String {
     format!("mycelium run --need machine=mac -- sh -c {script}")
+}
+
+/// The stop the gone tests carry.
+const NAME: &str = "slack-C1-1.000000";
+
+/// A carrier that gave the Mac the stop kept under [`NAME`] at 0.
+fn given_mac(state: &Path, here: &mut Machine) -> Carrier {
+    keep(state, NAME, &heard("slack:C1:1.000000"));
+    let mut carrier = Carrier::default();
+    let gives = carry(&mut carrier, state, 0, here);
+    assert_eq!(
+        gives,
+        vec![gave(NAME, "mac", Gift::Stop)],
+        "the Mac takes the stop"
+    );
+    carrier
+}
+
+/// Carries once a minute through `minutes`, mycelium listing a session on
+/// the Mac only in those `listed` holds for; answers what each gave.
+fn each_minute(
+    carrier: &mut Carrier,
+    state: &Path,
+    here: &mut Machine,
+    minutes: RangeInclusive<u64>,
+    listed: impl Fn(u64) -> bool,
+) -> Vec<(u64, Vec<Carried>)> {
+    minutes
+        .map(|minute| {
+            here.unlisted = (!listed(minute)).then_some("mac");
+            (minute, carry(carrier, state, minute * AGAIN_MS, here))
+        })
+        .collect()
+}
+
+/// The minutes in `rounds` whose gives said the Mac was `away` so.
+fn when(rounds: &[(u64, Vec<Carried>)], away: Away) -> Vec<u64> {
+    rounds
+        .iter()
+        .filter(|(_, gives)| gives.iter().any(|one| one.away == Some(away)))
+        .map(|(minute, _)| *minute)
+        .collect()
+}
+
+/// What the Mac is noted as given of [`NAME`].
+fn noted_on_mac(state: &Path) -> Value {
+    json(&state.join(format!("carried/{NAME}.json")))["machines"][0].clone()
 }
 
 #[test]
@@ -223,8 +275,10 @@ fn a_stop_goes_to_every_machine_lacking_it_at_once_so_one_out_of_reach_holds_non
         machines: vec!["mac".to_owned(), "builder".to_owned(), "far".to_owned()],
         ..plan()
     };
+    // The last is out of reach, so an answer paired with the wrong machine
+    // fails another.
     let mut here = Machine {
-        unreached: Some("machine=builder"),
+        unreached: Some("machine=far"),
         ..machine()
     };
 
@@ -236,7 +290,7 @@ fn a_stop_goes_to_every_machine_lacking_it_at_once_so_one_out_of_reach_holds_non
         .collect();
     assert_eq!(
         failed,
-        vec![("mac", false), ("builder", true), ("far", false)],
+        vec![("mac", false), ("builder", false), ("far", true)],
         "each is given it, and only the one out of reach fails: {gives:?}"
     );
     assert_eq!(
@@ -306,6 +360,64 @@ fn a_stop_kept_here_no_longer_is_taken_away_from_each_machine_given_it() {
 }
 
 #[test]
+fn a_stop_is_taken_away_from_every_machine_at_once_and_kept_noted_where_it_failed() {
+    let state = scratch("carry-gone-at-once");
+    let name = "slack-C1-1.000000";
+    keep(&state, name, &heard("slack:C1:1.000000"));
+    let named = Plan {
+        machines: vec!["mac".to_owned(), "builder".to_owned(), "far".to_owned()],
+        ..plan()
+    };
+    let mut here = machine();
+    let mut carrier = Carrier::default();
+    carrier.carry(&named, &state, "here", 0, &mut here);
+    fs::remove_file(state.join(format!("stops/{name}.json"))).expect("forgotten here");
+    // The last one fails, so answers paired in reverse would show.
+    here.unreached = Some("machine=far");
+
+    let (gives, _) = carrier.carry(&named, &state, "here", 10, &mut here);
+
+    let failed: Vec<(&str, bool)> = gives
+        .iter()
+        .map(|one| (one.machine.as_str(), one.failed.is_some()))
+        .collect();
+    assert_eq!(
+        failed,
+        vec![("mac", false), ("builder", false), ("far", true)],
+        "each is given its end, and only the one out of reach fails: {gives:?}"
+    );
+    assert_eq!(
+        here.batches.last(),
+        Some(&3),
+        "in one batch: {:?}",
+        here.batches
+    );
+    let noted = fs::read_to_string(state.join(format!("carried/{name}.json"))).unwrap_or_default();
+    assert!(
+        noted.contains("\"far\"") && !noted.contains("\"mac\"") && !noted.contains("\"builder\""),
+        "only the one still holding it is noted: {noted}"
+    );
+    let asked = here.asked.len();
+    let (early, _) = carrier.carry(&named, &state, "here", 20, &mut here);
+    assert!(
+        early.is_empty(),
+        "none is tried within the minute: {early:?}"
+    );
+    assert_eq!(here.asked.len(), asked, "nor asked: {:?}", here.asked);
+    here.unreached = None;
+    let (later, _) = carrier.carry(&named, &state, "here", 10 + AGAIN_MS, &mut here);
+    assert_eq!(
+        later,
+        vec![gave(name, "far", Gift::Removal)],
+        "after a minute only the one still holding it is asked again"
+    );
+    assert!(
+        !state.join(format!("carried/{name}.json")).exists(),
+        "and nothing is noted as held of it"
+    );
+}
+
+#[test]
 fn a_changed_stop_goes_to_each_machine_holding_it_though_none_is_listed() {
     let state = scratch("carry-changed");
     let mut record = heard("slack:C1:1.000000");
@@ -337,6 +449,191 @@ fn a_changed_stop_goes_to_each_machine_holding_it_though_none_is_listed() {
 }
 
 #[test]
+fn a_machine_gone_an_hour_is_parked_and_given_its_resume_once_listed_again() {
+    let state = scratch("carry-parked");
+    let mut here = machine();
+    let mut carrier = given_mac(&state, &mut here);
+    pineapple::resume::resume(&state.join("stops"), "all", 5, "joel").expect("resumed");
+    here.unreached = Some("machine=mac");
+    // Found gone first in minute 2, once its give failed and none listed it.
+    let parked_at = 2 + GONE_MS / AGAIN_MS;
+
+    let rounds = each_minute(&mut carrier, &state, &mut here, 1..=parked_at, |_| false);
+
+    assert_eq!(
+        when(&rounds, Away::Parked),
+        vec![parked_at],
+        "the Mac is parked once, an hour after it was first found gone"
+    );
+    assert_eq!(
+        runs_on_mac(&here) as u64,
+        1 + parked_at,
+        "and is tried each minute till then: {rounds:?}"
+    );
+    let noted = noted_on_mac(&state);
+    assert!(
+        noted["holds"].is_null() && noted["gone_since"] == json!(2 * AGAIN_MS),
+        "it's noted as gone since then, beside what it may hold: {noted}"
+    );
+
+    let listings = asked_with(&here, "sessions").len();
+    let parked = each_minute(
+        &mut carrier,
+        &state,
+        &mut here,
+        parked_at + 1..=parked_at + 10,
+        |_| false,
+    );
+    assert!(
+        parked.iter().all(|(_, gives)| gives.is_empty()),
+        "once parked, it's given nothing: {parked:?}"
+    );
+    assert_eq!(
+        runs_on_mac(&here) as u64,
+        1 + parked_at,
+        "nor asked: {:?}",
+        here.asked
+    );
+    assert_eq!(
+        asked_with(&here, "sessions").len(),
+        listings + 10,
+        "and mycelium is asked whom it lists once a minute"
+    );
+
+    here.unreached = None;
+    here.unlisted = None;
+    let back = carry(&mut carrier, &state, (parked_at + 11) * AGAIN_MS, &mut here);
+    assert_eq!(
+        back,
+        vec![Carried {
+            away: Some(Away::Back),
+            ..gave(NAME, "mac", Gift::Resume)
+        }],
+        "listed again, it's given its resume at once"
+    );
+    let noted = noted_on_mac(&state);
+    assert!(
+        noted["holds"] == json(&state.join(format!("stops/{NAME}.json")))
+            && noted.get("gone_since").is_none(),
+        "and it's noted as holding the resume, no longer gone: {noted}"
+    );
+}
+
+#[test]
+fn a_machine_listed_while_out_of_reach_is_taken_for_gone_afresh_after() {
+    let state = scratch("carry-listed-between");
+    let mut here = machine();
+    let mut carrier = given_mac(&state, &mut here);
+    pineapple::resume::resume(&state.join("stops"), "all", 5, "joel").expect("resumed");
+    here.unreached = Some("machine=mac");
+    let hour = GONE_MS / AGAIN_MS;
+
+    let rounds = each_minute(&mut carrier, &state, &mut here, 1..=31 + hour, |minute| {
+        minute == 30
+    });
+
+    assert_eq!(
+        when(&rounds, Away::Parked),
+        vec![31 + hour],
+        "listed in minute 30, the Mac is gone only from minute 31, so parked an hour after"
+    );
+}
+
+#[test]
+fn a_machine_gone_is_given_a_stop_standing_for_good() {
+    let state = scratch("carry-standing-gone");
+    keep(&state, NAME, &heard("slack:C1:1.000000"));
+    let mut here = Machine {
+        unreached: Some("machine=mac"),
+        ..machine()
+    };
+    let mut carrier = Carrier::default();
+    let hour = GONE_MS / AGAIN_MS;
+
+    let rounds = each_minute(&mut carrier, &state, &mut here, 0..=hour + 7, |minute| {
+        minute == 0
+    });
+
+    assert!(
+        when(&rounds, Away::Parked).is_empty(),
+        "a stop standing is never parked, since the Mac may come back with agents"
+    );
+    assert_eq!(
+        runs_on_mac(&here) as u64,
+        hour + 8,
+        "so it's tried each minute: {rounds:?}"
+    );
+}
+
+#[test]
+fn a_machine_whose_give_began_there_is_never_taken_for_gone() {
+    let state = scratch("carry-begun-gone");
+    let mut here = machine();
+    let mut carrier = given_mac(&state, &mut here);
+    pineapple::resume::resume(&state.join("stops"), "all", 5, "joel").expect("resumed");
+    here.dropped = Some("machine=mac");
+    let hour = GONE_MS / AGAIN_MS;
+
+    let rounds = each_minute(&mut carrier, &state, &mut here, 1..=hour + 7, |_| false);
+
+    assert!(
+        when(&rounds, Away::Parked).is_empty(),
+        "the Mac began each give, so it's on the mesh, listed or not"
+    );
+    assert_eq!(
+        runs_on_mac(&here) as u64,
+        hour + 8,
+        "so it's tried each minute: {rounds:?}"
+    );
+}
+
+#[test]
+fn a_machine_gone_an_hour_is_given_the_end_of_a_stop_once_listed_again() {
+    let state = scratch("carry-parked-gone");
+    let mut here = machine();
+    let mut carrier = given_mac(&state, &mut here);
+    fs::remove_file(state.join(format!("stops/{NAME}.json"))).expect("forgotten here");
+    here.unreached = Some("machine=mac");
+    let parked_at = 2 + GONE_MS / AGAIN_MS;
+
+    let rounds = each_minute(&mut carrier, &state, &mut here, 1..=parked_at + 10, |_| {
+        false
+    });
+
+    assert_eq!(
+        when(&rounds, Away::Parked),
+        vec![parked_at],
+        "the Mac is parked once, an hour after it was first found gone"
+    );
+    assert_eq!(
+        runs_on_mac(&here) as u64,
+        1 + parked_at,
+        "and isn't asked once parked: {rounds:?}"
+    );
+    assert_eq!(
+        noted_on_mac(&state)["gone_since"],
+        json!(2 * AGAIN_MS),
+        "it's still noted as holding the stop, gone since minute 2"
+    );
+
+    here.unreached = None;
+    here.unlisted = None;
+    let back = carry(&mut carrier, &state, (parked_at + 11) * AGAIN_MS, &mut here);
+    assert_eq!(
+        back,
+        vec![Carried {
+            away: Some(Away::Back),
+            ..gave(NAME, "mac", Gift::Removal)
+        }],
+        "listed again, it's given the stop's end at once"
+    );
+    assert!(
+        !state.join(format!("carried/{NAME}.json")).exists(),
+        "and nothing is noted as held of it"
+    );
+}
+
+#[test]
 fn the_scripts_write_the_record_whole_under_its_name_there_and_drop_only_a_copy() {
     let home = scratch("carry-script");
     // Kept apart from the stop of the same message, as one read from an
@@ -349,7 +646,7 @@ fn the_scripts_write_the_record_whole_under_its_name_there_and_drop_only_a_copy(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let ran = std::process::Command::new("sh")
             .arg("-c")
-            .arg(script)
+            .arg(at_home(&home, &script))
             .env("HOME", &home)
             .env_remove("XDG_STATE_HOME")
             .output()
