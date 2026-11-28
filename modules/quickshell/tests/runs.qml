@@ -10,7 +10,9 @@
 // it, and Return goes to its window; stepping in lists its participants,
 // and one with an answer opens it in a terminal; while the screen is
 // shared no amount shows; and typing finds a run by the change or its id,
-// typing on looking through only what the letters before it matched.
+// typing on looking through only what the letters before it matched; and
+// a row is keyed as its record is, but never as one of the launcher's own
+// kinds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -263,6 +265,19 @@ ShellRoot {
             const inherited = runs.everything();
             expect("a round named constructor is a review",
                 names(inherited) === "review on core.nix#382", names(inherited));
+
+            // A run's row is keyed as its record is, but never as one of the
+            // launcher's own kinds, which the journal says whole as its ids
+            // (Presented.keyServed), while the run read keeps the node's key.
+            expect("a run's row keyed as its record is",
+                inherited[0].key === "run:review.constructor-1", inherited[0].key);
+            runs.records = [{ key: "place:emoji", kind: "run", id: "fleet.claims",
+                about: "claims", parent: "s-gone", state: "done" }];
+            const claiming = runs.everything()[0];
+            expect("but one claiming a place is kept under the node's row:",
+                claiming.key === "row:place:emoji", claiming.key);
+            expect("while the run keeps the node's own key", runs.runs[0].key === "place:emoji",
+                runs.runs[0].key);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

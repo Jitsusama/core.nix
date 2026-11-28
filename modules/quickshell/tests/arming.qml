@@ -68,14 +68,30 @@ QtObject {
             presses([{ id: "reboot", keys: 5, at: 0 }, { id: "reboot", keys: 6, at: 100 },
                 { id: "reboot", keys: 7, at: 2000 }]),
             "armed  ends | not");
+        // The wait is the doubled press's whole while: one a millisecond
+        // inside it does nothing, and one exactly at it does it.
+        expect("a Return just inside the wait does nothing, and one at it does it",
+            [299, 300].map(second => presses([{ id: "reboot", keys: 5, at: 0 },
+                { id: "reboot", keys: 6, at: second }])).join(", "),
+            "armed  | armed, armed ends | not");
         // A second press whose time can't be told from the arming's, as one
-        // not a number, or an arming at none, is held as doubled, so a slip
-        // there never ends the session.
-        expect("a second press timed at no number, or after an arming at none, does nothing",
-            [[0, NaN], [NaN, 2000], [0, undefined]].map(([first, second]) =>
-                presses([{ id: "reboot", keys: 5, at: first },
-                    { id: "reboot", keys: 6, at: second }])).join(", "),
-            "armed  | armed, armed  | armed, armed  | armed");
+        // not a number, is held as doubled, so a slip there never ends the
+        // session; nor does a press after an arming at none, which arms the
+        // row afresh at its own time, so a deliberate press after it can.
+        expect("a second press timed at no number does nothing",
+            [NaN, undefined].map(second => presses([{ id: "reboot", keys: 5, at: 0 },
+                { id: "reboot", keys: 6, at: second }])).join(", "),
+            "armed  | armed, armed  | armed");
+        expect("a press after an arming at no number arms it afresh, and the next does it",
+            presses([{ id: "reboot", keys: 5, at: NaN }, { id: "reboot", keys: 6, at: 2000 },
+                { id: "reboot", keys: 7, at: 2100 }, { id: "reboot", keys: 8, at: 4000 }]),
+            "armed armed  ends | not");
+        // The one doubled rule a landing's and a line's Returns are held by
+        // too, so the three never tell a time that's no number apart.
+        expect("a press within the wait, or at no number either side, is doubled",
+            [[100, 0], [299, 0], [300, 0], [2000, 0], [NaN, 0], [2000, NaN], [undefined, 0]]
+                .map(([at, since]) => Arming.doubled(at, since, wait)).join(" "),
+            "true true false false true true true");
         // A click counts no key, so a click on the row a Return armed does
         // it, and a second click does what a second Return does.
         expect("a click after a Return does it",

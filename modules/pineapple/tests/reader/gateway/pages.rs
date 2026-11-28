@@ -338,10 +338,10 @@ fn a_page_unanswered_ten_rounds_in_a_row_is_a_gap_while_the_pages_before_it_are_
     // A second write of the same span would fold into the one row, so it's
     // the journal that says the row was written once. It counts every
     // write of the tag search's row, whole or in parts: one meeting
-    // another comes out whole where no read stretch lies between them, and
-    // in parts where one does. The case ends at the next round's first
-    // search, past the read on, so a write later in that round may land
-    // after it and go uncounted.
+    // another comes out whole only where each was whole and no read stretch
+    // lies between them. The case ends once the harness sees the next
+    // round's first search, past the read on, so a write later in that
+    // round may land after it and go uncounted.
     let written = came
         .journal
         .lines()

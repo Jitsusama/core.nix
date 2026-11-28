@@ -32,7 +32,9 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 /// Each builder the answer names, worst first, then by name, with the
 /// words for a side of what in it is worth a look. None where the answer
 /// names none: one from a node too old to say them, or one that couldn't
-/// read them, since the node then writes no builders' line at all.
+/// read them, since the node then writes no builders' line at all. Two
+/// builders whose names are drawn alike are one to the reader and one
+/// record, so only the worse is kept: a fine one never hides a failing one.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
@@ -40,6 +42,8 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
         .map(|all| all.iter().filter_map(builder).collect())
         .unwrap_or_default();
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let mut named = std::collections::HashSet::new();
+    read.retain(|(thing, _)| named.insert(thing.name.clone()));
     read
 }
 
@@ -55,14 +59,20 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// lender's word this build doesn't know is worth a look, said in the
 /// node's own words, rather than passed as good: it may be a way of not
 /// building that this build was never told of. A look carries the node's
-/// reason whole, since what to do about a builder is in it.
+/// reason whole, since what to do about a builder is in it. Its name is
+/// made plain as any text the system shows, and a state or lender's word is
+/// matched once plain, so padding never turns a known word into a look.
 fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
-    let name = said.get("name").and_then(Value::as_str)?.trim();
+    let name = crate::plain::words(said.get("name").and_then(Value::as_str)?);
     if name.is_empty() {
         return None;
     }
     let word = |key: &str| said.get(key).and_then(Value::as_str);
-    let proof = word("said").filter(|said| PROOFS.contains(said));
+    // A word as it reads, its hidden characters and padding gone.
+    let drawn = |word: &str| crate::plain::words(word).trim().to_owned();
+    let proof = word("said")
+        .map(drawn)
+        .filter(|said| PROOFS.contains(&said.as_str()));
     let why = word("said").filter(|_| proof.is_none()).and_then(plain);
     let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
@@ -79,17 +89,18 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     // state this build knows, so it fails closed as one; only a state the node
     // left out is unheard.
     let state = match said.get("state") {
-        None | Some(Value::Null) => "unknown",
+        None | Some(Value::Null) => "unknown".to_owned(),
         Some(state) => state
             .as_str()
+            .map(drawn)
             .filter(|state| plain(state).is_some())
-            .unwrap_or("unreadable"),
+            .unwrap_or_else(|| "unreadable".to_owned()),
     };
-    let (health, says, look) = match state {
+    let (health, says, look) = match state.as_str() {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
         "running" => match &why {
             Some(why) => unknown(format!("runs, its lender saying {why}")),
-            None => running(lent, &takes, proof),
+            None => running(lent, &takes, proof.as_deref()),
         },
         "not running" => (
             Health::Good,
@@ -109,7 +120,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     let looks: Vec<String> = look.iter().map(|_| says.clone()).collect();
     let thing = Thing {
         kind: "builder",
-        name: name.to_owned(),
+        name,
         health,
         says,
         looks: look
@@ -395,5 +406,72 @@ mod tests {
             builders(&json!({ "Ok": { "Machines": [] } })).is_empty(),
             "an answer naming no builders has none"
         );
+    }
+
+    #[test]
+    fn a_name_a_state_and_a_lender_s_word_are_read_as_plain_words() {
+        let said = read(&json!([
+            { "name": "os\u{202e}prey\u{1b}[31m", "state": " answering " },
+            { "name": " kite\u{200b}", "state": "running\n", "lent": true,
+              "said": " passing " },
+            { "name": "\u{200b}\u{1b}[0m", "state": "running" },
+        ]));
+        let named: Vec<(&str, &str)> = said
+            .iter()
+            .map(|(name, _, says, _)| (name.as_str(), says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", "is lent and takes builds"),
+                ("osprey", "answers and takes builds"),
+            ],
+            "a name is shown as plain words, with none left a builder without one, and a padded \
+             state or lender's word is the word this build knows"
+        );
+        assert!(
+            said.iter().all(|(_, health, _, _)| *health == Health::Good),
+            "no padded known word is worth a look: {said:?}"
+        );
+    }
+
+    #[test]
+    fn a_known_word_with_hidden_characters_in_it_is_still_that_word() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "\u{200b}answer\u{1b}[0ming" },
+            { "name": "kite", "state": "run\u{200b}ning", "lent": true,
+              "said": "pass\u{2060}ing" },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", Health::Good, "is lent and takes builds"),
+                ("osprey", Health::Good, "answers and takes builds"),
+            ],
+            "a state or lender's word is matched as it reads, its hidden characters gone"
+        );
+    }
+
+    #[test]
+    fn builders_whose_names_read_alike_are_one_said_at_its_worst() {
+        let failing = json!({ "name": "kite\u{200b}", "state": "not answering" });
+        let fine = json!({ "name": "kite", "state": "answering" });
+        for builders in [json!([failing, fine]), json!([fine, failing])] {
+            let said = read(&builders);
+            let named: Vec<(&str, Health)> = said
+                .iter()
+                .map(|(name, health, _, _)| (name.as_str(), *health))
+                .collect();
+            assert_eq!(
+                named,
+                vec![("kite", Health::Watch)],
+                "two builders drawn as one name are one, and a fine one never hides a failing \
+                 one: {builders}"
+            );
+        }
     }
 }

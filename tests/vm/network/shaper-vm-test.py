@@ -731,7 +731,7 @@ def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
 
 def test_route_moves(on_eth2: Connection) -> None:
     """The queues follow the default route to another link."""
-    assert not on_eth2.shaped("eth1")
+    assert not on_eth2.shaped("eth1"), f"eth1 kept its lanes: {on_eth2.qdiscs('eth1')}"
     on_eth2.client.succeed(f"! ip link show {on_eth2.ifb('eth1')}")
     on_eth2.lands("bulk", "jobs.slice", on_eth2.upload, dev="eth2")
 
@@ -762,7 +762,7 @@ def test_replug(replugged: Replugged) -> None:
     connection.client.wait_until_succeeds(
         f"tc -j qdisc show dev {replugged.plugged_ifb} | grep -q cake", timeout=SHAPING
     )
-    assert connection.shaped("eth2")
+    assert connection.shaped("eth2"), f"eth2 came back unshaped: {connection.qdiscs('eth2')}"
     connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q eth2", timeout=SHAPING
     )
@@ -832,7 +832,7 @@ def test_stopping(on_eth2: Connection) -> None:
     assert status != 0, said
     client.succeed("systemctl is-active shaper.service")
     client.succeed("runuser -u bob -- systemctl stop shaper.service")
-    assert not on_eth2.shaped("eth2")
+    assert not on_eth2.shaped("eth2"), f"the stop left eth2 its lanes: {on_eth2.qdiscs('eth2')}"
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")

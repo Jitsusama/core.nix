@@ -5,7 +5,7 @@
 //! it started, which ends at once when told to.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -56,9 +56,12 @@ impl StandIn {
                 folder.display()
             );
         }
-        // Made afresh, so a folder planted there fails the test rather
-        // than hold the stand-ins it runs.
-        fs::create_dir(&folder)
+        // Made afresh, and only this user's, so anything made or planted
+        // there since it was cleared fails the test rather than hold the
+        // stand-ins it runs.
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&folder)
             .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         let stand_in = Self { folder };
         for (name, script) in [
@@ -144,6 +147,12 @@ impl StandIn {
             .nth(2)
             .expect("the preview's folder")
             .to_path_buf()
+    }
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.folder);
     }
 }
 

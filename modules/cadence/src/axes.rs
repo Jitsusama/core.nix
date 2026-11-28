@@ -15,6 +15,7 @@
 //! guesses from docs/delivery.md and the research behind this view
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
+mod asked;
 mod asks;
 mod counted;
 mod faults;
@@ -26,6 +27,7 @@ mod messages;
 mod network;
 mod open;
 pub(crate) mod plans;
+mod probes;
 mod readings;
 pub(crate) mod repository;
 mod responds;
@@ -44,12 +46,16 @@ use terminal_kit::{Exit, Failure};
 use crate::{failed, folders, now_ms, wrongly};
 use readings::{gather, read};
 
-/// `cadence axes [AXIS | --served WORDS]`: prints the ten axes, or the one
-/// named, or Spec's rows (spec.rs), drawn with the kit's `pen`.
+/// `cadence axes [AXIS | --served WORDS | --asked WORDS]`: prints the ten
+/// axes, or the one named, or Spec's rows (spec.rs), or What You Asked
+/// For's (asked.rs), drawn with the kit's `pen`.
 pub fn run(mut args: impl Iterator<Item = String>, pen: &Pen) -> Result<(), Failure> {
     let asked = args.next();
     if asked.as_deref() == Some("--served") {
         return spec::run(args);
+    }
+    if asked.as_deref() == Some("--asked") {
+        return asked::run(args);
     }
     if args.next().is_some() {
         return Err(wrongly("axes", "cadence axes takes one axis at most"));
