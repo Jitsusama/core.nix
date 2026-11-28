@@ -560,6 +560,47 @@ fn a_keep_past_a_record_evaluates_only_the_checks_main_reached_and_carries_the_r
         said.contains("carries from 9876543210fe, the first keep in a row to"),
         "the keep didn't say it carried: {said}"
     );
+    assert!(
+        !stand_in.path(BASE_TREE).exists(),
+        "a keep that carried kept its derivations by their tree as a correction"
+    );
+}
+
+/// Where the stand-in's base keeps its derivations by its tree, which git
+/// gives as `tree-of-<commit>`.
+const BASE_TREE: &str = concat!(
+    "cache/changed-checks/trees/",
+    "tree-of-0123456789abcdef0123-x86_64-linux.json"
+);
+
+/// What a gate's carry kept: b at another derivation than the base's.
+const GATE_KEPT: &str = r#"{"a": "a.drv", "b": "b7.drv", "gone": "g.drv", "vm-x": "v.drv"}"#;
+
+#[test]
+fn a_keep_that_finds_its_base_kept_by_its_tree_counts_a_carry_and_leaves_the_tree() {
+    // What a tree kept may have been carried, by a gate's run past its
+    // record, so a keep taking it evaluated nothing and corrects nothing.
+    let stand_in = traced_alone("keep-seeded");
+    fs::create_dir_all(stand_in.path("cache/changed-checks/trees")).expect("made");
+    fs::write(stand_in.path(BASE_TREE), GATE_KEPT).expect("kept as a gate's tree would");
+
+    let (run, _) = kept_now(&stand_in);
+
+    assert_eq!(
+        chunks_of(&run, "base"),
+        None,
+        "a keep evaluated a base its tree kept: {run}"
+    );
+    assert_eq!(
+        alone_record(&stand_in, ALONE)["carried"],
+        1,
+        "a keep counted what its tree kept as evaluated whole"
+    );
+    assert_eq!(
+        fs::read_to_string(stand_in.path(BASE_TREE)).expect("kept"),
+        GATE_KEPT,
+        "a keep that evaluated nothing rewrote what its tree kept"
+    );
 }
 
 /// Assert a keep past `stand_in`'s record evaluated the base whole and
@@ -605,22 +646,27 @@ fn a_keep_evaluates_whole_once_six_keeps_in_a_row_carried_though_a_gate_kept_its
     // but a gate had kept each base first, so they evaluated nothing and
     // counted a seventh and an eighth carry.
     let stand_in = past_a_carry("carry-six-gated", 6, std::time::Duration::ZERO);
-    fs::create_dir_all(stand_in.path("cache/changed-checks")).expect("made");
-    fs::write(
-        stand_in.path(KEPT),
-        r#"{"a": "a.drv", "b": "b7.drv", "gone": "g.drv", "vm-x": "v.drv"}"#,
-    )
-    .expect("kept as a gate would");
+    fs::create_dir_all(stand_in.path("cache/changed-checks/trees")).expect("made");
+    fs::write(stand_in.path(KEPT), GATE_KEPT).expect("kept as a gate would");
+    fs::write(stand_in.path(BASE_TREE), GATE_KEPT).expect("kept by its tree as a gate would");
 
     assert_kept_whole(
         &stand_in,
-        "evaluated whole at 0123456789ab, x86_64-linux's b came to other derivations than a \
-         gate kept",
+        "evaluated whole at 0123456789ab, x86_64-linux's b came to other derivations than \
+         were kept before",
     );
+    let base = serde_json::from_str::<serde_json::Value>(BASE).expect("JSON");
     assert_eq!(
         kept_derivations(&stand_in),
-        serde_json::from_str::<serde_json::Value>(BASE).expect("JSON"),
+        base,
         "a whole keep left what a gate kept in place of what it evaluated"
+    );
+    let by_tree: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(stand_in.path(BASE_TREE)).expect("kept"))
+            .expect("JSON");
+    assert_eq!(
+        by_tree, base,
+        "a whole keep left what a gate kept by the tree in place of what it evaluated"
     );
 }
 
