@@ -63,7 +63,7 @@ pub enum Ask {
         done: oneshot::Sender<Result<(), Refused>>,
     },
     /// Moving the card on an access point's network to it, by the access
-    /// point's address, as 02:00:00:00:a4:00.
+    /// point's address, as 00:00:5e:00:53:01.
     Roam {
         bssid: String,
         done: oneshot::Sender<Result<(), Refused>>,
