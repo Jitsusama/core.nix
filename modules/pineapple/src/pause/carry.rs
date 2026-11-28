@@ -16,10 +16,11 @@
 //! once the answer could be, is taken away from each machine given it.
 //! The machines lacking a stop are given it sixteen at a time
 //! (src/pause/system.rs), so one that doesn't answer holds none of its
-//! lot up past their limit, and a later lot up by that limit at most. A
-//! machine that couldn't take what
-//! it was given is tried again after a minute, never sooner, for every
-//! stop at once, so one out of reach costs a run a minute.
+//! lot up past their limit; as each lot's limit runs from its own start,
+//! the nth lot may end up to n times the limit after the first began. A
+//! machine that couldn't take what it was given is tried again after a
+//! minute, never sooner, for every stop at once, so one out of reach costs
+//! a run a minute.
 //!
 //! A stop is kept there under the same file name as here, never its id:
 //! a stop read from an answer that couldn't be read is kept apart from
