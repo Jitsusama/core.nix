@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, TypeGuard
 
 import launcher_on_niri
 import pytest
-from launcher_on_niri import placed
+from launcher_on_niri import layout_now, placed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1857,12 +1857,6 @@ def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
         # Closed even on a failure, so the cases after start with no float over the columns.
         for window in (floated, beside):
             shell.close(window)
-
-
-def layout_now(shell: Shell, window: Json) -> Json:
-    """Give where niri lays this window out now, its target as it slides there."""
-    layout: Json = next(one for one in shell.windows() if one["id"] == window["id"])["layout"]
-    return layout
 
 
 def laid_out(shell: Shell, window: Json) -> Json:

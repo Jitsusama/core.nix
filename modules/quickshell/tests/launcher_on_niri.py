@@ -812,6 +812,14 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
+def layout_now(shell: Shell, window: Json) -> Json:
+    """Give where niri lays this window out now, its target as it slides there.
+
+    Both of the cat's tests on niri read it, to say where its window is going.
+    """
+    return cast("Json", next(one for one in shell.windows() if one["id"] == window["id"])["layout"])
+
+
 def logged_since(shell: Shell, mark: int) -> str:
     """Give what the shell's log says since the mark, whole lines only.
 
