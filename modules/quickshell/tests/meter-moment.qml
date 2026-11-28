@@ -12,12 +12,17 @@ Item {
     // A tenth of a meter's: 150 ms once seen, and 1 s at most.
     readonly property int lasts: 150
     readonly property int atMost: 1000
-    // How far before its time a spending may come, as Qt's coarse timers may
-    // fire up to 5% early, and how far after. A busy builder's timers fire
-    // late by however long its thread is held, as the first case's did by
-    // 68 ms (2026-11-27), so late gets more room. Every wrong spending a case
-    // guards against comes earlier, or at the 1 s cap well past this, and each
-    // case's span outlasts its time and the late room both.
+    // How far before its time a spending may come, and how far after. A QML
+    // Timer is stepped by the animation driver's ticks, about 16 ms apart
+    // offscreen, and starts from the last one, so it can end up to a tick
+    // early by the wall clock this reads. A busy builder's timers fire late
+    // by however long its thread is held, as the first case's did by 68 ms
+    // (2026-11-27), so late gets more room. That room would pass a meter
+    // lasting up to 400 ms rather than 150, but no case guards against that:
+    // each wrong rule they do guard against (timed from showing or the
+    // change, never restarted, kept seen once hidden) spends 100 ms or more
+    // earlier than right, or at the 1 s cap, at least 100 ms past the late
+    // room. Each case's span outlasts its time and the late room both.
     readonly property int early: 60
     readonly property int late: 250
 
