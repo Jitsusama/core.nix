@@ -120,8 +120,9 @@ const NEAR: usize = 11;
 /// cutting them took his side from 19.0% of its words wrong to 14.4%.
 /// Inside their lines the same rule cut his own words where both speak at
 /// once, raising his side of the meetings with no echo from 12.0% to
-/// 12.9%, so it holds only outside them. There it took his echoed side to
-/// 18.0% and left the meetings with no echo as they were.
+/// 12.9%, so it holds only outside them. There, before his voice was
+/// asked, it took his echoed side to 18.0% and left the meetings with no
+/// echo as they were.
 /// Inside their lines it also cuts a word with no word of theirs within
 /// `LAG` either side, where their model heard no words in their sound,
 /// and there it doesn't ask his voice, since that echo is no quieter
