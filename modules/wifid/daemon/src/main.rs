@@ -3754,8 +3754,15 @@ impl Wifid<'_> {
                 .borrow_mut()
                 .heeded(card, from, &followed, until);
             if let (Some(lasts), Some(until)) = (lasts, until) {
+                let heeding = followed.moves().then_some(now.0);
+                // Only a warned move of wifid's under way, `leaving`, is
+                // waited on past a heed left to wpa_supplicant.
                 change(self.state, |state| {
-                    state.warned_off(card, from, (now.0, until));
+                    if heeding.is_none() && leaving {
+                        state.warned_again(card, from, until);
+                    } else {
+                        state.warned_off(card, from, (heeding, until));
+                    }
                 });
                 if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
                     eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");

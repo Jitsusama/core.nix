@@ -1,10 +1,10 @@
 """The Wi-Fi test's moves area.
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
-another when an account asks, keeping its neighbours, to another when its point warns it drops the
-card, looking first for one it doesn't hear and ending a look under way, free of its point when
-the whole network drops it, and free of both when that other doesn't answer, to another at once
-when its echoes are lost during a call, back to the one it left when the one it was asked to has
+another when an account asks, keeping its neighbours, to another at once when its echoes are lost
+during a call, to another when its point warns it drops the card, looking first for one it doesn't
+hear and ending a look under way, free of its point when the whole network drops it, and free of
+both when that other doesn't answer, back to the one it left when the one it was asked to has
 gone, and free to join any network when it can't get back either; a network of another name
 forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
@@ -399,8 +399,10 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
             timeout=timedelta(seconds=30),
         )
     finally:
-        # Its caller undoes the loss and the call, whatever fails here.
-        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{quiet}'"))
+        # Its caller undoes the loss and the call, whatever fails here. Read without failing,
+        # so a journal that can't be read never hides why the give-way failed.
+        _, journal = machine.execute(f"journalctl -o short-precise --after-cursor='{quiet}'")
+        machine.log(journal)
 
 
 # The eero asked the laptop to move 27 times from 15 to 20 Nov 2026, and wpa_supplicant said what

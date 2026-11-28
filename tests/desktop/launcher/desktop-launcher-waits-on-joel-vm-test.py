@@ -263,8 +263,12 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert named in first, first
 
 
-def testqc_gone(desktop: Desktop, title: str) -> None:
+def end_testqc(desktop: Desktop, title: str) -> None:
     """End TESTQC's session, its presence first, whatever the case it served left.
+
+    Its name doesn't start with test, since pytest collects any function
+    that does as a case of its own and errors on its title, which no
+    fixture gives.
 
     Nothing here reads the launcher, which can be what failed: the area's
     launcher_closed_after closes it without asking it, and a read that raised
@@ -307,7 +311,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
         )
         desktop.shoot("launcher-home-agents", ticking=NOWS_CLOCK)
     finally:
-        testqc_gone(desktop, long)
+        end_testqc(desktop, long)
 
 
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
@@ -449,7 +453,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     try:
         holds_still()
     finally:
-        testqc_gone(desktop, long)
+        end_testqc(desktop, long)
 
 
 # Each quest keeps what only Joel can do in a file of its own, written by
