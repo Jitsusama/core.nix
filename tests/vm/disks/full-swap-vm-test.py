@@ -36,7 +36,7 @@ def test_swap_goes_through_a_compressed_pool_held_to_a_fifth(watched: BaseMachin
         "cd /sys/module/zswap/parameters"
         " && cat enabled compressor max_pool_percent shrinker_enabled"
     ).split()
-    assert settings == ["Y", "zstd", "20", "Y"]
+    assert settings == ["Y", "zstd", "20", "Y"], f"zswap's settings read {settings}"
     assert "zram" not in watched.succeed("cat /proc/swaps")
 
 
