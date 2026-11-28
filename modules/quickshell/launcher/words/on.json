@@ -707,6 +707,11 @@
       }
     },
     {
+      "id": "on:waiting:history:looks",
+      "in": "on:waiting:history",
+      "name": "Looks"
+    },
+    {
       "id": "on:moved",
       "in": "on",
       "name": "What Moved",

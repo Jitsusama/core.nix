@@ -304,7 +304,10 @@ mod tests {
         let mut watch = Watch::default();
         let now = Instant::now();
         assert_eq!(watch.heard(OTHER, now, || false), None);
-        assert!(!watch.begun, "another writer began the last stage");
+        assert!(
+            !watch.begun,
+            "another writer's line shouldn't begin the last stage"
+        );
         assert_eq!(watch.heard(SYNCING, now, || false), Some(Word::Forced));
     }
 

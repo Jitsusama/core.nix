@@ -15,8 +15,38 @@ use crate::choose::{self, Against, Choice, Chooser, Other};
 use crate::fading::{self, Giving, Way, Why};
 use crate::learn::Learned;
 use crate::measure::{self, Measured, Measures};
-use crate::service::Ask;
+use crate::service::{Ask, Refused};
 use crate::state::{Joined, State};
+
+/// What comes back to the measuring loop (measure.rs) of a look or a
+/// move a card's chooser asked for. Each move answers once, named by the
+/// instant it was `asked` at, which its chooser began the give-way or
+/// trial at, so an answer to an earlier move to the same point can't be
+/// taken for a later one's.
+#[derive(Debug, PartialEq)]
+pub enum Back {
+    /// The card's look ended in time for it to be chosen for again.
+    Looked(String),
+    /// The card's move to `to` began, or was refused as out of reach
+    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
+    /// the move was asked, even after a look. Its chooser follows the move
+    /// as one that may never get there (`Chooser::answered`).
+    Answered {
+        card: String,
+        to: String,
+        asked: Instant,
+    },
+    /// The card's move to `to` was refused before it began: another move
+    /// was under way, the card was off its network, or wpa_supplicant
+    /// failed. Its chooser takes the move as never asked
+    /// (`Chooser::refused`), rather than as one that never got there,
+    /// which would keep `to` off an hour for wifid's own refusal.
+    Refused {
+        card: String,
+        to: String,
+        asked: Instant,
+    },
+}
 
 /// Where what's known of an access point comes from, said with each move
 /// so a move made on what was learned can be told from one made on what
@@ -27,6 +57,9 @@ enum Whence {
     Lately,
     /// Learned at this hour, heard about as loud.
     Learned,
+    /// Learned at this hour and the hour just gone, heard about as loud,
+    /// as the card was on it within the hour (`Learned::just_left`).
+    JustLeft,
     /// Learned while the card brought a download down, heard about as
     /// loud.
     Loaded,
@@ -45,8 +78,10 @@ struct Asked {
 /// What's known of how an access point carries from here, as loaded as
 /// the card is now, so the chooser weighs like with like: what it carried
 /// in the span, else what it's learned to carry under load, loaded, or at
-/// this hour, not. For the card's own point, what's learned alone, as
-/// what it usually carries. Under load, one learned to carry badly idle
+/// this hour, not, or for another the card was on within the hour, at this
+/// hour and the one before, so a point just left isn't tried as untried.
+/// For the card's own point, what's learned at this hour alone, as what
+/// it usually carries. Under load, one learned to carry badly idle
 /// and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
 /// The card's own is too, where slow, so a download queued on it weighs
@@ -66,10 +101,20 @@ fn known<'a>(
             .of(point, now)
             .filter(|measured| !own && choose::loaded(measured) == loaded)
             .map(|measured| (measured, Whence::Lately));
+        // The card's own point is weighed by its own span, and by what it
+        // usually carries at this hour alone, so only another is known by
+        // the hour just gone: by this hour alone, on 27 Nov 2026 a point
+        // the card had left 26 minutes before read as untried
+        // (`Learned::just_left`).
         let idle = || {
             learned
                 .of(point, hour, signal)
                 .map(|measured| (measured, Whence::Learned))
+                .or_else(|| {
+                    let left = learned.just_left(point, hour, signal, now);
+                    left.filter(|_| !own)
+                        .map(|measured| (measured, Whence::JustLeft))
+                })
         };
         lately.or_else(|| {
             if loaded {
@@ -105,10 +150,10 @@ pub fn choose(
     (now, hour): (Instant, u8),
     (on, measured): (&Joined, &Measured),
     (lately, learned): (&Measures, &Learned),
-    (asks, air, looked): (
+    (asks, air, back): (
         &mpsc::Sender<Ask>,
         &watch::Receiver<State>,
-        &mpsc::Sender<String>,
+        &mpsc::Sender<Back>,
     ),
     call: bool,
 ) {
@@ -119,13 +164,29 @@ pub fn choose(
         (air.around_to_choose(&on.card, now), warned)
     };
     let choosable = (&*around, warned.as_deref());
-    match chosen(chooser, now, (on, measured), choosable, &known, call) {
+    let next = chosen(chooser, now, (on, measured), choosable, &known, call);
+    go(next, now, &on.card, (asks, air, back));
+}
+
+/// Has a card do what its chooser chose next at `asked`, apart from the
+/// measuring loop, which hears back how a look or a move came out.
+fn go(
+    next: Option<Next>,
+    asked: Instant,
+    card: &str,
+    (asks, air, back): (
+        &mpsc::Sender<Ask>,
+        &watch::Receiver<State>,
+        &mpsc::Sender<Back>,
+    ),
+) {
+    let (asks, air, back, card) = (asks.clone(), air.clone(), back.clone(), card.to_owned());
+    match next {
         Some(Next::Move(to)) => {
-            tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
+            tokio::spawn(roam((asks, air), card, (to, asked), back));
         }
         Some(Next::Look) => {
-            let card = on.card.clone();
-            tokio::spawn(look(asks.clone(), air.clone(), card, looked.clone()));
+            tokio::spawn(look(asks, air, card, back));
         }
         None => {}
     }
@@ -141,24 +202,15 @@ pub fn give_way(
     now: Instant,
     on: &Joined,
     lately: &Measures,
-    (asks, air, looked): (
+    (asks, air, back): (
         &mpsc::Sender<Ask>,
         &watch::Receiver<State>,
-        &mpsc::Sender<String>,
+        &mpsc::Sender<Back>,
     ),
 ) {
     let measured = lately.lately(&on.point, now, fading::WINDOW);
     let next = given_hearing(chooser, now, on, &air.borrow(), measured);
-    match next {
-        Some(Next::Move(to)) => {
-            tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
-        }
-        Some(Next::Look) => {
-            let card = on.card.clone();
-            tokio::spawn(look(asks.clone(), air.clone(), card, looked.clone()));
-        }
-        None => {}
-    }
+    go(next, now, &on.card, (asks, air, back));
 }
 
 /// Where a card on a call goes next, as `given` says, from what it hears
@@ -189,8 +241,8 @@ fn given_hearing(
 
 /// Where a card on a call goes next from a link fading as `measured` says
 /// (echoes lost lately, and its signal), and says why: to another access
-/// point it gives way to, or a look where it hears none worth it, once
-/// each `fading::LOOKS`. Its last give-way is followed first, so one never
+/// point it gives way to, or a look where it loses echoes and hears none
+/// worth it, once each `fading::LOOKS`. Its last give-way is followed first, so one never
 /// reached is kept off and said.
 fn given(
     chooser: &mut Chooser,
@@ -203,11 +255,15 @@ fn given(
     if let Some((unreached, lasts)) = chooser.unreached() {
         println!("<6>{}", kept_off(on, &unreached, lasts));
     }
-    if !chooser.may_give_way(now) {
+    if chooser.began_holding() {
+        println!("<6>{}", holding(on));
+    }
+    let gone = measured.0 >= fading::GONE;
+    if !chooser.may_give_way(now, gone) {
         return None;
     }
-    let kept_off = |point: &str| chooser.call_keeps_off(point, now);
-    let way = fading::giving_way(&on.point, measured, around, kept_off);
+    let kept_off = |point: &str| chooser.call_keeps_off(point, now, gone);
+    let way = fading::giving_way((&on.point, on.security), measured, around, kept_off);
     // Losing on the point it gave way to for loss, as on the one it left,
     // the card holds and looks for no other: no move escapes the network's
     // own loss, and each takes the call off its link a while.
@@ -241,8 +297,11 @@ fn given(
             chooser.stranded(false);
             Some(Next::Move(giving.to))
         }
+        // Only a losing link looks: a look takes the card off its channel
+        // 5 to 6 s, which a faint link still carrying the call would
+        // lose in echoes it otherwise kept, each `fading::LOOKS`.
         Way::Nowhere(why) => {
-            if chooser.looks_in_call(now) {
+            if matches!(why, Why::Lossy(_)) && chooser.looks_in_call(now) {
                 println!(
                     "<6>{} looks for an access point to give way to, as {}",
                     on.card,
@@ -252,15 +311,44 @@ fn given(
                 return Some(Next::Look);
             }
             if chooser.stranded(true) {
-                println!(
-                    "<6>{} is fading during a call, as {}, and hears nowhere to give way to",
-                    on.card,
-                    fading_as(on, &why)
-                );
+                let kept: Vec<&str> = around
+                    .iter()
+                    .map(|heard| heard.bssid.as_str())
+                    .filter(|point| *point != on.point && chooser.call_keeps_off(point, now, gone))
+                    .collect();
+                println!("<6>{}", stranded(on, &why, &kept));
             }
             None
         }
     }
+}
+
+/// That a card on a call holds its give-ways a settle, as a second within
+/// the hour never got there, which otherwise reads as a call left losing
+/// with nothing said of why.
+fn holding(on: &Joined) -> String {
+    format!(
+        "{} gives way during a call only once its link is gone for {} minutes, as a second \
+         give-way within an hour never got there",
+        on.card,
+        choose::SETTLE.as_secs() / 60
+    )
+}
+
+/// That a card on a call is fading with nowhere to give way to, naming
+/// what it hears but keeps off, so a keep-off that strands a call is
+/// seen in the journal.
+fn stranded(on: &Joined, why: &Why, kept: &[&str]) -> String {
+    let keeping = if kept.is_empty() {
+        String::new()
+    } else {
+        format!(", keeping off {}", kept.join(", "))
+    };
+    format!(
+        "{} is fading during a call, as {}, and hears nowhere to give way to{keeping}",
+        on.card,
+        fading_as(on, why)
+    )
 }
 
 /// Why a card on a call gives way to another access point.
@@ -413,13 +501,13 @@ async fn look(
     asks: mpsc::Sender<Ask>,
     air: watch::Receiver<State>,
     card: String,
-    looked: mpsc::Sender<String>,
+    back: mpsc::Sender<Back>,
 ) {
     match acts::look(&asks, air).await {
         // Wifid stopping is the only way the channel closes, so a card
         // not handed back then has nothing to be chosen for.
         Ok(true) => {
-            let _ = looked.send(card).await;
+            let _ = back.send(Back::Looked(card)).await;
         }
         Ok(false) => println!("<6>{card}'s look didn't end in time to choose again at once"),
         Err(refused) => {
@@ -428,12 +516,28 @@ async fn look(
     }
 }
 
-/// Moves a card to the access point chosen as the roam act does, looking
-/// for it first where it's gone unheard.
-async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String, to: String) {
-    if let Err(refused) = acts::roam(&asks, air, &to).await {
-        eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
-    }
+/// Moves a card to the access point chosen at `asked` as the roam act
+/// does, looking for it first where it's gone unheard, and hands back how
+/// the move came out, as `Back` says.
+async fn roam(
+    (asks, air): (mpsc::Sender<Ask>, watch::Receiver<State>),
+    card: String,
+    (to, asked): (String, Instant),
+    back: mpsc::Sender<Back>,
+) {
+    let answer = match acts::roam(&asks, air, &to).await {
+        Ok(()) => Back::Answered { card, to, asked },
+        Err(refused) => {
+            eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
+            if refused == Refused::NotNearby {
+                Back::Answered { card, to, asked }
+            } else {
+                Back::Refused { card, to, asked }
+            }
+        }
+    };
+    // As with a look, the channel closes only as wifid stops.
+    let _ = back.send(answer).await;
 }
 
 /// What the journal says beside the choice itself, each said once: an
@@ -637,6 +741,12 @@ fn tried(
                 measure::ms(known.p95)
             )
         }
+        (Some(known), Some(Whence::JustLeft)) => {
+            format!(
+                "carried {} at p95 at this hour and the one before",
+                measure::ms(known.p95)
+            )
+        }
         (Some(known), Some(Whence::Loaded)) => {
             format!(
                 "carried {} at p95 under load before",
@@ -693,7 +803,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::learn::Here;
+    use crate::learn::{self, Here};
     use crate::measure::tests::joined;
     use crate::measure::{Counts, Echo};
     use crate::radio::{Load, Radio};
@@ -777,6 +887,7 @@ mod tests {
             hour,
             signal: -50,
             trusted: true,
+            at: Instant::now(),
         };
         for _ in 0..10 {
             learned.carried(&here, measured).unwrap();
@@ -786,11 +897,11 @@ mod tests {
     /// Has a card look, the main loop answering that it's looking and
     /// ending the look or not, and says which card was handed back to be
     /// chosen for again before the look's end, and which after, if any.
-    async fn looked_with(ending: bool) -> (Option<String>, Option<String>) {
+    async fn looked_with(ending: bool) -> (Option<Back>, Option<Back>) {
         let (asks, mut taken) = mpsc::channel(1);
-        let (looked, mut ended) = mpsc::channel(1);
+        let (back, mut ended) = mpsc::channel(1);
         let (state, air) = watch::channel(State::default());
-        let looking = tokio::spawn(look(asks, air, "wlan0".into(), looked));
+        let looking = tokio::spawn(look(asks, air, "wlan0".into(), back));
         let Some(Ask::Scan { done }) = taken.recv().await else {
             panic!("asked for something other than a look");
         };
@@ -809,7 +920,182 @@ mod tests {
         let (before, after) = looked_with(true).await;
 
         assert_eq!(before, None, "not as the look began");
-        assert_eq!(after.as_deref(), Some("wlan0"), "once it ended");
+        assert_eq!(after, Some(Back::Looked("wlan0".into())), "once it ended");
+    }
+
+    /// Has a card move to the hall as asked at `asked`, the main loop
+    /// refusing to ready it so, and says what came back of the move.
+    async fn refused_with(refused: Refused, asked: Instant) -> Option<Back> {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Err(refused)).expect("answered");
+        moving.await.expect("moved");
+        came.try_recv().ok()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_refused_before_it_began_is_handed_back() {
+        let busy = Refused::Failed {
+            reason: "wlan0 is on its way back".into(),
+        };
+        let asked = Instant::now();
+
+        assert_eq!(
+            refused_with(busy, asked).await,
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move wifid refused wasn't handed back to its chooser as the one asked"
+        );
+        assert!(
+            matches!(
+                refused_with(Refused::NotJoined, asked).await,
+                Some(Back::Refused { .. })
+            ),
+            "a move refused with the card off its network wasn't handed back"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_that_began_is_answered_as_the_one_asked() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Ok(())).expect("answered");
+        // No look ends, so the move is asked once `READYING` passes.
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the point wasn't moved to once readied");
+        };
+        done.send(Ok(())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Answered {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move that began wasn't answered, so its give-way would never be followed"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_to_a_point_unheard_after_a_look_is_answered_as_one_to_follow() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Err(Refused::NotNearby)).expect("answered");
+        // The main loop starts the look and answers at once, and the move
+        // is asked once it ends, refused as nothing hears the hall still.
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("an unheard point wasn't looked for");
+        };
+        done.send(Ok(())).expect("answered");
+        tokio::task::yield_now().await;
+        state.send_modify(State::look_ended);
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the point wasn't moved to once the look ended");
+        };
+        done.send(Err(Refused::NotNearby)).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Answered {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a point out of reach wasn't answered as a move to follow, to keep off as unreached"
+        );
+    }
+
+    /// How wpa_supplicant fails a move or a look it was asked for.
+    fn failed() -> Refused {
+        Refused::Failed {
+            reason: "wpa_supplicant didn't answer".into(),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_refused_once_readied_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Ok(())).expect("answered");
+        // No look ends here, so the move waits out its readying before it's
+        // asked, which paused time passes at once, as nothing else is due.
+        let Some(Ask::Roam { done, .. }) = taken.recv().await else {
+            panic!("the readied move wasn't asked once its readying passed");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move refused once readied wasn't handed back to its chooser"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_whose_look_for_a_point_unheard_is_refused_is_handed_back() {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (back, mut came) = mpsc::channel(1);
+        let (_state, air) = watch::channel(State::default());
+        let asked = Instant::now();
+        let to = (HALL.into(), asked);
+        let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
+        let Some(Ask::Ready { done, .. }) = taken.recv().await else {
+            panic!("asked for something other than readying the move");
+        };
+        done.send(Err(Refused::NotNearby)).expect("answered");
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("an unheard point wasn't looked for");
+        };
+        done.send(Err(failed())).expect("answered");
+        moving.await.expect("moved");
+
+        assert_eq!(
+            came.try_recv().ok(),
+            Some(Back::Refused {
+                card: "wlan0".into(),
+                to: HALL.into(),
+                asked
+            }),
+            "a move whose look was refused wasn't handed back to its chooser"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -826,7 +1112,10 @@ mod tests {
         let lately = Measures::default();
 
         let at_eight = known(&lately, &learned, (Instant::now(), 20));
-        let at_nine = known(&lately, &learned, (Instant::now(), 21));
+        // An hour past the card's last minute on the hall, the hour just
+        // gone no longer stands for it (`Learned::just_left`).
+        let an_hour_on = Instant::now() + learn::LEFT_WITHIN;
+        let at_nine = known(&lately, &learned, (an_hour_on, 21));
 
         let (hall, whence) = at_eight(HALL, -50, IDLE).expect("the hall was learned at eight");
         assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
@@ -1022,6 +1311,173 @@ mod tests {
         assert_eq!(whence, Whence::Lately, "and known as measured lately");
     }
 
+    /// The access point a card left at 10:03 on 27 Nov 2026 for carrying
+    /// badly, on 2.4 GHz, and the one it tried on 5 GHz.
+    const LEFT_AT_TEN: &str = "02:00:00:00:27:00";
+    const TRIED_AT_TEN: &str = "02:00:00:00:28:00";
+
+    /// What an access point carried over a minute ending `at`, heard this
+    /// loud, at this hour.
+    fn minute_on(
+        learned: &mut Learned,
+        (point, signal): (&str, i16),
+        (hour, at): (u8, Instant),
+        measured: &Measured,
+    ) {
+        let here = Here {
+            network: "Lantern",
+            point,
+            hour,
+            signal,
+            trusted: true,
+            at,
+        };
+        learned.carried(&here, measured).unwrap();
+    }
+
+    /// What the card learned of the point it left at 10:03 on 27 Nov 2026:
+    /// all of hour 9 at about 35 ms at p95, then two minutes of hour 10 at
+    /// 250 and one at 519 under load, timed from `nine`, standing for
+    /// 09:00.
+    fn left_at_ten(learned: &mut Learned, nine: Instant) {
+        let past_nine = |minutes: u64| nine + Duration::from_secs(minutes * 60);
+        for minute in 1..=60 {
+            minute_on(
+                learned,
+                (LEFT_AT_TEN, -44),
+                (9, past_nine(minute)),
+                &idle(35),
+            );
+        }
+        for minute in 61..=62 {
+            minute_on(
+                learned,
+                (LEFT_AT_TEN, -44),
+                (10, past_nine(minute)),
+                &idle(250),
+            );
+        }
+        minute_on(
+            learned,
+            (LEFT_AT_TEN, -44),
+            (10, past_nine(63)),
+            &carried(519),
+        );
+    }
+
+    #[test]
+    fn another_point_left_within_the_hour_is_known_by_the_hour_just_gone_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let nine = Instant::now();
+        left_at_ten(&mut learned, nine);
+        let lately = Measures::default();
+        let half_past_ten = nine + Duration::from_secs(89 * 60 + 44);
+
+        let known_then = known(&lately, &learned, (half_past_ten, 10));
+
+        let (left, whence) = known_then(LEFT_AT_TEN, -44, IDLE).expect("left 26 minutes before");
+        assert_eq!(
+            left.p95.map(|p95| p95.as_millis()),
+            Some(41),
+            "hour 9's sixty minutes of 35 ms and hour 10's two of 250, by their minutes"
+        );
+        assert_eq!(
+            whence,
+            Whence::JustLeft,
+            "and known as learned over both hours"
+        );
+        assert_eq!(
+            known_then(LEFT_AT_TEN, -44, OWN),
+            None,
+            "the card's own point goes by this hour alone"
+        );
+        assert_eq!(
+            known_then(LEFT_AT_TEN, -70, IDLE),
+            None,
+            "nor is it known so from a room or two away"
+        );
+        let after_a_suspend = known(&lately, &learned, (half_past_ten, 7));
+        assert_eq!(
+            after_a_suspend(LEFT_AT_TEN, -44, IDLE),
+            None,
+            "nor at an hour other than the one after, as an instant doesn't count a suspend"
+        );
+        let an_hour_on = nine + Duration::from_hours(1) + learn::LEFT_WITHIN;
+        let known_later = known(&lately, &learned, (an_hour_on, 10));
+        assert_eq!(
+            known_later(LEFT_AT_TEN, -44, IDLE),
+            None,
+            "an hour past its last minute of hour 9, hour 10's two minutes are too few"
+        );
+    }
+
+    #[test]
+    fn a_point_left_for_carrying_badly_is_not_tried_as_untried_in_the_next_half_hour() {
+        // On 27 Nov 2026 a card left 02:00:00:00:27:00 at 10:03:46 for
+        // 02:00:00:00:28:00, known at 118.6 ms under load, and at 10:29:44
+        // on that one's 42.9 ms went back to the first as untried, heard
+        // at -44 dBm, though it had been on it for all of hour 9.
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let nine = Instant::now();
+        left_at_ten(&mut learned, nine);
+        for _ in 0..10 {
+            minute_on(&mut learned, (TRIED_AT_TEN, -50), (3, nine), &carried(119));
+        }
+        let past_nine =
+            |minutes: u64, seconds: u64| nine + Duration::from_secs(minutes * 60 + seconds);
+        let lately = Measures::default();
+        let wider = Heard {
+            frequency: 5180,
+            ..heard(TRIED_AT_TEN, -50)
+        };
+        let around = [heard(LEFT_AT_TEN, -44), wider];
+        let mut chooser = crate::choose::tests::after_a_bad_minute(LEFT_AT_TEN);
+        let mut choose = |now: Instant, on: &str, measured: &Measured| {
+            let known = known(&lately, &learned, (now, 10));
+            let on = joined(on);
+            chosen(
+                &mut chooser,
+                now,
+                (&on, measured),
+                (&around, None),
+                &known,
+                false,
+            )
+        };
+
+        let moved = choose(past_nine(63, 46), LEFT_AT_TEN, &carried(519));
+        assert_eq!(
+            moved,
+            Some(Next::Move(TRIED_AT_TEN.into())),
+            "519 ms under load two minutes running leaves for 119 known under load"
+        );
+        for minute in 64..=87 {
+            let stayed = choose(past_nine(minute, 46), TRIED_AT_TEN, &idle(20));
+            assert_eq!(
+                stayed, None,
+                "20 ms at {minute} minutes past nine moves nothing"
+            );
+        }
+        // Resting on a slow middle, the wider band may yield to a narrower
+        // one, as it did then.
+        let slow = Measured {
+            p50: Some(ms(15)),
+            p95: Some(Duration::from_micros(42_900)),
+            ..idle(43)
+        };
+        let first = choose(past_nine(88, 44), TRIED_AT_TEN, &slow);
+        let second = choose(past_nine(89, 44), TRIED_AT_TEN, &slow);
+
+        assert_eq!(first, None, "one slow minute moves nothing");
+        assert_eq!(
+            second, None,
+            "the point left 26 minutes before carried 35 ms all of hour 9 and 250 since, \
+             so 42.9 ms is no reason to try it as untried"
+        );
+    }
+
     fn other(point: &str, measured: Option<Measured>) -> Other {
         Other {
             point: point.into(),
@@ -1048,6 +1504,16 @@ mod tests {
             ),
             format!("{why} carried 10.0 ms at p95 at this hour before"),
             "a move made on what was learned says so"
+        );
+        assert_eq!(
+            tried(
+                &on,
+                (&carried(30), 2437, None),
+                &other(HALL, quick.clone()),
+                Some(Whence::JustLeft)
+            ),
+            format!("{why} carried 10.0 ms at p95 at this hour and the one before"),
+            "a move made on what was learned of a point just left says over which hours"
         );
         assert_eq!(
             tried(
@@ -1166,7 +1632,11 @@ mod tests {
         let on = joined(HALL);
 
         let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
-        air.warned_off("wlan2", DESK, (start, start + Duration::from_secs(600)));
+        air.warned_off(
+            "wlan2",
+            DESK,
+            (Some(start), start + Duration::from_secs(600)),
+        );
         let warned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
 
         assert_eq!(
@@ -1189,25 +1659,65 @@ mod tests {
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
         let on = joined(HALL);
-        air.warned_off("wlan2", HALL, (start, start + Duration::from_secs(600)));
+        air.warned_off(
+            "wlan2",
+            HALL,
+            (Some(start), start + Duration::from_secs(600)),
+        );
+
+        // The kernel's own reading, as a look's is stale by the end.
+        let losing = (2, Some(-60));
 
         let mut chooser = Chooser::default();
-        let moving = given_hearing(&mut chooser, start, &on, &air, LOSING);
+        let moving = given_hearing(&mut chooser, start, &on, &air, losing);
         let late = start + fading::BETWEEN;
-        let stuck = given_hearing(&mut chooser, late, &on, &air, LOSING);
+        let still = given_hearing(
+            &mut chooser,
+            late - Duration::from_secs(1),
+            &on,
+            &air,
+            losing,
+        );
+        let stuck = given_hearing(&mut chooser, late, &on, &air, losing);
 
         assert_eq!(
             moving, None,
             "a call gave way as its warned point's move was under way"
         );
+        assert_eq!(
+            still, None,
+            "a call gave way before its warned point's move had its time"
+        );
         assert!(
-            !chooser.call_keeps_off(DESK, late),
+            !chooser.call_keeps_off(DESK, late, false),
             "the desk was kept off by a give-way never made"
         );
         assert_eq!(
             stuck,
             Some(Next::Move(DESK.into())),
             "a call still on its warned point once a move had its time didn't give way"
+        );
+    }
+
+    #[test]
+    fn a_losing_call_let_go_from_its_warned_point_gives_way_at_once() {
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        let start = Instant::now();
+        // Looked first for the points named, then let go as its look found
+        // none: no heed of wifid's is under way to wait on.
+        let until = start + Duration::from_secs(600);
+        air.warned_off("wlan2", HALL, (Some(start), until));
+        air.warned_off("wlan2", HALL, (None, until));
+
+        let given = given_hearing(&mut Chooser::default(), start, &joined(HALL), &air, LOSING);
+
+        assert_eq!(
+            given,
+            Some(Next::Move(DESK.into())),
+            "a call let go from its warned point waited on a move nothing made"
         );
     }
 
@@ -1229,11 +1739,61 @@ mod tests {
     }
 
     #[test]
+    fn a_faint_call_hearing_nowhere_holds_rather_than_look() {
+        let (start, around, on) = (Instant::now(), [heard(DESK, -50)], joined(DESK));
+        let given_as = |measured| given(&mut Chooser::default(), start, &on, &around, measured);
+
+        let faint = given_as((0, Some(-75)));
+        let lossy = given_as((2, Some(-75)));
+
+        assert_eq!(
+            faint, None,
+            "a faint call hearing nowhere looked, off a link still carrying it for 5 to 6 s"
+        );
+        assert_eq!(
+            lossy,
+            Some(Next::Look),
+            "a losing call hearing nowhere didn't look"
+        );
+    }
+
+    #[test]
+    fn a_call_gives_way_to_a_point_spurned_past_its_firm_only_once_its_link_is_gone() {
+        // Gone back from the hall to the desk twice on the desk's usual,
+        // so the hall is kept off an hour, yielding to a failing link at
+        // once.
+        let start = Instant::now();
+        let spurned = || choose::tests::back_twice_on_the_usual(start);
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on = joined(DESK);
+        let (mut gone, again) = spurned();
+        let (mut losing, _) = spurned();
+
+        // Five echoes lost of ten is `fading::GONE`, and two is only
+        // `fading::DROPPED`, each past the back's own `fading::BETWEEN`.
+        let past = again + fading::BETWEEN;
+        let to_gone = given(&mut gone, past, &on, &around, (5, Some(-50)));
+        let to_losing = given(&mut losing, past, &on, &around, (2, Some(-50)));
+
+        assert_eq!(
+            to_gone,
+            Some(Next::Move(HALL.into())),
+            "a call whose link was gone kept off a point spurned past its firm"
+        );
+        assert_eq!(
+            to_losing,
+            Some(Next::Look),
+            "a call losing two echoes took a point spurned, as though its link were gone"
+        );
+    }
+
+    #[test]
     fn a_give_way_never_reached_is_kept_off_and_the_card_looks() {
         let (mut chooser, start) = (Chooser::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
         let on = joined(DESK);
         given(&mut chooser, start, &on, &around, LOSING);
+        chooser.answered(start, HALL, start);
 
         let later = start + fading::BETWEEN;
         let next = given(&mut chooser, later, &on, &around, LOSING);
@@ -1283,7 +1843,10 @@ mod tests {
             Some(Next::Move(ROOM.into())),
             "the room, not the desk"
         );
-        assert_eq!(third, Some(Next::Look), "it looks rather than go back");
+        assert_eq!(
+            third, None,
+            "it went back, or looked, though a faint call holds rather than leave its channel"
+        );
     }
 
     #[test]
@@ -1303,6 +1866,16 @@ mod tests {
                  echoes in 10 s"
             ),
             "a give-way says where, how loud, and what faded"
+        );
+    }
+
+    #[test]
+    fn a_call_held_after_two_misses_says_for_how_long_and_what_still_moves_it() {
+        assert_eq!(
+            holding(&joined(DESK)),
+            "wlan2 gives way during a call only once its link is gone for 10 minutes, as a \
+             second give-way within an hour never got there",
+            "a held call doesn't say how long it's held, or that a gone link still moves"
         );
     }
 
@@ -1810,11 +2383,30 @@ mod tests {
                 &known,
                 false,
             );
-            (next, chooser.went_back())
+            let why = chooser.went_back();
+            (next, why, chooser)
         };
 
-        let (back, _) = judged(None);
-        let (kept, why) = judged(Some(&DESK.to_uppercase()));
+        let (back, _, _) = judged(None);
+        let (kept, why, mut stayed) = judged(Some(&DESK.to_uppercase()));
+        // The chooser takes the way back refused as a move made, so past
+        // the trial's own settle, carrying as badly, the card stays a
+        // settle from the refusal on the point it's on rather than move
+        // again so soon after the warning.
+        let past_the_trial_s_settle = start + choose::SETTLE + Duration::from_secs(60);
+        let refused = start + choose::TRIAL;
+        assert!(
+            past_the_trial_s_settle < refused + choose::SETTLE,
+            "the case's time was past the refusal's settle"
+        );
+        let a_minute_on = chosen(
+            &mut stayed,
+            past_the_trial_s_settle,
+            (&joined(HALL), &idle(200)),
+            (&[heard(HALL, -50)], Some(DESK)),
+            &known,
+            false,
+        );
 
         assert_eq!(
             back,
@@ -1828,6 +2420,11 @@ mod tests {
         assert!(
             why.is_none(),
             "why a way back not taken was left to be said of a later one"
+        );
+        assert_eq!(
+            a_minute_on, None,
+            "a card that stayed rather than go back to a warner moved or looked again within the \
+             settle its refusal began"
         );
     }
 

@@ -690,13 +690,13 @@ mod tests {
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
-        // A why that wraps at 60 and at the 80 that 200 is held to, so it
-        // hangs under its first line in both, and is one line piped.
+        // A why wrapping at 60 and at the 80 that 200 is held to, so it hangs
+        // in both, holding a break from outside that may start no line.
         if let Some(heard) = link.heard.as_mut() {
             heard.why = heard
                 .why
                 .take()
-                .map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
+                .map(|why| format!("{why} \u{1b}[2J\u{7}\ncleared"));
         }
         for room in [Room::Cells(60), Room::Cells(200), Room::Unbounded] {
             let lines = said(&link, room);
@@ -707,25 +707,25 @@ mod tests {
                 "the leader wasn't said into {room:?}: {lines:#?}"
             );
             assert!(
-                lines
-                    .iter()
-                    .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
-                "into {room:?} a control was drawn: {lines:#?}"
+                lines.iter().all(|line| {
+                    !line.contains('\u{1b}') && !line.contains('\u{7}') && !line.contains('\n')
+                }),
+                "into {room:?} a control or a line break was drawn: {lines:#?}"
             );
             // The why's own lines, so the round trips' hang can't stand in, and
-            // its last word, past the control, hung under it, or piped on one.
+            // its last word whole: hung under it, or piped, ending its one line.
             let at = lines
                 .iter()
                 .position(|line| line.starts_with("  Upload"))
                 .expect("the why is said");
-            let (piped, one) = (room == Room::Unbounded, lines[at].contains("cleared"));
+            let (piped, one) = (room == Room::Unbounded, lines[at].ends_with(" cleared"));
             let hung = lines[at + 1..]
                 .iter()
                 .take_while(|line| line.starts_with("    "))
-                .any(|line| line.contains("cleared"));
+                .any(|line| line.split_whitespace().any(|word| word == "cleared"));
             assert!(
                 if piped { one } else { hung },
-                "into {room:?} the why wasn't one line piped, or hung: {lines:#?}"
+                "into {room:?} 'cleared' wasn't hung whole, or piped ending one line: {lines:#?}"
             );
         }
     }
