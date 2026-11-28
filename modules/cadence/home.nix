@@ -433,7 +433,7 @@ in
     # the tick's.
     systemd.user.services.cadence-spec = {
       Unit = {
-        Description = "Serves the axes to the launcher's Spec";
+        Description = "Serves the axes and what Joel asked for to the launcher";
         X-SwitchMethod = "restart";
         # Its socket is systemd's, handed to it as it starts.
         Requires = [ "cadence-spec.socket" ];
@@ -469,6 +469,12 @@ in
     jitsusama.quickshell.launcher.providers.spec = {
       order = 54;
       source = ./Spec.qml;
+    };
+    # Asked For, answering "asked" or "promised": what Joel asked for that
+    # hasn't landed, served by the same daemon as Spec.
+    jitsusama.quickshell.launcher.providers.asked = {
+      order = 55;
+      source = ./Asked.qml;
     };
 
     # Its socket, held by systemd whether or not the daemon runs, so the

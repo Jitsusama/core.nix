@@ -3331,9 +3331,15 @@
     reached an entry or a secret before the daemon answered the shell alone
   '';
   passwords-copier-check-reads-are-bounded = ''
-    the copier check's reads of how a copier ended each answer within its patience, a child
-    holding the copier's standard error open, a copier never ending, a reader never reading and
-    a copier saying nothing included, and each says how the copier ended and what it said
+    the copier check's reads of a copier each answer within its patience, a child holding the
+    copier's standard error open, a copier never ending, a reader never reading, a copier saying
+    nothing, one saying half a line and holding on and one pouring out a line with no end
+    included; a line is read whole and exactly, as the daemon reads it, so one said in pieces
+    is joined, two said at once are answered in turn, 'ready ' is never 'ready', and a half
+    line is answered as said only once the copier closed its standard output, and finished by
+    the next read if it was held open; what was read past a line comes
+    first in how the copier ended, a refusal keeps none of it, a copier with no pipe to read is
+    refused by name, and a read that raised fails saying what it raised
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
@@ -4711,8 +4717,9 @@
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
     carried, else the node's own why, that its why couldn't be read, or that no answer came; a
-    carried row reads as carrying back under the key ReadyRows made it with, its thing or else its
-    record's key, kept under row: where its thing claims a kind of the launcher's own
+    carried row reads as carrying back until then, and has a refusal said on it, under the key
+    ReadyRows made it with, its thing or else its record's key, kept under row: where its thing
+    claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -5805,7 +5812,8 @@
     thinks, crouches back, eases in and out with strides stepped by the ground covered,
     overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown;
     it's livelier the less Joel is engaged and still on a call, locked or drawn nowhere, its waits
-    and plays at random, no play twice running, and its wander and hop kept to the margin
+    and plays at random, no play twice running, and its wander and hop kept to the margin; only
+    a shell that reports takes an ask over the shell's ipc or says its level there
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces
@@ -6223,8 +6231,9 @@
   '';
   the-shell-stays-light-allowing-only-what-was-taken = ''
     what the-shell-stays-light-on-niri lets the heap's resident climb by for pages the kernel
-    took is the lesser of what the machine took, by the page size given and a MB of 2**20 bytes,
-    and the most any closing held but hadn't resident, a closing of unknown resident skipped,
+    took is weighed on the round before the last, the lesser of what the machine took by then, by
+    the page size given and a MB of 2**20 bytes, a part of a MB counting as that part, and the
+    most any of its closings held but hadn't resident, a closing of unknown resident skipped,
     one with none resident counting all it held and one holding less than it has resident none,
     and a round with no closing known allows nothing
   '';
@@ -6418,8 +6427,10 @@
   '';
   the-wifi-cases-fail-on-a-throw = ''
     the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
-    threw a TypeError, a ReferenceError or a RangeError, or a value Qt couldn't assign, and passes
-    one holding only the launcher's own lines, an Error: in no file's line among them
+    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError or SyntaxError
+    however it's said, or a value Qt couldn't assign; passes one holding only the launcher's own
+    lines, an Error: in no file's line among them; and stops the build when what was said can't be
+    read. Each of the four Wi-Fi cases runs the shell and then that guard, whatever the run ended in
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

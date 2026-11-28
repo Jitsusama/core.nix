@@ -1810,11 +1810,30 @@ mod tests {
                 &known,
                 false,
             );
-            (next, chooser.went_back())
+            let why = chooser.went_back();
+            (next, why, chooser)
         };
 
-        let (back, _) = judged(None);
-        let (kept, why) = judged(Some(&DESK.to_uppercase()));
+        let (back, _, _) = judged(None);
+        let (kept, why, mut stayed) = judged(Some(&DESK.to_uppercase()));
+        // The chooser takes the way back refused as a move made, so past
+        // the trial's own settle, carrying as badly, the card stays a
+        // settle from the refusal on the point it's on rather than move
+        // again so soon after the warning.
+        let past_the_trial_s_settle = start + choose::SETTLE + Duration::from_secs(60);
+        let refused = start + choose::TRIAL;
+        assert!(
+            past_the_trial_s_settle < refused + choose::SETTLE,
+            "the case's time was past the refusal's settle"
+        );
+        let a_minute_on = chosen(
+            &mut stayed,
+            past_the_trial_s_settle,
+            (&joined(HALL), &idle(200)),
+            (&[heard(HALL, -50)], Some(DESK)),
+            &known,
+            false,
+        );
 
         assert_eq!(
             back,
@@ -1828,6 +1847,11 @@ mod tests {
         assert!(
             why.is_none(),
             "why a way back not taken was left to be said of a later one"
+        );
+        assert_eq!(
+            a_minute_on, None,
+            "a card that stayed rather than go back to a warner moved or looked again within the \
+             settle its refusal began"
         );
     }
 

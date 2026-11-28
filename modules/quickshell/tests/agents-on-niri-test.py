@@ -2291,11 +2291,17 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         else:
             pytest.fail(f"no key landed inside the link's quiet in {LINK_TRIES} tries")
         # A close inside the quiet still closes, sending again the Escape the quiet dropped,
-        # as a Go To's why it couldn't go opens one (5GLTPH's finding on #7038's gate).
-        followed(shell, "talkTo", "LISTEN", quiet=False)
-        shell.launcher_until(talking)
-        shell.close_launcher()
-        assert not shell.showing()["open"], "a close inside a link's quiet left it open"
+        # as a Go To's why it couldn't go opens one (5GLTPH's finding on #7038's gate). Under
+        # load the close's first Escape can land past the quiet too, closing the plain way, so
+        # it's tried until one close had to send a key again, or this proves nothing (#7157's
+        # first round, 1, 5, 9 and 14).
+        for _ in range(LINK_TRIES):
+            followed(shell, "talkTo", "LISTEN", quiet=False)
+            shell.launcher_until(talking)
+            if shell.close_launcher():
+                break
+        else:
+            pytest.fail(f"no close landed inside the link's quiet in {LINK_TRIES} tries")
         # Typed past the quiet, every key is taken, and closing keeps them as the talk's words.
         late = typed_after_a_link(shell, "LISTEN", late=True, field=lambda shown: shown, up=talking)
         assert late == (0, LINK_KEYS), late

@@ -573,10 +573,17 @@ mod tests {
             listed: vec![(0, headphones())],
             ..StandIn::default()
         };
-        assert!(
-            watch.tick(&mut controller, 10, seconds(0)).is_some(),
-            "a link seen the first time is written"
-        );
+        // The first tick writes whatever it finds, so it's the headphones
+        // in what it wrote that shows the link was seen.
+        let first = watch
+            .tick(&mut controller, 10, seconds(0))
+            .expect("a link seen the first time is written");
+        let written: Vec<&str> = first
+            .links
+            .iter()
+            .map(|link| link.address.as_str())
+            .collect();
+        assert_eq!(written, ["00:1B:66:AA:BB:CC"]);
         assert!(
             watch.tick(&mut controller, 15, seconds(5)).is_some(),
             "a link is written every tick"

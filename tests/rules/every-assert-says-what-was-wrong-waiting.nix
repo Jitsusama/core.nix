@@ -182,11 +182,9 @@
   "modules/quickshell/timers/src/lib.rs" = 20;
   "modules/quickshell/whereabouts/src/fix.rs" = 16;
   "modules/quickshell/whereabouts/src/named.rs" = 2;
-  "modules/shaper/src/classes.rs" = 6;
   "modules/shaper/src/links.rs" = 1;
   "modules/shaper/src/live.rs" = 1;
   "modules/shaper/src/oneway.rs" = 5;
-  "modules/shaper/src/qdisc.rs" = 10;
   "modules/shaper/src/replay.rs" = 14;
   "modules/slack/src/lib.rs" = 4;
   "modules/slack/src/messages.rs" = 4;
@@ -253,7 +251,6 @@
   "tests/lib/vm-helpers-test.py" = 3;
   "tests/lib/vm-pytest-test.py" = 1;
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
-  "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/watch.rs" = 24;
