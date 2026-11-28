@@ -16,6 +16,9 @@
 //! niri, the typist and kitty are stand-ins, and each window's process is
 //! one of the test's own, its forebears made as each case needs. They run
 //! in the build's sandbox: run beneath an agent, every window is refused.
+//! Long because each of ISXEG8's refusals is a case here beside the
+//! stand-ins it arranges, and they change together as its terms do: a
+//! split would put every case's desk in one file and its proof in another.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixDatagram, UnixListener};
