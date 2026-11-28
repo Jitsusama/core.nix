@@ -471,6 +471,38 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
 }
 
 #[test]
+fn a_lent_builder_its_owner_holds_is_sent_nothing_and_the_run_says_why() {
+    for name in ["nix-offload", "lend-5"] {
+        let folder = tempfile::tempdir().unwrap();
+        let offload = folder.path().join("offload");
+        fs::create_dir(&offload).unwrap();
+        fs::write(offload.join("store"), STORE).unwrap();
+        fs::write(offload.join("health.json"), r#"{"builder": "lend-5"}"#).unwrap();
+        let held = folder.path().join("nix-offload/held");
+        fs::create_dir_all(&held).unwrap();
+        fs::write(held.join(name), "testing it by hand\n").unwrap();
+        stand_ins(folder.path(), 0);
+        let ran = there_asked(
+            folder.path(),
+            &offload,
+            &["--never-ask", "-L", "github:o/r/abc", "checks.x.a"],
+        );
+        assert_ne!(ran.status.code(), Some(0), "held as {name}: {ran:?}");
+        assert!(
+            !folder.path().join("ssh-was-given").exists(),
+            "the builder held as {name} was sent the build"
+        );
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(
+            said.contains(&format!(
+                "{name} is held (testing it by hand), so nothing goes"
+            )),
+            "{said}"
+        );
+    }
+}
+
+#[test]
 fn a_build_asked_to_outlive_its_caller_is_sent_to_go_on_alone() {
     // A prebuild whose caller hit its own time limit at 05:14 on 3
     // November lost the kernel it was compiling five minutes later.
@@ -2894,6 +2926,168 @@ fn a_nearby_machine_that_doesnt_answer_is_named_as_its_part_goes_the_other_way()
     );
 }
 
+/// A run asking `attributes` of a folder's flake, with machines nearby each
+/// `hosts` names, answering and building `systems`, and the holds their
+/// owners put on machines as `held` gives each one's file, by its name; or
+/// with `held` set to `None`, a file where the folder of holds would be,
+/// which can't be read as one. It gives back the folder its stand-ins
+/// recorded in and what the run said.
+fn run_beside_holds(
+    hosts: &[(&str, &str)],
+    held: Option<&[(&str, &str)]>,
+    attributes: &[&str],
+) -> (tempfile::TempDir, Output) {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let listening: Vec<std::net::TcpListener> = hosts
+        .iter()
+        .map(|_| std::net::TcpListener::bind("127.0.0.1:0").unwrap())
+        .collect();
+    let nearby: Vec<String> = hosts
+        .iter()
+        .zip(&listening)
+        .map(|((host, systems), listener)| {
+            format!("{} {host} {systems}\n", listener.local_addr().unwrap())
+        })
+        .collect();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(config.join("nearby"), nearby.concat()).unwrap();
+    let holds = folder.path().join("nix-offload/held");
+    if let Some(held) = held {
+        fs::create_dir_all(&holds).unwrap();
+        for (machine, text) in held {
+            fs::write(holds.join(machine), text).unwrap();
+        }
+    } else {
+        fs::create_dir_all(holds.parent().unwrap()).unwrap();
+        fs::write(&holds, "not a folder").unwrap();
+    }
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let flake = format!("path:{}", zone.display());
+    let ran = there_command(&bin, &offload, folder.path())
+        .arg(&flake)
+        .args(attributes)
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    drop(listening);
+    (folder, ran)
+}
+
+/// The hosts the stand-in ssh of a run in `folder` sent something to
+/// build, in order.
+fn built_on(folder: &tempfile::TempDir) -> Vec<String> {
+    let given = fs::read_to_string(folder.path().join("bin/ssh-was-given")).unwrap_or_default();
+    let lines: Vec<&str> = given.lines().collect();
+    lines
+        .chunks(2)
+        .filter(|sent| {
+            sent.get(1)
+                .is_some_and(|command| command.contains("nix build"))
+        })
+        .map(|sent| sent[0].to_owned())
+        .collect()
+}
+
+#[test]
+fn a_nearby_mac_its_owner_holds_is_given_nothing_and_the_run_says_why() {
+    // On 27 November a Mac's owner held it, and a run sent it 32 checks
+    // anyway, as a machine nearby, until its owner killed the build.
+    let (folder, ran) = run_beside_holds(
+        &[("mac", "aarch64-darwin")],
+        Some(&[("mac", "building my app tonight\n")]),
+        &["checks.aarch64-darwin.a"],
+    );
+    assert_eq!(
+        built_on(&folder),
+        Vec::<String>::new(),
+        "the held Mac was sent work"
+    );
+    assert!(
+        !folder.path().join("bin/load-was-asked").exists(),
+        "the held Mac was asked its load, as though it might be sent work"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "nix-offload: mac is held (building my app tonight), so nothing goes to it: no \
+             other machine builds aarch64-darwin here"
+        ),
+        "the run didn't say why, with its owner's reason: {said}"
+    );
+    assert!(
+        !said.contains("doesn't answer"),
+        "a held Mac was said to be away: {said}"
+    );
+    // As a run ends when nothing can build a system: unbuilt, owed.
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+}
+
+#[test]
+fn a_nearby_mac_no_hold_names_still_takes_its_part() {
+    let (folder, ran) = run_beside_holds(
+        &[("mac", "aarch64-darwin")],
+        Some(&[("another-mac", "away\n")]),
+        &["checks.aarch64-darwin.a"],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(built_on(&folder), vec!["mac"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("is held"), "{said}");
+}
+
+#[test]
+fn a_held_mac_another_stands_in_for_is_passed_over_and_said_once() {
+    let (folder, ran) = run_beside_holds(
+        &[("mac", "aarch64-darwin"), ("mini", "aarch64-darwin")],
+        Some(&[("mac", "")]),
+        &["checks.aarch64-darwin.a", "checks.aarch64-darwin.b"],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        built_on(&folder),
+        vec!["mini"],
+        "its part went to the other Mac"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    let passed = "nix-offload: mac is held (no reason given), so it's passed over, and what \
+                  it would take goes elsewhere";
+    assert_eq!(said.matches(passed).count(), 1, "{said}");
+}
+
+#[test]
+fn an_unreadable_folder_of_holds_holds_nothing_and_says_so_once() {
+    let (folder, ran) = run_beside_holds(
+        &[("mac", "aarch64-darwin")],
+        None,
+        &["checks.aarch64-darwin.a"],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        built_on(&folder),
+        vec!["mac"],
+        "an unreadable folder held the Mac"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        said.matches("can't be read (").count(),
+        1,
+        "the unreadable folder wasn't said once: {said}"
+    );
+    assert!(said.contains("), so no machine is held"), "{said}");
+}
+
 #[test]
 fn a_nearby_machine_ssh_reaches_takes_its_part_though_its_address_doesnt_answer() {
     // From 07:01 on 22 November a Mac's `.local` name went unanswered for
@@ -4202,6 +4396,49 @@ fn a_changed_run_for_a_system_only_a_machine_nearby_builds_is_named_then_built_t
     assert!(
         String::from_utf8_lossy(&ran.stdout).contains("changed  a"),
         "what it named comes here: {ran:?}"
+    );
+}
+
+#[test]
+fn a_changed_run_gives_no_darwin_leg_to_a_mac_its_owner_holds() {
+    // At 21:19 on 27 November a plain `there --changed` sent 32 of a Mac's
+    // checks to it while its owner held it, and they swapped it to a crawl.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let state = changed.folder.path().join("nix-offload");
+    fs::create_dir_all(state.join("held")).unwrap();
+    fs::write(
+        state.join("nearby"),
+        format!("{} mac aarch64-darwin\n", answering.local_addr().unwrap()),
+    )
+    .unwrap();
+    fs::write(state.join("held/mac"), "mine until morning\n").unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), QUIET).unwrap();
+    let (ran, _) = changed.run(&["--build", "--system", "aarch64-darwin"]);
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent
+            .lines()
+            .any(|line| line.split_once(' ').is_some_and(|(on, _)| on == "mac")),
+        "the held Mac was sent its leg: {sent}"
+    );
+    assert!(
+        !sent.lines().any(|line| line.contains("--build")),
+        "its leg was built whole on a lent builder, which can't build it: {sent}"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "mac is held (mine until morning), so nothing goes to it: no other machine \
+             builds aarch64-darwin here"
+        ),
+        "the run didn't say why the Mac got nothing: {said}"
+    );
+    assert_eq!(
+        ran.status.code(),
+        Some(69),
+        "ended as one nothing built: {ran:?}"
     );
 }
 
