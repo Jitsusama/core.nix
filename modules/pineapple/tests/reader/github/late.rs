@@ -429,6 +429,22 @@ fn next_reach(searched: &[String]) -> String {
     searched_from(&searched[2]).expect("the next round searches from a time")
 }
 
+/// The rows a reader in shadow under `home` wrote of what it left unread.
+fn shadow_rows(home: &std::path::Path) -> Value {
+    std::fs::read_to_string(home.join("state/pineapple/missed-github.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// When, in seconds, the first of `rows` ends, if it says what Joel's own
+/// search left unread from `reach`, as its name says.
+fn own_ended(rows: &Value, reach: u64) -> Option<u64> {
+    let named = format!("pineapple-github-missed-own-{}-", reach * 1000);
+    let to = rows["items"][0]["id"].as_str()?.strip_prefix(&named)?;
+    to.parse::<u64>().ok().map(|to| to / 1000)
+}
+
 /// How many times the comments of example/shop#`number` were asked for.
 fn read(asked: &Mutex<Vec<String>>, number: u64) -> usize {
     let comments = format!(" /repos/example/shop/issues/{number}/comments?");
@@ -533,30 +549,18 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
     }
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
-    let shadow = home.join("state/pineapple/missed-github.json");
-    let rows: Value = std::fs::read_to_string(&shadow)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let rows = shadow_rows(&home);
     let said = journal(&home);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 
     let (reach, oldest) = (last - 3600, CUT_TOLD.load(Ordering::SeqCst) - 500);
-    let id = format!(
-        "pineapple-github-missed-own-{}-{}",
-        reach * 1000,
-        oldest * 1000
-    );
     let row = &rows["items"][0];
-    assert_eq!(
-        (
-            rows["items"].as_array().map(Vec::len),
-            &row["id"],
-            &row["whole"]
-        ),
-        (Some(1), &json!(id), &json!(true)),
+    assert!(
+        rows["items"].as_array().map(Vec::len) == Some(1)
+            && row["whole"] == true
+            && own_ended(&rows, reach) == Some(oldest),
         "in shadow, in its own folder, one row spans what both rounds left out, from the \
-         first's reach, as the two meet: {rows}"
+         first's reach to the oldest the search gave, as the two meet: {rows}"
     );
     let search = format!(
         "pineapple involves:{LOGIN} updated:{}..{}",
@@ -635,6 +639,19 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
     assert!(
         said.contains(&failed) && said.contains(&left),
         "the journal names the search that failed, and from when the next searches: {said}"
+    );
+    let rows = shadow_rows(&home);
+    let ended = own_ended(&rows, last - 3600).map(stamp);
+    assert!(
+        rows["items"].as_array().map(Vec::len) == Some(1) && ended.as_ref() == Some(&oldest),
+        "one row says what's unread, from the reach to the oldest the search before gave, as \
+         a stop said then on a thread changed since is too old for the next round: {rows}"
+    );
+    assert!(
+        rows["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("as its search was cut short or failed")),
+        "its words fit a search that failed: {rows}"
     );
     assert!(
         searched[2].contains("updated%3A%3E%3D")
