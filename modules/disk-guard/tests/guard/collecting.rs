@@ -59,6 +59,30 @@ fn now() -> f64 {
         .as_secs_f64()
 }
 
+std::thread_local! {
+    /// When this thread's case first asked for a moment, from which its
+    /// later moments are told.
+    static BEGUN: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// The moment `seconds` after the case first asked for one, once its
+/// store was laid out. Told from the present instead, a moment floated
+/// with whatever the builder spent before it was asked for, and a failed
+/// listing rests nine times its length: a listing heard 7 s late on a
+/// loaded builder, at a moment 7 s later, rested 63 s longer, past the 60 s
+/// a case looked beyond its rest. Told from before the store was laid out,
+/// a listing at the first moment came before its paths were written, and
+/// the guard keeps a path written since its listing.
+fn later(seconds: f64) -> f64 {
+    BEGUN.with(|begun| {
+        begun.get().unwrap_or_else(|| {
+            let now = now();
+            begun.set(Some(now));
+            now
+        })
+    }) + seconds
+}
+
 fn tick() -> Tick {
     Tick {
         wall: now(),
@@ -83,6 +107,7 @@ impl Store {
     /// it deleted and leaves, as what an evaluation registers again; while `listing-slow` is
     /// there, every listing after the first waits on it.
     fn new() -> Store {
+        BEGUN.with(|begun| begun.set(None));
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
         for sub in [
@@ -750,7 +775,7 @@ fn kept(store: &Store) -> Option<f64> {
     serde_json::from_str::<serde_json::Value>(&text).ok()?["listed_at"].as_f64()
 }
 
-/// Steps `guard` at `seconds` past now until `done` holds of the store and
+/// Steps `guard` at [`later`]`(seconds)` until `done` holds of the store and
 /// that moment, as the listing runs apart. A machine busy with other
 /// builds can take a while to start one, so this waits on what it sees.
 fn step_later_until(
@@ -761,7 +786,7 @@ fn step_later_until(
     done: impl Fn(&Store, f64) -> bool,
 ) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         ..tick()
     };
     let started = Instant::now();
@@ -781,7 +806,7 @@ fn step_later_until(
     }
 }
 
-/// Steps `guard` at `seconds` past now until it keeps a listing begun then.
+/// Steps `guard` at [`later`]`(seconds)` until it keeps a listing begun then.
 /// JSON can bring a moment back a hair off, so near enough is the same.
 fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses) {
     step_later_until(store, guard, seconds, senses, |store, at| {
@@ -789,17 +814,42 @@ fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses)
     });
 }
 
-/// Steps `guard` at `seconds` past now long enough for a listing begun to
+/// Steps `guard` at [`later`]`(seconds)` long enough for a listing begun to
 /// say so. That it said nothing is borne out by the next `listed_later`,
 /// which waits for a listing begun at its own moment rather than this one.
 fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         ..tick()
     };
     for _ in 0..10 {
         guard.step(&at, senses).unwrap();
         std::thread::sleep(Duration::from_millis(30));
+    }
+}
+
+/// Steps `guard` at [`later`]`(seconds)` until it hears the listing it has
+/// out, which counts as ending then. A listing let go ends once the fake
+/// Nix next looks and exits, which a loaded builder can take past the
+/// moment [`step_later`] gives it: heard a step later, at a later moment,
+/// it seemed to take that much longer, and one let go before it read that
+/// it was to fail could even succeed.
+fn heard_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
+    let at = Tick {
+        wall: later(seconds),
+        ..tick()
+    };
+    let started = Instant::now();
+    loop {
+        guard.step(&at, senses).unwrap();
+        if !guard.lists_garbage() {
+            return;
+        }
+        assert!(
+            started.elapsed() < AT_IDLE,
+            "the listing let go was still unheard {seconds} s on"
+        );
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
 
@@ -1064,8 +1114,10 @@ fn a_listing_that_failed_on_a_filling_disk_is_tried_again_within_minutes() {
     fs::write(store.root.join("listing-broken"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "0%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
-    // Heard failing at once, so it took a moment and rests no longer.
-    step_later(&mut guard, 0.0, &CALM);
+    // Heard failing at once, so it took a moment and rests no longer. Heard
+    // only a step later, at 60 s, it seemed a minute long and rested nine,
+    // past the six below: three of four runs on a loaded room on 27 November.
+    heard_later(&mut guard, 0.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 60.0, &CALM);
     assert_eq!(lists(&store), 1, "not at once: a listing costs the disk");
@@ -1088,7 +1140,7 @@ fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     // It fails five minutes after it began.
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 300.0, &CALM);
+    heard_later(&mut guard, 300.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
     assert_eq!(
@@ -1115,7 +1167,7 @@ fn a_listing_that_failed_slowly_rests_however_full_the_store() {
     let mut guard = store.guard(store.config("100%", "100%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 300.0, &CALM);
+    heard_later(&mut guard, 300.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
     assert_eq!(
@@ -1141,7 +1193,7 @@ fn a_failed_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs(
     let mut guard = store.guard(store.config("100%", "100%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 3.0 * 3600.0, &CALM);
+    heard_later(&mut guard, 3.0 * 3600.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 3.0 * 3600.0 + 9.0 * 1800.0 - 60.0, &CALM);
     assert_eq!(
@@ -1176,7 +1228,7 @@ fn a_kept_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs() 
     let mut guard = store.guard(store.config("100%", "0%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 3.0 * 3600.0, &CALM);
+    heard_later(&mut guard, 3.0 * 3600.0, &CALM);
     listed_later(
         &store,
         &mut guard,
@@ -1349,7 +1401,7 @@ fn a_nearly_full_store_s_listing_that_was_kept_is_not_rested() {
     let mut guard = store.guard(store.config("100%", "100%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     fs::remove_file(store.root.join("listing-slow")).unwrap();
-    step_later(&mut guard, 1800.0, &CALM);
+    heard_later(&mut guard, 1800.0, &CALM);
     listed_later(&store, &mut guard, 3600.0 + 60.0, &CALM);
     assert_eq!(
         lists(&store),
@@ -2326,7 +2378,7 @@ fn a_listings_rest_holds_for_the_next_guard() {
 /// too, so a pass that fell short has rested for as long.
 fn step_awake_later(guard: &mut Guard, seconds: f64) {
     let at = Tick {
-        wall: now() + seconds,
+        wall: later(seconds),
         monotonic: tick().monotonic + seconds,
         ..tick()
     };

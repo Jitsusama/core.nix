@@ -16,7 +16,7 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
     let run = path.with_extension("unreads");
     // Asked before, as when Slack refused the sign-in an earlier run had.
     std::fs::write(waiting(&run), "{}").unwrap();
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     until("Slack was never heard", || {
         !listed(&run, "slack-unread").is_empty()
@@ -69,7 +69,6 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
                     || header == "Authorization: Bearer xoxc-mine")),
         "{heard:?}"
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -139,7 +138,7 @@ fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
     let stand_in = StandIn::new(posting);
     let path = credentials("unreads-posted");
     let run = path.with_extension("posted");
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let posted = |id: u64, channel: &str, words: &str| {
         asked(
@@ -159,7 +158,6 @@ fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
     let unknown = posted(5, "#nowhere", "hi");
     assert_eq!(unknown["error"]["code"], "unknown", "{unknown}");
     program.stop();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -177,7 +175,7 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     launcher
         .arg(format!("--listen={}", socket(&run).display()))
         .arg(env!("CARGO_BIN_EXE_slack-unreads"));
-    let program = unreads_from(launcher, &stand_in, &path, &run);
+    let mut program = unreads_from(launcher, &stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let hello = asked(
         &run,
@@ -185,7 +183,6 @@ fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     );
     assert_eq!(hello["domain"], "slack");
     program.stop();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 
@@ -194,7 +191,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     let stand_in = StandIn::new(searching);
     let path = credentials("unreads-search");
     let run = path.with_extension("search");
-    let program = unreads(&stand_in, &path, &run);
+    let mut program = unreads(&stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let hello = || {
         asked(
@@ -278,6 +275,5 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         "{:?}",
         stand_in.heard()
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }

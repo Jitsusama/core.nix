@@ -258,7 +258,15 @@ input at COMMIT, by its full id, instead of its main's head, so a machine
 can step back from a merge held until its revert lands and still take
 everything before it. The commit must be on that main, signed, and past
 what the machine last followed, so the ask only ever chooses how far
-forward to go, and holds judge it as they judge a head. An ask joins an
+forward to go, and holds judge it as they judge a head. An input of an
+input is named by its path, `follows."core/mycelium"`, and `--at` may be
+given once for each input. One with `asked = true` never follows its own
+main: it moves when an ask names it, or as its lock moves, so a merge to a
+followed parent that bumps its pin still moves it, as before. Once asked,
+it stays at that commit while it is ahead of its pin, and lets go once the
+lock pins it, past it or off its line, or no longer has it. Its pin is the
+lock of the nearest input above it that is followed, at the commit built,
+or main's where none is. An ask joins an
 update running only when both were asked at the same commits, and is
 refused otherwise. With `elsewhere = true`, the machine builds only the
 pieces nixpkgs marks light itself and sends every other to `builders`,
@@ -585,6 +593,14 @@ The machine repository follows core.nix's pins, so updating is one input:
 ```sh
 nix flake update core
 ```
+
+A machine whose account imports `lock-follows` opens core.nix's lock pull
+requests by itself: every 15 minutes it compares the mycelium rev main locks
+with mycelium's main, and once main is behind it opens a draft pull request
+locking mycelium alone at the newest, closing the one it replaces. It never
+merges, so each lock still lands through review and the checks. Its inputs
+are `jitsusama.lock-follows.inputs`, and each run adds a line to
+`runs.jsonl` in its state folder.
 
 [1]: ../examples/
 [2]: hardware.md

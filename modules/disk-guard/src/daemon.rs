@@ -1329,7 +1329,9 @@ impl Guard {
     /// A guard that no longer hears marks nothing, as nothing would come of
     /// it.
     fn mark(&mut self, tick: &Tick) {
-        let Some(watch) = &self.opens else { return };
+        let Some(watch) = self.opens.clone() else {
+            return;
+        };
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
@@ -1377,6 +1379,9 @@ impl Guard {
                 }
             }
         }
+        // After the walk, so a folder forgotten as it marked is forgotten
+        // below before what it marked again is dated.
+        let forgot = watch.tidy();
         self.journal_walk(tick.wall, "marks", walk.end());
         if let Some(why) = why {
             say!(
@@ -1404,10 +1409,18 @@ impl Guard {
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
-        for dir in &gone {
+        for dir in gone.iter().chain(&forgot) {
             uses.heard.remove(dir);
         }
+        // One marked in this walk and forgotten after, by the tidy or as
+        // another id needed a group, has no mark to hear by, so it isn't
+        // dated as heard: the next walk marks it again, and until then its
+        // builds keep the hour. One made anew at a forgotten folder's path
+        // keeps its own mark and is dated.
         for (dir, at, handle) in marked {
+            if !watch.holds(&handle) {
+                continue;
+            }
             uses.watching(&dir, at);
             uses.marked(&dir, at, handle);
         }
@@ -2796,6 +2809,13 @@ impl Guard {
     /// moment from which nothing marked is heard.
     pub fn lost_at(&self) -> f64 {
         self.uses_now().unheard
+    }
+
+    /// Whether a listing of Nix's garbage is out, begun and not yet heard.
+    /// A listing counts as ending at the step that hears it, so this says
+    /// whether that step has come.
+    pub fn lists_garbage(&self) -> bool {
+        self.listing_out.is_some()
     }
 
     /// Forgets what earlier guards watched, for a daemon that can't hear

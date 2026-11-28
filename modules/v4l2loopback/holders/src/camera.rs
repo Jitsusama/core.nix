@@ -1,7 +1,9 @@
 //! What sysfs says of a camera: which node a loopback is, whether a USB
 //! camera streams, and what it's called.
 
+use std::ffi::OsString;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::holders::text;
@@ -73,16 +75,70 @@ pub fn streams(sysfs: &Path, node: &Path) -> bool {
     })
 }
 
+/// Where the loopback module marks, at boot, each holders file's name its
+/// loopbacks write in the folder: a folder every reader of the cameras'
+/// files passes over, as its name begins with a dot.
+pub const CLAIMED: &str = ".claimed";
+
+/// Whether a loopback claims the name in the folder. A mark that can't be
+/// read for any reason but its absence counts as a claim, since writing
+/// over a loopback's file would empty it and read its camera as off.
+fn claimed(folder: &Path, name: &OsString) -> bool {
+    !matches!(
+        fs::symlink_metadata(folder.join(CLAIMED).join(name)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+    )
+}
+
+/// A USB camera's file, and the name it gave way to, if it gave way.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CameraFile {
+    pub path: PathBuf,
+    pub gave_way_to: Option<OsString>,
+}
+
 /// FOLDER/<the camera's name>, as its driver gives it, made a single plain
-/// file name.
-pub fn camera_file(sysfs: &Path, node: &Path, folder: &Path) -> std::io::Result<PathBuf> {
+/// file name. Where a loopback claims that name, as a second camera of the
+/// model a relay shares would, or one whose product is called as a
+/// loopback's file is, it's FOLDER/<the name> (<its node>) instead, so
+/// the two never write one file; a camera whose name nothing claims keeps
+/// the file it always had. Refused, if a loopback claims both.
+pub fn camera_file(sysfs: &Path, node: &Path, folder: &Path) -> io::Result<CameraFile> {
     let name = fs::read(video_folder(sysfs, node).join("name"))?;
     let called = text(&name).replace('/', "-");
     let called = called.trim_start_matches('.');
-    Ok(if called.is_empty() {
-        folder.join(node.file_name().unwrap_or_default())
-    } else {
-        folder.join(called)
+    let node_name = node.file_name().unwrap_or_default();
+    if called.is_empty() {
+        return Ok(CameraFile {
+            path: folder.join(node_name),
+            gave_way_to: None,
+        });
+    }
+    let called = OsString::from(called);
+    if !claimed(folder, &called) {
+        return Ok(CameraFile {
+            path: folder.join(&called),
+            gave_way_to: None,
+        });
+    }
+    let mut apart = called.clone();
+    apart.push(" (");
+    apart.push(node_name);
+    apart.push(")");
+    if claimed(folder, &apart) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            // Quoted, since a USB camera names itself.
+            format!(
+                "a loopback claims both {:?} and {:?}",
+                called.to_string_lossy(),
+                apart.to_string_lossy()
+            ),
+        ));
+    }
+    Ok(CameraFile {
+        path: folder.join(apart),
+        gave_way_to: Some(called),
     })
 }
 
@@ -228,8 +284,57 @@ pub mod tests {
                 Path::new("/run/camera-holders")
             )
             .unwrap(),
-            Path::new("/run/camera-holders/MX Brio 705 for Business")
+            CameraFile {
+                path: PathBuf::from("/run/camera-holders/MX Brio 705 for Business"),
+                gave_way_to: None,
+            }
         );
+    }
+
+    /// A holders folder in the camera's scratch, with these names claimed.
+    fn claiming(camera: &Camera, names: &[&str]) -> PathBuf {
+        let folder = camera.root.join("camera-holders");
+        fs::create_dir_all(folder.join(CLAIMED)).unwrap();
+        for name in names {
+            fs::write(folder.join(CLAIMED).join(name), "").unwrap();
+        }
+        folder
+    }
+
+    #[test]
+    fn a_name_a_loopback_claims_is_given_way_to() {
+        let camera = Camera::new("claimed", "MX Brio 705 for Business");
+        let folder = claiming(&camera, &["MX Brio 705 for Business", "camera"]);
+        let node = camera.node.file_name().unwrap().to_string_lossy();
+        assert_eq!(
+            camera_file(&camera.sysfs, &camera.node, &folder).unwrap(),
+            CameraFile {
+                path: folder.join(format!("MX Brio 705 for Business ({node})")),
+                gave_way_to: Some("MX Brio 705 for Business".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn a_name_only_another_loopback_claims_is_kept() {
+        let camera = Camera::new("unclaimed", "Webcam 2.0");
+        let folder = claiming(&camera, &["MX Brio 705 for Business", "camera"]);
+        assert_eq!(
+            camera_file(&camera.sysfs, &camera.node, &folder).unwrap(),
+            CameraFile {
+                path: folder.join("Webcam 2.0"),
+                gave_way_to: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_camera_whose_both_names_are_claimed_is_refused() {
+        let camera = Camera::new("both", "camera");
+        let node = camera.node.file_name().unwrap().to_string_lossy();
+        let folder = claiming(&camera, &["camera", &format!("camera ({node})")]);
+        let refused = camera_file(&camera.sysfs, &camera.node, &folder).unwrap_err();
+        assert_eq!(refused.kind(), io::ErrorKind::AlreadyExists);
     }
 
     #[test]
@@ -241,7 +346,8 @@ pub mod tests {
                 &camera.node,
                 Path::new("/run/camera-holders")
             )
-            .unwrap(),
+            .unwrap()
+            .path,
             Path::new("/run/camera-holders/-Cam-Era?")
         );
     }

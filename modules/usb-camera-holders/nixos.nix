@@ -12,7 +12,9 @@
 # watch then writes in the hidden folder /run/camera-holders/.relayed
 # instead, which the shell and the light pass over as they do every dotted
 # name, so the two never write one file and the relay is never shown as
-# the program on camera.
+# the program on camera. Any other camera called as a loopback's file is,
+# as a second camera of the relayed model, finds the name claimed in
+# .claimed/ and writes /run/camera-holders/<its name> (<its node>).
 #
 # A program is named only while the camera streams, which uvcvideo starts by
 # picking a streaming interface's alternate setting other than zero: the

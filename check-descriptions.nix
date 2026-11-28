@@ -12,6 +12,11 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-camera-watch-refuses-a-unit-holding-everyone = ''
+    a machine whose loopback camera's watch leaves out a person's manager, a session's scope,
+    init.scope, a slice or a path never builds, while one leaving out a relay's own service or
+    scope, or a system service named like a person's manager, does
+  '';
   a-card-says-how-it-stands-in-one-row = ''
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
@@ -1345,6 +1350,11 @@
     no hardware address in the repository could be a real device's, but the ten kept on purpose
     under a maker's prefix, and a copied one is refused
   '';
+  every-linked-prompt-keeps-key-time = ''
+    every Prompt of the shell whose linked() its file calls is given keyNow in its own block, so
+    its link's quiet is timed on the launcher's monotonic clock rather than a wall clock that can
+    step back
+  '';
   every-lock-agrees-with-its-manifests = ''
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them
@@ -1643,7 +1653,8 @@
     history, newest first, leaving out any it can't read, offers a look's choices, answered by a
     steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
-    done
+    done, and has Later's drawer say what each waits for and how long, and History's how many each
+    source keeps
   '';
   formatting = ''
     everything is formatted and passes the linters
@@ -1933,6 +1944,11 @@
   ir-camera-relays-grey-frames = ''
     ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
     and refuses a short frame or a format it can't use
+  '';
+  iris-tiles-memory-objects-as-anv-does = ''
+    the patched source of the XPS 14's Mesa has iris prefer 4K tiles for every memory object, in a
+    branch no earlier one can shadow, and anv still prefers them for an image it exports with no
+    modifier
   '';
   jobs-broker-passes-clippy = ''
     clippy finds nothing in the jobs broker or its tests
@@ -2291,6 +2307,24 @@
     stranger's host name and a stranger's page, has two pages share one watch on a daemon with
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
     daemon, and says a missing daemon broken with why
+  '';
+  lock-follows-opens-one-change-per-rev = ''
+    lock-follows does nothing while main locks upstream's newest; opens one draft change locking
+    that input alone at a newer, listing upstream's merges between, each subject in a code span so
+    a closing word closes nothing; opens nothing while it's open; once main moves on and upstream
+    with it, replaces that draft, naming it in the new one, commenting, closing, then deleting its
+    branch; replaces none whose lock commit someone amended, in its lock or its message, nor one
+    marked ready, another input's or a fork's; opens a declined rev's again neither while its
+    branch stands nor once deleted; leaves as taken a branch of its name holding the tool's commit
+    with someone's file amended in; ends non-zero when opening fails and opens on the pushed branch
+    next run, a fork's closed draft of that name declining nothing; leaves the older open when its
+    close fails, and closed with its branch kept when its delete is refused, saying so; and ends
+    with 75 when listing changes or fetching fails, writing a line for each run
+  '';
+  lock-follows-runs-every-quarter-hour = ''
+    lock-follows runs every 15 minutes in the background, catching up on a quarter slept
+    through, stopped after 10 minutes, following mycelium alone unless the account names more,
+    and an account naming no input is refused
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
@@ -4331,6 +4365,10 @@
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried
   '';
+  shaper-holds-a-link-under-its-network = ''
+    a link's download line above its network's is refused as the machine builds, naming the link,
+    while one under or at it, or on a network whose line isn't known, builds
+  '';
   shaper-refuses-a-house-key-it-can-t-read = ''
     a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
     or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
@@ -5846,9 +5884,9 @@
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
-    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
-    folder, never beside it, and the seat's give-back is dropped
+    loopback's holders file is named as the Brio is, its name claimed from boot, and removed
+    when the Brio goes, the shell lists the Brio only while that file is there, the Brio's own
+    watch writes in the hidden folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed

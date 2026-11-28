@@ -63,7 +63,9 @@
 // answer takes its own order; where the daemon can't search, typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// otherwise 1, saying which didn't. Long because every case is the one
+// program step's, run in one Quickshell over the entries and stand-ins
+// checks/programs.nix makes once, which pieces would each make again.
 import qs
 import Quickshell
 import Quickshell.Io
