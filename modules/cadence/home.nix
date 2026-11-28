@@ -259,7 +259,10 @@ in
       '';
     };
     site = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
+      # The sites' door admits only a page of http with its port, so a
+      # wss feed, or one without its port, is refused here rather than
+      # sampled as failing every run.
+      type = lib.types.nullOr (lib.types.strMatching "ws://[^/@[]+:[0-9]+(/.*)?");
       default = null;
       example = "ws://sites.localhost:8484/feed/node";
       description = ''
@@ -596,8 +599,9 @@ in
       Timer = {
         # At eight past each ten minutes: off the tick every five minutes,
         # which asks the node about each realm's machines, the path's
-        # samples on the tens and the hour's run at ten past, so no sample
-        # times the node under cadence's own load.
+        # samples on the tens and the hour's run at ten past, so a sample
+        # rarely times the node under cadence's own load; a tick slow
+        # under load past three minutes still meets one.
         OnCalendar = "*:08/10";
         AccuracySec = "30s";
       };

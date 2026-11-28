@@ -630,9 +630,9 @@
     switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
     hang now that no switch does, a key it can't read refused as such; each timer's run is found
     by the reading the base module finds it with, the tick, day, review and hour, and the path
-    and site samples the example laptop names, must each be among the runs found, a failure names each run and what it lacks, stand-in units each wrong
-    one way must each be refused in their own words, and ones right in each way allowed must each
-    pass
+    and site samples the example laptop names, must each be among the runs found, a failure
+    names each run and what it lacks, stand-in units each wrong one way must each be refused in
+    their own words, and ones right in each way allowed must each pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -644,6 +644,12 @@
     is still the one spend-watch writes, and is a line of cadence's own rather than of
     a test's fixture; each struct written derives Serialize and none is written by
     hand; and copies renamed as each guard means are refused by that guard
+  '';
+  cadence-site-reads-each-order = ''
+    the site's sampler times a watch live then records, or records then live, to its records;
+    waits through a broken watch that comes live again; leaves records then broken, a refusal
+    and a failed connection unanswered, each saying why in the feed's or websocat's words; and
+    refuses a wss, portless, user-named or bracketed feed, writing it as a failed sample
   '';
   cadence-spec-passes-clippy = ''
     clippy finds nothing in cadence-spec or its tests

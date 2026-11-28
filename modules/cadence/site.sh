@@ -4,15 +4,17 @@
 # hello, then watches each kind the hello lists, all at once as the page
 # does, and times each watch to its first records. A line of JSON in the
 # day's file of $XDG_STATE_HOME/cadence/site holds each kind's seconds, or
-# null for one refused, said broken or that sent none within the wait, with
-# what the feed said of each refused or broken one, for `cadence hour`
-# to hold the hour's median wait for the slowest the page waits on to its
-# ceiling (src/hour/measures/site.rs). The sites' server shares one watch
-# of each kind among its pages, so while a page holds one the sample times
-# what a page opened then would wait, the server's held records, rather
-# than the node: the page's wait is what this measures. On 26 November at 22:40 the message watch
-# took 3.5 s and the cell watch 2.8 s, where seven minutes before both took
-# under 1 s, and the page showed nothing new while they waited.
+# null for one refused, said broken and not live again, or that sent none
+# within the wait, with what the feed or the connection said of each, for
+# `cadence hour` to hold the hour's median wait for the slowest the page
+# waits on to its ceiling (src/hour/measures/site.rs). The sites' server
+# shares one watch of each kind among its pages, so while a page holds one
+# the sample times what a page opened then would wait, the server's held
+# records, rather than the node: the page's wait is what this measures. On
+# 26 November at 22:40 the message watch took 3.5 s and the cell watch
+# 2.8 s, where seven minutes before both took under 1 s, and the page
+# showed nothing new while they waited. site-reads-each-order.sh holds it
+# to each order the server sends a watch's lines in.
 #
 # Its help and failures take the shape every command of ours does
 # (docs/commands.md), by hand.
@@ -22,6 +24,20 @@ set -o pipefail
 
 # As long as site.rs counts an unanswered watch's wait.
 readonly WAIT=20
+
+folder="${XDG_STATE_HOME:-${HOME}/.local/state}/cadence/site"
+out="${folder}/$(date +%F).jsonl"
+
+# Says why the feed it was given can't be sampled and stops, writing that
+# as the sample's failure too, so the hour reads a red with its reason
+# rather than an hour gone quiet.
+refused() {
+  mkdir -p "${folder}"
+  jq --null-input --compact-output --argjson at "$(date +%s)" --arg error "$1" \
+    '{at: $at, error: $error}' >>"${out}"
+  printf '%s\n' "cadence-site $1" "  try  $2" >&2
+  exit 64
+}
 
 case ${1-} in
   -h | --help)
@@ -47,9 +63,8 @@ EOF
     # The local sites' door admits only a page of http with its port, so
     # a wss feed's https origin would be refused every run and read as a
     # slow node.
-    printf '%s\n' "cadence-site takes a ws feed, since the sites' door refuses wss: ${1}" \
-      "  try  cadence-site ws://${1#wss://}" >&2
-    exit 64
+    refused "takes a ws feed, since the sites' door refuses wss: ${1}" \
+      "cadence-site ws://${1#wss://}"
     ;;
   ws://*) ;;
   '')
@@ -58,9 +73,7 @@ EOF
     exit 64
     ;;
   *)
-    printf '%s\n' "cadence-site takes a ws feed, not ${1}" \
-      "  try  cadence-site --help" >&2
-    exit 64
+    refused "takes a ws feed, not ${1}" "cadence-site --help"
     ;;
 esac
 
@@ -68,16 +81,14 @@ feed=$1
 # The page's own origin, which the node's feed asks a browser for: the
 # feed's host under the page's scheme.
 rest=${feed#ws://}
-if [[ ${rest%%/*} != *:[0-9]* ]]; then
-  printf '%s\n' "cadence-site takes a feed with its port, as the sites' door admits: ${feed}" \
-    "  try  cadence-site --help" >&2
-  exit 64
+# The host ends in its port, so neither a bracketed IPv6 host nor a user's
+# name before an @ passes for one.
+if [[ ! ${rest%%/*} =~ ^[^@]+:[0-9]+$ ]] || [[ ${rest%%/*} == *@* ]]; then
+  refused "takes a feed with its port, as the sites' door admits: ${feed}" "cadence-site --help"
 fi
 origin="http://${rest%%/*}"
 
-folder="${XDG_STATE_HOME:-${HOME}/.local/state}/cadence/site"
 mkdir -p "${folder}"
-out="${folder}/$(date +%F).jsonl"
 timed=$(mktemp -d)
 trap 'rm -rf "${timed}"' EXIT
 
@@ -122,7 +133,7 @@ for kind in "${kinds[@]}"; do
     # Room for the hello's answer and any state lines before the records;
     # the first records end the read long before this many.
     printf '{"id":1,"ask":"hello"}\n{"id":2,"ask":"watch","kind":"%s"}\n' "${kind}" |
-      socket 64 /dev/null |
+      socket 64 "${timed}/${kind}.said" |
       # jq reads each of the watch's lines as JSON, whatever order its keys
       # come in, and says it as a word and its reason as it comes, so the
       # clock stops as the records arrive rather than after bash has read
@@ -130,7 +141,8 @@ for kind in "${kinds[@]}"; do
       # passed over, not the read's end.
       jq --null-input --raw-input --raw-output --unbuffered 'inputs | fromjson? |
         objects | select(.id == 2) |
-        def why: tostring | gsub("[\t\n]"; " ") | .[:200];
+        def why: (if type == "object" then .message // . else . end)
+          | if type == "string" then . else tojson end | gsub("[\t\n]"; " ") | .[:200];
         if has("records") then "records"
         elif has("error") then "error\t\(.error | why)"
         elif .state == "live" then "live"
@@ -140,9 +152,11 @@ for kind in "${kinds[@]}"; do
         # A fresh watch says it's live before its records, which then end
         # its wait. One another page holds is told the records the server
         # holds first, then the watch's state: records followed by broken
-        # are what the page shows as its node down, so no answer, as is a
-        # refusal. Either ends the wait untimed, and the hour counts it as
-        # the whole wait, saying why.
+        # are what the page shows as its node down, so no answer yet. The
+        # server tries a broken watch again within seconds, so the wait
+        # goes on for the records and live that follow, the page's own wait
+        # through a quick restart, and only a refusal ends it untimed. One
+        # never answered, the hour counts as the whole wait, saying why.
         live=""
         records=""
         while IFS=$'\t' read -r said why; do
@@ -155,7 +169,12 @@ for kind in "${kinds[@]}"; do
               [[ -n ${records} ]] || records=$(date +%s%N)
               [[ -n ${live} ]] && break
               ;;
-            broken | error)
+            broken)
+              live=""
+              records=""
+              printf '%s\n' "${said}: ${why}" >"${timed}/${kind}.why"
+              ;;
+            error)
               records=""
               printf '%s\n' "${said}: ${why}" >"${timed}/${kind}.why"
               break
@@ -164,8 +183,9 @@ for kind in "${kinds[@]}"; do
             *) ;;
           esac
         done
-        if [[ -n ${records} ]]; then
+        if [[ -n ${records} && -n ${live} ]]; then
           echo $(((records - start) / 1000000)) >"${timed}/${kind}"
+          rm -f "${timed}/${kind}.why"
         fi
       }
   ) &
@@ -185,6 +205,12 @@ for kind in "${kinds[@]}"; do
   if [[ -s "${timed}/${kind}.why" ]]; then
     why=$(jq --compact-output --arg kind "${kind}" --rawfile said "${timed}/${kind}.why" \
       '.[$kind] = ($said | rtrimstr("\n"))' <<<"${why}")
+  elif [[ ! -s "${timed}/${kind}" && -s "${timed}/${kind}.said" ]]; then
+    # Unanswered with nothing from the feed, so what websocat said of
+    # its connection, where it said anything, is why.
+    said=$(head -n 1 "${timed}/${kind}.said" | cut -c 1-200)
+    why=$(jq --compact-output --arg kind "${kind}" --arg said "connection: ${said}" \
+      '.[$kind] = $said' <<<"${why}")
   fi
 done
 jq --null-input --compact-output --argjson at "${at}" --argjson kinds "${answered}" \

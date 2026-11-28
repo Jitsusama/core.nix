@@ -90,7 +90,8 @@ pub fn hour(state_home: &Path, now: i64) -> Option<Measure> {
 
 /// The hour's measure where `feed` is what home.nix named: none for an
 /// empty name, and for no name at all, as a run by hand has, a measure
-/// only where the last two days hold samples.
+/// only where the hour holds enough samples to judge, so a run by hand
+/// never reads a quiet sampler as the site's ask settled.
 fn measured_for(feed: Option<&str>, state_home: &Path, now: i64) -> Option<Measure> {
     if feed == Some("") {
         return None;
@@ -102,10 +103,11 @@ fn measured_for(feed: Option<&str>, state_home: &Path, now: i64) -> Option<Measu
         .flatten()
         .collect::<Vec<_>>()
         .join("\n");
-    if feed.is_none() && lines.trim().is_empty() {
+    let measure = site(&lines, now);
+    if feed.is_none() && measure.target.is_none() {
         return None;
     }
-    Some(site(&lines, now))
+    Some(measure)
 }
 
 /// The measure over the hour to `now` from site.sh's lines, unjudged where
@@ -188,17 +190,23 @@ fn measured(samples: &[Sample]) -> Measure {
     behind.push(format!("worst {worst:.2} s"));
     // Why the feed left a watch the page waits on unanswered, where it
     // said, so a node the page shows broken reads as that, not as slow.
+    // Counted by sample, as the page waits on each sample's watches once,
+    // and the feed's words quoted, since they're the feed's, not ours.
     let unanswered: Vec<&str> = samples
         .iter()
-        .flat_map(|s| &s.why)
-        .filter(|(kind, _)| WAITED_ON.contains(&kind.as_str()))
-        .map(|(_, why)| why.as_str())
+        .filter_map(|s| {
+            s.why
+                .iter()
+                .find(|(kind, _)| WAITED_ON.contains(&kind.as_str()))
+                .map(|(_, why)| why.as_str())
+        })
         .collect();
     if let Some(first) = unanswered.first() {
         let first: String = first.chars().take(120).collect();
         behind.push(format!(
-            "{} watches it waits on went unanswered, the first as {first}",
-            unanswered.len()
+            "{} of {} samples left a watch it waits on unanswered, the first as {first:?}",
+            unanswered.len(),
+            samples.len()
         ));
     }
     let failed: Vec<&Sample> = samples.iter().filter(|s| s.watches.is_empty()).collect();
@@ -382,20 +390,41 @@ mod tests {
     }
 
     #[test]
-    fn why_a_watch_went_unanswered_is_said_behind_the_hour() {
+    fn why_a_watch_went_unanswered_is_said_behind_the_hour_once_a_sample() {
+        let long = format!("broken: its daemon didn't answer{}", " again".repeat(30));
+        // Each sample leaves two waited-on watches unanswered, and a watch
+        // apart says its own why, which no page waits on.
         let broken = |ago| {
-            let mut v: Value = serde_json::from_str(&waited(ago, None)).expect("a sample");
-            v["why"] = serde_json::json!({"message": "broken: its daemon didn't answer"});
+            let mut v: Value = serde_json::from_str(&sampled(
+                ago,
+                &[
+                    ("network", Some(0.1)),
+                    ("cell", None),
+                    ("machine", Some(0.2)),
+                    ("message", None),
+                    ("tie", None),
+                ],
+            ))
+            .expect("a sample");
+            v["why"] = serde_json::json!({
+                "cell": long,
+                "message": long,
+                "tie": "error: a watch apart",
+            });
             v.to_string()
         };
-        let m = site(&[broken(60), broken(660), quick(1260)].join("\n"), NOW);
+        let apart_only = |ago| {
+            let mut v: Value = serde_json::from_str(&quick(ago)).expect("a sample");
+            v["why"] = serde_json::json!({"tie": "error: a watch apart"});
+            v.to_string()
+        };
+        let m = site(&[apart_only(60), broken(660), broken(1260)].join("\n"), NOW);
+        let cut: String = long.chars().take(120).collect();
         assert!(
-            m.behind.contains(
-                &"2 watches it waits on went unanswered, the first as broken: its daemon \
-                  didn't answer"
-                    .to_owned()
-            ),
-            "why the watch went unanswered wasn't said: {:?}",
+            m.behind.contains(&format!(
+                "2 of 3 samples left a watch it waits on unanswered, the first as {cut:?}"
+            )),
+            "why the watches went unanswered wasn't said once a sample, cut to 120: {:?}",
             m.behind
         );
     }
@@ -450,6 +479,13 @@ mod tests {
         assert!(
             measured_for(None, empty.path(), NOW).is_none(),
             "an hour by hand with no samples measured the site"
+        );
+        // Yesterday's samples alone, with the sampler quiet since, judge
+        // nothing, so a run by hand can't settle the site's ask.
+        let quiet = state_holding(&[quick(3 * 3600), quick(4 * 3600), quick(5 * 3600)]);
+        assert!(
+            measured_for(None, quiet.path(), NOW).is_none(),
+            "an hour by hand with no samples of its own measured the site"
         );
     }
 
