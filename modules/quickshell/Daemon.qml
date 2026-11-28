@@ -46,6 +46,7 @@ import Quickshell
 import Quickshell.Io
 import "Hearing.js" as Hearing
 import "Mending.js" as Mending
+import "Retrying.js" as Retrying
 
 Scope {
     id: daemon
@@ -670,32 +671,23 @@ Scope {
     // asked again a little later, as `said` gives it then, so a share's end or a place kept
     // since goes rather than the one overtaken, at most `refusedTries` times in all. A try
     // falling due while nothing answers waits for the connection rather than spend itself.
+    // What each answer means, and which asks wait, is Retrying.js's to decide.
     function askTillTaken(said) {
         askedTillTaken(said, refusedTries);
     }
     function askedTillTaken(said, tries) {
-        const asked = typeof said === "function" ? said() : said;
+        const asked = Retrying.asked(said);
         ask(asked, answer => {
-            const unanswered = answer === null || answer === undefined;
-            if (!unanswered && answer?.error?.code !== "refused")
+            const after = Retrying.after(answer, tries);
+            if (after.next === "done")
                 return;
-            if (tries <= 1) {
-                const why = unanswered ? "no answer" : answer.error.message;
-                console.warn(`${socket}: ${asked.ask} still not taken, so asked no more: ${why}`);
-                daemon.gaveUp(asked, unanswered ? "" : String(answer.error.message ?? ""));
+            if (after.next === "givenUp") {
+                console.warn(
+                    `${socket}: ${asked.ask} still not taken, so asked no more: ${after.said}`);
+                daemon.gaveUp(asked, after.why);
                 return;
             }
-            // One given as a function says its latest when asked, so one try of each such ask
-            // waits, the latest, rather than ten kept places each paying the daemon's wait
-            // (round 000011, F111); one given as words names what it acts on, so each waits.
-            const alike = one => typeof said === "function" && typeof one.said === "function"
-                && one.ask === asked.ask;
-            // The one kept takes the most tries left of those it stands for, so a fresh ask
-            // isn't given up on with an older one's few (round 000036 on #6796, F139).
-            const left = refusedAgain.filter(alike).reduce((most, one) => Math.max(most, one.tries),
-                tries - 1);
-            refusedAgain = refusedAgain.filter(one => !alike(one))
-                .concat([{ said: said, ask: asked.ask, tries: left }]);
+            refusedAgain = Retrying.waiting(refusedAgain, said, asked.ask, tries);
             if (!askAgain.running)
                 askAgain.start();
         });
@@ -711,11 +703,9 @@ Scope {
         interval: 4000
         onTriggered: {
             // Kept for the connection's return, which starts this again.
-            if (daemon.wire === null)
-                return;
-            const due = daemon.refusedAgain;
-            daemon.refusedAgain = [];
-            for (const one of due)
+            const due = Retrying.due(daemon.refusedAgain, daemon.wire !== null);
+            daemon.refusedAgain = due.kept;
+            for (const one of due.now)
                 daemon.askedTillTaken(one.said, one.tries);
         }
     }

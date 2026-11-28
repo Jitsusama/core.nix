@@ -39,6 +39,7 @@
   "SystemParts.qml"
   "Hearing.js"
   "Mending.js"
+  "Retrying.js"
   "Watchers.qml"
   "launcher/Provider.qml"
   "launcher/Member.js"

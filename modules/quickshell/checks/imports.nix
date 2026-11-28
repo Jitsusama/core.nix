@@ -25,6 +25,7 @@
   "Daemon.qml" = [
     "Hearing.js"
     "Mending.js"
+    "Retrying.js"
   ];
   "Devices.js" = [ "Crossing.js" ];
   "DrawerPage.js" = [ "Search.js" ];
