@@ -22,20 +22,21 @@ fi
 # free of what the session table holds, whatever reads it out, and the
 # session data's pointer declared to be freed so as it leaves its scope.
 # The lines of a statement are read as one, up to the semicolon or brace
-# ending it, so a call broken over lines is read whole, with any space or
-# cast in it.
+# ending it, each line after its first with its indent taken off, so a call
+# or a declaration broken over lines is read whole, with any space, cast or
+# parenthesis in it, and a pointer or a declarator on a line of its own.
 freed=$(awk '
   # Reads one statement: its names for the session data first, then its frees.
   function judge(statement, from,    line, name, hit) {
     line = statement
-    while (match(line, /struct iwl_mld_baid_data \*[A-Za-z_][A-Za-z0-9_]*/)) {
+    while (match(line, /struct iwl_mld_baid_data +\* *[A-Za-z_][A-Za-z0-9_]*/)) {
       name = substr(line, RSTART, RLENGTH)
-      sub(/.*\*/, "", name)
+      sub(/.*\* */, "", name)
       names[name] = 1
       line = substr(line, RSTART + RLENGTH)
-      while (match(line, /^[^;)(]*, *\*[A-Za-z_][A-Za-z0-9_]*/)) {
+      while (match(line, /^[^;)(]*, *\* *[A-Za-z_][A-Za-z0-9_]*/)) {
         name = substr(line, RSTART, RLENGTH)
-        sub(/.*\*/, "", name)
+        sub(/.*\* */, "", name)
         names[name] = 1
         line = substr(line, RSTART + RLENGTH)
       }
@@ -52,17 +53,19 @@ freed=$(awk '
   BEGIN {
     # A call of kfree() or kfree_sensitive(), which zeroes the memory and then
     # calls kfree(), with any space between its name and its parenthesis, and
-    # any cast of its argument after them.
-    kfree = "(^|[^A-Za-z0-9_])kfree(_sensitive)?[ \t]*\\([ \t]*"
-    cast = "(\\([^()]*\\)[ \t]*)*"
+    # any cast, parenthesis or space before its argument after them.
+    kfree = "(^|[^A-Za-z0-9_])kfree(_sensitive)?[ \t]*\\("
+    cast = "(\\(([^()]*\\))?|[ \t])*"
   }
   /^[A-Za-z].*\(/ { delete names; statement = "" }
   {
+    line = $0
     if (statement == "") {
       from = FNR
-      statement = $0
+      statement = line
     } else {
-      statement = statement " " $0
+      sub(/^[ \t]+/, "", line)
+      statement = statement " " line
     }
   }
   /[;{}]/ {
