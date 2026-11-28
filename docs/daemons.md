@@ -63,7 +63,10 @@ most 16 MiB: a connection whose line runs past that unended is hung up on.
 - `list` with a `kind` answers every record of that kind.
 - `watch` with a `kind`, and `keys` or a `place` to narrow it, answers the
   records whole, then tells only what changed, by key, and the keys that
-  went. An `every` paces it, telling what moved at most once a pace.
+  went. An `every` paces it, telling what moved at most once a pace. A
+  `latest` asks it to keep the watch told of only that many of the kind's
+  records, the latest heard, as the mycelium node's messages are; a daemon
+  that doesn't know it passes over it and tells every record.
   `unwatch` ends it, as closing the socket does.
 - `health` answers the daemon's state, and each of its sources' state with
   its reason, where every other line says the state's word alone.
