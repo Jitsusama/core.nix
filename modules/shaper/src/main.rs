@@ -1421,7 +1421,13 @@ fn run(options: &Options) -> Result<(), Failure> {
         let (house, steady) = most.house(Instant::now());
         let ceilings = (&most.written, &house, steady);
         step_links(&mut shaped, &mut live, ceilings, (call.on, &most.lines));
-        hold_followers(&mut shaped);
+        // Until a start has read the recorder's backlog, a follower keeps
+        // the hold `start` gave it too: its leader's asked rates are still
+        // start's, which would send its download straight in (a start
+        // hears its stop round 2's F15).
+        if live.caught_up() {
+            hold_followers(&mut shaped);
+        }
         let heard = live.heard().map(|(link, mut h)| {
             h.up_tins_kbit = up_tins.kbit();
             (link, h)
@@ -1968,10 +1974,16 @@ fn step_links(
     // The VPN's hold judges its wait knowing where its cuts stop lowering
     // the CAKE (src/tunnel.rs).
     live.vpn_floor(shaped.values().map(|s| s.vpn_least).fold(0.0, f64::max));
-    let (link, rates) = match live.poll(now) {
-        Some((link, rates)) => (Some(link.to_string()), rates),
-        None => (None, replay::Rates::default()),
-    };
+    let polled = live
+        .poll(now)
+        .map(|(link, rates)| (Some(link.to_string()), rates));
+    // Until a start has read the recorder's backlog, each link keeps the
+    // hold `start` gave it, rather than going at its whole rate while no
+    // link is named (a start hears its stop round 1's F7).
+    if !live.caught_up() {
+        return;
+    }
+    let (link, rates) = polled.unwrap_or((None, replay::Rates::default()));
     let why = live.why(now);
     let controller_ceiling = live.ceiling();
     let share = live.vpn_share(now);
