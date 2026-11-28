@@ -12,19 +12,21 @@
 //! commit must descend from the old one along the trunk's own line, the
 //! first parent of each commit, and every commit on that line must be a
 //! merge of two parents that a pull request into the trunk merged as, as
-//! GitHub says, its second parent that pull request's head. The repo's
-//! train merges each pull request so, with a merge commit of its own,
-//! which puts every commit it carried on the trunk though a round read
-//! only its head (on 22 November 1,150 of mycelium's 1,543); those come
-//! in through the second parents. A commit of one parent on the line was
-//! pushed there, whether alone or on top of a merge, and a pull request
-//! whose head is pushed to its base is marked merged as that head, which
-//! is no merge. The train merges on this machine and pushes, as Joel
-//! ("Merge <commit> on the merge train", unsigned), so GitHub records a
-//! merge made by hand and pushed the same way: nothing here tells one
-//! from the other, and a round of this repo on the lock would read only
-//! hashes and catch neither. Its `narHash`
-//! and `lastModified` must be what Nix makes of that commit fetched
+//! GitHub says, its second parent that pull request's head, or a squash
+//! as below. The repo's train merges each pull request so by default,
+//! with a merge commit of its own, which puts every commit it carried on
+//! the trunk though a round read only its head (on 22 November 1,150 of
+//! mycelium's 1,543); those come in through the second parents. A commit of one parent on the line
+//! counts only as a squash, GitHub's merge of a pull request into the
+//! trunk as that commit from a head that isn't it, which a train asked to
+//! squash makes: a commit pushed there, alone or on top of a merge, has no
+//! pull request merged as it, and a pull request whose head is pushed to
+//! its base is marked merged as that head, which is no merge. The train
+//! merges on this machine and pushes, as Joel ("Merge <commit> on the
+//! merge train", unsigned), so GitHub records a merge made by hand and
+//! pushed the same way: nothing here tells one from the other, and a
+//! round of this repo on the lock would read only hashes and catch
+//! neither. Its `narHash` and `lastModified` must be what Nix makes of that commit fetched
 //! afresh, since Nix takes a source whose hash it already holds without
 //! fetching it. A branch, a pull request's head, a commit from a fork, a
 //! commit pushed straight to the trunk or a pin back to an older commit
@@ -237,11 +239,17 @@ fn brought(compared: &Value) -> Result<Vec<Brought>, String> {
     Ok(listed)
 }
 
-/// The merges on the trunk's line from `new` back to `old`, newest
-/// first, each with its second parent, the head of what it merged, when
-/// `commits`, what a compare lists, hold that whole line and every commit
-/// on it is a merge of two parents; why not otherwise.
-fn merges(commits: &[Brought], old: &str, new: &str) -> Result<Vec<(String, String)>, String> {
+/// The commits on the trunk's line from `new` back to `old`, newest
+/// first, each with the head of what it merged: a merge of two parents
+/// merged its second; a commit of one parent, which a squash makes, none
+/// it names, so GitHub is asked for a pull request whose head it isn't.
+/// Why not, when `commits`, what a compare lists, don't hold that whole
+/// line or a commit on it has more parents than two.
+fn merges(
+    commits: &[Brought],
+    old: &str,
+    new: &str,
+) -> Result<Vec<(String, Option<String>)>, String> {
     let mut merges = Vec::new();
     let mut at = new;
     while at != old {
@@ -252,13 +260,18 @@ fn merges(commits: &[Brought], old: &str, new: &str) -> Result<Vec<(String, Stri
                 short(new)
             ));
         };
-        let [first, second] = commit.parents.as_slice() else {
-            return Err(format!(
-                "{} on the trunk's line is no merge of a pull request, so it was pushed there",
-                short(at)
-            ));
+        let (first, head) = match commit.parents.as_slice() {
+            [first, second] => (first, Some(second.clone())),
+            [first] => (first, None),
+            _ => {
+                return Err(format!(
+                    "{} on the trunk's line is no merge of a pull request, so it was pushed \
+                     there",
+                    short(at)
+                ));
+            }
         };
-        merges.push((at.to_owned(), second.clone()));
+        merges.push((at.to_owned(), head));
         if merges.len() > commits.len() {
             return Err("GitHub's compare of them goes round in a circle".to_owned());
         }
@@ -268,15 +281,20 @@ fn merges(commits: &[Brought], old: &str, new: &str) -> Result<Vec<(String, Stri
 }
 
 /// Whether `pulls` holds a pull request merged into `trunk` of `repo` as
-/// `merge`, from `head`.
-fn merged(pulls: &Value, (repo, trunk): (&str, &str), merge: &str, head: &str) -> bool {
+/// `merge`, from `head` when it names one. Naming none, as for a squash,
+/// the pull request's head must not be `merge` itself: GitHub marks one
+/// whose head was pushed to its base merged as that head, which no merge
+/// of GitHub's made and no round need have read.
+fn merged(pulls: &Value, (repo, trunk): (&str, &str), merge: &str, head: Option<&str>) -> bool {
     pulls.as_array().is_some_and(|pulls| {
         pulls.iter().any(|pull| {
+            let from = pull["head"].as_str();
             !pull["merged_at"].is_null()
                 && pull["base"]["ref"].as_str() == Some(trunk)
                 && pull["base"]["repo"].as_str() == Some(repo)
                 && pull["merge_commit_sha"].as_str() == Some(merge)
-                && pull["head"].as_str() == Some(head)
+                && from.is_some()
+                && head.map_or(from != Some(merge), |head| from == Some(head))
         })
     })
 }
@@ -353,12 +371,15 @@ fn vouched(pin: &Moved, asks: &impl Asks, by: Instant) -> Result<(), String> {
                 short(merge)
             )
         })?;
-        if !merged(&pulls, (repo, trunk), merge, head) {
+        if !merged(&pulls, (repo, trunk), merge, head.as_deref()) {
+            let from = head.as_deref().map_or_else(
+                || "a head of its own".to_owned(),
+                |head| short(head).to_owned(),
+            );
             return Err(format!(
-                "no pull request into {repo}'s {trunk} merged as {} from {}, so no round need \
-                 have read it",
+                "no pull request into {repo}'s {trunk} merged as {} from {from}, so no round \
+                 need have read it",
                 short(merge),
-                short(head)
             ));
         }
     }

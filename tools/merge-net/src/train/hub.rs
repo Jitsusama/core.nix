@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::{Merging, subject};
+use super::{Merging, Method, subject};
 
 /// Where a passed candidate's riders merge: GitHub, whose merges main
 /// trusts by its own key, or a test's stand-in.
@@ -58,8 +58,8 @@ impl Hub for GitHub {
             &self.slug,
             merging.number,
             &merging.head,
-            &merging.subject,
-            &merging.title,
+            merging.method,
+            (&merging.subject, &merging.title),
         )
     }
 
@@ -123,7 +123,9 @@ impl Hub for GitHub {
         let mut tried = 0;
         loop {
             tried += 1;
-            let merging = merge_at(&self.slug, reverting, head, &worded, title);
+            // A revert merges with a merge commit whatever its rider asked,
+            // as it is the net's own change and the net reads it so.
+            let merging = merge_at(&self.slug, reverting, head, Method::Merge, (&worded, title));
             // A revert whose answer was lost may have merged all the same,
             // which GitHub is asked three times before its silence counts.
             let landed = || {
@@ -154,13 +156,15 @@ impl Hub for GitHub {
 const REVERT_TRIES: u32 = 6;
 
 /// Merge pull request `number` of `slug` at `head` through GitHub's merge,
-/// as `subject` and `title` word it, giving the merge's commit.
+/// by `method`, as `subject` and `title` word it, giving the merge's
+/// commit. Every method keeps the merge button's subject, which names the
+/// pull request's number, since the net's searches read it from there.
 fn merge_at(
     slug: &str,
     number: u64,
     head: &str,
-    subject: &str,
-    title: &str,
+    method: Method,
+    (subject, title): (&str, &str),
 ) -> Result<String, String> {
     gh(&[
         "api",
@@ -170,7 +174,7 @@ fn merge_at(
         "-f",
         &format!("sha={head}"),
         "-f",
-        "merge_method=merge",
+        &format!("merge_method={}", method.word()),
         "-f",
         &format!("commit_title={subject}"),
         "-f",

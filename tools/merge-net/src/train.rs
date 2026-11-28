@@ -8,7 +8,8 @@
 //! `ready`, where it would start a change's run again, or send a head
 //! behind main to rebase over files main moved, boards it instead:
 //! a file under the net's state folder, `train/riders/<head>.json`, says
-//! its head, its branch and when it boarded, and `ready` starts the train
+//! its head, its branch, when it boarded and how it merges, as a merge
+//! commit or a squash, as the review tools asked (`method.rs`), and `ready` starts the train
 //! as a user unit of its own, `merge-net ride`, unless it already goes.
 //! The train goes as the build the watch follows, which the watch names in
 //! the state folder's `installed` as it starts, never as the build that
@@ -21,10 +22,11 @@
 //! once there, `nix-offload there --lent-only --changed`, which builds what
 //! any of them moved. When it passes, GitHub merges each rider's pull
 //! request in the same order through its API, at the head that passed,
-//! and signs each merge with the key machines trust main by, which no
-//! agent holds; the train pushes nothing to main. Main's tree after those
-//! merges must be the candidate's, or the train reverts them on GitHub,
-//! the newest first. When GitHub refuses one, those it merged before it
+//! each by its own method under the merge button's subject, and signs
+//! each merge with the key machines trust main by, which no agent holds;
+//! the train pushes nothing to main. Main's tree after those merges must
+//! be the candidate's, or the train reverts them on GitHub, the newest
+//! first. When GitHub refuses one, those it merged before it
 //! stay, as main then holds the candidate's tree just before that merge;
 //! the refused one falls to run again alone, and the rest stay aboard,
 //! unless GitHub refused the first rider twice in a row, when they fall
@@ -77,6 +79,7 @@ mod hub;
 mod installed;
 mod landed;
 mod landing;
+mod method;
 mod pulls;
 mod splitting;
 pub use gated::CHANGED_FAILED;
@@ -86,6 +89,7 @@ pub use installed::install;
 use installed::{build, hand_over, handed, newer};
 use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
+pub use method::Method;
 use pulls::aboard;
 pub use pulls::drafted;
 use splitting::{After, Splitting, UNTAKEN_FOR};
@@ -99,6 +103,8 @@ pub struct Rider {
     pub branch: String,
     /// When it boarded, in seconds since the epoch.
     pub at: u64,
+    /// How GitHub merges its pull request once its candidate passes.
+    pub method: Method,
 }
 
 /// What `ready` does with a change main moved beside.
@@ -134,7 +140,12 @@ fn fell_folder(root: &Path) -> PathBuf {
 pub fn board(root: &Path, rider: &Rider) -> io::Result<()> {
     let riders = riders_folder(root);
     fs::create_dir_all(&riders)?;
-    let said = json!({"head": rider.head, "branch": rider.branch, "at": rider.at});
+    let said = json!({
+        "head": rider.head,
+        "branch": rider.branch,
+        "at": rider.at,
+        "method": rider.method.word(),
+    });
     fs::write(
         riders.join(format!("{}.json", rider.head)),
         format!("{said}\n"),
@@ -154,6 +165,11 @@ pub fn riders(root: &Path) -> Vec<Rider> {
                 head: said["head"].as_str()?.to_owned(),
                 branch: said["branch"].as_str()?.to_owned(),
                 at: said["at"].as_u64()?,
+                // A rider that boarded before riders named a method
+                // asked for none, so it merges as they all did then.
+                method: said["method"]
+                    .as_str()
+                    .map_or(Some(Method::Merge), Method::named)?,
             })
         })
         .collect();
@@ -225,13 +241,15 @@ pub fn subject(number: u64, owner: &str, branch: &str) -> String {
 }
 
 /// A rider as the candidate merges it: its pull request's number, its
-/// head, the merge's subject and its pull request's title.
+/// head, the merge's subject, its pull request's title and how GitHub
+/// merges it.
 #[derive(Clone, Debug)]
 pub struct Merging {
     pub number: u64,
     pub head: String,
     pub subject: String,
     pub title: String,
+    pub method: Method,
 }
 
 /// What cutting a candidate did: the heads it merged and those that
@@ -283,21 +301,42 @@ pub const UNIT: &str = "merge-net-train.service";
 /// What the unit's description says.
 const DESCRIBED: &str = "merge-net's train merges the changes that passed together";
 
-/// Board the change at `head`, asked from `branch`, and start the train
-/// unless it goes, saying what was done; nothing when the train can't
-/// take it and it runs again alone as before.
+/// Board the change at `head`, asked from `branch`, to merge as this
+/// `ready` was asked, and start the train unless it goes, saying what was
+/// done; nothing when the train can't take it and it runs again alone as
+/// before. A method named that GitHub has none of boards nothing, said
+/// on stderr, since merging it some other way than asked is the fault
+/// this mends. A rider asked again for another method keeps its place.
 #[must_use]
 pub fn offer(head: &str, branch: &str) -> Option<String> {
+    let method = match Method::asked() {
+        Ok(method) => method,
+        Err(word) => {
+            eprintln!(
+                "merge-net: {} names {word:?}, but the train merges only as merge or \
+                 squash, so {} doesn't board it",
+                method::ASKED,
+                short(head)
+            );
+            return None;
+        }
+    };
     let root = crate::state::State::from_env().root;
-    let boarded = rider_at(&root, head).is_some();
+    let aboard = rider_at(&root, head);
+    let boarded = aboard.is_some();
     match seat(boarded, fell(&root, head)) {
         Seat::Fell(_) => return None,
-        Seat::Rides => {}
+        Seat::Rides => {
+            if let Some(rider) = aboard.filter(|rider| rider.method != method) {
+                board(&root, &Rider { method, ..rider }).ok()?;
+            }
+        }
         Seat::Board => {
             let rider = Rider {
                 head: head.to_owned(),
                 branch: branch.to_owned(),
                 at: crate::state::now(),
+                method,
             };
             board(&root, &rider).ok()?;
         }

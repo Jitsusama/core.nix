@@ -362,6 +362,7 @@ mod tests {
                 head: format!("{rider:040}"),
                 branch: format!("rider-{rider}"),
                 at: 100,
+                method: super::super::Method::Merge,
             };
             super::super::board(root, &rider).unwrap();
         }
