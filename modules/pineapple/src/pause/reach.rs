@@ -56,7 +56,7 @@ const OWN_FAILURE: u8 = 70;
 /// The folder a run is asked to begin in once a machine refused to begin
 /// it in the one pineapple runs in here: a cloud room's account can't
 /// enter Joel's home, but may begin in the shared scratch folder and
-/// write the node's stops folder from there, where its account may.
+/// write its own stops folder and the node's from there.
 pub(super) const SCRATCH: &str = "/tmp";
 
 /// What mycelium says, as newer nodes say it, when a machine refuses to
@@ -103,17 +103,23 @@ fn run_in(machine: &str, realm: Option<&str>, folder: Option<&str>, script: Stri
 /// Whether `why` a run failed is the machine refusing to begin it in the
 /// folder asked, before anything ran there: either as newer nodes say
 /// it, or as an older node's fence answers a shell it couldn't start.
+/// One that says the script began ran there, whatever it said after.
 pub(super) fn refused_to_begin(why: &str) -> bool {
-    why.contains(CANT_BEGIN_IN)
-        || (why.contains(NO_SHELL) && why.trim_end().ends_with(SHELL_REFUSED))
+    !began(why)
+        && (why.contains(CANT_BEGIN_IN)
+            || (why.contains(NO_SHELL) && why.trim_end().ends_with(SHELL_REFUSED)))
+}
+
+/// Whether `why` a run failed holds the script's word that it began.
+fn began(why: &str) -> bool {
+    why.lines().any(|line| line.trim_start().starts_with(BEGUN))
 }
 
 /// Whether `why` a run failed is mycelium saying the command never ran.
 /// The script's word may share its line with the status, when nothing
 /// was said after it.
 pub(super) fn didnt_run(why: &str) -> bool {
-    why.trim_end().ends_with(DIDNT_RUN)
-        && !why.lines().any(|line| line.trim_start().starts_with(BEGUN))
+    why.trim_end().ends_with(DIDNT_RUN) && !began(why)
 }
 
 /// `why` a run failed, without the script's word that it began.
@@ -306,7 +312,10 @@ pub fn session_ids(plan: &Plan, machines: &[&str], runs: &mut dyn Runs) -> Optio
 /// The script a machine runs for `act`, stop or resume, of the stop
 /// `said` in `realm`: its record written whole into that machine's
 /// stops, then its starts refused or let go again, leaving them refused
-/// on the resume when they were refused before the stop.
+/// on the resume when they were refused before the stop. The marks and
+/// the record are kept in the account's stops folder on every machine;
+/// the record's copy goes into the node's last, where it keeps one, once
+/// starts are refused, and a resume writes over only a copy there.
 #[must_use]
 pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     let id = said.get("id").and_then(Value::as_str).unwrap_or_default();
@@ -353,11 +362,13 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
              \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
         )
     };
-    let folder = super::carry::stops_folder();
+    let record = quoted(&said.to_string());
+    let copy = super::carry::node_copy(&file_of(id), &record, act == "resume");
+    let account = super::carry::ACCOUNT_STOPS;
     format!(
         "set -e\n\
          echo '{BEGUN}' >&2\n\
-         {folder}\
+         {account}\
          mkdir -p \"$d\"\n\
          kept=\"$d/{file}.starts-kept{mark}\"\n\
          stopped=\"$d/{file}.stopped{mark}\"\n\
@@ -373,8 +384,8 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
          if [ -n \"$c\" ] && [ -x \"$c\" ]; then m=$c; break; fi\n\
          done\n\
          found() {{ [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}; }}\n\
-         {starts}",
-        record = quoted(&said.to_string()),
+         {starts}\
+         {copy}",
         file = file_of(id),
     )
 }
@@ -417,7 +428,7 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use super::{BEGUN, didnt_run, without_begun};
+    use super::{BEGUN, didnt_run, refused_to_begin, without_begun};
     use crate::pause::{Runs, System};
 
     /// How a program ending as `line` says ends, run as the stop runs
@@ -461,6 +472,29 @@ mod tests {
         assert!(
             !didnt_run(&refused),
             "any other end may have run: {refused}"
+        );
+    }
+
+    #[test]
+    fn a_run_that_began_is_never_taken_for_one_refused_to_begin() {
+        let words = "mycelium: room can't begin this in /home/joel";
+        let refused = failed(&format!("echo \"{words}\" >&2; exit 1"));
+        assert!(
+            refused_to_begin(&refused),
+            "a machine refusing the folder asked is asked again elsewhere: {refused}"
+        );
+        let begun = failed(&format!("echo '{BEGUN}' >&2; echo \"{words}\" >&2; exit 1"));
+        assert!(
+            !refused_to_begin(&begun),
+            "a script that began there may have run, so it isn't begun again: {begun}"
+        );
+        let shell = "pi-fence: bash didn't start: spawn bash EACCES";
+        let fenced = failed(&format!(
+            "echo '{BEGUN}' >&2; echo \"{shell}\" >&2; exit 126"
+        ));
+        assert!(
+            !refused_to_begin(&fenced),
+            "nor is one whose fence's words came after it began: {fenced}"
         );
     }
 }

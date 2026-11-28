@@ -435,51 +435,90 @@ fn away(gone_since: Option<u64>, back: &[String], machine: &str) -> Option<Away>
 /// it, so its guards read it rather than any account's state folder.
 pub const NODE_STOPS: &str = "/var/lib/pineapple/stops";
 
-/// Shell setting `d` to the stops folder a machine's guards read: the
-/// node's own where it keeps one, and this account's state folder
-/// otherwise. Where the node's can't be written, the script fails, so a
-/// stop is never said to be held where no guard reads it.
-pub(super) fn stops_folder() -> String {
+/// Shell setting `d` to this account's own stops folder, where every
+/// script keeps its marks and its record on every machine, so a stop
+/// standing from before a machine kept the node's folder still resumes.
+pub(super) const ACCOUNT_STOPS: &str =
+    "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/pineapple/stops\"\n";
+
+/// What a script says as it fails for the node's stops folder, which it
+/// names after these words.
+pub const NODE_UNWRITTEN: &str = "pineapple: couldn't write the node's stops folder";
+
+/// Shell setting `n` to the node's stops folder where the machine keeps
+/// one, which holds wherever its parent exists, and to nothing otherwise.
+/// It's read from [`NODE_STOPS`]'s own text, so a case moving that
+/// folder moves its parent with it.
+fn node_folder() -> String {
+    format!("n={NODE_STOPS}\n[ -e \"${{n%/*}}\" ] || n=\n")
+}
+
+/// Shell writing the quoted `record` as `file` into the node's stops
+/// folder, which its guards read, where the machine keeps one: whole as
+/// `.new` and renamed into place, failing the script, so the give is
+/// tried again, where it can't. A script runs it last, once the account's
+/// copy is written and its starts refused. One `refreshing` writes only
+/// over a copy already there, as a resume does, so a machine the stop
+/// never wrote isn't asked again forever.
+pub(super) fn node_copy(file: &str, record: &str, refreshing: bool) -> String {
+    let kept = if refreshing {
+        format!(" && [ -e \"$n/{file}.json\" ]")
+    } else {
+        String::new()
+    };
     format!(
-        "d={NODE_STOPS}\n\
-         [ -d \"$d\" ] || d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n"
+        "{folder}\
+         if [ -n \"$n\" ]{kept}; then\n\
+         {{ mkdir -p \"$n\" && printf '%s\\n' {record} > \"$n/{file}.new\" && \
+         mv \"$n/{file}.new\" \"$n/{file}.json\"; }} || \
+         {{ echo \"{NODE_UNWRITTEN} $n\" >&2; exit 1; }}\n\
+         fi\n",
+        folder = node_folder(),
     )
 }
 
 /// The script a machine runs to hold the stop `record` under `name`, given
 /// it from the machine `from`: the record written whole beside its stops
 /// and renamed into place, so its guard never reads half of one, naming
-/// in `carried_from` the machine whose reader heard it.
+/// in `carried_from` the machine whose reader heard it, then its copy
+/// written the same way into the node's stops folder where it keeps one.
 #[must_use]
 pub fn script(name: &str, record: &Value, from: &str) -> String {
     let mut copy = record.clone();
     copy["carried_from"] = json!(from);
+    let record = quoted(&copy.to_string());
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         {folder}\
+         {ACCOUNT_STOPS}\
          mkdir -p \"$d\"\n\
          printf '%s\\n' {record} > \"$d/{name}.new\"\n\
-         mv \"$d/{name}.new\" \"$d/{name}.json\"\n",
+         mv \"$d/{name}.new\" \"$d/{name}.json\"\n\
+         {node}",
         begun = reach::BEGUN,
-        folder = stops_folder(),
-        record = quoted(&copy.to_string()),
+        node = node_copy(name, &record, false),
     )
 }
 
 /// The script a machine runs to drop the stop it was given under `name`:
 /// only a copy that names where it was carried from, never a stop of its
-/// own reader's.
+/// own reader's, from the account's stops folder and then the node's,
+/// failing where it can't drop the node's.
 #[must_use]
 pub fn taken_away(name: &str) -> String {
     format!(
         "set -e\n\
          echo '{begun}' >&2\n\
-         {folder}\
+         {ACCOUNT_STOPS}\
          f=\"$d/{name}.json\"\n\
-         if grep -q '\"carried_from\"' \"$f\" 2>/dev/null; then rm -f \"$f\"; fi\n",
+         if grep -q '\"carried_from\"' \"$f\" 2>/dev/null; then rm -f \"$f\"; fi\n\
+         {folder}\
+         f=\"$n/{name}.json\"\n\
+         if [ -n \"$n\" ] && grep -q '\"carried_from\"' \"$f\" 2>/dev/null; then\n\
+         rm -f \"$f\" || {{ echo \"{NODE_UNWRITTEN} $n\" >&2; exit 1; }}\n\
+         fi\n",
         begun = reach::BEGUN,
-        folder = stops_folder(),
+        folder = node_folder(),
     )
 }
 

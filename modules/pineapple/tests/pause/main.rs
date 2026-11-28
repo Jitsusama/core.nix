@@ -264,10 +264,28 @@ fn json(path: &Path) -> Value {
 }
 
 /// `script` as a case runs it in `home`: the node's stops folder it
-/// looks for is `node-stops` there, so a case run on a machine keeping
+/// looks for is [`node_stops`] there, so a case run on a machine keeping
 /// one, as a cloud room does, never writes the real one.
 fn at_home(home: &Path, script: &str) -> String {
-    script.replace(NODE_STOPS, &home.join("node-stops").to_string_lossy())
+    script.replace(NODE_STOPS, &node_stops(home).to_string_lossy())
+}
+
+/// The node's stops folder as a case in `home` stands it in: a machine
+/// keeps one only where the case makes its parent, `node`.
+fn node_stops(home: &Path) -> PathBuf {
+    home.join("node/stops")
+}
+
+/// Whether `case` runs as root, judged by who owns its scratch `home`:
+/// root writes a folder closed to it, so a case closing one is skipped,
+/// saying so, as it would prove nothing.
+fn runs_as_root(home: &Path, case: &str) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let root = fs::metadata(home).is_ok_and(|meta| meta.uid() == 0);
+    if root {
+        eprintln!("skipped {case}: run as root, which writes a folder closed to it");
+    }
+    root
 }
 
 fn asked_with(machine: &Machine, words: &str) -> Vec<String> {
