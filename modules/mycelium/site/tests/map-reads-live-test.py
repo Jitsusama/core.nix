@@ -98,15 +98,16 @@ TWIN_RECEPTORS = 4
 # How long the checks wait for a twin of ten thousand cells to be read and judged, which is
 # patience, not a budget: a busy builder takes what it takes.
 TWIN_MS = 60_000
-# The budgets the twin is held to, in milliseconds: its whole realm drawn, from the page opening;
-# a key answered and painted, from the key going down; and the longest the page is held by one
-# task meanwhile. In the build's sandbox it stood drawn at 2.2 s, answered Return in 210 ms
+# The budgets the twin is held to, in milliseconds: its whole realm painted, from the page
+# opening; a key answered and painted, from the key going down; and the longest the page is held
+# by one task meanwhile. In the build's sandbox it stood drawn at 2.2 s, answered Return in 210 ms
 # (its longest task 157 ms), j and Return in 113 and . in 105, read by an earlier stopwatch
 # that also counted the driver's round trips and ended at the map's script; each run now prints
-# what the page itself timed (test_the_map_answers_its_keys_at_ten_thousand). A
-# builder's load moves a time by as much as twice between runs (docs/testing.md), so each is
-# set past that, where a regression a reader would feel still fails: half a second is past
-# which a key reads as lag, and a task past 400 ms drops frames he would see.
+# what the page itself timed (test_the_map_answers_its_keys_at_ten_thousand), the realm to its
+# paint, as the reader sees it. A builder's load moves a time by as much as twice between runs
+# (docs/testing.md), so each is set past that, where a regression a reader would feel still
+# fails: half a second is past which a key reads as lag, and a task past 400 ms drops frames he
+# would see.
 TWIN_DRAWN_MS = 6000
 TWIN_KEY_MS = 500
 TWIN_TASK_MS = 400
@@ -2386,18 +2387,24 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
-# The map's own measure of its draw (view.js), named so a run's log and a profile read alike.
-DRAW_MEASURE = "mycelium-draw"
-# Once a frame first shows every one of the twin's networks as a hub on the map, the draw that
-# drew them, as the map measures it, on the page's own clock from its opening: its start and how
-# long it took, or null where the map left no measure. Watched from each frame, as the feed may
-# draw the realm in parts, and read at once, since each draw replaces the measure of the last.
+# The map's own measure of taking a reading (view.js): its model, its draw, the drawer and the
+# status line, named so a run's log and a profile read alike.
+DRAW_MEASURE = "mycelium-redraw"
+# Once a frame first shows every one of the twin's networks as a hub on the map, when the reader
+# first saw them: the next frame's start, which comes only once this frame has painted, on the
+# page's own clock from its opening, and how long from the reading being taken to then, or null
+# where the map left no measure. #6620 holds the budget to what the reader sees, so it counts
+# the drawer, the status line and the paint, not the draw alone. Watched from each frame, as the
+# feed may draw the realm in parts, and the measure read at once, since each take replaces it.
 WATCH_DRAWN = """({ networks, measure }) => {
   const twin = '#world .hub[data-key^="h:orchestration.skf"]';
   const look = () => {
     if (document.querySelectorAll(twin).length < networks) return requestAnimationFrame(look);
-    const drew = performance.getEntriesByName(measure, "measure").at(-1);
-    window.drawn = drew ? { at: drew.startTime + drew.duration, took: drew.duration } : null;
+    const taken = performance.getEntriesByName(measure, "measure").at(-1);
+    requestAnimationFrame(() => {
+      const painted = performance.now();
+      window.drawn = taken ? { at: painted, took: painted - taken.startTime } : null;
+    });
   };
   requestAnimationFrame(look);
 }"""
@@ -2526,7 +2533,7 @@ def test_the_map_answers_its_keys_at_ten_thousand(
         # budgets can be read against.
         with capsys.disabled():
             print(f"drawn at {drawn} ms, in {took}; Return {first}; j Return {step}; . {now}")
-        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
+        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells were painted only at {drawn} ms"
         for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
             assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
             assert answered["longest"] <= TWIN_TASK_MS, f"{keys} held the page: {answered}"
