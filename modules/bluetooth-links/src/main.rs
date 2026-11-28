@@ -568,6 +568,13 @@ mod tests {
 
     #[test]
     fn a_link_coming_and_going_is_written_each_time() {
+        fn written(report: &Report) -> Vec<&str> {
+            report
+                .links
+                .iter()
+                .map(|link| link.address.as_str())
+                .collect()
+        }
         let mut watch = Watch::default();
         let mut controller = StandIn {
             listed: vec![(0, headphones())],
@@ -578,16 +585,13 @@ mod tests {
         let first = watch
             .tick(&mut controller, 10, seconds(0))
             .expect("a link seen the first time is written");
-        let written: Vec<&str> = first
-            .links
-            .iter()
-            .map(|link| link.address.as_str())
-            .collect();
-        assert_eq!(written, ["00:1B:66:AA:BB:CC"]);
-        assert!(
-            watch.tick(&mut controller, 15, seconds(5)).is_some(),
-            "a link is written every tick"
-        );
+        assert_eq!(written(&first), ["00:1B:66:AA:BB:CC"]);
+        // The second writes because a link is still there, so it must say
+        // which.
+        let second = watch
+            .tick(&mut controller, 15, seconds(5))
+            .expect("a link is written every tick");
+        assert_eq!(written(&second), ["00:1B:66:AA:BB:CC"]);
         controller.listed.clear();
         let gone = watch.tick(&mut controller, 20, seconds(10)).unwrap();
         assert_eq!(gone.links, vec![]);
