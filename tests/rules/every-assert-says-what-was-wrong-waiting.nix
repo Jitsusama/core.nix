@@ -145,7 +145,6 @@
   "modules/hibernate/unlock/src/zswap.rs" = 8;
   "modules/lag-watch/src/kernel_tests.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
   "modules/nix-offload/offload/src/decide.rs" = 12;
@@ -206,7 +205,6 @@
   "modules/update-to-main/src/session.rs" = 1;
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
-  "modules/v4l2loopback/holders/src/main.rs" = 4;
   "modules/warp/src/read.rs" = 1;
   "modules/warp/src/switch.rs" = 6;
   "modules/wifid/daemon/src/check.rs" = 4;
