@@ -93,7 +93,8 @@
 //! reach often only evaluate a system, while the check running them may
 //! be Linux's alone, so a Mac's run would refuse what Linux's proved.
 //! When red first can't judge at all, as when git can't lay the tests,
-//! the run says so and refuses nothing.
+//! the run says so and refuses nothing. `CHANGED_CHECKS_RED_FIRST=0`
+//! turns it off: it builds nothing over the base, and the run says so.
 //!
 //! A test that pins behaviour that was already right passes on the base
 //! by design: a commit of the change saying `Red-first: none, <why>`
@@ -126,6 +127,9 @@ const LINTS: [&str; 3] = ["-passes-clippy", "-passes-qmllint", "-compiles-for-ma
 /// What merge-net's train sets in a run gating its candidate, whose
 /// merges are each of a change judged at its own head.
 const CANDIDATE: &str = "CHANGED_CHECKS_CANDIDATE";
+
+/// What turns red first off, set to `0`.
+const OFF: &str = "CHANGED_CHECKS_RED_FIRST";
 
 /// Where a run judges red first: the repository, its base, the commit the
 /// run evaluated and the checks' system.
@@ -294,6 +298,14 @@ fn judging(
     (before, after): (&Derivations, &Derivations),
     noted: &mut Run,
 ) -> Result<Verdict, String> {
+    // A person may turn red first off where its builds over the base cost
+    // more than its verdict, which refuses nothing yet, is worth to them.
+    if std::env::var_os(OFF).is_some_and(|set| set == "0") {
+        eprintln!(
+            "changed-checks: red first is off ({OFF}=0), so no tests are asked to fail on the base"
+        );
+        return Ok(Verdict::Unjudged("off"));
+    }
     let built = asked.unwrap_or_default();
     if built.is_empty() {
         return Ok(Verdict::Unjudged("nothing built"));

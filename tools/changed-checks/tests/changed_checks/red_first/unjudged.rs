@@ -168,3 +168,32 @@ fn an_assert_added_inside_a_code_files_inline_tests_is_said_apart() {
         verdict(&stand_in)
     );
 }
+
+#[test]
+fn red_first_turned_off_builds_nothing_over_the_base_and_says_so_once() {
+    let stand_in = committed("red-off", CHANGE, "a3.drv");
+
+    let told = [("CHANGED_CHECKS_RED_FIRST", "0")];
+    let ran = stand_in.run_told(&["--system", "x86_64-linux"], &told);
+
+    let said = text(&ran.stderr);
+    assert!(
+        ran.status.success(),
+        "red first turned off failed the run: {said}"
+    );
+    assert_eq!(
+        said.matches("red first is off").count(),
+        1,
+        "red first turned off wasn't said once: {said}"
+    );
+    assert!(
+        !stand_in.built().contains("?rev="),
+        "red first turned off built over the base: {}",
+        stand_in.built()
+    );
+    assert_eq!(
+        verdict(&stand_in),
+        json!({ "head": "fedcba9876543210fedc", "verdict": "unjudged", "why": "off" }),
+        "the run's line didn't note red first as off"
+    );
+}

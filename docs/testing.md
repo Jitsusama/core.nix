@@ -88,6 +88,7 @@ another), since a test waiting on what only the change does may never
 end there, and the change is said, unjudged. A test that pins
 behaviour already right passes on the base by design: a commit saying
 `Red-first: none, <why>` excuses its change, and the run says so.
+`CHANGED_CHECKS_RED_FIRST=0` turns red first off, building nothing there.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,

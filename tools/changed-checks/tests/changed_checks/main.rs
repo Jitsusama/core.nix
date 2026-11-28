@@ -385,6 +385,8 @@ impl StandIn {
             .env_remove("CHANGED_CHECKS_CANDIDATE")
             // Red first's budget is its own, where a case doesn't set one.
             .env_remove("CHANGED_CHECKS_RED_FIRST_SECONDS")
+            // Red first is on, where a case doesn't turn it off.
+            .env_remove("CHANGED_CHECKS_RED_FIRST")
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
