@@ -40,14 +40,24 @@ pub struct Heard {
 
 impl AccessPoint {
     pub fn new(properties: HashMap<String, OwnedValue>) -> AccessPoint {
-        let aged = properties.contains_key("Age").then(Instant::now);
+        AccessPoint::said_at(properties, Instant::now())
+    }
+
+    /// As `new`, its age said at `now` on the boot clock.
+    fn said_at(properties: HashMap<String, OwnedValue>, now: Instant) -> AccessPoint {
+        let aged = properties.contains_key("Age").then_some(now);
         AccessPoint { properties, aged }
     }
 
     /// Takes in what wpa_supplicant says changed.
     pub fn changed(&mut self, changed: HashMap<String, OwnedValue>) {
+        self.changed_at(changed, Instant::now());
+    }
+
+    /// As `changed`, said at `now` on the boot clock.
+    fn changed_at(&mut self, changed: HashMap<String, OwnedValue>, now: Instant) {
         if changed.contains_key("Age") {
-            self.aged = Some(Instant::now());
+            self.aged = Some(now);
         }
         self.properties.extend(changed);
     }
@@ -55,6 +65,11 @@ impl AccessPoint {
     /// What the shell is told of it, unless it hides its name or is joined
     /// in a way wifid doesn't know.
     pub fn heard(&self) -> Option<Heard> {
+        self.heard_at(Instant::now())
+    }
+
+    /// As `heard`, its age as of `now` on the boot clock.
+    fn heard_at(&self, now: Instant) -> Option<Heard> {
         let name = String::from_utf8(self.bytes("SSID")?).ok()?;
         if name.is_empty() {
             return None;
@@ -86,7 +101,9 @@ impl AccessPoint {
             Some(Value::U32(age)) => *age,
             _ => 0,
         };
-        let since = self.aged.map_or(0, |aged| aged.elapsed().as_secs());
+        let since = self
+            .aged
+            .map_or(0, |aged| now.saturating_duration_since(aged).as_secs());
         let age = said.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
         Some(Heard {
             name,
@@ -174,6 +191,8 @@ const ACCOUNT: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Duration;
+
     use super::*;
 
     fn owned(value: &Value<'_>) -> OwnedValue {
@@ -234,40 +253,48 @@ mod tests {
         assert_eq!((load.stations, load.busy), (3, 50));
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn an_access_point_first_said_with_its_age_ages_from_then() {
+    #[test]
+    fn an_access_point_first_said_with_its_age_ages_from_then() {
         let mut properties = access_point(b"Lantern", &["wpa-psk"], true, -58).properties;
         properties.insert("Age".into(), owned(&Value::from(4u32)));
-        let lantern = AccessPoint::new(properties);
+        let said = Instant::now();
+        let lantern = AccessPoint::said_at(properties, said);
 
-        tokio::time::advance(std::time::Duration::from_secs(30)).await;
+        let later = said + Duration::from_secs(30);
 
         assert_eq!(
-            lantern.heard().unwrap().age,
+            lantern.heard_at(later).unwrap().age,
             34,
             "an age first said 30 s ago was taken as now's, as a look just heard it"
         );
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn an_access_point_s_age_grows_until_a_look_hears_it_again() {
+    #[test]
+    fn an_access_point_s_age_grows_until_a_look_hears_it_again() {
         let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
-        lantern.changed(HashMap::from([("Age".into(), owned(&Value::from(4u32)))]));
+        let said = Instant::now();
+        lantern.changed_at(
+            HashMap::from([("Age".into(), owned(&Value::from(4u32)))]),
+            said,
+        );
 
-        tokio::time::advance(std::time::Duration::from_secs(30)).await;
-        lantern.changed(HashMap::from([(
-            "Signal".into(),
-            owned(&Value::from(-60i16)),
-        )]));
+        let later = said + Duration::from_secs(30);
+        lantern.changed_at(
+            HashMap::from([("Signal".into(), owned(&Value::from(-60i16)))]),
+            later,
+        );
         assert_eq!(
-            lantern.heard().unwrap().age,
+            lantern.heard_at(later).unwrap().age,
             34,
             "an age said 30 s ago was taken as now's, as a look just heard it"
         );
 
-        lantern.changed(HashMap::from([("Age".into(), owned(&Value::from(1u32)))]));
+        lantern.changed_at(
+            HashMap::from([("Age".into(), owned(&Value::from(1u32)))]),
+            later,
+        );
         assert_eq!(
-            lantern.heard().unwrap().age,
+            lantern.heard_at(later).unwrap().age,
             1,
             "a newly said age was added to the time since the last"
         );
