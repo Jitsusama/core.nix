@@ -2595,6 +2595,71 @@ fn what_only_a_nearby_machine_builds_waits_for_it_rather_than_go_to_the_lent_bui
     );
 }
 
+// Under --lent-only no machine nearby is asked, so a Mac's check went to
+// the lent builder, where nix failed it on the platform: status 1, as a
+// check that failed, though nothing of it was built.
+#[test]
+fn what_no_lent_builder_builds_for_under_lent_only_ends_unbuilt_and_is_never_sent() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", BLIND_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(config.join("nearby"), "127.0.0.1:9 mac aarch64-darwin\n").unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            "github:owner/repo/abc",
+            "checks.aarch64-darwin.a",
+            "checks.x86_64-linux.b",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .env("NIX_OFFLOAD_LENT_ONLY", "1")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(69), "it didn't end unbuilt: {said}");
+    assert!(
+        said.contains(
+            "so checks.aarch64-darwin.a, for aarch64-darwin, went nowhere and nothing of \
+             it was built"
+        ),
+        "it didn't say what went unbuilt, or for what: {said}"
+    );
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.contains("checks.x86_64-linux.b") && !given.contains("checks.aarch64-darwin.a"),
+        "the Mac's check went to the lent builder, or Linux's didn't: {given}"
+    );
+    let journal = fs::read_to_string(folder.path().join("nix-offload/there.jsonl")).unwrap();
+    let unbuilt: Vec<serde_json::Value> = journal
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|line: &serde_json::Value| line.get("unbuilt").is_some())
+        .collect();
+    assert_eq!(
+        unbuilt
+            .iter()
+            .map(|line| (
+                line["attributes"].clone(),
+                line["unbuilt"].clone(),
+                line["status"].clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            serde_json::json!(["checks.aarch64-darwin.a"]),
+            serde_json::json!(["aarch64-darwin"]),
+            serde_json::json!(69)
+        )],
+        "the journal doesn't say it went unbuilt: {journal}"
+    );
+}
+
 /// ssh to a machine nearby that refuses this machine's key: it answers
 /// what it's asked, but a folder sent it is refused unread, as ssh is
 /// refused before any command runs.
@@ -5618,6 +5683,79 @@ fn a_build_goes_to_a_second_builder_while_the_first_is_full() {
     };
     assert_eq!(built_on("55.00"), "nix-offload-more", "the first is full");
     assert_eq!(built_on("10.00"), "nix-offload", "the first has room");
+}
+
+// A VM builder builds for what its lender lends, x86_64-linux alone here,
+// while the lent builders build for aarch64-linux too: spilled onto it,
+// a run for aarch64-linux could only fail there on the platform.
+#[test]
+fn a_spill_goes_only_to_a_vm_builder_that_builds_for_its_systems() {
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    fs::write(
+        offload.join("machines"),
+        "ssh-ng://nix-offload aarch64-linux,x86_64-linux /key 32 1 - - c3No\n",
+    )
+    .unwrap();
+    let more = lending(folder.path(), "offload-more", "nix-offload-more");
+    // The first VM lane takes no spill, but holds the lock a spill's
+    // claim is made under.
+    fs::create_dir(folder.path().join("offload-vm")).unwrap();
+    let vm = lending(folder.path(), "offload-vm-more", "nix-offload-vm-more");
+    fs::write(
+        vm.join("machines"),
+        "ssh-ng://nix-offload-vm-more x86_64-linux /key 4 1 - - c3No\n",
+    )
+    .unwrap();
+    for (host, avg60) in [
+        ("nix-offload", "55.00"),
+        ("nix-offload-more", "55.00"),
+        ("nix-offload-vm-more", "0.00"),
+    ] {
+        fs::write(
+            folder.path().join(format!("pressure-{host}")),
+            pressure(avg60),
+        )
+        .unwrap();
+    }
+    let built_on = |attribute: &str| {
+        let _ = fs::remove_file(folder.path().join("ssh-sent"));
+        let ran = there_command(folder.path(), &offload, folder.path())
+            .args(["-L", "github:o/r/abc", attribute])
+            .env("NIX_OFFLOAD_MORE_DIR", &more)
+            .env("NIX_OFFLOAD_VM_MORE_DIR", &vm)
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stderr).into_owned();
+        assert_eq!(
+            ran.status.code(),
+            Some(0),
+            "{attribute} didn't build: {said}"
+        );
+        let sent = fs::read_to_string(folder.path().join("ssh-sent")).unwrap();
+        let hosts: Vec<String> = sent
+            .lines()
+            .filter_map(|line| line.split_once(' '))
+            .filter(|(_, command)| command.contains("nix build"))
+            .map(|(host, _)| host.to_owned())
+            .collect();
+        (hosts.join(" "), said)
+    };
+    let (hosts, said) = built_on("checks.x86_64-linux.a");
+    assert_eq!(
+        hosts, "nix-offload-vm-more",
+        "what it builds for spills: {said}"
+    );
+    let (hosts, said) = built_on("checks.aarch64-linux.b");
+    assert!(
+        !hosts.contains("nix-offload-vm-more") && !hosts.is_empty(),
+        "what it can't build for went to it, or nowhere: {hosts} {said}"
+    );
+    assert!(
+        said.contains("no VM builder builds for aarch64-linux, which this is for"),
+        "it didn't say why it stays: {said}"
+    );
 }
 
 #[test]
