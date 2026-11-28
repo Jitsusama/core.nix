@@ -682,27 +682,7 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
 ! linked || {{ halted; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
-  # One that can't be read or copied keeps its number, listed with no
-  # size, so the near side lands the rest and says it's missing. Its
-  # copy is cleared whole, since what cp met there may be a folder.
-  missing() {{
-    cleared "$job/{BACK}/$n"
-    printf "elsewhere: %s didn't come back\n" "$file" >&2
-    printf '%s\t%s\n' - "$file" || exit 1
-    n=$((n + 1))
-  }}
-  # One past what a share holds, alone or with what crossed before it,
-  # is listed marked with its size and never crosses, so the near side
-  # lands the rest and says why without waiting for it.
-  past() {{
-    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
-      [ $(($bytes + $1)) -gt $most_bytes ]
-  }}
-  kept() {{
-    rm -f "$job/{BACK}/$n"
-    printf '>%s\t%s\n' $(($1)) "$file" || exit 1
-    n=$((n + 1))
-  }}
+{each_file}
   while IFS= read -r file; do
     # Where its folder for copies is made new, nothing stands at a
     # copy's name until it's written: a link there is one put at the
@@ -747,7 +727,37 @@ else
 fi
 ) || wrote=$?
 {ended}"#,
+        each_file = each_file(),
         ended = ended(),
+    )
+}
+
+/// What `bringing` does with each file it lists that can't cross as it
+/// is: one missing, one kept past what a share holds, and the test of
+/// which.
+fn each_file() -> String {
+    format!(
+        r#"  # One that can't be read or copied keeps its number, listed with no
+  # size, so the near side lands the rest and says it's missing. Its
+  # copy is cleared whole, since what cp met there may be a folder.
+  missing() {{
+    cleared "$job/{BACK}/$n"
+    printf "elsewhere: %s didn't come back\n" "$file" >&2
+    printf '%s\t%s\n' - "$file" || exit 1
+    n=$((n + 1))
+  }}
+  # One past what a share holds, alone or with what crossed before it,
+  # is listed marked with its size and never crosses, so the near side
+  # lands the rest and says why without waiting for it.
+  past() {{
+    [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
+      [ $(($bytes + $1)) -gt $most_bytes ]
+  }}
+  kept() {{
+    rm -f "$job/{BACK}/$n"
+    printf '>%s\t%s\n' $(($1)) "$file" || exit 1
+    n=$((n + 1))
+  }}"#
     )
 }
 
