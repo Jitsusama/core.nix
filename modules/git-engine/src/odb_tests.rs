@@ -2,6 +2,7 @@
 //! over folders of objects built byte by byte as git writes them.
 
 use super::*;
+use std::path::PathBuf;
 
 #[test]
 fn deltas_copy_and_insert() {

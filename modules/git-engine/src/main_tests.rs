@@ -123,6 +123,73 @@ fn a_store_kept_after_an_error_reads_its_copy_once_the_pack_is_rewritten_in_plac
 }
 
 #[test]
+fn a_freshened_pack_keeps_the_repository_and_its_caches_but_not_its_marks() {
+    let (commit, tag, tree) = ([20; 20], [21; 20], [22; 20]);
+    let (dir, loose, _) = tagged("freshened", commit, tag);
+    let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
+    // HEAD a loose commit of an empty tree, which lies in a pack, so it's
+    // kept once read; and v1's object, in a pack of its own, of a kind git
+    // has none of, so it's marked while the packs hold.
+    let body = format!(
+        "tree {}\nauthor a <a> 0 +0000\ncommitter a <a> 0 +0000\n\nm\n",
+        hex(tree)
+    );
+    let raw = format!("commit {}\0{body}", body.len());
+    let commit_dir = loose.with_file_name(&hex(commit)[..2]);
+    std::fs::create_dir_all(&commit_dir).unwrap();
+    std::fs::write(
+        commit_dir.join(&hex(commit)[2..]),
+        miniz_oxide::deflate::compress_to_vec_zlib(raw.as_bytes(), 1),
+    )
+    .unwrap();
+    let empty = [
+        &[0x20][..],
+        &miniz_oxide::deflate::compress_to_vec_zlib(b"", 1),
+    ]
+    .concat();
+    let packs = dir.join(".git/objects/pack");
+    for (name, oid, entry) in [("pack-00", tag, vec![0x51, 0]), ("pack-01", tree, empty)] {
+        std::fs::write(
+            packs.join(format!("{name}.idx")),
+            pack_index::tests::version_2_at(&[oid], &[12]),
+        )
+        .unwrap();
+        std::fs::write(packs.join(format!("{name}.pack")), pack_of(&entry)).unwrap();
+    }
+    crate::stamp::tests::ahead(3);
+    let mut engine = Engine::default();
+    let held = |engine: &Engine| {
+        let odbs = engine.repos.values().map(Repo::odb);
+        odbs.map(|odb| (odb.marks(), odb.trees_held()))
+            .collect::<Vec<_>>()
+    };
+    let answered = engine.ask(&dir, &options(&[]), true).is_some();
+    let before = held(&engine);
+    // v1 taken away, so nothing reads its copy again; and its pack
+    // freshened, as git touches a pack rather than write again an object
+    // it holds, which moves the pack's own stamp but not its folder's.
+    std::fs::remove_file(dir.join(".git/refs/tags/v1")).unwrap();
+    let now = std::time::SystemTime::now();
+    let times = std::fs::FileTimes::new()
+        .set_accessed(now)
+        .set_modified(now);
+    let pack = std::fs::File::options()
+        .write(true)
+        .open(packs.join("pack-00.pack"));
+    pack.unwrap().set_times(times).unwrap();
+    let changed = engine.repos.values().any(Repo::holds_changed_files);
+    engine.let_go_of_changed();
+    let again = engine.ask(&dir, &options(&[]), true).is_some();
+    assert_eq!(
+        (answered, before, changed, again, held(&engine)),
+        (true, vec![(1, 1)], false, true, vec![(0, 1)]),
+        "a pack freshened let go of its repository or the trees it read, or kept a copy \
+         marked while the packs held"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_copy_marked_for_a_base_no_store_held_is_read_again_once_the_base_is_written() {
     let dir = repository("unbased");
     let (name, base) = ([7; 20], [8; 20]);

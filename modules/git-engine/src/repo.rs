@@ -233,6 +233,12 @@ impl Repo {
         self.odb
     }
 
+    /// The store it reads its objects through, for the engine's tests.
+    #[cfg(test)]
+    pub(crate) fn odb(&self) -> &Odb {
+        &self.odb
+    }
+
     /// Whether the packs or commit-graph it holds open have changed on disk
     /// since it read them: replaced by a repack, say, whose old files stay
     /// on the disk for as long as anything holds them.
