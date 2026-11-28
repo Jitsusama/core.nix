@@ -48,6 +48,7 @@ usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 import contextlib
 import ctypes
 import errno
+import io
 import os
 import resource
 import secrets
@@ -85,6 +86,13 @@ HINT = "x-kde-passwordManagerHint"
 LOCKS = 2 * CAP + 4096
 
 LIBC = ctypes.CDLL(None, use_errno=True)
+
+# What each copier said past the line said_next last answered of it, kept for its next call.
+UNANSWERED: dict[subprocess.Popen[bytes], bytes] = {}
+# What said_next adds to a line a copier began and held on after without ending it, so it's
+# never answered as the word the daemon waits for: the daemon reads whole lines, and hears a
+# half one only once the copier ends.
+UNFINISHED = "(said with no newline, which the daemon waits on)"
 
 
 class Cases:
@@ -353,11 +361,39 @@ def fed(writing: int, data: bytes) -> str | None:
 
 
 def said_next(copier: subprocess.Popen[bytes]) -> str:
-    """Answer the next line the copier says on its standard output, or none if none comes."""
-    if copier.stdout is None or not select.select([copier.stdout], [], [], PATIENCE)[0]:
+    """Answer the next line the copier says on its standard output, or none if none comes.
+
+    The whole read is bounded by PATIENCE from its start: it reads only once select says
+    there's something to read, until a newline, the end or the deadline, so a copier that
+    says part of a line and holds on is answered in time rather than hanging the check.
+    The daemon reads whole lines, so a half line is answered as said only once the copier
+    ended; one it still holds at the deadline is answered with UNFINISHED after it, as the
+    daemon would never hear it. What came past the line is kept for the next call on the
+    same copier, as two lines said at once come in one read.
+    """
+    stdout = copier.stdout
+    if not isinstance(stdout, io.BufferedReader):
         return ""
-    line: bytes = copier.stdout.readline()
-    return line.decode(errors="replace").strip()
+    heard = UNANSWERED.pop(copier, b"")
+    until = time.monotonic() + PATIENCE
+    ended = False
+    while b"\n" not in heard:
+        waiting = until - time.monotonic()
+        if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
+            break
+        more = stdout.read1(65536)
+        if not more:
+            ended = True
+            break
+        heard += more
+    line, newline, rest = heard.partition(b"\n")
+    said = line.decode(errors="replace").strip()
+    if newline or ended or not line:
+        if rest:
+            UNANSWERED[copier] = rest
+        return said
+    UNANSWERED[copier] = line
+    return f"{said} {UNFINISHED}"
 
 
 def said_held(told: str) -> str | None:
