@@ -625,7 +625,8 @@ fn sent_up_while_turns_are_taken(
         .args(["-L", "/nix/store/aaaa-x.drv"])
         // Whatever marks the run testing them, no copy here is urgent
         // but by what the test sets.
-        .env_remove("WORLD_PUSH_TURN_URGENT")
+        .env_remove("NIX_OFFLOAD_URGENT")
+        .env_remove("NIX_OFFLOAD_CELL")
         .env_remove("NIX_OFFLOAD_CLASSES")
         .envs(envs.iter().copied())
         .output()
@@ -816,7 +817,7 @@ fn an_urgent_copy_takes_the_held_turn_whatever_its_size() {
         &[],
         &[1, 2],
         589_600_000,
-        &[("WORLD_PUSH_TURN_URGENT", "0fa0627e")],
+        &[("NIX_OFFLOAD_URGENT", "yes")],
         Duration::from_secs(20),
     );
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -831,6 +832,85 @@ fn an_urgent_copy_takes_the_held_turn_whatever_its_size() {
     );
 }
 
+// A small copy may take every turn, the kept one too, so with all three
+// held it waits as any copy does, its line keeping nothing back.
+#[test]
+fn a_small_copy_up_waits_its_turn_while_three_go_up() {
+    let (ran, took) =
+        sent_up_while_turns_are_taken(&[], &[1, 2, 3], 4_200_000, &[], Duration::from_secs(3));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        said.matches("3 copies already go up").count(),
+        1,
+        "a small copy's wait on every turn wasn't said once: {said}"
+    );
+    assert!(
+        !said.contains("the last kept for"),
+        "a small copy was told a turn is kept from it: {said}"
+    );
+    assert!(
+        took >= Duration::from_secs(3),
+        "a small copy sent before a turn was free: {took:?}"
+    );
+}
+
+// A cell the classes give class 0, its name read with spaces around it
+// aside, sends a large copy as urgent, so it takes the kept turn.
+#[test]
+fn a_copy_from_a_cell_of_class_0_takes_the_held_turn() {
+    let classes = tempfile::tempdir().unwrap();
+    let at = classes.path().join("classes");
+    fs::write(&at, "# made-up cells\ncell-a 0\ncell-b 1\n").unwrap();
+    let at = at.to_str().unwrap();
+    let envs = [
+        ("NIX_OFFLOAD_CELL", " cell-a\n"),
+        ("NIX_OFFLOAD_CLASSES", at),
+    ];
+    let (ran, took) =
+        sent_up_while_turns_are_taken(&[], &[1, 2], 589_600_000, &envs, Duration::from_secs(20));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !said.contains("waits its turn to send"),
+        "a class 0 cell's copy waited with the held turn free: {said}"
+    );
+    assert!(
+        took < Duration::from_secs(20),
+        "a class 0 cell's copy waited for a large one's turn: {took:?}"
+    );
+}
+
+// Classes named but unreadable are said once, rather than leaving a
+// person to wonder why no copy went as urgent.
+#[test]
+fn classes_that_dont_read_are_said_and_the_copy_isnt_urgent() {
+    let missing = tempfile::tempdir().unwrap();
+    let at = missing.path().join("classes");
+    let at = at.to_str().unwrap();
+    let envs = [("NIX_OFFLOAD_CELL", "cell-a"), ("NIX_OFFLOAD_CLASSES", at)];
+    let (ran, took) =
+        sent_up_while_turns_are_taken(&[], &[1, 2], 589_600_000, &envs, Duration::from_secs(3));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        said.matches(&format!(
+            "nix-offload: NIX_OFFLOAD_CLASSES at {at} doesn't read: "
+        ))
+        .count(),
+        1,
+        "classes that don't read weren't said once: {said}"
+    );
+    assert!(
+        said.contains(", so this run's copies aren't urgent"),
+        "what follows from classes that don't read wasn't said: {said}"
+    );
+    assert!(
+        took >= Duration::from_secs(3),
+        "a copy whose classes don't read took the held turn: {took:?}"
+    );
+}
+
 #[test]
 fn a_copy_up_sent_first_takes_no_turn() {
     let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(20));
@@ -840,6 +920,27 @@ fn a_copy_up_sent_first_takes_no_turn() {
     assert!(
         took < Duration::from_secs(20),
         "waited for a turn: {took:?}"
+    );
+}
+
+#[test]
+fn a_small_copy_up_sent_first_takes_no_turn() {
+    let (ran, took) = sent_up_while_turns_are_taken(
+        &["--first"],
+        &[1, 2, 3],
+        4_200_000,
+        &[],
+        Duration::from_secs(20),
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        !said.contains("waits its turn to send"),
+        "a small copy sent first waited for a turn: {said}"
+    );
+    assert!(
+        took < Duration::from_secs(20),
+        "a small copy sent first waited for a turn: {took:?}"
     );
 }
 
