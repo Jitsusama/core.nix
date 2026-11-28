@@ -27,6 +27,12 @@
   // A reader who presses a key, points or moves focus while it waits sees it at once, so the
   // first Tab's skip link is seen where it lands, its ring with it, and nothing is acted on
   // unseen.
+  // site.css alone says how long it may wait, showing it then, and the mark goes as it does.
+  addEventListener("animationend", (event) => {
+    if (event.animationName === "shown") {
+      document.documentElement.classList.remove("waits");
+    }
+  });
   for (const act of ["keydown", "pointerdown", "focusin"]) {
     addEventListener(act, () => document.documentElement.classList.remove("waits"), {
       capture: true,

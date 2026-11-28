@@ -84,8 +84,8 @@ MOST_DRAWN = """() => {
   return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 }"""
 # The longest a page held unseen until it draws (index.html's `waits`) stays so, as its
-# site.css holds it, and how long one that never draws may take to be seen: that, and half a
-# second's slack for a busy builder's frames.
+# site.css alone holds it, and how long one that never draws may take to be seen: that, and
+# half a second's slack for a busy builder's frames.
 UNSEEN_MS = 1000
 CAPPED_MS = UNSEEN_MS + 500
 # How a page held unseen until it draws meets the reader's first Tab:

@@ -248,8 +248,6 @@ type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.
 const ROOM_HELD_MS = 3000;
-// The longest a first visit waits unseen for the repositories, as site.css's fallback does.
-const ROOM_WAIT_MS = 1000;
 // What a draw had: every repository's kind, and every feed's too.
 type Drawn = { readonly repos: boolean; readonly everyFeed: boolean };
 
@@ -259,13 +257,12 @@ type Drawn = { readonly repos: boolean; readonly everyFeed: boolean };
  * feeds arrive. A part `forgets` names, drawn from what a reload doesn't bring back (a name
  * found, a season unfolded), keeps no room, kept as null so the next load waits for it, nor
  * does any once the width changes. A visit with any part's room unkept waits unseen
- * (index.html) until the repositories draw, or ROOM_WAIT_MS at most.
+ * (index.html) until the repositories draw, or site.css's cap at most.
  * Returns what's told of each draw, which shows the page once the repositories have drawn and
  * lets the room go once every feed has, so the parts fit what they hold again.
  */
 function keepRoom(forgets: () => readonly Room[]): (drawn: Drawn) => void {
   const show = (): void => document.documentElement.classList.remove("waits");
-  setTimeout(show, ROOM_WAIT_MS);
   const root = document.documentElement.style;
   let held = ROOMS.some((id) => root.getPropertyValue(`--room-${id}`) !== "");
   const letGo = (): void => {

@@ -413,7 +413,8 @@ code,
 }
 
 /* A visit with no room kept stays unseen until the repositories draw (page.ts), and a second
-   at most, so a script that never runs can't leave it blank.
+   at most, so a script that never runs can't leave it blank. This second is the only cap:
+   index.html takes the mark away as it ends, so no script holds a timer of its own to agree.
    Faded out rather than hidden, so a link keeps its focus while it waits. */
 .waits body {
   opacity: 0;
