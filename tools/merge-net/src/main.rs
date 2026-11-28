@@ -38,6 +38,13 @@
 //! Where it can't, or one fell off, `ready` starts its run again itself,
 //! in the asking tree, where nothing else goes there (`rerun.rs`).
 //!
+//! `merge-net door PR HEAD`, the merge door, is how a cloud room that
+//! can't reach the train gets its pull request onto it: asked through
+//! `mycelium run` on the net's machine, it runs `ready HEAD` from a clean
+//! clone at the pull request's branch, once GitHub says it's open, into
+//! main, from the repository's own branch, not a draft and at HEAD. It
+//! never merges; ready boards the train as it would anywhere (`door.rs`).
+//!
 //! `merge-net status` says where the net is.
 //!
 //! `watch --branch` follows another branch than main, and lands its reverts
@@ -59,6 +66,7 @@ mod boarding;
 mod candidates;
 mod command;
 mod comments;
+mod door;
 mod earlier;
 mod gated;
 mod holds;
@@ -129,6 +137,7 @@ fn main() -> ExitCode {
         Asked::Ride => {
             train::ride(&env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()))
         }
+        Asked::Door { pr, head } => door::door(pr, &head),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");

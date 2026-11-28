@@ -839,8 +839,9 @@ fn gate(checkout: &Path, log: &Path) -> (Gated, Option<i32>) {
     })
 }
 
-/// `owner/name` of the repository at `url`.
-fn slug_of(url: &str) -> String {
+/// `owner/name` of the repository at `url`, which the merge door asks
+/// GitHub of too.
+pub(crate) fn slug_of(url: &str) -> String {
     // An ssh origin names its host before a colon, git@github.com:owner/repo.
     let path = url.rsplit_once(':').map_or(url, |(_, path)| path);
     path.trim_end_matches('/')

@@ -34,6 +34,9 @@ pub enum Asked {
     RunAgain { commit: String },
     /// Merge the changes waiting on the train, as `ready` starts it.
     Ride,
+    /// Run `ready` for a pull request at its head from a clone at its
+    /// branch, for a room that can't reach the train itself.
+    Door { pr: u64, head: String },
 }
 
 /// merge-net's help, with each subcommand's under it.
@@ -61,6 +64,7 @@ pub fn help() -> Help {
     .subcommand(status())
     .subcommand(run_again())
     .subcommand(ride())
+    .subcommand(door())
 }
 
 fn watch() -> Help {
@@ -152,6 +156,28 @@ fn ride() -> Help {
     .exit(Exit::Failed, "its checkout couldn't be made or moved")
 }
 
+fn door() -> Help {
+    Help::new(
+        "door",
+        "runs ready for PR at HEAD from a clone at its branch, so the train can take it",
+    )
+    .example(
+        "merge-net door 7361 $(git rev-parse HEAD)",
+        "what a room asks through mycelium run, for a PR it can't board itself",
+    )
+    .argument("PR", "the pull request's number")
+    .argument("HEAD", "the head GitHub has for it, all 40 characters")
+    .passes("ready's own code")
+    .exit(
+        Exit::Failed,
+        "GitHub couldn't be asked or the clone couldn't be made",
+    )
+    .exit(
+        Exit::Refused,
+        "the PR isn't one the door takes, or its branch moved",
+    )
+}
+
 /// What the words, past the kit's own flags, ask it to do.
 ///
 /// # Errors
@@ -161,7 +187,7 @@ fn ride() -> Help {
 pub fn asked(words: &[String]) -> Result<Asked, Failure> {
     let Some((first, rest)) = words.split_first() else {
         return Err(Failure::new(Exit::Usage, "merge-net needs a subcommand")
-            .because("watch, needs, ready, status, run-again or ride")
+            .because("watch, needs, ready, status, run-again, ride or door")
             .try_this("merge-net --help"));
     };
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
@@ -189,6 +215,7 @@ pub fn asked(words: &[String]) -> Result<Asked, Failure> {
             [] => Ok(Asked::Ride),
             [word, ..] => Err(unknown(word, &SHARED, "ride")),
         },
+        "door" => door_asked(&rest),
         // The kit refuses a word no subcommand answers to before this.
         other => {
             Err(flags::unknown("command", other, &help().command_names())
@@ -237,6 +264,48 @@ fn commit(words: &[&str], sub: &str) -> Result<String, Failure> {
         [] => Err(short_of(&format!("{sub} needs the COMMIT to judge"), sub)),
         [word, ..] => Err(unknown(word, &SHARED, sub)),
     }
+}
+
+/// The pull request and head `door` was asked about. The head is taken
+/// only whole, so it names one commit and no ref a branch could move.
+fn door_asked(words: &[&str]) -> Result<Asked, Failure> {
+    match words {
+        [pr, head] => {
+            let pr = pr_number(pr).ok_or_else(|| {
+                short_of(&format!("door's PR is a number from 1, not {pr}"), "door")
+            })?;
+            if !whole_commit(head) {
+                return Err(short_of(
+                    &format!("door's HEAD is a commit's 40 lowercase hex digits, not {head}"),
+                    "door",
+                ));
+            }
+            Ok(Asked::Door {
+                pr,
+                head: (*head).to_owned(),
+            })
+        }
+        [word, ..] if word.starts_with('-') => Err(unknown(word, &SHARED, "door")),
+        _ => Err(short_of("door needs the PR and the HEAD to ready", "door")),
+    }
+}
+
+/// A pull request's number, from its digits alone, so `+7` or `0x7` is no
+/// number of one.
+fn pr_number(word: &str) -> Option<u64> {
+    if word.is_empty() || !word.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    word.parse().ok().filter(|number| *number > 0)
+}
+
+/// Whether `word` is a commit's whole name as GitHub gives it: 40 lowercase
+/// hex digits.
+fn whole_commit(word: &str) -> bool {
+    word.len() == 40
+        && word
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn short_of(what: &str, sub: &str) -> Failure {
@@ -299,5 +368,39 @@ mod tests {
             matches!(asking(&["ride"]), Asked::Ride),
             "ride, as ready starts the train, wasn't taken"
         );
+        let head = "08c885690815f5b468316df71fe33c79bf174603";
+        assert!(
+            matches!(asking(&["door", "7361", head]), Asked::Door { pr: 7361, head: asked }
+                if asked == head),
+            "door PR HEAD, as a room asks it through mycelium run, didn't ready PR at HEAD"
+        );
+    }
+
+    /// A door asked of anything but a positive number and a whole commit
+    /// is refused as asked wrongly, before GitHub or git is asked.
+    #[test]
+    fn a_door_asked_of_no_number_or_no_whole_commit_is_refused() {
+        let head = "08c885690815f5b468316df71fe33c79bf174603";
+        for words in [
+            &["door"][..],
+            &["door", "7361"],
+            &["door", "7361", head, "more"],
+            &["door", "0", head],
+            &["door", "+7361", head],
+            &["door", "-7361", head],
+            &["door", "73a1", head],
+            &["door", "99999999999999999999999", head],
+            &["door", "7361", "08c88569"],
+            &["door", "7361", "08C885690815F5B468316DF71FE33C79BF174603"],
+            &["door", "7361", "08c885690815f5b468316df71fe33c79bf17460g"],
+            &["door", "7361", "08c885690815f5b468316df71fe33c79bf1746030"],
+            &["door", "7361", "main"],
+        ] {
+            let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+            match asked(&words) {
+                Ok(_) => panic!("{words:?} was taken, though it names no PR at a whole head"),
+                Err(failure) => assert_eq!(failure.exit, Exit::Usage, "{words:?}"),
+            }
+        }
     }
 }

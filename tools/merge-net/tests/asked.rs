@@ -34,6 +34,7 @@ fn each_subcommand_answers_its_own_help_before_it_reads_a_word() {
         (&["status", "--help"], "merge-net status", "status"),
         (&["run-again", "--help"], "merge-net run-again", "COMMIT"),
         (&["ride", "--help"], "merge-net ride", "train"),
+        (&["door", "--help"], "merge-net door", "HEAD"),
     ] {
         let output = ran(asked);
         let help = said(&output.stdout);
@@ -91,6 +92,10 @@ fn a_subcommand_short_of_its_word_or_given_one_too_many_is_refused() {
         &["watch", "--from"],
         &["status", "now"],
         &["ride", "now"],
+        &["door"],
+        &["door", "7361"],
+        &["door", "0", "08c885690815f5b468316df71fe33c79bf174603"],
+        &["door", "7361", "08c88569"],
     ] {
         let output = ran(asked);
         assert_eq!(
