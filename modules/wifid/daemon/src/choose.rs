@@ -1561,10 +1561,10 @@ pub(crate) mod tests {
         }
     }
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
     /// The desk's access point's own 2.4 GHz radio.
-    const NEAR: &str = "6c:ae:f6:c1:84:27";
+    const NEAR: &str = "02:00:00:00:a5:00";
     /// A call's link given way from for loss, and for a faint signal.
     const LOSING: fading::Why = fading::Why::Lossy(2);
     const FADED: fading::Why = fading::Why::Faint(-75);
@@ -1770,7 +1770,7 @@ pub(crate) mod tests {
     /// what it had carried at that hour before.
     fn far_on_ch6() -> Other {
         Other {
-            point: "6c:ae:f6:ba:85:87".into(),
+            point: "02:00:00:00:a2:00".into(),
             signal: -38,
             busy: Some(20),
             frequency: CH6,
@@ -1782,7 +1782,7 @@ pub(crate) mod tests {
     fn a_wider_band_resting_with_a_slow_tail_keeps_off_a_narrower_one_known_quicker() {
         // 17:29 on 19 Nov 2026: 34.3 ms at p95, moving 10 Mbit/s.
         let mut chooser = Chooser::default();
-        let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(34, 10), -38, CH52);
+        let on = ("02:00:00:00:a1:00", &idle_on_ch52(34, 10), -38, CH52);
 
         let start = Instant::now();
 
@@ -1798,7 +1798,7 @@ pub(crate) mod tests {
         assert_eq!(next, Choice::Stay, "nor the next minute");
         assert_eq!(
             (said, chooser.began_keeping_wide()),
-            (Some("6c:ae:f6:ba:85:87".to_owned()), None),
+            (Some("02:00:00:00:a2:00".to_owned()), None),
             "the hold is said once a spell"
         );
         let called = chooser.choose(start + Duration::from_secs(120), on, &[far_on_ch6()], true);
@@ -1806,7 +1806,7 @@ pub(crate) mod tests {
         chooser.choose(start + Duration::from_secs(180), on, &[far_on_ch6()], false);
         assert_eq!(
             chooser.began_keeping_wide(),
-            Some("6c:ae:f6:ba:85:87".to_owned()),
+            Some("02:00:00:00:a2:00".to_owned()),
             "a hold after the call is a new spell, said again"
         );
     }
@@ -1814,7 +1814,7 @@ pub(crate) mod tests {
     #[test]
     fn a_wider_band_kept_off_two_narrower_ones_names_the_quickest() {
         let mut chooser = Chooser::default();
-        let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(34, 10), -38, CH52);
+        let on = ("02:00:00:00:a1:00", &idle_on_ch52(34, 10), -38, CH52);
         let quicker = Other {
             point: NEAR.into(),
             measured: Some(idle_on_ch52(8, 10)),
@@ -1833,7 +1833,7 @@ pub(crate) mod tests {
     #[test]
     fn a_wider_band_kept_to_where_nothing_narrower_would_have_been_tried_says_nothing() {
         let mut chooser = Chooser::default();
-        let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(12, 10), -38, CH52);
+        let on = ("02:00:00:00:a1:00", &idle_on_ch52(12, 10), -38, CH52);
 
         let choice = chooser.choose(Instant::now(), on, &[far_on_ch6()], false);
 
@@ -1848,8 +1848,8 @@ pub(crate) mod tests {
     #[test]
     fn a_wider_band_slow_two_minutes_but_losing_nothing_keeps_off_a_narrower_one() {
         // 18:03 on 19 Nov 2026: 51.6 ms at p95 two minutes running, none lost.
-        let mut chooser = after_a_bad_minute("6c:ae:f6:ba:85:86");
-        let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(52, 24), -36, CH52);
+        let mut chooser = after_a_bad_minute("02:00:00:00:a1:00");
+        let on = ("02:00:00:00:a1:00", &idle_on_ch52(52, 24), -36, CH52);
 
         let choice = chooser.choose(Instant::now(), on, &[far_on_ch6()], false);
 
@@ -1860,7 +1860,7 @@ pub(crate) mod tests {
         );
         assert_eq!(
             chooser.began_keeping_wide(),
-            Some("6c:ae:f6:ba:85:87".to_owned()),
+            Some("02:00:00:00:a2:00".to_owned()),
             "the hold is said"
         );
     }
@@ -2040,7 +2040,7 @@ pub(crate) mod tests {
             echoes: 55,
             ..idle_on_ch52(34, 10)
         };
-        let on = ("6c:ae:f6:ba:85:86", &young, -38, CH52);
+        let on = ("02:00:00:00:a1:00", &young, -38, CH52);
         let mut chooser = Chooser::default();
 
         let first = chooser.choose(start, on, &[far_on_ch6()], false);
@@ -2053,14 +2053,14 @@ pub(crate) mod tests {
         );
         assert_eq!(
             whole,
-            Choice::Try("6c:ae:f6:ba:85:87".into()),
+            Choice::Try("02:00:00:00:a2:00".into()),
             "55 a span on is half of them unsent"
         );
     }
 
     #[test]
     fn a_wider_band_holds_at_the_edges_of_lossy_and_faintest() {
-        let point = "6c:ae:f6:ba:85:86";
+        let point = "02:00:00:00:a1:00";
         let judged = |lost, signal| {
             let measured = Measured {
                 lost,
@@ -2080,14 +2080,14 @@ pub(crate) mod tests {
             Choice::Look,
             "2% lost at -67 dBm still holds"
         );
-        let far = Choice::Try("6c:ae:f6:ba:85:87".into());
+        let far = Choice::Try("02:00:00:00:a2:00".into());
         assert_eq!(judged(2.1, -67), far, "past 2% it doesn't");
         assert_eq!(judged(2.0, -68), far, "nor past -67 dBm");
     }
 
     #[test]
     fn a_wider_band_unechoed_or_fading_on_its_own_station_doesnt_hold() {
-        let point = "6c:ae:f6:ba:85:86";
+        let point = "02:00:00:00:a1:00";
         let unechoed = Measured {
             echoes: 60,
             ..idle_on_ch52(52, 24)
@@ -2101,7 +2101,7 @@ pub(crate) mod tests {
             a_span_on(point).choose(Instant::now(), on, &[far_on_ch6()], false)
         };
 
-        let far = Choice::Try("6c:ae:f6:ba:85:87".into());
+        let far = Choice::Try("02:00:00:00:a2:00".into());
         assert_eq!(
             judged(&unechoed),
             far,
@@ -2116,7 +2116,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_wider_band_losing_or_faint_may_still_take_a_narrower_one() {
-        let point = "6c:ae:f6:ba:85:86";
+        let point = "02:00:00:00:a1:00";
         let mut lossy = idle_on_ch52(52, 24);
         lossy.lost = 3.0;
 
@@ -2136,7 +2136,7 @@ pub(crate) mod tests {
             false,
         );
 
-        let far = Choice::Try("6c:ae:f6:ba:85:87".into());
+        let far = Choice::Try("02:00:00:00:a2:00".into());
         assert_eq!(losing, far, "3% lost is the air, which 2.4 GHz may answer");
         assert_eq!(faint, far, "heard past FAINTEST, 5 GHz is fading");
     }
@@ -3246,7 +3246,7 @@ pub(crate) mod tests {
     /// hall is kept off.
     fn elsewhere() -> Other {
         Other {
-            point: "6c:ae:f6:ba:85:86".into(),
+            point: "02:00:00:00:a1:00".into(),
             ..hall(-55, Some(20), None)
         }
     }
@@ -3310,7 +3310,7 @@ pub(crate) mod tests {
     /// a bad minute, so a card settled takes it.
     fn quicker_still() -> Other {
         Other {
-            point: "6c:ae:f6:ba:85:88".into(),
+            point: "02:00:00:00:a3:00".into(),
             ..hall(-54, Some(20), Some(carried(15, 0.0)))
         }
     }
@@ -3763,7 +3763,7 @@ pub(crate) mod tests {
     }
 
     /// An access point on the stairs, heard as the desk is.
-    const STAIRS: &str = "6c:ae:f6:c1:84:2a";
+    const STAIRS: &str = "02:00:00:00:a8:00";
 
     /// A chooser gone back from the hall to the desk twice within the hour
     /// for carrying worse only than the desk usually does, so keeping the
@@ -5376,7 +5376,7 @@ pub(crate) mod tests {
     fn a_card_on_a_busy_channel_takes_one_known_quicker_over_a_quieter_untried() {
         let measured = carried(38, 0.0);
         let quick = Other {
-            point: "6c:ae:f6:ba:85:86".into(),
+            point: "02:00:00:00:a1:00".into(),
             signal: -40,
             busy: Some(35),
             frequency: CH52,
@@ -5387,7 +5387,7 @@ pub(crate) mod tests {
         let on = (HALL, &measured, -41, CH149);
         let choice = Chooser::default().choose(Instant::now(), on, &others, false);
 
-        let to = Choice::Try("6c:ae:f6:ba:85:86".into());
+        let to = Choice::Try("02:00:00:00:a1:00".into());
         assert_eq!(choice, to, "10 ms known beats 20% busy untried");
     }
 
@@ -5449,7 +5449,7 @@ pub(crate) mod tests {
     fn a_card_on_a_busy_channel_tries_the_loudest_of_two_quieter() {
         let measured = carried(38, 0.0);
         let louder = Other {
-            point: "6c:ae:f6:ba:85:86".into(),
+            point: "02:00:00:00:a1:00".into(),
             signal: -38,
             ..desk_saying(Some(30))
         };
@@ -5458,7 +5458,7 @@ pub(crate) mod tests {
         let on = (HALL, &measured, -41, CH149);
         let choice = Chooser::default().choose(Instant::now(), on, &others, false);
 
-        let to = Choice::Try("6c:ae:f6:ba:85:86".into());
+        let to = Choice::Try("02:00:00:00:a1:00".into());
         assert_eq!(choice, to, "-38 dBm is louder than -43");
     }
 
@@ -5547,7 +5547,7 @@ pub(crate) mod tests {
     /// Another eero's 5 GHz radio, heard from the desk far more faintly.
     fn far_at(signal: i16, measured: Option<Measured>) -> Other {
         Other {
-            point: "6c:ae:f6:ba:85:88".into(),
+            point: "02:00:00:00:a3:00".into(),
             signal,
             busy: Some(20),
             frequency: 5745,

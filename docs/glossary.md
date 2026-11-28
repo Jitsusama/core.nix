@@ -181,6 +181,8 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | `agents:budgets`, AI spend's Budgets |
 | Spec | the bars Joel set for how the agents deliver, read on ten axes; an axis or a reading is in spec or out of spec | | `agents:spec`, cadence-spec |
+| Asked For | what Joel asked the agents for in his own words that hasn't landed, each with the quest answering for it, when it's due, how often its date moved and whether its probe passes | Your Asks | `agents:asked-for`, `cadence axes --asked`, `mission/asks.jsonl` |
+| probe | a check run after each switch, showing in Joel's terms whether what he asked for works on his machine; it passes or fails since its first fail | | `mission/probes.jsonl` |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a budget one window allows: a share of a Claude plan's five hours or week, or dollars of the AI proxy's week | limit | `5h`, `wk` |

@@ -61,6 +61,7 @@ mod supplicant;
 mod syntax;
 mod transition;
 mod vault;
+mod warned;
 mod words;
 
 use std::cell::RefCell;
@@ -73,6 +74,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
@@ -103,11 +105,16 @@ use service::{Ask, Refused, Stage, Wifi};
 use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
-use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
+use supplicant::{InterfaceProxy, Join, JoinableProxy, Step, SupplicantProxy};
 use transition::{Heed, Request};
+use warned::Warned;
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
+
+/// Where wifid keeps what it must remember between starts but never past
+/// the machine's: its runtime folder, which systemd keeps as it restarts.
+const KEPT: &str = "/run/wifid/kept";
 
 /// What every card wpa_supplicant is given starts from.
 const CARD_SETTINGS: &str = "/etc/wpa_supplicant/interface.conf";
@@ -259,7 +266,12 @@ async fn serve(
     // Whether Joel's on a call, as his session tells the rows socket.
     let calling = watch::Sender::<calling::Calling>::default();
     let avoided = avoided();
-    let arrivals = RefCell::default();
+    let arrivals = RefCell::new(Arrivals::default());
+    // A switch restarts wifid, and the hand-over below would hold a card
+    // to the point it's on, so each warning still lasting is taken in
+    // first: one forgotten held the card to a point about to drop it.
+    let warned = RefCell::new(Warned::kept_in(&Path::new(KEPT).join("warned")));
+    take_in_warnings(&warned.borrow(), &arrivals, &state);
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -269,6 +281,7 @@ async fn serve(
         avoided: &avoided,
         seen,
         arrivals: &arrivals,
+        warned: &warned,
         state: &state,
         picked: RefCell::default(),
         held: RefCell::default(),
@@ -1137,6 +1150,36 @@ impl<'a> Air<'a> {
         }
     }
 
+    /// Takes in a join of the card at this path that landed on a signal's
+    /// step, at `point` beside it where one came, and ends the move that
+    /// brought it there.
+    async fn join_landed(
+        &mut self,
+        bus: &Connection,
+        path: &ObjectPath<'_>,
+        card: &str,
+        point: Option<&zvariant::Value<'_>>,
+        now: Instant,
+    ) {
+        // A point beside the step is where the join landed, so it's taken
+        // in as it lands rather than after.
+        let at = match point {
+            Some(zvariant::Value::ObjectPath(said)) => Some(joined_to(said)),
+            _ => None,
+        };
+        change(&self.state, |state| match at {
+            Some(at) => state.landed_at(card, at),
+            None => state.landed(card),
+        });
+        let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
+        let on = self.joined(bus, path, said.as_deref()).await;
+        let arrived = self.arrivals.borrow_mut().joined(card, on.as_deref(), now);
+        if let Some(arrived) = arrived {
+            println!("{}", arrived.said(card));
+        }
+        self.settled.push(card.to_owned());
+    }
+
     /// Takes in what wpa_supplicant says changed of the card at this path:
     /// how far it's got joining a network, the access point it's at, and
     /// any status that ends its join. The access point is taken only as
@@ -1156,8 +1199,6 @@ impl<'a> Air<'a> {
         // reached. Anything wifid was busy with as the signal came still
         // counts in it.
         let now = Instant::now();
-        // An attempt at a network begins as the card starts authenticating
-        // with it, or associating where it skips that.
         let step = changed.get("State").map(|step| &**step);
         // Whether this signal's step ended a join, so a point it names in
         // the same signal doesn't end the move again.
@@ -1166,23 +1207,20 @@ impl<'a> Air<'a> {
             let step = step.to_string();
             if let Some(card) = self.named(bus, path).await {
                 let before = self.cards.get(path.as_str());
-                let before = before.map_or("", |(_, step)| step.as_str());
-                let begins = step == "authenticating"
-                    || (step == "associating" && before != "authenticating");
-                let left = supplicant::left_its_network(before, &step);
-                if begins {
-                    change(&self.state, |state| state.attempting(&card));
-                    self.tried.push(card.clone());
-                }
-                if step == "completed" && before != "completed" {
-                    landed = true;
-                    let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
-                    let on = self.joined(bus, path, said.as_deref()).await;
-                    let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
-                    if let Some(arrived) = arrived {
-                        println!("{}", arrived.said(&card));
+                let before = before.map(|(_, step)| step.clone()).unwrap_or_default();
+                let join = supplicant::join_at(&before, &step);
+                let left = supplicant::left_its_network(&before, &step);
+                match join {
+                    Join::Begins => {
+                        change(&self.state, |state| state.attempting(&card));
+                        self.tried.push(card.clone());
                     }
-                    self.settled.push(card.clone());
+                    Join::Short => change(&self.state, |state| state.joining(&card)),
+                    Join::Lands | Join::Stays => {}
+                }
+                if join == Join::Lands {
+                    landed = true;
+                    self.join_landed(bus, path, &card, point, now).await;
                 } else if step != before
                     && let Some(lost) = self.arrivals.borrow_mut().step(&card, &step, now)
                 {
@@ -1533,6 +1571,16 @@ fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
     (point.as_str() != "/").then(|| point.to_string())
 }
 
+/// Whether a card read twice, its step then its access point each time,
+/// stayed joined to one point throughout. A move that left for another
+/// point and failed back between the reads reads completed both times,
+/// but at two points: taken as landed at the first, the card would count
+/// as having left a point that warned it, and the landing back there
+/// would forget the warning.
+fn joined_throughout(steps: [&str; 2], points: [Option<&str>; 2]) -> bool {
+    steps == ["completed"; 2] && points[0] == points[1]
+}
+
 /// Turns every Wi-Fi radio on or off.
 fn radio(on: bool) -> Result<(), Refused> {
     let turned = OpenOptions::new()
@@ -1650,6 +1698,18 @@ async fn station(
             *kernel = None;
             (None, None)
         }
+    }
+}
+
+/// Takes in each warning a wifid before kept that still lasts, so the
+/// moves and the chooser keep off its point as they did then.
+fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch::Sender<State>) {
+    for (card, point, until) in warned.lasting(Instant::now(), SystemTime::now()) {
+        arrivals.borrow_mut().warned(&card, &point, until);
+        change(state, |state| state.kept_off(&card, &point, until));
+        let left = until.saturating_duration_since(Instant::now());
+        let minutes = left.as_secs().div_ceil(60);
+        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
     }
 }
 
@@ -1840,6 +1900,8 @@ struct Wifid<'a> {
     seen: &'a RefCell<Seen>,
     /// The moves on their way, followed to where they end.
     arrivals: &'a RefCell<Arrivals>,
+    /// The warnings still keeping a point off, kept for the next wifid.
+    warned: &'a RefCell<Warned>,
     state: &'a watch::Sender<State>,
     /// The cards on a network Joel picked in the launcher, which keep
     /// their others off until they come off it.
@@ -1958,12 +2020,30 @@ impl Wifid<'_> {
             supplicant.create_interface(args).await?
         };
         let interface = interface(self.bus, path).await?;
+        // A card found partway through a join, as wifid starts mid-move,
+        // hasn't left a point that warned it until that join lands, so the
+        // warning taken in from before stays if the join fails. Its step
+        // and its point are each read twice, as a move could leave for
+        // another point and fail back between two reads.
+        let before = interface.state().await?;
         // A card kept on its network as wifid restarts says nothing of the
         // access point it's at until it moves, so it's asked.
         let point = interface.current_access_point().await.ok();
         let point = point.filter(|point| joined_to(point).is_some());
         let joined = point.as_ref().map(ToString::to_string);
-        change(self.state, |state| state.at(&card.name, joined));
+        let after = interface.state().await?;
+        let again = interface.current_access_point().await.ok();
+        let again = again.as_ref().and_then(|again| joined_to(again));
+        let steps = [before.as_str(), after.as_str()];
+        let landed = joined_throughout(steps, [joined.as_deref(), again.as_deref()]);
+        change(self.state, |state| {
+            if landed {
+                state.landed_at(&card.name, joined);
+            } else {
+                state.joining(&card.name);
+                state.at(&card.name, joined);
+            }
+        });
         // A card in a move, or on its way back, keeps the hold the move
         // gave it, as networks saved meanwhile hand every card over again:
         // held where it is mid-way, it could join any point of its network.
@@ -2012,7 +2092,9 @@ impl Wifid<'_> {
     /// network elsewhere. A card let go of a point that warned it drops
     /// the card isn't held back to it, as `ready` holds none there: cards
     /// are handed over again as networks are saved, or networkd restarts,
-    /// and one held back would wait there until it's dropped.
+    /// and one held back would wait there until it's dropped. The same
+    /// holds as wifid starts again, as a switch restarts it, since each
+    /// warning still lasting is kept past it (warned.rs).
     async fn hold_where_it_is(
         &self,
         card: &str,
@@ -3664,17 +3746,25 @@ impl Wifid<'_> {
         let followed = request.heed(from.as_deref(), &heard, held, leaving, looked.over(), link);
         // Said once kept, so the line stands for what the chooser and the
         // moves now hold, not only for what was decided.
-        if let Some(lasts) = request.keeps_off(&followed)
-            && let Some(from) = from.as_deref()
-        {
-            let at = Instant::now();
-            let until = at + lasts;
-            self.arrivals.borrow_mut().warned(card, from, until);
-            change(self.state, |state| {
-                state.warned_off(card, from, (at, until));
-            });
-            let minutes = lasts.as_secs() / 60;
-            println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
+        if let Some(from) = from.as_deref() {
+            let lasts = request.keeps_off(&followed);
+            let now = (Instant::now(), SystemTime::now());
+            let until = lasts.map(|lasts| now.0 + lasts);
+            self.arrivals
+                .borrow_mut()
+                .heeded(card, from, &followed, until);
+            if let (Some(lasts), Some(until)) = (lasts, until) {
+                change(self.state, |state| {
+                    state.warned_off(card, from, (now.0, until));
+                });
+                if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
+                    eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");
+                }
+                let minutes = lasts.as_secs() / 60;
+                println!(
+                    "<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned"
+                );
+            }
         }
         match followed {
             Heed::Stay => println!("<7>{card} stays where it is, as the ask warns nothing"),
@@ -3693,13 +3783,8 @@ impl Wifid<'_> {
                 println!(
                     "<6>{card} was warned unprotected on an open network, so may join any again"
                 );
-                // Nothing is kept off, but a move under way from the point
-                // is let join what it hears should it miss, as the card
-                // is: sent back, it would be held to the point it was
-                // just let go of.
-                if let Some(from) = from.as_deref() {
-                    self.arrivals.borrow_mut().wont_return(card, from);
-                }
+                // A move under way from the point won't go back there
+                // should it miss (`Arrivals::heeded`).
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::Move(bssid) => match self.roam_card(card, &bssid, joining, Missed::LetJoin).await
@@ -3899,6 +3984,29 @@ impl Wifid<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_handed_over_has_landed_only_if_it_stayed_on_one_point_throughout() {
+        const DESK: &str = "/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/3";
+        const HALL: &str = "/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4";
+        let completed = ["completed"; 2];
+        assert!(
+            joined_throughout(completed, [Some(DESK), Some(DESK)]),
+            "a card joined to one point throughout wasn't taken as landed there"
+        );
+        assert!(
+            !joined_throughout(completed, [Some(HALL), Some(DESK)]),
+            "a move that failed back between the reads was taken as landed at its target"
+        );
+        assert!(
+            !joined_throughout(["completed", "associating"], [Some(DESK), Some(DESK)]),
+            "a card that began a join between the reads was taken as landed"
+        );
+        assert!(
+            !joined_throughout(["4way_handshake", "completed"], [Some(HALL), Some(HALL)]),
+            "a join that ended between the reads was taken as landed before its signal"
+        );
+    }
 
     #[test]
     fn a_card_is_gone_under_its_own_path_or_any_above_it_alone() {

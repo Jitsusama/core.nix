@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn a_link_to_the_same_router_follows_the_one_before_it() {
-        let router = "6c:ae:f6:00:00:01";
+        let router = "02:00:00:00:a0:00";
         let follows = leaders(&[
             ("eth0", router),
             ("wlan0", router),
@@ -278,8 +278,8 @@ mod tests {
 
     #[test]
     fn the_gateways_hardware_address_names_the_network() {
-        let json = r#"[{"dst":"192.168.4.1","lladdr":"6c:ae:f6:ba:85:86","state":["REACHABLE"]}]"#;
-        assert_eq!(gateway_address(json).as_deref(), Some("6c:ae:f6:ba:85:86"));
+        let json = r#"[{"dst":"192.168.4.1","lladdr":"02:00:00:00:a1:00","state":["REACHABLE"]}]"#;
+        assert_eq!(gateway_address(json).as_deref(), Some("02:00:00:00:a1:00"));
         assert_eq!(gateway_address("[]"), None);
     }
 }

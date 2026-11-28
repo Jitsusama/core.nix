@@ -46,6 +46,25 @@ pub struct Judged {
 /// own, from the earlier commits of its change, `on_main` saying whether
 /// a run's base is on main.
 pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<Judged, String> {
+    judged_among(
+        commit,
+        main,
+        on_main,
+        &ready::recent_records(),
+        &ready::record,
+    )
+}
+
+/// [`judged`], reading the earlier runs from the `recent` commits that
+/// have a record and from what `record` says of each, as the train adds
+/// the reds it excused to nix-offload's passes.
+pub fn judged_among(
+    commit: &str,
+    main: &str,
+    on_main: &dyn Fn(&str) -> bool,
+    recent: &[String],
+    record: &dyn Fn(&str) -> String,
+) -> Result<Judged, String> {
     // The change is what the head adds to the main it branched from, which
     // is main itself unless the head is behind it.
     let branched = git(&["merge-base", main, commit])?;
@@ -114,12 +133,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
             shared_since(candidate, base)
         })
     };
-    let candidates = ready::speakers(
-        commit,
-        behind,
-        &candidates(commit, main, &files, &ready::recent_records())?,
-    );
-    let before = ready::checked_before(&candidates, &ready::record, on_main, &same);
+    let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files, recent)?);
+    let before = ready::checked_before(&candidates, record, on_main, &same);
     Ok(Judged {
         stands,
         behind,

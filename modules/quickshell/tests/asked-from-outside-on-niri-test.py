@@ -26,8 +26,6 @@ MARKER = "HARBOURMARK"
 COUNTED = f"{len(MARKER)} letters"
 # How long a line has to reach the shell's log after its call answers, in seconds.
 WRITTEN_WITHIN = 5.0
-# How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
-LINK_QUIET = 0.8
 # The launcher's own kinds of key, said whole where an id follows (KeysSaid.js's keysOwn and
 # ownId), and how many letters of such a key a line says.
 KEYS_OWN = ("place:", "category:", "collection:")
@@ -62,12 +60,6 @@ def line_of(said: str, start: str) -> str:
     return lines[-1][lines[-1].index("launcher: ") :]
 
 
-def close_after_link(shell: Shell) -> None:
-    """Close what a link opened, once its quiet is over, since an Escape inside it is dropped."""
-    time.sleep(LINK_QUIET)
-    shell.close_launcher()
-
-
 @pytest.mark.parametrize(
     ("call", "start"),
     [
@@ -82,7 +74,8 @@ def test_a_links_words_are_counted(shell: Shell, call: str, start: str) -> None:
     line = line_of(said, start)
     assert MARKER not in said, f"{call} said the link's words: {line}"
     assert line.endswith(COUNTED), f"{call} didn't count the link's words: {line}"
-    close_after_link(shell)
+    # What a link opened drops keys for a moment; close_launcher sends a dropped one again.
+    shell.close_launcher()
 
 
 @pytest.mark.parametrize(
@@ -98,7 +91,7 @@ def test_a_links_row_is_counted(shell: Shell, call: str, start: str, missing: st
     assert MARKER not in said, f"{call} said the link's words:\n{said}"
     assert missing not in answer, f"this shell has no place for {call}, so nothing's counted"
     assert line_of(said, start).endswith(COUNTED), said
-    close_after_link(shell)
+    shell.close_launcher()
 
 
 def held_whole(key: str) -> bool:

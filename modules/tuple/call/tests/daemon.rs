@@ -17,7 +17,7 @@
 //! harness that builds it, `Running` and `Following`, is theirs to share.
 
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -131,10 +131,21 @@ impl Running {
             std::process::id(),
             STARTED.fetch_add(1, Ordering::Relaxed)
         ));
-        let _ = std::fs::remove_dir_all(&folder);
-        // Made afresh, so a folder the removal couldn't take fails here
-        // rather than feeding this run what an earlier one wrote.
-        std::fs::create_dir(&folder)
+        // A removal that fails says why, which the folder left behind can't.
+        if let Err(error) = std::fs::remove_dir_all(&folder) {
+            assert_eq!(
+                error.kind(),
+                std::io::ErrorKind::NotFound,
+                "{} should be cleared: {error}",
+                folder.display()
+            );
+        }
+        // Made afresh, and only this user's, so anything made or planted
+        // there since it was cleared fails here rather than feeding this
+        // run what it holds.
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&folder)
             .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();

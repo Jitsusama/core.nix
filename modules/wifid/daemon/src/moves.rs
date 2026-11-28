@@ -699,9 +699,9 @@ mod tests {
     use crate::radio::{Load, Radio};
     use crate::state::Security;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
-    const NEAR: &str = "6c:ae:f6:c1:84:27";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
+    const NEAR: &str = "02:00:00:00:a5:00";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -1035,8 +1035,8 @@ mod tests {
     #[test]
     fn a_move_says_what_it_went_by_and_whence() {
         let on = joined(DESK);
-        let why = "wlan2 tries 6c:ae:f6:c1:84:28, as 6c:ae:f6:c1:84:26 carried 30.0 ms at p95 \
-                   with 0.0% lost, and 6c:ae:f6:c1:84:28";
+        let why = "wlan2 tries 02:00:00:00:a6:00, as 02:00:00:00:a4:00 carried 30.0 ms at p95 \
+                   with 0.0% lost, and 02:00:00:00:a6:00";
         let quick = Some(carried(10));
 
         assert_eq!(
@@ -1247,7 +1247,7 @@ mod tests {
 
     #[test]
     fn a_call_losing_where_it_gave_way_for_loss_holds_rather_than_move_or_look() {
-        const ROOM: &str = "6c:ae:f6:c1:84:29";
+        const ROOM: &str = "02:00:00:00:a7:00";
         let (mut chooser, start) = (Chooser::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -48), heard(ROOM, -50)];
         given(&mut chooser, start, &joined(DESK), &around, LOSING);
@@ -1266,7 +1266,7 @@ mod tests {
 
     #[test]
     fn a_fading_call_goes_back_to_no_point_it_lately_left() {
-        const ROOM: &str = "6c:ae:f6:c1:84:29";
+        const ROOM: &str = "02:00:00:00:a7:00";
         let (mut chooser, start) = (Chooser::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -55), heard(ROOM, -60)];
         let faded = (0, Some(-75));
@@ -1810,11 +1810,30 @@ mod tests {
                 &known,
                 false,
             );
-            (next, chooser.went_back())
+            let why = chooser.went_back();
+            (next, why, chooser)
         };
 
-        let (back, _) = judged(None);
-        let (kept, why) = judged(Some(&DESK.to_uppercase()));
+        let (back, _, _) = judged(None);
+        let (kept, why, mut stayed) = judged(Some(&DESK.to_uppercase()));
+        // The chooser takes the way back refused as a move made, so past
+        // the trial's own settle, carrying as badly, the card stays a
+        // settle from the refusal on the point it's on rather than move
+        // again so soon after the warning.
+        let past_the_trial_s_settle = start + choose::SETTLE + Duration::from_secs(60);
+        let refused = start + choose::TRIAL;
+        assert!(
+            past_the_trial_s_settle < refused + choose::SETTLE,
+            "the case's time was past the refusal's settle"
+        );
+        let a_minute_on = chosen(
+            &mut stayed,
+            past_the_trial_s_settle,
+            (&joined(HALL), &idle(200)),
+            (&[heard(HALL, -50)], Some(DESK)),
+            &known,
+            false,
+        );
 
         assert_eq!(
             back,
@@ -1828,6 +1847,11 @@ mod tests {
         assert!(
             why.is_none(),
             "why a way back not taken was left to be said of a later one"
+        );
+        assert_eq!(
+            a_minute_on, None,
+            "a card that stayed rather than go back to a warner moved or looked again within the \
+             settle its refusal began"
         );
     }
 

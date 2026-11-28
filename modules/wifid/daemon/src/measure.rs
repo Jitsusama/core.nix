@@ -930,8 +930,8 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 pub(crate) mod tests {
     use super::*;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -986,7 +986,7 @@ pub(crate) mod tests {
         let now = start + Duration::from_secs(15);
 
         let lately = kept.lately(DESK, now, Duration::from_secs(10));
-        let unmeasured = kept.lately("6c:ae:f6:ba:85:86", now, Duration::from_secs(10));
+        let unmeasured = kept.lately("02:00:00:00:a1:00", now, Duration::from_secs(10));
 
         assert_eq!(
             lately,
@@ -1358,7 +1358,7 @@ pub(crate) mod tests {
         let both = (&measured, &measured);
         assert_eq!(
             said(&on, both, None, false),
-            "wlan2 on 6c:ae:f6:c1:84:26: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
+            "wlan2 on 02:00:00:00:a4:00: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
              echoes lost; video unmeasured; 1.25 in 100 frames sent again, 0.00 lost; \
              signal -47 dBm",
             "one line says all of it, and that video went unmeasured"

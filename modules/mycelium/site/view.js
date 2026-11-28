@@ -657,7 +657,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], messagesHeard: Array.isArray(now.messages), judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3322,7 +3322,7 @@ import {
       launcherLink("machine", name, "Open It in the Launcher") +
       // New work starts on it, or on any of the cloud's for a basin's
       // stand, from the Launcher's Start New Work as any new work does.
-      sproutOnButton(drawerOffersOn(name, pool), pool ? "Start New Work on the Cloud" : "Start New Work Here") +
+      sproutOnButton(name, pool, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3351,9 +3351,13 @@ import {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
-  // A machine drawerOffersOn offers none on has no button.
-  const sproutOnButton = (on, words) =>
-    on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+  // A machine's drawer's button names what drawerOffersOn offers it, so
+  // no caller can draw one for a machine named cloud or one no link
+  // carries; a machine it offers none on has no button.
+  const sproutOnButton = (name, basin, words) => {
+    const on = drawerOffersOn(name, basin);
+    return on !== null ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
+  };
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3468,7 +3472,7 @@ import {
       factList(facts) +
       where +
       `<h3>Lately</h3>` +
-      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : `<p class="hint">No message to or from it among the latest the node keeps.</p>`)
+      (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : m.messagesHeard ? `<p class="hint">No message to or from it among the latest the node keeps.</p>` : `<p class="hint">Still reading the node's latest messages.</p>`)
     );
   };
 
@@ -3521,10 +3525,10 @@ import {
       (tied
         ? `<p class="carries">Talk on the mesh today, as the node ties the two: how much each said and of what kinds, never the words.</p>` + tieWords(tied)
         : `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
-          `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>`) +
+          (current.messagesHeard ? `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` : "")) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
-      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
+      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : !current.messagesHeard ? `<p class="hint">Still reading the node's latest messages.</p>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
     );
   };
   // What has no place of its own on the map, named in words.
@@ -3864,13 +3868,13 @@ import {
   // New words over kept ones are new work, so they go from the cell open
   // now, as a fresh line's would; a tick Joel cleared stays cleared. The
   // kept words themselves stay where they went, even once their machine
-  // has left, so Return says it left rather than send them elsewhere.
+  // has left, so Return says it left rather than send them elsewhere:
+  // the handler returns while the line holds them, offering nothing anew.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
     if (!sproutKeptOffered || sproutInput.value === sproutKept?.words) return;
     const from = chosen?.kind === "cell" ? chosen.id : null;
     const next = offered({ from, on: drawerOn(), named: false, kept: sproutKept, typed: sproutInput.value }, standing());
-    if (next.kept) return;
     const ticked = sproutFromBox.checked;
     const onTicked = sproutOnBox.checked;
     offer(next);
@@ -4943,8 +4947,10 @@ import {
         const was = spots;
         draw();
         noteLives(was);
-        panel();
+        // Heard before the drawer is written, so a talk open says what
+        // this reading brought rather than what the one before it did.
         hear(true);
+        panel();
       }
       drawStatus();
       performance.clearMeasures("mycelium-redraw");

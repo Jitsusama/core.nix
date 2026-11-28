@@ -388,6 +388,11 @@ fn a_row_left_from_before_waits_on_the_round_just_before_whatever_reads_it() {
         Change::Keep,
         "so the other after it isn't each heard in a row"
     );
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Untell,
+        "and the other again the round after it is, so the row still goes"
+    );
     let mut unread = Deaf::through_gateway();
     let _ = unread.heard(Round::Partly(Some(Search::Tag)), round(1));
     assert_eq!(
@@ -399,6 +404,11 @@ fn a_row_left_from_before_waits_on_the_round_just_before_whatever_reads_it() {
         unread.heard(Round::Partly(Some(Search::Phrase)), round(3)),
         Change::Keep,
         "an unreadable round between forgets the round before"
+    );
+    assert_eq!(
+        unread.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Untell,
+        "and the other again the round after it is, so the row still goes"
     );
     // A reader through the keyring, its searches failing by turns.
     let mut keyring = Deaf::new();

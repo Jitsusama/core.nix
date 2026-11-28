@@ -248,7 +248,9 @@ pub(super) fn far_line(
 /// ahead of the rest on its path, in the tree's `folder`. What it said
 /// for the near side to hear, on stdout, is left in the home's `said`,
 /// the signal it died by, if one ended it, in its `signal`, and its own
-/// process's number in its `pid`.
+/// process's number in its `pid`. While `leaving::HOME_GONE` is set, as
+/// `home_gone` there sets it, the line's `HOME` names no folder and its
+/// cache is named by `XDG_CACHE_HOME`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
