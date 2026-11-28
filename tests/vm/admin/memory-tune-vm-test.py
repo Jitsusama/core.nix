@@ -140,11 +140,6 @@ def test_an_administrator_turns_defrag_mode_on_and_off_without_a_password(
         assert read(reverted, DEFRAG) == mode, f"defrag_mode wasn't set to {mode}"
 
 
-def test_the_machine_boots_with_zswaps_shrinker_on(reverted: BaseMachine) -> None:
-    shrinker = read(reverted, ZSWAP_SHRINKER)
-    assert shrinker == "Y", f"booted with zswap's shrinker at {shrinker}"
-
-
 def test_an_administrator_turns_zswaps_shrinker_on_and_off_without_a_password(
     reverted: BaseMachine,
 ) -> None:
@@ -180,7 +175,9 @@ def test_a_zswap_shrinker_value_the_rules_dont_list_needs_a_password(
     reverted: BaseMachine,
 ) -> None:
     # It boots on, so a 0 written through would read back changed, as N.
+    # full-swap-vm-test.py proves the boot; this only needs it to hold here.
     before = read(reverted, ZSWAP_SHRINKER)
+    assert before == "Y", f"zswap's shrinker read {before} before the unlisted value"
     status, said = start(reverted, "someone", "memory-zswap-shrinker@0")
     assert status != 0, said
     assert read(reverted, ZSWAP_SHRINKER) == before, "an unlisted shrinker value was written"

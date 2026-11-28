@@ -13,9 +13,11 @@
 //!
 //! Switching zswap off doesn't stop the pool being written out, in two
 //! ways. Under reclaim, which the image's own allocation may start, its
-//! shrinker writes back while `zswap.shrinker_enabled` is on, which
-//! modules/memory sets and the kernel's default leaves off, until
-//! `memory-zswap-shrinker@n` turns it off or the machine boots. And a trim of a full pool
+//! shrinker writes back while `zswap.shrinker_enabled` is on. modules/memory
+//! boots it on, where the kernel's default leaves it off, and a trial turns it
+//! off with `memory-zswap-shrinker@n` until `@y` turns it back on or the next
+//! boot ends the trial. A resume keeps it as it was, since the setting is in
+//! the kernel's memory, which the image holds. And a trim of a full pool
 //! queued just before zswap went off may still run after. Both reach even the
 //! slices that set `MemoryZSwapWriteback = false` (modules/slices says why
 //! they do): 7.3's mm/zswap.c asks mm/memcontrol.c whether a group may write
