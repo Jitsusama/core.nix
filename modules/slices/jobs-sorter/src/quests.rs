@@ -440,6 +440,30 @@ mod tests {
     }
 
     #[test]
+    fn a_slice_below_systemds_100_is_weighed_as_it_stands() {
+        // BFQ passes a weight at or below 100 unchanged, so a quest at 25 keeps its quarter
+        // only while the call carries 25 for the processor and the disk alike, never 100.
+        let args = weigh_call("jobs-work-qest1.slice", 25);
+        let tail: Vec<&str> = args[6..].iter().map(String::as_str).collect();
+        assert_eq!(
+            tail,
+            vec![
+                "SetUnitProperties",
+                "sba(sv)",
+                "jobs-work-qest1.slice",
+                "true",
+                "2",
+                "CPUWeight",
+                "t",
+                "25",
+                "IOWeight",
+                "t",
+                "25",
+            ]
+        );
+    }
+
+    #[test]
     fn work_for_a_listed_quest_goes_in_its_slice_at_its_weight() {
         let mut weights = Weights::new(PathBuf::new());
         weights.take(FILE);
