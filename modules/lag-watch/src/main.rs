@@ -28,6 +28,9 @@
 //! `lag-watch report` sums up the history; each answers in the form
 //! `--format` asks for, as every command of ours does (docs/commands.md).
 //! `lag-watch run` is the watch itself, as its service runs it.
+//!
+//! Long because a quarter of it is tests, which forge the /proc tree a
+//! snapshot reads, thread by thread, beside the snapshot they prove.
 
 mod apps;
 mod kernel;
@@ -236,7 +239,7 @@ fn snapshot(
             hidden = lowered
                 .entry(process)
                 .or_insert_with(|| {
-                    let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
+                    let stat = kernel::text(&process.join("stat"));
                     kernel::nice(&stat)
                         .is_some_and(|n| n > 0)
                         .then_some(thread.label)
@@ -245,13 +248,16 @@ fn snapshot(
         }
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
         // its window without waiting for a CPU, so its time blocked is read beside its waits.
+        // Its sched file is read once, for both, after its schedstat, as each
+        // two-second read takes them.
+        let stat_text = kernel::text(&thread.schedstat);
+        let sched_text = kernel::text(&thread.schedstat.with_file_name("sched"));
         if apps::is_app(thread)
-            && let Some(ns) =
-                kernel::blocked(&kernel::text(&thread.schedstat.with_file_name("sched")))
+            && let Some(ns) = kernel::blocked(&sched_text)
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        if let Some(sched) = kernel::read_sched(&thread.schedstat) {
+        if let Some(sched) = kernel::read_sched_beside(&stat_text, &sched_text) {
             if hidden {
                 s.resting.insert(thread.clone(), sched);
             } else {
@@ -706,7 +712,9 @@ mod tests {
             fs::write(at.join("stat"), &stat).unwrap();
             fs::write(dir.join(pid).join("stat"), &stat).unwrap();
             if let Some(ms) = blocked {
-                let sched = format!("slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n");
+                let sched = format!(
+                    "slack ({pid}, #threads: 9)\n----------------\nstats.sum_block_runtime : {ms}\n"
+                );
                 fs::write(at.join("sched"), sched).unwrap();
             }
             kernel::Thread {

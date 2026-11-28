@@ -71,12 +71,20 @@ impl Sched {
     /// past what the schedstat's own matched, books it. This window's
     /// growth is matched to this window's first, so a sleep owed can pair
     /// only with the other count's leftover, and what's owed is let go
-    /// after one window. Around a sleep one count booked, then, at most
+    /// after one window. Each unit of growth is counted at most once, so
+    /// over a run of windows that starts with nothing owed, while both
+    /// counts are read and the fair one doesn't go back, the count is never
+    /// more than the lesser of the two counts' totals; a run that starts
+    /// mid-way may count what the window before it owed. Around a sleep one
+    /// count booked, at most
     /// the other's own excess in the windows either side is counted with
-    /// it; and a wait longer than two windows loses what the schedstat
-    /// booked of it more than a window before it ended. A fair count that
-    /// went back, as when schedstats was turned off and on, leaves the
-    /// schedstat's alone.
+    /// it. What's let go is lost: a wait that spans two reads, which a
+    /// wait of just over one window can, loses what the schedstat booked
+    /// of it before the first of them, and a wait whose early booking
+    /// paid another wait's leftover loses that part. Both are
+    /// under-counts, of waits moved between CPUs while queued. A fair
+    /// count that went back, as when schedstats was turned off and on,
+    /// leaves the schedstat's alone.
     pub fn waited_since(&self, old: &Sched) -> u64 {
         match self.matched(old) {
             Some((waited, _)) => waited,
@@ -163,8 +171,17 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// fair count grew by at most 2 ms on each (docs/kernel.md, The Patches).
 /// None for a schedstat that can't be read.
 pub fn read_sched(schedstat: &Path) -> Option<Sched> {
-    let mut read = sched(&text(schedstat))?;
-    read.fair_ns = waited(&text(&schedstat.with_file_name("sched")));
+    let stat_text = text(schedstat);
+    read_sched_beside(&stat_text, &text(&schedstat.with_file_name("sched")))
+}
+
+/// `read_sched`, given both files already read, so a caller that reads
+/// the `sched` for more than the wait reads it once. Each caller reads the
+/// schedstat first and the `sched` after it, the order the carry's tests
+/// describe.
+pub fn read_sched_beside(stat_text: &str, sched_text: &str) -> Option<Sched> {
+    let mut read = sched(stat_text)?;
+    read.fair_ns = waited(sched_text);
     Some(read)
 }
 
@@ -185,10 +202,27 @@ pub fn blocked(text: &str) -> Option<u64> {
     sched_ms(text, |key| key.ends_with("sum_block_runtime"))
 }
 
-/// The first line of a `sched` whose key `named` takes, which the kernel
-/// prints in milliseconds, in nanoseconds.
+/// The longest name a thread can give itself, in bytes: the kernel's
+/// `TASK_COMM_LEN` less its closing nul.
+const NAME_MOST: usize = 15;
+
+/// The lines of a `sched` past its header. The header opens with the
+/// thread's name, which the thread sets itself and may break into lines
+/// of its own, such as one reading `wait_sum: 9e9`, and ends at a line of
+/// dashes longer than any name can hold. So only what follows that line
+/// is the kernel's; a `sched` with no such line has none.
+fn sched_stats(text: &str) -> std::str::Lines<'_> {
+    let mut lines = text.lines();
+    lines
+        .by_ref()
+        .find(|line| line.trim().len() > NAME_MOST && line.trim().bytes().all(|b| b == b'-'));
+    lines
+}
+
+/// The first line of a `sched`'s stats whose key `named` takes, which the
+/// kernel prints in milliseconds, in nanoseconds.
 fn sched_ms(text: &str, named: impl Fn(&str) -> bool) -> Option<u64> {
-    let ms: f64 = text.lines().find_map(|line| {
+    let ms: f64 = sched_stats(text).find_map(|line| {
         let (key, value) = line.split_once(':')?;
         named(key.trim()).then(|| value.trim().parse().ok())?
     })?;
@@ -216,8 +250,14 @@ pub struct Group {
     pub killed: u64,
 }
 
+/// A file under /proc or a cgroup as text, or none when it can't be read.
+/// A thread's `sched` and `stat` carry the name it gave itself, which the
+/// kernel cuts byte by byte and may leave short of UTF-8, so its bytes are
+/// taken as they come rather than losing the whole file to one bad name.
 pub fn text(path: &Path) -> String {
-    fs::read_to_string(path).unwrap_or_default()
+    fs::read(path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default()
 }
 
 /// Reads a cgroup, or None for one that isn't there.
