@@ -873,6 +873,34 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
 
 
+@pytest.mark.parametrize("size", SIZES)
+def test_a_reload_whose_list_kept_no_room_holds_the_page_still(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    root, _ = code_served
+    width, _ = size
+    opened = Opened(browser, f"{root}code/", size, "dark")
+
+    def reading(page: Page) -> None:
+        says_it_stands(page, "live")
+        # What was found is forgotten on a reload, so its list keeps no room while the rest do.
+        page.locator("#find").fill("notes")
+        expect(page.locator("#list .row"), "finding didn't narrow the list").to_have_count(1)
+        page.add_init_script(SHIFTS + HELD_ROOM)
+        page.reload()
+        says_it_stands(page, "live")
+        expect(row(page, "github:owl/core"), "the reload drew no row").to_be_visible()
+        held = page.evaluate("() => globalThis.held")
+        assert held["title"] != "", "the reload held no room at all, so proves nothing"
+        assert held["list"] == "", f"the reload held {held['list']} for a list it forgot"
+        page.wait_for_timeout(1000)
+        shifted = page.evaluate("() => globalThis.shifted")
+        assert shifted < STILL, f"a reload at {width} px shifted {shifted} as its list drew"
+
+    opened.first(reading)
+    opened.close()
+
+
 def test_a_reload_holds_no_room_for_a_place_the_address_left(
     code_page: Page, repos_daemon: StandIn
 ) -> None:
