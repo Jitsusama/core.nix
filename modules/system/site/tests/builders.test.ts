@@ -239,6 +239,34 @@ it("leads a builder's look to it on the map, whatever its place among the things
   assert.equal(more, 0);
 });
 
+// The daemon shows a builder by its name made plain, but the map knows it by
+// the node's own, which a record carries as called where the two differ.
+it("leads a builder shown by a plain name to it on the map by the node's own", () => {
+  const kite = {
+    ...builder("kite", "watch", "isn't answering (refused)", ["not answering"]),
+    called: "kite\u200b",
+  };
+  const system = systemOfThese([
+    summary,
+    machinesPart(["machine:kestrel", "builder:kite"], "watch", ["builder kite not answering"]),
+    kestrel,
+    kite,
+  ]);
+  const href = "../mycelium/#builder=kite%E2%80%8B";
+  assert.deepEqual(
+    looksOf(system, 8).looks.map((look) => [look.whose, look.href]),
+    [["kite", href]],
+    "the look is said by the plain name but led to the map by the node's",
+  );
+  const drawn = buildersDrawn(system);
+  assert.ok(drawn, "no builders were drawn");
+  assert.ok(
+    drawn.includes(`href="${href}"`) && !drawn.includes('href="../mycelium/#builder=kite"'),
+    "the builders' card wasn't led to the map by the node's name",
+  );
+  assert.ok(read(drawn).includes("kite (watch)"), "the card stopped showing the plain name");
+});
+
 it("keeps a machine's look and a builder's of the same name apart", () => {
   const system = systemOfThese([
     summary,

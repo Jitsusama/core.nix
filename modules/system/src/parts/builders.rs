@@ -167,6 +167,7 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
             })
             .collect(),
         side: look.into_iter().collect(),
+        called: None,
         address: None,
         ties: Value::Null,
     };
@@ -652,6 +653,35 @@ mod tests {
                 ],
                 "a builder that can't be named is still listed, and one not answering is a look \
                  as a named one is: {nameless}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_builder_is_called_by_the_node_s_own_name_where_it_is_shown_by_another() {
+        let said = builders(&json!({ "Ok": { "Builders": [
+            { "name": "kite\u{200b}", "state": "answering" },
+            { "name": "osprey", "state": "answering" },
+            { "name": "\u{200b}", "state": "not answering" },
+        ] } }));
+        let called: Vec<(&str, Option<&str>)> = said
+            .iter()
+            .map(|(thing, _)| (thing.name.as_str(), thing.called.as_deref()))
+            .collect();
+        assert_eq!(
+            called,
+            vec![
+                ("unnamed", Some("\u{200b}")),
+                ("kite", Some("kite\u{200b}")),
+                ("osprey", None),
+            ],
+            "a builder shown by a plain name the map doesn't know is called by the node's own"
+        );
+        for nameless in [json!(""), json!(7), Value::Null] {
+            let said = builders(&json!({ "Ok": { "Builders": [{ "name": nameless }] } }));
+            assert_eq!(
+                said[0].0.called, None,
+                "a builder named {nameless} gives the map no name to find it by"
             );
         }
     }
