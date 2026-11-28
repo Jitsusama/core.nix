@@ -3552,12 +3552,16 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     fs::remove_file(bin.join("refuses-name-only")).unwrap();
 
     // Nowhere answers, so changed-checks is told to run here, on a line
-    // of its own and no kit failure line.
+    // of its own and no kit failure line, saying that none is lent.
     drop(answering);
     let ran = run();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(said.contains("so changed-checks runs here"), "{said}");
+    assert!(
+        said.contains("no builder is lent to this machine"),
+        "it says none was there to ask: {said}"
+    );
     assert!(
         !said.contains('\u{2715}'),
         "a run sent nowhere was said as a failure: {said}"
