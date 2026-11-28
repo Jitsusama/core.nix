@@ -82,7 +82,8 @@ QtObject {
             [NaN, undefined].map(second => presses([{ id: "reboot", keys: 5, at: 0 },
                 { id: "reboot", keys: 6, at: second }])).join(", "),
             "armed  | armed, armed  | armed");
-        expect("a press after an arming at no number arms it afresh, and the next does it",
+        expect("a press after an arming at no number arms it afresh, the one just after it is "
+            + "held as doubled, and the one after that does it",
             presses([{ id: "reboot", keys: 5, at: NaN }, { id: "reboot", keys: 6, at: 2000 },
                 { id: "reboot", keys: 7, at: 2100 }, { id: "reboot", keys: 8, at: 4000 }]),
             "armed armed  ends | not");
@@ -92,6 +93,16 @@ QtObject {
             [[100, 0], [299, 0], [300, 0], [2000, 0], [NaN, 0], [2000, NaN], [undefined, 0]]
                 .map(([at, since]) => Arming.doubled(at, since, wait)).join(" "),
             "true true false false true true true");
+        // A press timed before the one it's compared with is held as doubled
+        // too, never a fresh one, since no wait parts it from the other.
+        expect("a press timed before the one it's compared with is held as doubled",
+            Arming.doubled(100, 500, wait), true);
+        // When a press was pressed: its own time where that's a number above
+        // 0, and the time it was heard otherwise, as one with no time says 0.
+        expect("a press is timed by its own time above 0, and when it was heard otherwise",
+            [[1500, 9000], [0, 9000], [-1, 9000], [NaN, 9000], [undefined, 9000]]
+                .map(([pressed, now]) => Arming.pressedAt(pressed, now)).join(" "),
+            "1500 9000 9000 9000 9000");
         // A click counts no key, so a click on the row a Return armed does
         // it, and a second click does what a second Return does.
         expect("a click after a Return does it",
