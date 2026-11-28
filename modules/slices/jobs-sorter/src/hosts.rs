@@ -468,6 +468,7 @@ impl Hosts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cmp::Ordering;
 
     const GIB: u64 = 1 << 30;
 
@@ -1011,7 +1012,9 @@ mod tests {
     #[test]
     fn the_disk_weighs_a_host_as_the_processor_does_above_and_below_systemds_100() {
         // One rank above systemd's 100, which BFQ scales down, and one below it, which BFQ
-        // passes as it stands, so a call pinned to 100, or floored at it, fails one of them.
+        // passes as it stands, so a call pinned to one weight, or floored at 100, fails one of
+        // them. Each case is held to its own side of 100, so an edit to `wanted` that put both
+        // on one side fails here rather than letting such a call pass unseen.
         let viewed = Signs {
             viewed: 1,
             ..Signs::default()
@@ -1020,12 +1023,12 @@ mod tests {
             marked: true,
             ..Signs::default()
         };
-        for signs in [viewed, marked] {
+        for (signs, side) in [(viewed, Ordering::Greater), (marked, Ordering::Less)] {
             let rank = wanted(&attended(), signs, 10);
-            assert_ne!(
-                rank.weight,
-                low::AT,
-                "each rank tells its weight from systemd's 100"
+            assert_eq!(
+                rank.weight.cmp(&low::AT),
+                side,
+                "the viewed rank sits above systemd's 100 and the marked one below it"
             );
             let call = rank_call("pi-host-work-attended.service", &rank);
             let weight = |name: &str| {
