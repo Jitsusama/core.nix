@@ -322,6 +322,24 @@ std::size_t givenBack(const QV4::BlockAllocator &allocator, int advice) {
     return bytes;
 }
 
+// Which limit sets where the collector starts, as standing() says it:
+// `sweep`, Qt's own, from what the last sweep kept; `room`, the room past
+// what the chunks held when it was last kept; `rooms`, the two rooms past
+// what they held at the ask; `kept`, those and what the sweeps kept since.
+QString collectsByName(QV4::MemoryManager::CollectsBy by) {
+    switch (by) {
+    case QV4::MemoryManager::CollectsBy::Sweep:
+        return QStringLiteral("sweep");
+    case QV4::MemoryManager::CollectsBy::Room:
+        return QStringLiteral("room");
+    case QV4::MemoryManager::CollectsBy::Rooms:
+        return QStringLiteral("rooms");
+    case QV4::MemoryManager::CollectsBy::Kept:
+        return QStringLiteral("kept");
+    }
+    return QString();
+}
+
 } // namespace
 
 Heap::Heap(QJSEngine *engine, QObject *parent) : QObject(parent), engine(engine) {
@@ -362,16 +380,16 @@ QVariantMap Heap::standing() const {
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
     // Twice the room past what the chunks held at the ask, where the
-    // ceiling sits until the sweeps keep more than the last one did, so a
-    // line saying it beside `collectsAt` says which set where the collector
-    // starts; none while no room is left.
+    // ceiling sits until the sweeps keep more than the sweep before the ask
+    // did; none while no room is left, as keepRoom leaves none.
     const std::size_t room = manager->roomAfterSweep / QV4::Chunk::SlotSize;
     const std::size_t roomsCap = manager->slotsHeldWhenRoomLeft + 2 * room;
     return {
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("roomsCapAt"),
-         room == 0 ? -1.0 : megabytes(roomsCap * QV4::Chunk::SlotSize)},
+         manager->roomAfterSweep == 0 ? -1.0 : megabytes(roomsCap * QV4::Chunk::SlotSize)},
+        {QStringLiteral("collectsBy"), collectsByName(manager->collectsBy())},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("collecting"), manager->gcStateMachine->inProgress()},

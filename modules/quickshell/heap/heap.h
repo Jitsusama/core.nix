@@ -30,21 +30,23 @@ public:
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
     // back to the kernel without moving anything, or -1 as `resident` is;
-    // `chunks`, what its
-    // chunks hold, large items aside; `collectsAt`, what they may hold
-    // before a miss in the free lists starts the collector; and
-    // `collectsOutsideAt`, what may be held outside before the collector
-    // starts. Read after a collection, live is what survived it.
+    // `chunks`, what its chunks hold, large items aside; `collectsAt`, what
+    // they may hold before a miss in the free lists starts the collector;
+    // and `collectsOutsideAt`, what may be held outside before the
+    // collector starts. Read after a collection, live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
     // Where the heap stands against the collector, as weigh() says it but
     // without walking a chunk, so it's cheap enough to read as an opening
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
     // in megabytes; `roomsCapAt`, where the rooms alone cap the chunks
-    // before what the sweeps keep moves it, or -1 with no room left; and
-    // `collecting`, whether a collection is under way between its slices.
-    // Openings whose longest stall the collector ran
-    // in say it, read once their room is left: the room each limit had
+    // before what the sweeps keep moves it, or -1 with no room left;
+    // `collectsBy`, which limit sets `collectsAt`: `sweep` (Qt's own, from
+    // what the last sweep kept), `room` (the room past what the chunks
+    // held), `rooms` (the two rooms' cap) or `kept` (that cap and what the
+    // sweeps kept since); and `collecting`, whether a collection is under
+    // way between its slices. Openings whose longest stall the collector
+    // ran in say it, read once their room is left: the room each limit had
     // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;
 
