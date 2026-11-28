@@ -12,14 +12,21 @@
 }:
 let
   # A unit that sets one of the kernel's memory settings to its instance.
+  # A value with a character systemd keeps out of unit names, as the `+`
+  # in huge pages' defer+madvise, arrives escaped (defer\x2bmadvise), so
+  # `write` and the description read the instance unescaped, as %I, which
+  # changes no value made of letters and digits alone. Unescaped, an
+  # instance can hold anything, so `write` hands it to the shell as an
+  # argument, never as part of the command: one root starts holding a `;`
+  # writes a value the kernel refuses, and runs nothing.
   tune = what: command: {
-    description = "Set the kernel's ${what} to %i";
+    description = "Set the kernel's ${what} to %I";
     serviceConfig = {
       Type = "oneshot";
       ExecStart = command;
     };
   };
-  write = file: "${pkgs.bash}/bin/bash -c 'echo %i > ${file}'";
+  write = file: "${pkgs.bash}/bin/bash -c 'echo \"$$1\" > ${file}' write %I";
   space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
   swappiness = "${pkgs.procps}/bin/sysctl -w vm.swappiness=%i";
   pageCluster = "${pkgs.procps}/bin/sysctl -w vm.page-cluster=%i";
@@ -31,6 +38,7 @@ let
   # not.
   defragModeIsSafe = lib.versionAtLeast config.boot.kernelPackages.kernel.version "7.3.4";
   hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
+  hugepagesDefrag = "/sys/kernel/mm/transparent_hugepage/defrag";
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
   zswapShrinker = "/sys/module/zswap/parameters/shrinker_enabled";
 in
@@ -169,7 +177,7 @@ in
   ];
 
   # The machine's administrators, agents included since they work as Joel's
-  # account, may change nine of the kernel's memory settings for as long as
+  # account, may change ten of the kernel's memory settings for as long as
   # the machine runs without a password (memory-tune.rules), so an A/B of
   # them under load waits for no one. On 30 October kswapd gave up on the
   # whole machine under builds, and the settings that might have caused it,
@@ -199,17 +207,28 @@ in
   # gain over hours. So could whether zswap's shrinker writes the pool's
   # coldest pages to disk before the pool is full, which is on for the
   # reasons by the pool above, and which a trial turns off with
-  # `memory-zswap-shrinker@n` and back on with `@y`. Each unit writes its
-  # instance and only a value the rules list:
+  # `memory-zswap-shrinker@n` and back on with `@y`. So could how hard a
+  # fault that wants a huge page works to find one, transparent huge pages'
+  # defrag (not defrag_mode above), once kswapd held a fifth of a CPU with
+  # a third of memory available on 28 November: free memory sat well over
+  # the high watermark, but in no block larger than 256 KB, and a fault in
+  # memory a program asked to have huge pages for compacted and reclaimed
+  # for one itself, as the kernel's default of madvise has it do, and woke
+  # kswapd and kcompactd whenever it failed. Turning it to never for a
+  # while shows how much of kswapd's work those faults cause. Each unit
+  # writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
-  # (in KiB), `memory-defrag-mode@1` or `memory-zswap-shrinker@n`. The most
-  # one can do is make reclaim worse until it's put back, never reach
-  # another setting. A switch that changes the sysctls writes them back,
-  # and every switch writes huge pages back; otherwise start the unit again
-  # with the value this file sets. At boot huge pages and the shrinker
-  # return to this file's choice, and the LRU to the kernel's own.
+  # (in KiB), `memory-defrag-mode@1`, `memory-zswap-shrinker@n` or
+  # `memory-thp-defrag@never`. The most one can do is make reclaim worse
+  # until it's put back, never reach another setting. A switch that changes
+  # the sysctls writes them back, and every switch writes huge pages back;
+  # otherwise start the unit again with the value this file sets. At boot
+  # huge pages and the shrinker return to this file's choice, and the LRU
+  # and huge pages' defrag to the kernel's own. This file sets no defrag,
+  # so no switch writes it back: `memory-thp-defrag@madvise` puts back the
+  # kernel's own.
   security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;
@@ -223,6 +242,7 @@ in
     tune "pageblock defrag_mode" defragMode
   );
   systemd.services."memory-zswap-shrinker@" = tune "zswap shrinker" (write zswapShrinker);
+  systemd.services."memory-thp-defrag@" = tune "huge pages' defrag" (write hugepagesDefrag);
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.

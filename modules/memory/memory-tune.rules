@@ -1,4 +1,4 @@
-// The machine's administrators may start the memory module's nine tuning
+// The machine's administrators may start the memory module's ten tuning
 // units with a value from these lists, without a password, and nothing
 // else: modules/memory/nixos.nix says why. polkit's own engine reads this,
 // in the JavaScript it knows.
@@ -14,6 +14,8 @@ var listed = new RegExp(
       "min-free@(67584|131072|262144|524288)",
       "defrag-mode@(0|1)",
       "zswap-shrinker@(y|n)",
+      // systemd names the unit for defer+madvise with its `+` escaped, as \x2b.
+      "thp-defrag@(always|defer|defer\\\\x2bmadvise|madvise|never)",
     ].join("|") +
     ")\\.service$"
 );
