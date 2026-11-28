@@ -57,7 +57,32 @@ or launchd, and [`home.nix`][2] the account's.
   schedule, as a cache gaining a version ends an older one's use. Upkeep
   that kept something only the system daemon could have vouched for,
   while it couldn't be asked, as when a switch restarts both daemons,
-  comes again ten minutes later.
+  comes again ten minutes later, or once a survey's spacing ends if
+  that's later, and once: a second such in a row counts as done, since
+  on 27 November a system daemon busy with its own passes went unheard
+  upkeep after upkeep, and each came back for a walk of 15 GB.
+- **Spacing.** A pass that walks every source waits after the last one
+  ended twelve times as long as that one walked, at most three hours,
+  kept across restarts, so a survey slowed by a busy disk waits the
+  longer for it. On 27 November surveys of 15 GB apiece walked for 32 of
+  50 minutes, each for a reach that ended waiting or an upkeep that freed
+  nothing, and seven spaced at most half an hour read 136 GB while none
+  freed more than 1.3 GB. A survey a stop or a failure cut short is
+  spaced by what it walked too. A disk worse than filling never waits,
+  nor one forecast to be within a pass, whose pass starts early so it's
+  done before the band arrives, nor the store's garbage, which needs no
+  survey, nor upkeep for builds whose owner ended or that went an hour
+  unused in a snapshot, which go within a minute. Those mark every disk
+  watched, and each disk's mark goes only with an upkeep or a reach there
+  after a survey of every source, since a pass is offered only what lies
+  on its own disk: a producers' or a clear's pass, which walks only its
+  own sources, a reach that met its band first, or a disk that rested or
+  was held off judges none. A guard restarted while any is marked marks
+  every disk it watches again, as which they were isn't kept. Upkeep
+  merely due again waits, since it walks every source as any does: the
+  retry ten minutes after one the system daemon went unheard for, the
+  retry after one left unfinished and a builds disk's hourly upkeep past
+  its budget each come once the spacing ends.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -190,9 +215,15 @@ or launchd, and [`home.nix`][2] the account's.
   ending leaves garbage only the next pass can take, and one that couldn't
   ask the system daemon never counts, having lacked only its word. Its status
   says it has cleared all it may for that hour. A worse band ends any
-  rest, and a restart forgets it. One
-  that kept things only for want of the system guard's word ends its rest
-  as soon as the system guard answers again, once in a row. A survey counts the
+  rest. A restart forgets every rest but that hour, which the guard saves
+  by where the disk is mounted, so a guard started within it rests the
+  disk for what's left: one restarted by a switch on 27 November walked
+  every source again, reading 40 GB to find the same nothing. A disk
+  that reads healthy ends the hour, saved too, so a restart never brings
+  back a rest the guard had ended. One that kept things only for want of
+  the system guard's word ends its rest as soon as the system guard
+  answers again, once in a row, which any disk's upkeep in a step keeping
+  so is enough to bring. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
   cloned with their builds inside share them: what it predicts is what
   deleting them all frees, unless something it didn't measure shares them
@@ -292,15 +323,18 @@ or launchd, and [`home.nix`][2] the account's.
   on a healthy disk reads `filling`. A survey's seconds take in the system
   daemon's answer, up to ten seconds a try, and the git and
   finished-predicate commands as well as the walk, so a jump of about ten
-  seconds is likelier a wait than a slow walk. A garbage pass counts as
-  the routine, so it puts off every disk's next six-hourly `upkeep`. The
-  table shows what
-  set a pass going; `--json` gives the counts and its survey's seconds.
-  `upkeep` covers every trigger of the routine, among them its own
-  retries: ten minutes after one that kept what only an unheard system
-  daemon could vouch for, and at the next spare step after one left
-  unfinished. A producers' or clear's survey that offers nothing makes no
-  pass, so its walk leaves no seconds. Any account may pass
+  seconds is likelier a wait than a slow walk. A garbage pass after a
+  survey counts as the routine, so it puts off every disk's next
+  six-hourly `upkeep`; one alone judges no build and puts off none. The
+  table shows what set a pass going; `--json` gives the counts and its
+  survey's seconds. `upkeep` covers every trigger of the routine, among
+  them its own retries: ten minutes after one that kept what only an
+  unheard system daemon could vouch for, though not after a second in a
+  row, judged once a step for every disk, and at the next spare step
+  after one left unfinished, each once a survey's spacing has ended, as
+  the builds budget's hourly upkeep waits too. An upkeep made due for a reason of its own
+  gets its own retry. A producers' or clear's survey that offers nothing
+  makes no pass, so its walk leaves no seconds. Any account may pass
   through the machine's state folder to its journal but not list it, and
   every other file there is saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with

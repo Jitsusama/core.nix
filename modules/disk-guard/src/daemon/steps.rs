@@ -2,6 +2,7 @@
 //! it asks the rest, and what it resumes after a sleep.
 
 use super::hearing::spoken_for;
+use super::passes::healthy_ends_rest;
 use super::{Explained, Guard, Places, Senses, held_off, loaded, predicates};
 use crate::anchor::Dir;
 use crate::band::{Band, Thresholds};
@@ -66,9 +67,7 @@ impl Guard {
         let uses_path = state.join("uses.json");
         let mut uses: Uses = loaded(&uses_path);
         uses.forget_gone();
-        let home = matches!(config.scope, crate::config::Scope::User)
-            .then(|| std::env::var_os("HOME").map(PathBuf::from))
-            .flatten();
+        let home = user_home(&config);
         // Started again, it says what held the disks when it last measured
         // until its own first measure ends, rather than nothing for minutes.
         let measured = crate::ledger::last(state, crate::holders::places(&config));
@@ -98,6 +97,7 @@ impl Guard {
             writers_held: false,
             room_awaited: None,
             reached_short: BTreeMap::new(),
+            upkeep_judged: None,
             listing,
             listing_path,
             listing_out: None,
@@ -114,6 +114,7 @@ impl Guard {
             produced: Vec::new(),
             snapshot_spends: None,
             snapshots_known: None,
+            spent_on: BTreeSet::new(),
             budget_looked: None,
             root_left: false,
             held_ended: false,
@@ -150,7 +151,7 @@ impl Guard {
     /// it, and how it's in use now. Nothing is taken.
     pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
         self.memory.awake.observe(tick);
-        self.watch();
+        self.watch(tick);
         let (mut scan, offers, _) = self.offers(tick, None)?;
         let holds = |held: &Path| path.starts_with(held);
         let offered = offers
@@ -226,7 +227,7 @@ impl Guard {
             self.resume(tick)?;
         }
         self.memory.awake.observe(tick);
-        self.watch();
+        self.watch(tick);
         if let Some(disks) = &mut self.disks {
             disks.observe(tick);
         }
@@ -243,6 +244,7 @@ impl Guard {
         let spare_moment =
             spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
+        let mut forgot = false;
         let heard = self.system_heard;
         let writers_held = self.writers_held;
         for (&device, watched) in &mut self.watched {
@@ -254,9 +256,7 @@ impl Guard {
             watched.band = thresholds.band(&space, watched.band);
             watched.fill.observe(tick.monotonic, space.free);
             watched.space = Some(space);
-            if watched.band == Band::Healthy {
-                watched.rest = None;
-            }
+            forgot |= healthy_ends_rest(watched, &mut self.memory.emptied);
             let decision = decide(&Situation {
                 band: watched.band,
                 free: space.free,
@@ -299,6 +299,9 @@ impl Guard {
         self.measure_holders(tick.wall);
         self.watch_roots();
         self.list_garbage(tick.wall, spare_moment, overload, roomy(senses.pressure));
+        // Before the garbage's own pass is weighed, which needs no survey
+        // and so may go while the others wait.
+        self.space_surveys(tick.wall, &mut due);
         self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
@@ -321,7 +324,7 @@ impl Guard {
         let frozen = self.memory.frozen.len();
         self.runaways(tick)?;
         let passed = passed || frozen != self.memory.frozen.len();
-        if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
+        if passed || forgot || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
             if self.damaged {
                 let aside = self.memory_path.with_file_name("memory.json.damaged");
                 fs::rename(&self.memory_path, aside)?;
@@ -396,4 +399,11 @@ impl Guard {
             _ => BTreeSet::new(),
         };
     }
+}
+
+/// The home a user's guard runs for, or none for the system's guard.
+fn user_home(config: &Config) -> Option<PathBuf> {
+    matches!(config.scope, crate::config::Scope::User)
+        .then(|| std::env::var_os("HOME").map(PathBuf::from))
+        .flatten()
 }

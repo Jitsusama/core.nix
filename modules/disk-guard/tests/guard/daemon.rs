@@ -10,7 +10,7 @@ use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn wall() -> f64 {
+pub(crate) fn wall() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -18,7 +18,7 @@ fn wall() -> f64 {
 }
 
 /// A tick an hour into a boot that hasn't been suspended.
-fn tick() -> Tick {
+pub(crate) fn tick() -> Tick {
     Tick {
         wall: wall(),
         monotonic: 3600.0,
@@ -27,7 +27,7 @@ fn tick() -> Tick {
     }
 }
 
-const CALM: Senses = Senses {
+pub(crate) const CALM: Senses = Senses {
     power: Power {
         on_charger: true,
         battery: None,
@@ -53,7 +53,7 @@ const CALM: Senses = Senses {
     },
 };
 
-fn touch(path: &Path, seconds: i64) {
+pub(crate) fn touch(path: &Path, seconds: i64) {
     let at = Timespec {
         tv_sec: seconds,
         tv_nsec: 0,
@@ -65,17 +65,17 @@ fn touch(path: &Path, seconds: i64) {
     utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).unwrap();
 }
 
-struct Home {
+pub(crate) struct Home {
     _dir: tempfile::TempDir,
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 impl Home {
-    fn new() -> Home {
+    pub(crate) fn new() -> Home {
         Home::within(tempfile::tempdir().unwrap())
     }
 
-    fn within(dir: tempfile::TempDir) -> Home {
+    pub(crate) fn within(dir: tempfile::TempDir) -> Home {
         let root = fs::canonicalize(dir.path()).unwrap();
         fs::create_dir_all(root.join("state")).unwrap();
         // No processes, so nothing is in use.
@@ -84,7 +84,7 @@ impl Home {
     }
 
     /// A scratch entry nothing has written to since 2001.
-    fn cold_scratch(&self, name: &str) -> PathBuf {
+    pub(crate) fn cold_scratch(&self, name: &str) -> PathBuf {
         let entry = self.root.join("scratch").join(name);
         fs::create_dir_all(&entry).unwrap();
         fs::write(entry.join("out"), "x".repeat(8192)).unwrap();
@@ -111,7 +111,7 @@ impl Home {
     /// doesn't exist: with no system daemon answering, a user daemon
     /// collects garbage itself once nearly full, and the machine's own store
     /// is no test's to collect.
-    fn config(&self, filling: &str, target: &str) -> Config {
+    pub(crate) fn config(&self, filling: &str, target: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true,
                  "bands": {{ "filling": "{filling}", "nearly_full": "0%", "critically_full": "0%",
@@ -126,11 +126,11 @@ impl Home {
         .unwrap()
     }
 
-    fn guard(&self, config: Config) -> Guard {
+    pub(crate) fn guard(&self, config: Config) -> Guard {
         Guard::new(crate::unpaced(config), &self.places()).unwrap()
     }
 
-    fn places(&self) -> Places {
+    pub(crate) fn places(&self) -> Places {
         Places {
             state: self.root.join("state"),
             status: Some(self.root.join("status.json")),
@@ -141,7 +141,7 @@ impl Home {
     }
 
     /// A process of root's this account can't read.
-    fn hidden(&self, pid: u32, start: u64) {
+    pub(crate) fn hidden(&self, pid: u32, start: u64) {
         let proc = self.root.join("proc");
         let at = |file: &str| format!("{pid}/{file}");
         crate::procs::text(
@@ -153,7 +153,7 @@ impl Home {
         crate::procs::text(&proc, &at("cmdline"), "");
     }
 
-    fn journal(&self) -> Vec<serde_json::Value> {
+    pub(crate) fn journal(&self) -> Vec<serde_json::Value> {
         fs::read_to_string(self.root.join("state/journal.jsonl"))
             .unwrap_or_default()
             .lines()
@@ -161,7 +161,7 @@ impl Home {
             .collect()
     }
 
-    fn status(&self) -> serde_json::Value {
+    pub(crate) fn status(&self) -> serde_json::Value {
         serde_json::from_str(&fs::read_to_string(self.root.join("status.json")).unwrap()).unwrap()
     }
 }
@@ -215,7 +215,7 @@ pub(crate) fn fake_system_ending(
 /// A system daemon at `socket` that hears every heartbeat and collects
 /// nothing, but answers an ask about processes with something else, as
 /// one too busy to scan them might fail it.
-fn fake_system_vouching_nothing(socket: &Path) -> std::thread::JoinHandle<()> {
+pub(crate) fn fake_system_vouching_nothing(socket: &Path) -> std::thread::JoinHandle<()> {
     let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
     std::thread::spawn(move || {
         loop {
@@ -899,7 +899,7 @@ fn a_pass_on_a_nearly_full_disk_never_gives_way() {
     assert_eq!(pass["band"], "nearly-full");
 }
 
-fn tick_at(monotonic: f64) -> Tick {
+pub(crate) fn tick_at(monotonic: f64) -> Tick {
     Tick {
         monotonic,
         ..tick()
@@ -959,6 +959,342 @@ fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hou
         seen,
         [1, 2, 2, 2, 3],
         "a filling disk rested other than a minute, then an hour once left with nothing twice"
+    );
+}
+
+#[test]
+fn a_guard_started_within_an_emptied_disk_s_hour_rests_it_for_what_is_left() {
+    // On 27 November a switch restarted the guard minutes after a pass
+    // found nothing left on a filling disk, and the new guard walked every
+    // source again, reading 40 GB in ten minutes to find the same.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(passes(), 2, "the first guard didn't pass twice");
+    let mut next = home.guard(home.config("100%", "100%"));
+    next.step(&at(130.0, 3730.0), &CALM).unwrap();
+    // Read before the next guard passes, so only the rest it restored
+    // can say so.
+    assert_eq!(
+        home.status()["filesystems"][0]["exhausted"],
+        true,
+        "the next guard didn't say the disk has cleared all it may"
+    );
+    let mut seen = vec![passes()];
+    // The hour left ends about 3,540 s on, at 7,270, and an hour from the
+    // restart would end at 7,330, so a step at 7,300 tells them apart.
+    for (wall, monotonic) in [(3000.0, 6600.0), (3700.0, 7300.0)] {
+        next.step(&at(wall, monotonic), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [2, 2, 3],
+        "a guard started within the hour an emptied disk rests didn't rest it for what was left"
+    );
+}
+
+#[test]
+fn a_disk_that_read_healthy_since_it_emptied_rests_no_more_after_a_restart() {
+    // A running guard ends an emptied disk's rest once it reads healthy,
+    // so a restart mustn't bring that rest back once the disk fills again.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let reaches = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass" && line["why"] != "upkeep")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(reaches(), 2, "the first guard didn't pass twice");
+    {
+        let mut healthy = home.guard(home.config("0%", "0%"));
+        healthy.step(&at(130.0, 3730.0), &CALM).unwrap();
+    }
+    let mut filling = home.guard(home.config("100%", "100%"));
+    filling.step(&at(190.0, 3790.0), &CALM).unwrap();
+    assert_eq!(
+        reaches(),
+        3,
+        "a guard restarted on a disk filling again rested it for an hour that ended once it \
+         read healthy"
+    );
+}
+
+#[test]
+fn a_kept_hour_or_spacing_dated_ahead_of_the_clock_holds_nothing() {
+    // A wall clock set back leaves what was kept ahead of it, and neither
+    // may hold a filling disk past what it would have held.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(passes(), 2, "the first guard didn't pass twice");
+    let mut kept = home.memory();
+    let emptied = kept["emptied"].as_object_mut().unwrap();
+    assert!(!emptied.is_empty(), "the first guard kept no emptied hour");
+    for until in emptied.values_mut() {
+        *until = serde_json::json!(begun + 7200.0);
+    }
+    kept["surveyed"] = serde_json::json!([begun + 7200.0, 500.0]);
+    fs::write(home.root.join("state/memory.json"), kept.to_string()).unwrap();
+    let mut next = home.guard(home.config("100%", "100%"));
+    next.step(&at(130.0, 3730.0), &CALM).unwrap();
+    assert_eq!(
+        passes(),
+        3,
+        "a kept hour or survey dated ahead of the clock held a filling disk"
+    );
+}
+
+/// Has the guard remember a whole survey that ended at `ended` and walked
+/// `seconds`, as an earlier guard's would.
+pub(crate) fn surveyed_before(home: &Home, ended: f64, seconds: f64) {
+    let memory = disk_guard::state::Memory {
+        surveyed: Some((ended, seconds)),
+        ..Default::default()
+    };
+    disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+}
+
+#[test]
+fn a_filling_disk_waits_twelve_times_the_last_survey_s_walk_even_across_a_restart() {
+    // On 27 November surveys reading 15 GB apiece walked for 32 of 50
+    // minutes, one of them minutes after a switch restarted the guard.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 500.0);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(0.0, 3600.0), (5800.0, 9400.0), (6000.0, 9600.0)] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [0, 0, 1],
+        "a filling disk didn't wait 6,000 s after a survey that walked 500 s"
+    );
+    let kept = home.memory()["surveyed"].clone();
+    assert!(
+        kept[0].as_f64() >= Some(begun + 6000.0),
+        "the survey wasn't kept as ended: {kept}"
+    );
+}
+
+#[test]
+fn a_survey_s_spacing_lasts_three_hours_at_most() {
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 5000.0);
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(10_650.0, 3600.0), (10_750.0, 3700.0)] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(home.journal().iter().any(|line| line["event"] == "pass"));
+    }
+    assert_eq!(
+        seen,
+        [false, true],
+        "a survey that walked 5,000 s spaced the next other than three hours"
+    );
+}
+
+#[test]
+fn a_nearly_full_disk_never_waits_for_a_survey_s_spacing() {
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 500.0);
+    let mut guard = home.guard(held_by(&home, &home.root.join("no-hold"), "100%"));
+    let at = Tick {
+        wall: begun,
+        monotonic: 3600.0,
+        ..tick()
+    };
+    guard.step(&at, &CALM).unwrap();
+    assert!(
+        home.journal().iter().any(|line| line["event"] == "pass"),
+        "a nearly full disk waited out a survey's spacing"
+    );
+}
+
+#[test]
+fn an_upkeep_unheard_twice_in_a_row_is_done_until_the_next() {
+    // On 27 November the system daemon, busy with its own passes, went
+    // unheard upkeep after upkeep, and each came back ten minutes on for
+    // another walk. A healthy disk's upkeep keeps a build whose holder it
+    // can't tell from root's unseen process.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let begun = wall();
+    let mut seen = Vec::new();
+    // The six-hourly upkeep after the second gets its own retry.
+    for (wall, monotonic) in [
+        (0.0, 3600.0),
+        (610.0, 4210.0),
+        (1220.0, 4820.0),
+        (22210.0, 25810.0),
+        (22820.0, 26420.0),
+    ] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(
+            home.journal()
+                .iter()
+                .filter(|line| line["event"] == "pass" && line["why"] == "upkeep")
+                .count(),
+        );
+    }
+    assert!(
+        built.exists(),
+        "what only the system daemon could vouch for went"
+    );
+    assert_eq!(
+        seen,
+        [1, 2, 2, 3, 4],
+        "an unheard upkeep didn't come back once, and only once, each time"
+    );
+}
+
+#[test]
+fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
+    // A new boot, a switch or a spent snapshot makes upkeep due for a
+    // reason of its own, so the upkeep it brings isn't the unheard one's
+    // retry. A boot restarts the guard, which keeps what it last heard,
+    // and comes settled ten minutes after the last guard's last step. The
+    // fourth boot comes while the third's unheard upkeep waits on its
+    // retry, so its own upkeep is the first unheard, not the second.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let begun = wall();
+    let mut seen = Vec::new();
+    for (wall, monotonic, boot, restarted) in [
+        (0.0, 3600.0, tick().boot, false),
+        (610.0, 4210.0, tick().boot, false),
+        (1300.0, 650.0, "another".to_string(), true),
+        (1910.0, 1260.0, "another".to_string(), false),
+        (2520.0, 650.0, "third".to_string(), true),
+        (3130.0, 650.0, "fourth".to_string(), true),
+        (3740.0, 1260.0, "fourth".to_string(), false),
+    ] {
+        if restarted {
+            guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+        }
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            boot,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(
+            home.journal()
+                .iter()
+                .filter(|line| line["event"] == "pass" && line["why"] == "upkeep")
+                .count(),
+        );
+    }
+    assert!(
+        built.exists(),
+        "what only the system daemon could vouch for went"
+    );
+    let heard: Vec<String> = home
+        .journal()
+        .iter()
+        .map(|line| {
+            let at = line["at"].as_f64().map_or(-1.0, |at| at - begun);
+            format!("{at:.0} {} {} {}", line["event"], line["why"], line["step"])
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [1, 2, 3, 4, 5, 6, 7],
+        "an upkeep a new boot made due, unheard, didn't come back ten minutes on: {heard:#?}"
     );
 }
 
@@ -1246,7 +1582,8 @@ fn a_pressed_disk_is_reclaimed_at_once_however_busy_the_machine() {
 }
 
 /// A stop that comes while the survey walks ends the step there, and what
-/// the survey found is taken by nobody, however full the disk.
+/// the survey found is taken by nobody, however full the disk. The walk
+/// it cut short is kept, so the guard a switch starts spaces the next.
 #[test]
 fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
     let home = Home::new();
@@ -1257,6 +1594,11 @@ fn a_stop_during_the_survey_ends_the_step_taking_nothing() {
     assert_eq!(stepped.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
     assert!(old.exists());
     assert!(home.journal().iter().all(|line| line["event"] != "pass"));
+    let kept = home.memory()["surveyed"].clone();
+    assert!(
+        kept[0].as_f64() >= Some(tick().wall - 60.0),
+        "a survey a stop cut short wasn't kept for the next one's spacing: {kept}"
+    );
 }
 
 #[test]
@@ -2266,7 +2608,7 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
 
 /// A user config watching cargo builds under `trees`, each tree cut by a
 /// broker whose records are in `cut`, and a healthy disk.
-fn owned_trees(home: &Home) -> Config {
+pub(crate) fn owned_trees(home: &Home) -> Config {
     Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
              "bands": {{ "filling": "0%", "nearly_full": "0%", "critically_full": "0%",
@@ -2284,7 +2626,7 @@ fn owned_trees(home: &Home) -> Config {
 
 /// A tree with a cargo build in it, held by process `pid`, which runs: the
 /// build's one file.
-fn held_tree(home: &Home, pid: u32) -> PathBuf {
+pub(crate) fn held_tree(home: &Home, pid: u32) -> PathBuf {
     let tree = home.root.join("trees/app");
     fs::create_dir_all(tree.join("src")).unwrap();
     fs::write(tree.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
@@ -2342,6 +2684,74 @@ fn a_trees_build_goes_within_a_minute_of_its_last_holder_ending() {
     assert!(built.exists(), "owners are looked at once a minute");
     guard.step(&tick_at(3661.0), &CALM).unwrap();
     assert!(!built.exists(), "the build goes once its holder has ended");
+}
+
+#[test]
+fn a_build_whose_holder_ended_goes_within_a_minute_however_lately_a_survey_walked() {
+    // Surveys are spaced up to three hours apart, but what an owner leaves
+    // is spent the moment it ends, and waiting would keep it for hours.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    surveyed_before(&home, wall(), 3600.0);
+    let mut guard = home.guard(owned_trees(&home));
+    guard.step(&tick(), &CALM).unwrap();
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "a build whose holder ended waited out the survey's spacing"
+    );
+}
+
+#[test]
+fn a_guard_restarted_before_an_ended_owner_s_builds_were_judged_still_takes_them() {
+    // A stop cuts a survey short and saves the guard's memory, and the
+    // guard after it, finding no owner newly ended, would otherwise wait
+    // out the spacing with the builds still there.
+    for spent_due in [true, false] {
+        let home = Home::new();
+        let built = held_tree(&home, 400);
+        fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+        let memory = disk_guard::state::Memory {
+            surveyed: Some((wall(), 3600.0)),
+            spent_due,
+            ..Default::default()
+        };
+        disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+        let mut guard = home.guard(owned_trees(&home));
+        guard.step(&tick(), &CALM).unwrap();
+        assert_eq!(
+            built.exists(),
+            !spent_due,
+            "with an ended owner's builds kept as due: {spent_due}"
+        );
+    }
+}
+
+#[test]
+fn a_filling_disk_spaces_its_surveys_again_once_one_judged_what_an_owner_left() {
+    // A disk past healthy never gets upkeep, so builds an owner left must
+    // stop going past the spacing once a pass has judged them, or every
+    // step would walk every source.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let memory = disk_guard::state::Memory {
+        surveyed: Some((wall(), 3600.0)),
+        spent_due: true,
+        ..Default::default()
+    };
+    disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+    let mut guard = home.guard(home.config("100%", "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        home.journal().iter().any(|line| line["event"] == "pass"),
+        "builds an owner left waited out the spacing"
+    );
+    assert_eq!(
+        home.memory()["spent_due"],
+        false,
+        "a filling disk's pass after a whole survey left what owners left due"
+    );
 }
 
 #[test]
@@ -2817,7 +3227,7 @@ impl Home {
         }
     }
 
-    fn memory(&self) -> serde_json::Value {
+    pub(crate) fn memory(&self) -> serde_json::Value {
         serde_json::from_str(&fs::read_to_string(self.root.join("state/memory.json")).unwrap())
             .unwrap()
     }

@@ -366,24 +366,35 @@ impl Guard {
         let snapshot_spent = self.snapshot_spends.is_some_and(|at| tick.wall >= at);
         if snapshot_spent {
             self.snapshot_spends = None;
-            self.memory.upkept = None;
+            self.upkeep_due();
+            self.mark_spent();
         }
         // A builds disk passing its budget changes no holder, and on a
-        // healthy root nothing else would bring upkeep for six hours.
+        // healthy root nothing else would bring upkeep for six hours. It
+        // spends nothing, so its upkeep waits out a survey's spacing as
+        // any upkeep merely due again does.
         let looked = self
             .budget_looked
             .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_LOOKS_EVERY);
         if !looked && crate::survey::past_budget(&self.config) {
             self.budget_looked = Some(tick.wall);
-            self.memory.upkept = None;
+            self.upkeep_due();
         }
         let ended = self.memory.owners.as_ref().is_none_or(|before| {
             before.boot != seen.boot
                 || before.guard != seen.guard
                 || seen.spent.iter().any(|tree| !before.spent.contains(tree))
         });
+        // A guard's own restart makes upkeep due too, but spends nothing, so
+        // only trees spent since, or a new boot, go past a survey's spacing.
+        let spent = self.memory.owners.as_ref().is_some_and(|before| {
+            before.boot != seen.boot || seen.spent.iter().any(|tree| !before.spent.contains(tree))
+        });
         if ended {
-            self.memory.upkept = None;
+            self.upkeep_due();
+            if spent {
+                self.mark_spent();
+            }
         }
         self.memory.owners = Some(seen);
     }

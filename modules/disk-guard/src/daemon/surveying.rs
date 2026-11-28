@@ -23,8 +23,11 @@ pub(super) const PASS_WEIGHT: f64 = 0.3;
 /// How soon upkeep comes again when it kept something only the system
 /// daemon could have vouched for, and couldn't be asked. A switch restarts
 /// both daemons, so the user's upkeep can begin while the system's is down;
-/// ten minutes lets it come back, and costs a daemon that stays down one
-/// walk in ten minutes rather than one a minute.
+/// ten minutes lets it come back. Only once in a row: on 27 November the
+/// system daemon, busy with its own passes, went unheard upkeep after
+/// upkeep, and each came back for another walk of 15 GB. It walks every
+/// source as any upkeep does, so it waits out a survey's spacing too,
+/// coming later than this when the last survey walked for long.
 pub(super) const UNHEARD_AGAIN: f64 = 600.0;
 
 /// The trees whose builds are spent: every tree a finished quest lists,
@@ -194,6 +197,24 @@ pub(super) fn teaches_pass_length(goal: Goal, why: Why, report: &Report) -> bool
 /// Whether a delete failed for garbage that came alive since the listing.
 pub(super) fn stale(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
+}
+
+/// When upkeep was last done, and whether it went unheard, once one more
+/// upkeep pass of a step at `wall` ends: `retry`, so it comes again soon,
+/// when the pass `kept` what only an unheard system daemon could vouch
+/// for, unless the upkeep `before` the step had gone unheard already, and
+/// `wall` otherwise. None leaves the retry an earlier pass of the step set.
+pub(super) fn upkept_after(
+    upkept: Option<f64>,
+    (wall, retry): (f64, f64),
+    before: bool,
+    kept: bool,
+) -> Option<(f64, bool)> {
+    if upkept == Some(retry) {
+        return None;
+    }
+    let again = kept && !before;
+    Some((if again { retry } else { wall }, again))
 }
 
 impl Guard {
@@ -392,31 +413,74 @@ impl Guard {
                     .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
     }
 
+    /// Makes upkeep due at the next spare moment, for a reason of its own,
+    /// so the one it brings gets its own retry if it goes unheard, however
+    /// the upkeep before it went.
+    pub(super) fn upkeep_due(&mut self) {
+        self.memory.upkept = None;
+        self.memory.upkeep_unheard = false;
+    }
+
     /// Learns what a pass that `started` teaches: how long a pass takes,
-    /// from a reach that reclaimed, or when upkeep was last done, from an
-    /// upkeep pass that got through what was due.
+    /// from a reach that reclaimed; when upkeep was last done, from an
+    /// upkeep pass after a survey that got through what was due; and that
+    /// what owners left on `device` has been judged, from an upkeep or a
+    /// reach there after a survey of every source.
     pub(super) fn learn_from_pass(
         &mut self,
         tick: &Tick,
-        (goal, why): (Goal, Why),
+        device: u64,
+        (goal, why, surveyed): (Goal, Why, bool),
         report: &Report,
         scan: &Scan,
         started: Instant,
     ) {
+        // What owners left leads every plan, so an upkeep or a reach after
+        // a whole survey has judged what lies on its own disk, unless a
+        // stop cut it short, or it reached its band first, when the upkeep
+        // it brings judges the rest. It's offered nothing on another disk,
+        // and a disk that rested or was held off judged nothing, so each
+        // disk is cleared by its own pass alone. Only then does that disk's
+        // next survey wait out the spacing: a disk past healthy never gets
+        // upkeep, and would otherwise walk every step.
+        let judged_spent = surveyed
+            && !matches!(report.end, End::Stopped)
+            && !(goal == Goal::Reach && matches!(report.end, End::Reached));
+        if judged_spent {
+            self.judged_spent(device);
+        }
         if teaches_pass_length(goal, why, report) {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
+        } else if goal == Goal::Upkeep
+            && surveyed
+            && !matches!(report.end, End::Unfinished | End::Stopped)
+        {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
-            self.memory.upkept = Some(if self.kept_unvouched(scan, report) {
-                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
-            } else {
-                tick.wall
-            });
+            // Garbage alone judges no build, so the upkeep a survey's
+            // spacing put off stays due rather than waiting six hours.
+            let retry = tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN;
+            // Every disk's upkeep in a step comes again if any of them kept
+            // what only the unheard system daemon could vouch for, each
+            // judged against the upkeep before the step, so a later disk's
+            // keep isn't lost to an earlier disk that kept nothing, and a
+            // retry that went unheard again isn't retried.
+            let before = match self.upkeep_judged {
+                Some((at, before)) if at.to_bits() == tick.wall.to_bits() => before,
+                _ => self.memory.upkeep_unheard,
+            };
+            self.upkeep_judged = Some((tick.wall, before));
+            let kept = self.kept_unvouched(scan, report);
+            if let Some((upkept, unheard)) =
+                upkept_after(self.memory.upkept, (tick.wall, retry), before, kept)
+            {
+                self.memory.upkept = Some(upkept);
+                self.memory.upkeep_unheard = unheard;
+            }
         }
     }
 

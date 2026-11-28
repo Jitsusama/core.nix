@@ -177,7 +177,7 @@ impl Guard {
                 self.collect = true;
                 self.stale_listing = false;
                 if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
-                    self.memory.upkept = None;
+                    self.upkeep_due();
                 }
                 self.listing = Some(listing);
             }

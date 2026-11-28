@@ -27,6 +27,15 @@ pub struct Memory {
     /// When routine upkeep last ran, in wall seconds.
     #[serde(default)]
     pub upkept: Option<f64>,
+    /// Whether the last upkeep kept what only the system daemon could
+    /// vouch for and went unheard, so it was due again in minutes; a
+    /// second such upkeep in a row counts as done.
+    #[serde(default)]
+    pub upkeep_unheard: bool,
+    /// When the last whole survey ended, in wall seconds, and how long it
+    /// walked, which spaces the next on disks no worse than filling.
+    #[serde(default)]
+    pub surveyed: Option<(f64, f64)>,
     /// How long a pass reaching for the target takes, in seconds,
     /// averaged over recent passes.
     #[serde(default)]
@@ -52,6 +61,21 @@ pub struct Memory {
     /// upkeep due, even across a restart.
     #[serde(default)]
     pub owners: Option<Owners>,
+    /// Each filling disk left with nothing to clear twice running, by
+    /// where it's mounted, and the wall time its hour of rest ends. A guard
+    /// started meanwhile rests it too: on 27 November one restarted by a
+    /// switch walked every source again, reading 40 GB in ten minutes to
+    /// find the nothing its last pass had found.
+    #[serde(default)]
+    pub emptied: std::collections::BTreeMap<PathBuf, f64>,
+    /// Whether builds whose owner ended, or that went an hour unused, wait
+    /// to be judged on some disk, which goes past a survey's spacing until
+    /// a pass there has. Kept, so a guard restarted before a pass judged
+    /// them still takes them within a minute rather than after the
+    /// spacing's hours; which disks it was isn't, so that guard judges
+    /// every disk's again.
+    #[serde(default)]
+    pub spent_due: bool,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -64,6 +88,8 @@ impl Default for Memory {
             awake: Awake::default(),
             learned: Learned::default(),
             upkept: None,
+            upkeep_unheard: false,
+            surveyed: None,
             pass_seconds: None,
             ran: std::collections::BTreeMap::new(),
             said: std::collections::BTreeMap::new(),
@@ -71,6 +97,8 @@ impl Default for Memory {
             frozen: Vec::new(),
             spared: Vec::new(),
             owners: None,
+            emptied: std::collections::BTreeMap::new(),
+            spent_due: false,
             rest: serde_json::Map::new(),
         }
     }

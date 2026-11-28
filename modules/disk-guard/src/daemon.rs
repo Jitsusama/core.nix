@@ -226,6 +226,10 @@ pub struct Guard {
     /// reached on, so the next reach there takes up from where it stopped
     /// rather than judging the same again.
     reached_short: BTreeMap<u64, BTreeSet<PathBuf>>,
+    /// The step whose upkeep passes are being judged, by its wall clock,
+    /// and whether the upkeep before them had gone unheard, so each of
+    /// them is judged against that and not against the one before it.
+    upkeep_judged: Option<(f64, bool)>,
     /// What a system daemon hears from user daemons.
     hearing: Option<Hearing>,
     /// For a user daemon, the filesystems the system daemon collects
@@ -273,6 +277,14 @@ pub struct Guard {
     /// The pinned snapshots the last look at the owners found, so one cut
     /// since, which no survey has offered yet, times its own hour.
     snapshots_known: Option<Vec<PathBuf>>,
+    /// The disks, by device, holding builds whose owner ended or that went
+    /// an hour unused in a snapshot, which no pass there has judged since:
+    /// a pass due on one goes past a survey's spacing. Every disk watched
+    /// is marked, since what was spent may lie on any, and each is cleared
+    /// by its own pass alone, as a pass is offered only what lies on its
+    /// disk. `memory.spent_due` says whether any is marked, so a guard
+    /// restarted before they were judged marks every disk it watches.
+    spent_on: BTreeSet<u64>,
     /// When, in wall seconds, a cargo source's disk past its budget last
     /// made upkeep due, so one still past it after the pass, its builds
     /// all recent, asks again only an hour on.
@@ -403,8 +415,9 @@ enum Why {
     /// Nix's garbage, once something let some go: alone, with no survey,
     /// unless another disk was due in the same step, when the survey's
     /// offers on the store's disk come too, and the line says how long
-    /// that survey took. It runs as the routine, so it puts off every
-    /// disk's next six-hourly upkeep.
+    /// that survey took. With a survey it runs as the routine, putting off
+    /// every disk's next six-hourly upkeep; alone it judges no build, so
+    /// the upkeep stays due when it was.
     Garbage,
     /// Producers whose watched files said something new.
     Producers,
@@ -490,7 +503,74 @@ fn ending(end: &End) -> String {
 #[cfg(test)]
 mod tests {
     use super::nix_garbage::min_free_again;
+    use super::passes::{pressed, survey_spacing};
+    use super::surveying::upkept_after;
     use super::{Band, Decision, Goal, Walked, Why, aim};
+
+    #[test]
+    fn a_survey_shorter_than_five_seconds_spaces_nothing() {
+        let spaced: Vec<f64> = [4.9, 5.0, 600.0, 1800.0]
+            .into_iter()
+            .map(survey_spacing)
+            .collect();
+        assert_eq!(
+            spaced,
+            [0.0, 60.0, 7200.0, 10800.0],
+            "a survey was spaced other than not at all under five seconds, then twelve \
+             times its walk up to three hours"
+        );
+    }
+
+    #[test]
+    fn any_upkeep_of_a_step_that_kept_unvouched_brings_the_retry_once() {
+        // Two disks' upkeep passes in one step, as a user guard watching a
+        // home pool and a build image makes, the later one keeping what
+        // only the unheard system daemon could vouch for.
+        let (wall, retry) = (100_000.0, 79_000.0);
+        let judged = |kept: [bool; 2], before: bool| {
+            kept.iter()
+                .fold(None, |upkept: Option<(f64, bool)>, &kept| {
+                    upkept_after(upkept.map(|(at, _)| at), (wall, retry), before, kept).or(upkept)
+                })
+        };
+        assert_eq!(
+            judged([false, true], false),
+            Some((retry, true)),
+            "a later disk's unvouched keep was lost to an earlier disk that kept nothing"
+        );
+        assert_eq!(
+            judged([true, false], false),
+            Some((retry, true)),
+            "a later disk that kept nothing took back the retry an earlier one set"
+        );
+        assert_eq!(
+            judged([false, true], true),
+            Some((wall, false)),
+            "a retry that kept unvouched again was retried"
+        );
+    }
+
+    #[test]
+    fn a_disk_worse_than_filling_or_forecast_to_be_goes_past_a_survey_s_spacing() {
+        let cases = [
+            (Decision::Reach(Band::NearlyFull), Band::Filling),
+            (Decision::Reach(Band::CriticallyFull), Band::NearlyFull),
+            (Decision::Reach(Band::NearlyFull), Band::NearlyFull),
+            (Decision::Reach(Band::Filling), Band::Filling),
+            (Decision::Reach(Band::Filling), Band::Healthy),
+            (Decision::Upkeep, Band::Healthy),
+        ];
+        let went: Vec<bool> = cases
+            .iter()
+            .map(|&(decision, band)| pressed(decision, band))
+            .collect();
+        assert_eq!(
+            went,
+            [true, true, true, false, false, false],
+            "a pass went past a survey's spacing other than for a disk worse than filling \
+             or forecast to be"
+        );
+    }
 
     #[test]
     fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {

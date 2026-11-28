@@ -258,7 +258,8 @@ pub const BUDGET_UNHEARD: f64 = 3600.0;
 
 /// How often a builds disk still past its budget makes upkeep due, since
 /// one whose builds are all recent stays past it after the pass, and a
-/// survey reads every build.
+/// survey reads every build. That upkeep still waits out a survey's
+/// spacing, which may be up to three hours.
 pub const BUDGET_LOOKS_EVERY: f64 = 3600.0;
 
 /// The bytes a cargo source's budget allows, in its first root's disk.
