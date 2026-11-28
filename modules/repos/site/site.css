@@ -268,10 +268,13 @@ code,
 }
 
 /* More contrast draws a placeholder in the text's ink and slants it, which on
-   this italic find reads as typed words, so here it stands upright instead. */
+   this italic find reads as typed words, so here it stands upright instead.
+   It raises the rule but not the edge, so the underline, the find's only edge,
+   is drawn in the rule, or it keeps its faint line below 3:1. */
 @media (prefers-contrast: more) {
   .find input {
     --placeholder-slant: normal;
+    box-shadow: inset 0 -1px 0 var(--rule);
   }
 }
 
