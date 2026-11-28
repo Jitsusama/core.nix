@@ -164,6 +164,22 @@ def browser() -> Iterator[Browser]:
         launched.close()
 
 
+def readied(*scripts: str, silent: bool = False) -> Callable[[Page], None]:
+    """Ready a tab, as Opened's `before`, to run each of `scripts` before the page's own.
+
+    `silent` answers every socket the page opens with one that never speaks, so
+    no feed draws and the page stands as it would with its daemons all slow.
+    """
+
+    def ready(page: Page) -> None:
+        for script in scripts:
+            page.add_init_script(script)
+        if silent:
+            page.route_web_socket("**", lambda _socket: None)
+
+    return ready
+
+
 def _crashed(error: Exception) -> bool:
     # Playwright's own error says a crash in its message. A failed expect says
     # it on a line of its own, after the text the page drew, so only that line
@@ -180,9 +196,21 @@ class Opened:
     context: BrowserContext
     page: Page
 
-    def __init__(self, browser: Browser, address: str, size: tuple[int, int], look: str) -> None:
-        """Open `address` at `size` in `look`, listening before it loads."""
+    def __init__(
+        self,
+        browser: Browser,
+        address: str,
+        size: tuple[int, int],
+        look: str,
+        before: Callable[[Page], None] | None = None,
+    ) -> None:
+        """Open `address` at `size` in `look`, listening before it loads.
+
+        `before` readies each tab before it loads, as a script to run first or
+        a route, so a tab opened once more after a crash is readied alike.
+        """
         self.size, self.look = size, look
+        self.before = before
         self.logged: list[str] = []
         # Words a test expects the page to log from some line on, each with
         # where in the log it began expecting them (see expecting).
@@ -249,6 +277,8 @@ class Opened:
         self.page.on("websocket", self._opened)
         self.page.on("console", self._heard)
         self.page.on("pageerror", lambda error: self.logged.append(f"thrown: {error}"))
+        if self.before is not None:
+            self.before(self.page)
         self.page.goto(address)
 
     def _asked(self, request: Request) -> None:

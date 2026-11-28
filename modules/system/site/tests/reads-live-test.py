@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, readied, serving
 from playwright.sync_api import Browser, Page, expect
 from stand_in_daemon import StandIn
 
@@ -838,13 +838,10 @@ def test_the_system_page_holds_still_as_it_draws(
     browser: Browser, system_served: Served, size: tuple[int, int]
 ) -> None:
     root, _ = system_served
-    width, height = size
-    context = browser.new_context(viewport={"width": width, "height": height})
-    try:
-        page = context.new_page()
-        page.add_init_script(SHIFTS)
-        page.add_init_script(HELD)
-        page.goto(f"{root}system/")
+    width, _ = size
+    opened = Opened(browser, f"{root}system/", size, "dark", before=readied(SHIFTS, HELD))
+
+    def reading(page: Page) -> None:
         says_it_stands(page, "live")
         counted(page)
         html = page.locator("html")
@@ -865,8 +862,9 @@ def test_the_system_page_holds_still_as_it_draws(
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"the page at {width} px shifted {shifted} as it drew"
-    finally:
-        context.close()
+
+    opened.first(reading)
+    opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, readied, serving
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -742,13 +742,10 @@ def test_a_first_visit_holds_the_page_still(
     browser: Browser, code_served: Served, size: tuple[int, int]
 ) -> None:
     root, _ = code_served
-    width, height = size
-    context = browser.new_context(viewport={"width": width, "height": height})
-    try:
-        page = context.new_page()
-        page.add_init_script(SHIFTS)
-        page.add_init_script(HELD)
-        page.goto(f"{root}code/")
+    width, _ = size
+    opened = Opened(browser, f"{root}code/", size, "dark", before=readied(SHIFTS, HELD))
+
+    def reading(page: Page) -> None:
         says_it_stands(page, "live")
         expect(row(page, "github:owl/core"), "a first visit drew no row").to_be_visible()
         html = page.locator("html")
@@ -769,8 +766,9 @@ def test_a_first_visit_holds_the_page_still(
         page.wait_for_timeout(1000)
         shifted = page.evaluate("() => globalThis.shifted")
         assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
-    finally:
-        context.close()
+
+    opened.first(reading)
+    opened.close()
 
 
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
