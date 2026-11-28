@@ -547,6 +547,14 @@ ShellRoot {
             expect("For You's History asked again hands back the rows it held",
                 whole.length > 0 && wholeFresh.length === 0,
                 `${wholeFresh.length} of ${whole.length} new`);
+            // History's drawer says what its side's count is made of, term
+            // by term of resolvedCount, so its facts add up to that count
+            // (#7188's round, 2).
+            const keptFacts = now.historyRow.drawer()?.facts ?? [];
+            const keptSum = keptFacts.reduce((sum, one) => sum + Number(one.value), 0);
+            expect("History's drawer counts add up to its row's own count",
+                now.resolvedCount > 0 && keptSum === now.resolvedCount,
+                JSON.stringify([keptFacts, now.resolvedCount]));
             // Each notice's row is the one the daemon served, muted and
             // For You's as it came (row.rs), with nothing made of it here.
             const served = new Set(pastNotices.pastRows(["desktop", "slack"]));
@@ -2346,6 +2354,26 @@ ShellRoot {
         // anew at each revision, so they're kept by what they say.
         const toDo = (title, deadline) => ({ v: 2, title: title, ready: true,
             raisedAt: Date.now() - 2 * 3600000, deadline: deadline ?? null });
+        // Later's drawer names each item it holds that says what it waits
+        // for or how long it has, as its row says it at its side, and
+        // names them all as any place does where none says either
+        // (#7188's round, 2).
+        // The node says when an item was raised as a time in words, as
+        // NeedsYou.waited reads it.
+        const laterRaised = new Date(Date.now() - 2 * 3600000).toISOString();
+        WaitingOnYou.later = [{ v: 2, title: "Pay The Bill", ready: false, raisedAt: laterRaised,
+            minutes: 5 }, { v: 2, title: "Say Nothing", ready: false, raisedAt: null }];
+        const laterFacts = now.laterRow?.drawer()?.facts ?? [];
+        expect("Later's drawer says what one waits for and how long, and leaves out the other",
+            laterFacts.length === 1 && laterFacts[0].label === "Pay The Bill"
+                && laterFacts[0].value.startsWith("5 min \u00b7 waiting "),
+            JSON.stringify(laterFacts));
+        WaitingOnYou.later = [{ v: 2, title: "Say Nothing", ready: false, raisedAt: null }];
+        const laterNamed = now.laterRow?.drawer() ?? null;
+        expect("Later's drawer names them as any place does where none says either",
+            laterNamed !== null && JSON.stringify(laterNamed).includes("Say Nothing"),
+            JSON.stringify(laterNamed));
+        WaitingOnYou.later = [];
         WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
         now.lookTexts = { "d.json": lookAt("d", "Read D") };
         Sessions.wanting = [{ address: "WANTB", title: "Session B", presence: {

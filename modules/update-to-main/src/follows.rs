@@ -25,10 +25,24 @@ pub type Followed = BTreeMap<String, String>;
 /// machine for half an hour, though the main just before it was fine. It
 /// is held to the same signature and the same history as a head, so it
 /// never takes the machine back past what it last followed.
+///
+/// An input followed only when asked (`asked`) stays where its lock pins
+/// it until an ask names a commit of it, so its own main never moves it;
+/// a lock that moves, as a followed parent's merge can, still does.
+/// Once asked, it stays at that commit while it is ahead of what its lock
+/// pins, since falling back to an older pin would undo what was asked
+/// for. Once the lock pins it, past it or off its line, the lock rules
+/// again: holding an ask against a lock gone another way would refuse
+/// every update, and no ask could clear it. A follow whose lock no longer
+/// has its input is left out, asked or not, since the build no longer
+/// reads it. An ask in `waited`, built and waiting for a hold, is kept as
+/// one followed is, but only what `last` followed is a floor no ask may
+/// step behind, since a commit that only waited never ran.
 pub fn heads(
     config: &Config,
     head: &str,
     last: &Followed,
+    waited: &Followed,
     at: &Followed,
 ) -> Result<Result<Followed, String>, Failure> {
     let mut followed = Followed::new();
@@ -41,33 +55,64 @@ pub fn heads(
         return Ok(Ok(followed));
     }
     let lock = lock(config, head)?;
+    // A name sorts before its own inputs' (core before core/mycelium), so
+    // an input's parent is settled before its pin is read from it.
     for (name, follow) in &config.follows {
+        let kept = waited.get(name).or_else(|| last.get(name));
+        if follow.asked && kept.is_none() && !at.contains_key(name) {
+            continue;
+        }
+        // The lock is read before anything is fetched, so an input it
+        // dropped, whose repository may have gone with it, can't fail the
+        // update.
+        let Some((pinned, pins)) = pinned(config, &lock, name, &followed)? else {
+            // A lock that no longer has the input builds without it, so
+            // there is nothing to override, nor for a kept ask to stand
+            // ahead of. Failing instead would fail every update, and the
+            // config that drops the follow comes only with a switch. An
+            // ask naming it is refused, since nothing would build it.
+            if !at.contains_key(name) {
+                continue;
+            }
+            return Ok(Err(format!(
+                "{name} isn't in the lock the build reads, so no ask may name a commit of it"
+            )));
+        };
         let repo = Repo::followed(config, name, follow);
         git::keyring(&repo)?;
-        let main = git::fetch(&repo)?;
-        let commit = match at.get(name) {
-            None => main,
-            Some(asked) if git::descends(&repo, asked, &main)? => asked.clone(),
-            Some(asked) => {
-                return Ok(Err(format!(
-                    "{name} at {} isn't on its main, at {}, so it isn't taken",
-                    git::short(asked),
-                    git::short(&main)
-                )));
+        let commit = match (at.get(name), kept) {
+            // A kept ask needs its main only when the copy lacks what it
+            // compares, so a repository out of reach fails no update that
+            // the copy alone can settle.
+            (None, Some(kept)) if follow.asked => {
+                if !git::has(&repo, kept) || !git::has(&repo, &pinned) {
+                    git::fetch(&repo)?;
+                }
+                if !git::descends(&repo, &pinned, kept)? || git::descends(&repo, kept, &pinned)? {
+                    continue;
+                }
+                kept.clone()
+            }
+            (None, _) => git::fetch(&repo)?,
+            (Some(asked), _) => {
+                let main = git::fetch(&repo)?;
+                if !git::descends(&repo, asked, &main)? {
+                    return Ok(Err(format!(
+                        "{name} at {} isn't on its main, at {}, so it isn't taken",
+                        git::short(asked),
+                        git::short(&main)
+                    )));
+                }
+                asked.clone()
             }
         };
         if let Err(why) = git::signed(&repo, &commit)? {
             return Ok(Err(format!("{}: {why}", repo.called)));
         }
-        let pinned = hosted::locked(&lock, name)?["rev"]
-            .as_str()
-            .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))?;
+        let ran = last.get(name).map(String::as_str);
         let behind = [
-            (Some(pinned), "the flake's lock pins"),
-            (
-                last.get(name).map(String::as_str),
-                "this machine last followed",
-            ),
+            (Some(pinned.as_str()), pins.as_str()),
+            (ran, "this machine last followed"),
         ];
         for (older, what) in behind.into_iter().filter_map(|(o, w)| Some((o?, w))) {
             if !git::descends(&repo, older, &commit)? {
@@ -82,6 +127,158 @@ pub fn heads(
         followed.insert(name.clone(), commit);
     }
     Ok(Ok(followed))
+}
+
+/// Each followed input's commit as main at `head` builds it with
+/// `followed`: its followed commit, or where its lock pins it. An input
+/// the lock no longer has isn't built, so it has none. Only locks are
+/// read, main's and followed parents' already fetched, so nothing is
+/// fetched.
+pub fn built(config: &Config, head: &str, followed: &Followed) -> Result<Followed, Failure> {
+    let mut built = followed.clone();
+    if config.follows.is_empty() {
+        return Ok(built);
+    }
+    let lock = lock(config, head)?;
+    for name in config.follows.keys() {
+        if built.contains_key(name) {
+            continue;
+        }
+        if let Some((pinned, _)) = pinned(config, &lock, name, followed)? {
+            built.insert(name.clone(), pinned);
+        }
+    }
+    Ok(built)
+}
+
+/// The commit `name` is pinned at, and what pins it: main's lock, or, under
+/// an input followed, the nearest such input's own lock at the commit
+/// followed, since that's the lock the build reads it from; core's, for
+/// core/mycelium/kit with only core followed. None where that lock has no
+/// such input. Where main's lock points an input on the way at another of
+/// its own, as a machine's flake setting `core.inputs.mycelium.follows`
+/// does, the build reads that one whatever the parent's lock pins, so it
+/// is main's lock that pins it.
+fn pinned(
+    config: &Config,
+    lock: &Value,
+    name: &str,
+    followed: &Followed,
+) -> Result<Option<(String, String)>, Failure> {
+    let rev = |locked: &Value| {
+        locked["rev"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))
+    };
+    match pointed(lock, name) {
+        Pointed::To(locked) => return Ok(Some((rev(locked)?, "the flake's lock pins".to_owned()))),
+        Pointed::Nowhere => return Ok(None),
+        Pointed::Unpointed => {}
+    }
+    let nearest = name.rmatch_indices('/').find_map(|(cut, _)| {
+        let parent = &name[..cut];
+        Some((
+            parent,
+            &name[cut + 1..],
+            followed.get(parent)?,
+            config.follows.get(parent)?,
+        ))
+    });
+    if let Some((parent, own, commit, follow)) = nearest {
+        let repo = Repo::followed(config, parent, follow);
+        let at = git::short(commit);
+        // Only a lock read and found without the input lets go of a kept
+        // ask: a parent git can't read would otherwise drop it unasked.
+        if !git::has(&repo, commit) {
+            return Err(Failure::new(format!("{parent} at {at} can't be read")));
+        }
+        if !git::holds_file(&repo, commit, "flake.lock") {
+            return Ok(None);
+        }
+        let Some(text) = git::show(&repo, commit, "flake.lock") else {
+            return Err(Failure::new(format!(
+                "{parent}'s flake.lock at {at} can't be read"
+            )));
+        };
+        let theirs: Value = serde_json::from_str(&text)
+            .map_err(|e| Failure::new(format!("reading {parent}'s flake.lock at {at}: {e}")))?;
+        return hosted::found(&theirs, own)
+            .map(|locked| Ok((rev(locked)?, format!("{parent}'s lock at {at} pins"))))
+            .transpose();
+    }
+    hosted::found(lock, name)
+        .map(|locked| Ok((rev(locked)?, "the flake's lock pins".to_owned())))
+        .transpose()
+}
+
+/// How many follows a lock's input may pass through before it names a node:
+/// a lock Nix wrote is never deeper, and one that loops ends here.
+const FOLLOWS_AT_MOST: usize = 32;
+
+/// Where main's lock points an input, told apart from one it leaves to its
+/// parent's lock.
+enum Pointed<'a> {
+    /// No input on the path is a follows, so the build reads it where its
+    /// parent's lock says.
+    Unpointed,
+    /// A follows on the path comes to this node's locked source.
+    To(&'a Value),
+    /// A follows on the path names nothing locked.
+    Nowhere,
+}
+
+/// Where main's `lock` points the input `name`, when an input on its path is
+/// a follows, a path of inputs from the lock's root, rather than a node of
+/// its own.
+fn pointed<'a>(lock: &'a Value, name: &str) -> Pointed<'a> {
+    let Some(mut node) = lock["root"].as_str() else {
+        return Pointed::Unpointed;
+    };
+    let mut follows = false;
+    let met = |follows: bool| {
+        if follows {
+            Pointed::Nowhere
+        } else {
+            Pointed::Unpointed
+        }
+    };
+    for own in name.split('/') {
+        match &lock["nodes"][node]["inputs"][own] {
+            Value::String(next) => node = next.as_str(),
+            Value::Array(path) => {
+                follows = true;
+                match followed_to(lock, path, 0) {
+                    Some(next) => node = next,
+                    None => return Pointed::Nowhere,
+                }
+            }
+            _ => return met(follows),
+        }
+    }
+    let locked = &lock["nodes"][node]["locked"];
+    if follows && locked.is_object() {
+        Pointed::To(locked)
+    } else {
+        met(follows)
+    }
+}
+
+/// The node a follows `path` comes to in `lock`, from its root, each input
+/// on it a node's or a follows of its own; none when it names nothing.
+fn followed_to<'a>(lock: &'a Value, path: &'a [Value], depth: usize) -> Option<&'a str> {
+    if depth > FOLLOWS_AT_MOST {
+        return None;
+    }
+    let mut node = lock["root"].as_str()?;
+    for own in path {
+        node = match &lock["nodes"][node]["inputs"][own.as_str()?] {
+            Value::String(next) => next.as_str(),
+            Value::Array(inner) => followed_to(lock, inner, depth + 1)?,
+            _ => return None,
+        };
+    }
+    Some(node)
 }
 
 /// What the build is given so each followed input is its followed commit.

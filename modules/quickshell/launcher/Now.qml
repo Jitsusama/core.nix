@@ -26,6 +26,7 @@ import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
+import "ForYouDrawers.js" as ForYouDrawers
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
 import "LookForm.js" as LookForm
@@ -993,6 +994,8 @@ Provider {
         key: "on:waiting:later",
         verb: "more",
         stays: true,
+        thing: true,
+        drawer: () => provider.laterDrawer(),
         name: Words.name("on:waiting:later"),
         glyph: Words.glyph("on:waiting:later"),
         hue: "muted",
@@ -1005,6 +1008,25 @@ Provider {
         targets: () => WaitingOnYou.later.map(each => provider.item(each)),
         run: () => provider.launcher?.enter(provider.laterRow)
     })))
+    // Later's drawer, a place's (ForYouDrawers.js's laterDrawer): what
+    // each it holds waits for, as its own row in Later says it at its
+    // side, and how long it has waited, by its whole name; where none
+    // says either, their names, as any place's.
+    function laterDrawer() {
+        const now = Date.now();
+        const name = Words.name("on:waiting:later");
+        const eyebrow = (Words.field.drawer ?? {}).place ?? "";
+        const items = WaitingOnYou.later;
+        return ForYouDrawers.laterDrawer(name, items.map(each => {
+            const span = NeedsYou.waited(each.raisedAt, now);
+            return {
+                name: each.title,
+                waits: [ownerSaid(each), sideOf(each)].filter(part => part !== "")
+                    .join(" \u00b7 "),
+                waited: span === "" ? "" : waitingSaid("waitedFor", { span: span })
+            };
+        }), eyebrow) ?? PlaceRow.drawer(name, items.map(each => each.title), eyebrow);
+    }
     // What moved for each workstream since Joel last looked, one row
     // stepping into a row for each quest, as the quests daemon serves them
     // (Quests.qml's moved), so he needn't ask for updates (Joel,
@@ -1975,10 +1997,36 @@ Provider {
         note: (Words.of("on:waiting:history").said ?? {}).note ?? "",
         empty: Words.of("on:waiting:history").empty,
         nested: true,
+        thing: true,
+        drawer: () => provider.historyDrawer(),
         verbs: () => provider.historyRows(),
         targets: () => provider.historyRows(),
         run: () => provider.launcher?.enter(provider.historyRow)
     }))
+    // History's drawer, a place's (ForYouDrawers.js's historyDrawer): how
+    // many it keeps from each source, as resolvedCount counts them, For
+    // You's own first, its to-dos and looks, then the mail, Slack and the
+    // desktop's notices, then what other sources gave it, each named as
+    // :filter's head names it.
+    function historyDrawer() {
+        const came = from => cameDone.filter(one => one.source === from).length;
+        const gave = {};
+        for (const one of given.done) {
+            const from = String(one.row.forYou?.source ?? "");
+            gave[from] = (gave[from] ?? 0) + 1;
+        }
+        const kept = [
+            { name: Words.name("for-you:kind:do"), count: doneItems.length },
+            { name: Words.name("on:waiting:history:looks"), count: looks.history.length },
+            { name: Words.name("for-you:source:mail"), count: came("mail") },
+            { name: Words.name("for-you:source:slack"),
+                count: came("slack") + pastKept("slack") },
+            { name: Words.name("for-you:source:desktop"), count: pastKept("desktop") }
+        ].concat(Object.keys(gave).map(from => ({ name: Filter.sourceName(from, filterSaid),
+            count: gave[from] })));
+        return ForYouDrawers.historyDrawer(Words.name("on:waiting:history"), kept,
+            (Words.field.drawer ?? {}).place ?? "");
+    }
 
     // How many History keeps, said as what it counts, "1 kept", never a
     // bare number, and "none" while it keeps nothing, as every place says

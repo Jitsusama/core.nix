@@ -663,6 +663,7 @@ gather {
     ./modules/linux-id/checks.nix
     ./modules/local-name/checks.nix
     ./modules/local-sites/checks.nix
+    ./modules/lock-follows/checks.nix
     ./modules/litra/checks.nix
     ./modules/machine/checks.nix
     ./modules/margin-cat/checks.nix
