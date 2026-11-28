@@ -660,6 +660,9 @@ linked() {{
 halted() {{
   {HALTING}
 }}
+strayed() {{
+  {STRAYING}
+}}
 crowded() {{
   {CROWDING}
 }}
@@ -680,6 +683,13 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
   {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
     exit 1; }}
 ! linked || {{ halted; exit 1; }}
+# Keeps where the copies' folder is, read once, so what's cleared at a
+# copy's name is cleared from inside that very folder: a link put at
+# the handover, or above it, between a look and a clearing would
+# otherwise have the clearing take what it points at. The dot keeps a
+# name's trailing newlines, as `pinned`'s does.
+copies_at=$(cd -P "$job/{BACK}" && pwd -P && echo .) && copies_at=${{copies_at%?.}} ||
+  {{ strayed; exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
 {each_file}
@@ -732,6 +742,11 @@ fi
     )
 }
 
+/// What the far line says where the copies' folder isn't the one it
+/// pinned as it brought back, so it stops rather than clear elsewhere.
+const STRAYING: &str = "printf \"elsewhere: its folder for copies isn't where it was as it \
+brought back, so nothing more is brought back\\n\" >&2";
+
 /// What `bringing` does with each file it lists that can't cross as it
 /// is: one missing, one kept past what a share holds, and the test of
 /// which.
@@ -741,7 +756,7 @@ fn each_file() -> String {
   # size, so the near side lands the rest and says it's missing. Its
   # copy is cleared whole, since what cp met there may be a folder.
   missing() {{
-    cleared "$job/{BACK}/$n"
+    uncopied cleared
     printf "elsewhere: %s didn't come back\n" "$file" >&2
     printf '%s\t%s\n' - "$file" || exit 1
     n=$((n + 1))
@@ -749,12 +764,26 @@ fn each_file() -> String {
   # One past what a share holds, alone or with what crossed before it,
   # is listed marked with its size and never crosses, so the near side
   # lands the rest and says why without waiting for it.
+  # Takes away what stands at the copy's name by `$@`, from inside the
+  # copies' folder only once the cd landed in the very one `copies_at`
+  # pinned, by its path and by the folder itself, so a link put at the
+  # handover or above it since can't lead the clearing to what it points
+  # at. Where it didn't land there, nothing is cleared and the far line
+  # stops, as it does for a link it sees.
+  uncopied() {{
+    (
+      cd -P "$job/{BACK}" 2>/dev/null && landed=$(pwd -P && echo .) &&
+        [ "${{landed%?.}}" = "$copies_at" ] && [ . -ef "$copies_at" ] || exit 1
+      "$@" "./$n"
+      exit 0
+    ) || {{ strayed; exit 1; }}
+  }}
   past() {{
     [ $1 -gt {LARGEST_FILE} ] || [ $((files + 1)) -gt $most_files ] ||
       [ $(($bytes + $1)) -gt $most_bytes ]
   }}
   kept() {{
-    rm -f "$job/{BACK}/$n"
+    uncopied rm -f
     printf '>%s\t%s\n' $(($1)) "$file" || exit 1
     n=$((n + 1))
   }}"#
