@@ -1,8 +1,30 @@
 //! Long because a selection's motions, objects, copies and names are each
 //! proven over the one page this file sets, beside it.
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::*;
 use crate::numbers::f64_of;
+
+/// How many folders the tests here have made, so each has its own.
+static FOLDERS: AtomicUsize = AtomicUsize::new(0);
+
+/// A folder of this test's own, made empty, named `name` for whoever
+/// finds one left. cargo runs the tests as threads of one process, and
+/// two tests setting a page by one name at once each removed the folder
+/// the other was still writing in, so the process's id alone can't keep
+/// them apart.
+fn folder(name: &str) -> PathBuf {
+    let made = FOLDERS.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "reader-select-{}-{made}-{name}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a folder");
+    dir
+}
 
 /// A line of the page at `baseline`, its characters 6 pt wide each.
 fn line(baseline: f64, text: &str) -> Line {
@@ -767,9 +789,7 @@ fn set(name: &str, markdown: &str) -> Layout {
 
 #[test]
 fn a_file_it_cant_read_gives_no_lines_rather_than_empty_ones() {
-    let dir = std::env::temp_dir().join(format!("reader-select-{}-unread", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("a folder");
+    let dir = folder("unread");
     let file = dir.join("page.md");
     std::fs::write(&file, "Words.\n").expect("the file");
     let (page, _) = crate::page::Setter::new(file.to_str().expect("a path"))
@@ -802,8 +822,7 @@ fn lines_read_for_one_setting_of_the_page_are_not_taken_for_anothers() {
 /// The file set as the reader sets it, its words read for selecting as
 /// the page's setting `version`.
 fn set_as(name: &str, markdown: &str, version: u32) -> Layout {
-    let dir = std::env::temp_dir().join(format!("reader-select-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a folder");
+    let dir = folder(name);
     let file = dir.join("page.md");
     std::fs::write(&file, markdown).expect("the file");
     let (page, _) = crate::page::Setter::new(file.to_str().expect("a path"))
@@ -814,8 +833,8 @@ fn set_as(name: &str, markdown: &str, version: u32) -> Layout {
 }
 
 /// The page's line holding `words`, past the eyebrow, which names the
-/// file's folder by the test's process and the time it was written,
-/// so holds a 12 when either does.
+/// file's folder by the test's process, its count and the time it was
+/// written, so holds a 12 when any of them does.
 fn holding(page: &Layout, words: &str) -> usize {
     page.lines
         .iter()
