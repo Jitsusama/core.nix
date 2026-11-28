@@ -585,10 +585,12 @@ pub fn joel_inside(ahead: f64, relay: f64) -> f64 {
 /// its packets with no queue behind them, and a hold at a floor of 4 left
 /// its calls dropped. The floor binds on the rate the CAKE is given, after
 /// the cost comes off, since that's what its tins are sent at (model calls
-/// ahead round 3's F1).
+/// ahead round 3's F1); and it is never over the lane less that cost, so
+/// the VPN with its cost never passes its lane (round 4's F1).
 pub fn vpn_held(lane: f64, share: f64, carried: f64, relay: f64, extra: f64) -> f64 {
     let whole = lane * VPN_HELD;
-    (whole * share - extra).max(ahead_floor(whole, carried, relay))
+    let floor = ahead_floor(whole, carried, relay).min(whole - extra);
+    (whole * share - extra).max(floor).max(0.0)
 }
 
 /// The share of its lane at or under which `vpn_held` keeps the VPN's
@@ -616,7 +618,9 @@ pub fn vpn_given(
     was: Option<f64>,
     extra: f64,
 ) -> (f64, f64) {
-    let kept = relay_kept(relay, was);
+    // The relay is counted before the CAKE, whose ACK filter drops some of
+    // what it counted, so it never counts past what the tins carried.
+    let kept = relay_kept(relay.clamp(0.0, carried.max(0.0)), was);
     let held = vpn_held(lane, share, carried, kept, extra);
     (held, vpn_least(lane, carried, kept, extra))
 }
@@ -628,29 +632,48 @@ pub fn vpn_given(
 /// it (model calls ahead round 3's F16).
 const RELAY_MOST: f64 = 6_000.0;
 
+/// The share of what the VPN's CAKE was given at or past which the relay
+/// is taken to fill it, and so to ask for more than it was given.
+const RELAY_FILLS: f64 = 0.95;
+
+/// How far the relay's part of the floor rises in a step while the relay
+/// fills what the CAKE was given: a quarter, so a relay asking more is
+/// given its most within a few seconds of any floor.
+const RELAY_RISE: f64 = 1.25;
+
+/// The room the relay's part of the floor keeps past what a relay that
+/// doesn't fill the CAKE sent, so it reads under `RELAY_FILLS` of what
+/// it's given and the floor stands still, rather than rising and falling
+/// by turns.
+const RELAY_ROOM: f64 = 1.1;
+
 /// The relay's part of the VPN's floor, in kbit/s, from what shaper.nft
 /// counted it sending inside the VPN, `relay`, and the rate the VPN's CAKE
-/// was given the step before, `was`: never more than that rate, nor than
-/// `RELAY_MOST`. The count is taken before the CAKE, which drops some of
-/// what it counted, so a relay filling what it's given reads a little over
-/// what the CAKE passed it; taken whole, the floor would creep up a little
-/// each second to the whole lane (model calls ahead round 3's F2). Capped
-/// at what was given, it holds the CAKE where it stands at most.
+/// was given the step before, `was`, never past `RELAY_MOST`. A relay that
+/// fills what was given asks for more than the CAKE passes it, and how much
+/// more no count shows: the count comes before the CAKE's drops, and with
+/// ECN marks it reads no more than was given. So the floor rises by
+/// `RELAY_RISE` a step while the relay fills it. Held at what was given, a
+/// relay asking more could never lift it while the hold sat at its floor
+/// (model calls ahead round 4's F17); taken from the count alone, it would
+/// creep up by the CAKE's drops (round 3's F2). A relay that doesn't fill
+/// it keeps what it sent with `RELAY_ROOM`, so the floor falls with it at
+/// once; and with nothing given before, as at a start or a VPN brought
+/// back, the same (round 4's F20).
 pub fn relay_kept(relay: f64, was: Option<f64>) -> f64 {
-    relay.min(was.unwrap_or(0.0)).clamp(0.0, RELAY_MOST)
+    let kept = match was {
+        Some(was) if relay >= was * RELAY_FILLS => was * RELAY_RISE,
+        _ => relay * RELAY_ROOM,
+    };
+    kept.clamp(0.0, RELAY_MOST)
 }
 
 /// What the VPN's CAKE is never held under, of its `whole`, for what its
 /// tins ahead of bulk carried, `carried`, with the relay's part `relay`,
 /// in kbit/s: Joel's headroom past what they carried up to `AHEAD_MOST`,
-/// or the relay's part, whichever is more. The relay's part takes no
-/// headroom, so it never lifts the floor past what the CAKE already
-/// passed it.
+/// or the relay's part (`relay_kept`), whichever is more.
 fn ahead_floor(whole: f64, carried: f64, relay: f64) -> f64 {
-    need(carried)
-        .min(AHEAD_MOST)
-        .max(relay.clamp(0.0, carried.max(0.0)))
-        .min(whole)
+    need(carried).min(AHEAD_MOST).max(relay.max(0.0)).min(whole)
 }
 
 /// Agents' lane's class, under which their CAKE stands.
@@ -860,9 +883,9 @@ mod tests {
     // A relay that fills what it's given is counted a little over what the
     // CAKE passed it, since the count comes before the CAKE's drops. From
     // the whole lane, a hold to a quarter still brings the CAKE down to the
-    // relay's most, each step at or under the last, and never lifts it.
+    // relay's most, each step at or under the last.
     #[test]
-    fn a_relay_filling_best_effort_never_lifts_the_hold_and_is_cut_to_its_most() {
+    fn a_relay_filling_best_effort_from_the_whole_lane_is_cut_to_its_most() {
         let whole = 20_000.0 * VPN_HELD;
         let mut given = whole;
         for _ in 0..30 {
@@ -881,20 +904,35 @@ mod tests {
     }
 
     #[test]
-    fn the_relay_s_part_is_never_over_what_the_cake_was_given_nor_its_most() {
+    fn the_relay_s_part_rises_by_a_quarter_while_it_fills_the_cake_up_to_its_most() {
+        // Counted 2% over what was given, or just at it under ECN, or a
+        // burst well past it: each rises by a quarter of what was given.
+        for counted in [4_080.0, 4_000.0, 5_500.0] {
+            let kept = relay_kept(counted, Some(4_000.0));
+            assert!(near(kept, 5_000.0), "a relay counted {counted} kept {kept}");
+        }
+        let kept = relay_kept(9_000.0, Some(9_000.0));
+        assert!(near(kept, RELAY_MOST), "over its most: {kept}");
+        let kept = relay_kept(3_000.0, Some(4_000.0));
         assert!(
-            near(relay_kept(4_600.0, Some(4_400.0)), 4_400.0),
-            "over what was given"
+            near(kept, 3_300.0),
+            "a relay under what it's given kept {kept}"
         );
-        assert!(
-            near(relay_kept(9_000.0, Some(9_000.0)), RELAY_MOST),
-            "over its most"
-        );
-        assert!(
-            near(relay_kept(4_600.0, None), 0.0),
-            "with nothing given before"
-        );
+        let kept = relay_kept(4_600.0, None);
+        assert!(near(kept, 5_060.0), "with nothing given before: {kept}");
         assert!(near(relay_kept(-5.0, Some(4_000.0)), 0.0), "under nothing");
+    }
+
+    #[test]
+    fn the_vpn_with_its_cost_never_passes_its_lane_at_its_floor() {
+        let whole = 6_000.0 * VPN_HELD;
+        let held = vpn_held(6_000.0, 0.25, 5_500.0, 5_600.0, 800.0);
+        assert!(
+            near(held, whole - 800.0),
+            "a floor of 5,600 beside a cost of 800 left {held:.0} of {whole:.0}"
+        );
+        let held = vpn_held(6_000.0, 0.25, 5_500.0, 5_600.0, whole + 100.0);
+        assert!(near(held, 0.0), "a cost past the lane left {held:.0}");
     }
 
     // On 28 November the model relay alone sent up to 4.6 Mbit/s inside

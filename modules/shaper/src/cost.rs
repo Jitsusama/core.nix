@@ -23,8 +23,9 @@
 //! kbit/s, its 9,310 less 3,866 of cost, while the whole upload was about
 //! 5 Mbit/s, and the model relay's calls inside it were dropped. So a cost
 //! is taken up at once only once two seconds in a row both show it, as a
-//! download does from its second second and a burst never does, and
-//! otherwise as it stands over the last `WINDOW_S`.
+//! download does from its second second, and otherwise as it stands over
+//! the last `WINDOW_S`. A burst within one read costs only its share of the
+//! window; one spanning two reads costs the smaller of them for one step.
 
 use std::collections::VecDeque;
 
@@ -244,7 +245,7 @@ mod tests {
     }
 
     // A burst that spans two reads is taken up for the second of them, and
-    // given back at the next read the window doesn't show it in.
+    // at the next read only its share of the window is kept.
     #[test]
     fn a_burst_two_reads_show_costs_one_step() {
         let mut cost = Cost::default();
@@ -264,6 +265,24 @@ mod tests {
             costs[3..].iter().all(|&kbit| kbit <= 1000),
             "the burst was kept past its step: {costs:?}"
         );
+    }
+
+    #[test]
+    fn a_cost_two_seconds_show_after_a_full_window_is_given_up_at_once() {
+        let mut cost = Cost::default();
+        cost.sample(0, 0, 0.0);
+        for second in 1..10_u32 {
+            let n = u64::from(second);
+            cost.sample(bytes(10_000 * n), bytes(10_000 * n), f64::from(second));
+        }
+        // A download costing 2 Mbit/s past the count starts at second 10.
+        let first = cost.sample(bytes(102_000), bytes(100_000), 10.0);
+        assert!(
+            first <= 400,
+            "one second of it kept {first}, past its share"
+        );
+        let second = cost.sample(bytes(114_000), bytes(110_000), 11.0);
+        assert_eq!(second, 2000, "the second second of it is taken up whole");
     }
 
     /// What a VPN sending `sends` in turn, a second each, against 4 Mbit/s
