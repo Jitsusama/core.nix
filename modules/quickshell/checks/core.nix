@@ -271,17 +271,21 @@ in
   # modules/quickshell/tests/ranking.qml holds launcher/Rank.js to it in Qt's
   # own engine, with launcher/Member.js making what a search found,
   # launcher/Fading.js what picks still count and launcher/Parts.js a
-  # collection's parts listed once each.
+  # collection's parts listed once each, and tests/lib/Expect.js saying a
+  # case that threw.
   the-launcher-lands-where-it-did =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-lands-where-it-did" { } ''
       cp ${../tests/ranking.qml} ranking.qml
       cp ${../launcher/Rank.js} Rank.js
       cp ${../launcher/Member.js} Member.js
       cp ${../launcher/Parts.js} Parts.js
       cp ${../launcher/Fading.js} Fading.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
