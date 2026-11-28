@@ -81,7 +81,7 @@ in
     # answer there, and neither caches, so every lookup paid a full trip, a
     # repeat a second later included. The default guards against caching
     # twice what a local server caches already. The cost is the one any
-    # cache has: resolved keeps each answer for the TTL it was given, so an
+    # cache has: resolved keeps each answer, a no included, for the TTL it was given, so an
     # answer a local server changes sooner shows only once that runs out, or
     # at once after `resolvectl flush-caches`.
     services.resolved.settings.Resolve.CacheFromLocalhost = true;
