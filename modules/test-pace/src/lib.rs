@@ -158,6 +158,8 @@ pub fn busyness() -> f64 {
 /// the host won't say.
 #[cfg(not(target_os = "macos"))]
 fn ready_last_minute() -> Option<f64> {
+    // A host with no load average to read, as a sandbox without /proc,
+    // says nothing of its load, so the bound keeps its idle value.
     ready_each_minute(&std::fs::read_to_string(LOAD_AVERAGE).ok()?)
 }
 
