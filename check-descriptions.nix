@@ -2302,7 +2302,8 @@
   '';
   lock-follows-runs-every-quarter-hour = ''
     lock-follows runs every 15 minutes in the background, catching up on a quarter slept
-    through, following mycelium alone unless the account names more
+    through, stopped after 10 minutes, following mycelium alone unless the account names more,
+    and an account naming no input is refused
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with

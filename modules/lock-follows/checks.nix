@@ -46,23 +46,42 @@ onLinux {
       '';
 
   # An account importing lock-follows runs it every 15 minutes in the
-  # background, catching up on a quarter slept through, for mycelium alone
-  # unless it names more.
+  # background, catching up on a quarter slept through, stopped after 10
+  # minutes, for mycelium alone unless it names more; one naming no input
+  # is refused.
   lock-follows-runs-every-quarter-hour =
     let
-      followed = account (bareNixos [
-        self.nixosModules.workstation
-        { home-manager.users.someone.imports = [ self.homeModules.lock-follows ]; }
-      ]);
+      importing =
+        settings:
+        account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.imports = [
+              self.homeModules.lock-follows
+              settings
+            ];
+          }
+        ]);
+      followed = importing { };
       service = followed.systemd.user.services.lock-follows.Service;
       timer = followed.systemd.user.timers.lock-follows.Timer;
+      refused =
+        home:
+        lib.any (
+          check: !check.assertion && lib.hasPrefix "jitsusama.lock-follows.inputs" check.message
+        ) home.assertions;
     in
     holds "lock-follows-runs-every-quarter-hour"
-      "lock-follows runs other than every 15 minutes, misses a quarter slept through, runs outside background.slice, or follows more than mycelium by default."
+      "lock-follows runs other than every 15 minutes, misses a quarter slept through, runs outside background.slice, runs past 10 minutes, follows more than mycelium by default, or takes no input unrefused."
       (
         timer.OnCalendar == "*:0/15"
         && timer.Persistent
         && service.Slice == "background.slice"
+        && service.TimeoutStartSec == "10min"
         && lib.all (lib.hasSuffix " -- mycelium") (lib.toList service.ExecStart)
+        && !refused followed
+        && refused (importing {
+          jitsusama.lock-follows.inputs = [ ];
+        })
       );
 }

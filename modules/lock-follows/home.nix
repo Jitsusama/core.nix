@@ -75,6 +75,14 @@ in
   };
 
   config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    # With none named, every run would only be asked wrongly.
+    assertions = [
+      {
+        assertion = cfg.inputs != [ ];
+        message = "jitsusama.lock-follows.inputs names no input, so every run of lock-follows would be asked wrongly. Name at least one, or don't import lock-follows.";
+      }
+    ];
+
     home.packages = [ program ];
 
     systemd.user.services.lock-follows = {
@@ -99,6 +107,9 @@ in
           ++ cfg.inputs
         );
         Environment = [ "PATH=${path}" ];
+        # A run takes seconds, so one hung on the network is stopped well
+        # before the next quarter's, not after core's three hours.
+        TimeoutStartSec = "10min";
         # Whatever the account runs comes first.
         Slice = "background.slice";
       };
