@@ -4156,8 +4156,10 @@ Singleton {
     // Each list's copies as relive last made them, beside the entries they
     // were made from (Pi.keptBy), so only a session the node's change named
     // is copied again, and alike passes the rest at once. In plain objects,
-    // so keeping them notifies nothing.
-    readonly property var copied: ({ live: {}, resting: {}, ending: {} })
+    // so keeping them notifies nothing, with no prototype, so a session
+    // keyed "__proto__" is kept as any other.
+    readonly property var copied: ({ live: Object.create(null), resting: Object.create(null),
+        ending: Object.create(null) })
     function relive() {
         // It reads nothing but its record, which Pi.keptBy relies on.
         const kitted = record => {
@@ -4216,7 +4218,7 @@ Singleton {
     // moves, rather than for every change to a session and looked through
     // for every session, which with a hundred sessions made a hundred lists
     // a change; a retitle, or the focus moving, makes nothing again.
-    property var niriWindows: ({ pids: {}, opened: {} })
+    property var niriWindows: SessionWindows.indexed([])
     // The records `niriWindows` was made from, by key, with no prototype,
     // as the daemon holds them, so a key "constructor" is a record's.
     property var windowsKept: Object.create(null)

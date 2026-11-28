@@ -81,6 +81,17 @@ QtObject {
                 Mending.deepOf(odd, { key: "machine:tern", kind: "constructor" }),
                 Mending.deepOf(odd, { key: "toString" })],
             [["presence"], ["step"], []]);
+        // A plain object's `__proto__` reads back what it was set to, so
+        // only the keys tell a kind kept from what it inherits.
+        Expect.same("and each is a key of its own", Object.keys(odd).sort(),
+            ["__proto__", "constructor"]);
+        const protoField = Mending.mended(
+            JSON.parse('{"key": "session:kestrel", "__proto__": {"step": 1, "at": 1}}'),
+            JSON.parse('{"__proto__": {"step": 2}}'), ["__proto__"]);
+        Expect.same("a field named as what a record inherits is a field of its own, mended deep",
+            [Object.keys(protoField), "step" in protoField,
+                Object.getPrototypeOf(protoField) === Object.prototype, protoField.__proto__],
+            [["key", "__proto__"], false, true, { step: 2, at: 1 }]);
 
         const by = { session: ["presence"] };
         Expect.same("a change's kind is the one it says",

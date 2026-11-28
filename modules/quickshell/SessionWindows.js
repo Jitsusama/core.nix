@@ -20,10 +20,13 @@ function moved(kept, record) {
 }
 
 // The windows by the process drawing them, and by the app id each opened
-// with, oldest first, as niri lists them.
+// with, oldest first, as niri lists them. Kept with no prototype, since
+// any program names its own app id: one opened as "constructor" found
+// the function every object inherits, and threw on it, so no window that
+// came or went after it was ever indexed.
 function indexed(records) {
-    const pids = {};
-    const opened = {};
+    const pids = Object.create(null);
+    const opened = Object.create(null);
     for (const record of records.slice().sort((a, b) => a.id - b.id)) {
         if (record.pid) {
             pids[record.pid] = (pids[record.pid] ?? []).concat([record]);

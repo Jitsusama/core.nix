@@ -278,6 +278,15 @@ ShellRoot {
                 claiming.key === "row:place:emoji", claiming.key);
             expect("while the run keeps the node's own key", runs.runs[0].key === "place:emoji",
                 runs.runs[0].key);
+
+            // A run whose session is named as what every object inherits
+            // has failed once that session is gone, as any other.
+            runs.records = [{ key: "run:fleet.orphan", kind: "run", id: "fleet.orphan",
+                about: "orphan", parent: "constructor", state: "running", since: "",
+                members: [{ id: "z", state: "running", model: "anthropic/opus" }] }];
+            const [orphan] = runs.everything();
+            expect("one whose session named constructor is gone has failed",
+                orphan?.glyph === Theme.glyph.failed, orphan?.glyph);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
