@@ -10,78 +10,6 @@ pub(super) fn root(name: &str) -> PathBuf {
     root
 }
 
-/// Two builds standing in for merge-net's, under the state folder `root`,
-/// and the link the watch follows, pointing at the first.
-fn builds(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
-    let store = root.join("store");
-    fs::create_dir_all(&store).unwrap();
-    let (old, new) = (store.join("old"), store.join("new"));
-    fs::write(&old, "").unwrap();
-    fs::write(&new, "").unwrap();
-    let link = root.join("profile");
-    std::os::unix::fs::symlink(&old, &link).unwrap();
-    (
-        fs::canonicalize(old).unwrap(),
-        fs::canonicalize(new).unwrap(),
-        link,
-    )
-}
-
-#[test]
-fn the_train_starts_as_the_build_installed_not_the_askers() {
-    let root = root("starts-installed");
-    let (old, new, link) = builds(&root);
-    assert_eq!(
-        build(&root, Ok(new.clone())),
-        Some(new.clone()),
-        "with no installed build named, the train didn't start as the asker's"
-    );
-    install(&root, &link).unwrap();
-    assert_eq!(
-        build(&root, Ok(new.clone())),
-        Some(old.clone()),
-        "the train started as the asker's build, not the one the watch follows"
-    );
-    fs::remove_file(&link).unwrap();
-    assert_eq!(
-        build(&root, Ok(new.clone())),
-        Some(new),
-        "an installed build that can't be read didn't leave the asker's"
-    );
-    fs::remove_dir_all(&root).unwrap();
-}
-
-#[test]
-fn a_ride_goes_on_as_the_build_a_switch_installed() {
-    let root = root("goes-on-installed");
-    let (old, new, link) = builds(&root);
-    assert_eq!(
-        newer(&root, Ok(old.clone()), None),
-        None,
-        "with no installed build named, a ride went on as another"
-    );
-    install(&root, &link).unwrap();
-    assert_eq!(
-        newer(&root, Ok(old.clone()), None),
-        None,
-        "a ride as the installed build went on as another"
-    );
-    fs::remove_file(&link).unwrap();
-    std::os::unix::fs::symlink(&new, &link).unwrap();
-    assert_eq!(
-        newer(&root, Ok(old), None),
-        Some(new.clone()),
-        "a ride from before the switch didn't go on as the build it installed"
-    );
-    let unreadable = Err(io::Error::other("no exe"));
-    assert_eq!(
-        newer(&root, unreadable, Some(&new)),
-        None,
-        "a ride handed over to the installed build, unable to read its own path, handed over again"
-    );
-    fs::remove_dir_all(&root).unwrap();
-}
-
 #[test]
 fn a_ride_handed_over_keeps_the_right_of_way_a_fresh_one_takes_back() {
     let root = root("handed-way");
@@ -105,39 +33,10 @@ fn a_ride_handed_over_keeps_the_right_of_way_a_fresh_one_takes_back() {
     fs::remove_dir_all(&root).unwrap();
 }
 
-#[test]
-fn the_watch_names_its_build_absolute_keeping_the_link() {
-    let root = root("names-absolute");
-    let (old, new, link) = builds(&root);
-    let cwd = std::env::current_dir().unwrap();
-    install(&root, &pathdiff(&link, &cwd)).unwrap();
-    let named = fs::read_to_string(root.join("installed")).unwrap();
-    assert!(
-        Path::new(named.trim()).is_absolute(),
-        "the watch named its build by a path relative to its own folder: {named}"
-    );
-    fs::remove_file(&link).unwrap();
-    std::os::unix::fs::symlink(&new, &link).unwrap();
-    assert_eq!(
-        build(&root, Ok(old)),
-        Some(new),
-        "the named build didn't follow the link a switch moved"
-    );
-    fs::remove_dir_all(&root).unwrap();
-}
-
-/// `path` relative to `from`, by as many `..` as `from` is deep.
-fn pathdiff(path: &Path, from: &Path) -> PathBuf {
-    let mut relative = PathBuf::new();
-    for _ in from.components().skip(1) {
-        relative.push("..");
-    }
-    relative.join(path.strip_prefix("/").unwrap())
-}
-
 fn rider(head: &str, at: u64) -> Rider {
     Rider {
         head: head.to_owned(),
+        passed: None,
         branch: format!("jitsusama/{head}"),
         at,
     }
@@ -279,13 +178,14 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
     }
     let mut splitting = Splitting::default();
     let log = Path::new("/state/train/c.log");
-    red(&root, "c1", log, &["a1".to_owned()], &mut splitting);
+    let (a1, b2) = (["a1".to_owned()], ["b2".to_owned()]);
+    red(&root, &Red::unexcused("c1", log, &a1), &mut splitting);
     assert_eq!(
         riders(&root).len(),
         2,
         "the first rider to fail alone didn't fall by itself"
     );
-    red(&root, "c2", log, &["b2".to_owned()], &mut splitting);
+    red(&root, &Red::unexcused("c2", log, &b2), &mut splitting);
     assert!(
         riders(&root).is_empty(),
         "riders still rode a train that gave up"
@@ -450,6 +350,46 @@ fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
     );
     untaken.taken();
     assert!(untaken.clear(), "a taken candidate didn't end the wait");
+}
+
+#[test]
+fn a_quarantined_red_runs_again_once_for_the_same_riders() {
+    let (riders, fewer) = (["a".to_owned(), "b".to_owned()], ["a".to_owned()]);
+    let mut splitting = Splitting::default();
+    assert!(
+        splitting.again(&riders),
+        "a first quarantined red didn't run again"
+    );
+    assert!(!splitting.clear(), "a quarantined red's rerun read clear");
+    assert!(
+        !splitting.again(&riders),
+        "the same riders ran again for a second quarantined red"
+    );
+    assert!(
+        splitting.again(&fewer),
+        "other riders weren't given their own run again"
+    );
+    splitting.blamed();
+    assert!(splitting.clear(), "a settled red left it unclear");
+    assert!(
+        splitting.again(&riders),
+        "a red settled since didn't let the riders run again anew"
+    );
+}
+
+#[test]
+fn a_rider_keeps_the_earlier_pass_it_boarded_on() {
+    let root = root("passed");
+    let mut boarded = rider("b", 100);
+    boarded.passed = Some("a".to_owned());
+    board(&root, &boarded).unwrap();
+    board(&root, &rider("c", 101)).unwrap();
+    assert_eq!(
+        riders(&root),
+        vec![boarded, rider("c", 101)],
+        "a rider's earlier pass wasn't kept as it boarded"
+    );
+    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

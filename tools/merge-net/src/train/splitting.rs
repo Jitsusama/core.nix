@@ -47,6 +47,10 @@ pub(super) struct Splitting {
     /// When the first of the candidates in a row no builder took ended;
     /// none since one was taken.
     untaken_since: Option<u64>,
+    /// The riders of the candidate that last ran again for a red wholly
+    /// on the quarantine list (`blame.rs`), so the same riders run again
+    /// once, however the run between ends; none since a red was settled.
+    reran: Option<Vec<String>>,
 }
 
 impl Splitting {
@@ -60,6 +64,7 @@ impl Splitting {
 
     /// A candidate of `riding` riders failed.
     pub(super) fn red(&mut self, riding: usize) -> After {
+        self.reran = None;
         if riding > 1 {
             self.suspects = riding;
             return After::Narrows;
@@ -70,6 +75,7 @@ impl Splitting {
             fell_alone: !twice,
             turned: false,
             untaken_since: None,
+            reran: None,
         };
         if twice { After::AllFall } else { After::Falls }
     }
@@ -93,8 +99,14 @@ impl Splitting {
     /// could drop it for a red or an outage not its own. After a rider
     /// fell alone, or GitHub refused the first rider, the next red or
     /// refusal drops every rider, a boarder whose red it isn't among them.
+    /// A run again for a quarantined red is no clear run either, since it
+    /// may be red again.
     pub(super) fn clear(&self) -> bool {
-        self.suspects == 0 && !self.fell_alone && !self.turned && self.untaken_since.is_none()
+        self.suspects == 0
+            && !self.fell_alone
+            && !self.turned
+            && self.untaken_since.is_none()
+            && self.reran.is_none()
     }
 
     /// A builder took a candidate, whatever it found.
@@ -102,11 +114,31 @@ impl Splitting {
         self.untaken_since = None;
     }
 
+    /// The red of a candidate of `riders` is wholly on the quarantine
+    /// list: whether it runs again, as the same riders do once, before
+    /// anyone is blamed for it.
+    pub(super) fn again(&mut self, riders: &[String]) -> bool {
+        if self.reran.as_deref() == Some(riders) {
+            return false;
+        }
+        self.reran = Some(riders.to_vec());
+        true
+    }
+
+    /// A red candidate's failures were put on the riders that moved them,
+    /// which fall: the rest ride the next candidate together, and the
+    /// search, if one went on, starts afresh, since its suspects fell.
+    pub(super) fn blamed(&mut self) {
+        self.suspects = 0;
+        self.reran = None;
+    }
+
     /// A candidate of `riding` riders landed.
     pub(super) fn landed(&mut self, riding: usize) {
         self.suspects = self.suspects.saturating_sub(riding);
         self.fell_alone = false;
         self.turned = false;
+        self.reran = None;
     }
 
     /// GitHub refused a passing candidate's first rider, which leaves the

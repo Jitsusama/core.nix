@@ -549,7 +549,7 @@ pub(super) fn excuses(
     // Each build asks the builders in turn, never two at once.
     let lent = std::cell::RefCell::new(lent);
     let mut base_build = |check: &str| {
-        let log = built_log(root, red.candidate, check, "at-base");
+        let log = built_log(root, red.candidate, check, AT_BASE);
         let (code, words) = lent
             .borrow_mut()
             .build(red.checkout, &flake, &log, &[check], red.base);
@@ -639,7 +639,7 @@ fn tell(root: &Path, url: &str, red: &Red<'_>, judged: &[(String, Blame)]) {
             ),
             Blame::Main => (
                 "train-failed-before",
-                built_log(root, red.candidate, check, "at-base"),
+                built_log(root, red.candidate, check, AT_BASE),
             ),
             Blame::Riders
             | Blame::Masked
@@ -724,9 +724,13 @@ fn moved_between(checkout: &Path, base: &str, candidate: &str) -> Option<Vec<Str
     )
 }
 
+/// What names a check's build at the base in its log's name, which
+/// `blame.rs` reads too for the files main already fails.
+pub(super) const AT_BASE: &str = "at-base";
+
 /// Where a build of `check` for a candidate writes its words, `how` saying
 /// which build it is.
-fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
+pub(super) fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
     super::folder(root).join(format!("{candidate}-{check}-{how}.log"))
 }
 

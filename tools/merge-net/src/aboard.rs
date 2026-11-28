@@ -48,7 +48,7 @@ pub fn boards(
         conflicts: &|| conflicts(commit, main),
         branch: &|| git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default(),
         drafted: &train::drafted,
-        offer: &|branch| train::offer(commit, branch),
+        offer: &|branch| train::offer(commit, (checked != commit).then_some(checked), branch),
         fell: &|| train::fell_said(commit),
     })
 }

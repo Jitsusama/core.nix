@@ -471,6 +471,7 @@ mod tests {
     fn ours(head: &str) -> Rider {
         Rider {
             head: head.to_owned(),
+            passed: None,
             branch: format!("jitsusama/{head}"),
             at: 10,
         }

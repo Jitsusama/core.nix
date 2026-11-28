@@ -14,7 +14,9 @@
 //! the state folder's `installed` as it starts, never as the build that
 //! asked, which may be a tree's or a profile's from before the last
 //! switch; and between candidates a ride a switch replaced goes on as the
-//! new build, in the same unit.
+//! new build, in the same unit. A train stopped while a candidate's gate
+//! ran, and started again, runs that candidate again while main hasn't
+//! moved and its riders are all still aboard (`running.rs`).
 //! The train cuts a candidate at origin's main in a checkout of its own,
 //! merges every rider still its pull request's head into it in the order
 //! they boarded, as GitHub's merge button words a merge, and runs the gate
@@ -39,15 +41,23 @@
 //! every failure and fail at its base as they fail at it, or that pass
 //! there and when built again at the candidate, lands as a pass would,
 //! each told to its owner (`flaky.rs`).
-//! A candidate that fails otherwise splits: the train takes the first half of its
-//! riders to board, and halves again while they fail, so the riders that
-//! broke nothing land together and the one that breaks it is found alone,
-//! five riders in five runs at most (`Splitting`). A train red for more
-//! than its riders gives up, and every rider runs again alone. A candidate
-//! no builder or evaluator took says nothing of its riders, unless its
-//! words name a failed check: the train cuts again a minute on, keeping
-//! its riders and its search, and only once its candidates have gone
-//! untaken for half an hour do the last one's riders fall.
+//! A candidate that fails otherwise first asks whose its failed checks
+//! are: one whose failures are each on the quarantine list runs once more
+//! with the same riders, and otherwise the riders whose own passes moved
+//! what failed, or keep no pass to say they didn't, or for a check every
+//! rider moved, whose own diffs touched a file its words name that main
+//! doesn't fail, fall at once while
+//! the rest ride on, unless that would be all of them or a failure is no
+//! rider's (`blame.rs`). Otherwise it splits: the train takes the first
+//! half of its riders to board, and halves again while they fail, so the
+//! riders that broke nothing land together and the one that breaks it is
+//! found alone, five riders in five runs at most (`Splitting`). A train
+//! red for more than its riders gives up, and every rider runs again
+//! alone. A candidate no builder or evaluator took says nothing of its
+//! riders, unless its words name a failed check: the train cuts again a
+//! minute on, keeping its riders and its search, and only once its
+//! candidates have gone untaken for half an hour do the last one's riders
+//! fall.
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
@@ -58,6 +68,7 @@
 //! Long because one ride, from boarding through each run to landing, is
 //! read here in order; its parts that stand alone are modules below.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -70,6 +81,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod blame;
 mod excused;
 mod flaky;
 mod gated;
@@ -78,6 +90,7 @@ mod installed;
 mod landed;
 mod landing;
 mod pulls;
+mod running;
 mod splitting;
 pub use gated::CHANGED_FAILED;
 use gated::{Gated, gated, words_of};
@@ -95,6 +108,9 @@ use splitting::{After, Splitting, UNTAKEN_FOR};
 pub struct Rider {
     /// The head that passed, as `ready` was asked about it.
     pub head: String,
+    /// The earlier commit whose pass `ready` let speak for the head, as
+    /// one for a rebased change does, when it wasn't the head's own.
+    pub passed: Option<String>,
     /// The branch its pull request merges from.
     pub branch: String,
     /// When it boarded, in seconds since the epoch.
@@ -134,7 +150,12 @@ fn fell_folder(root: &Path) -> PathBuf {
 pub fn board(root: &Path, rider: &Rider) -> io::Result<()> {
     let riders = riders_folder(root);
     fs::create_dir_all(&riders)?;
-    let said = json!({"head": rider.head, "branch": rider.branch, "at": rider.at});
+    let said = json!({
+        "head": rider.head,
+        "passed": rider.passed,
+        "branch": rider.branch,
+        "at": rider.at,
+    });
     fs::write(
         riders.join(format!("{}.json", rider.head)),
         format!("{said}\n"),
@@ -152,6 +173,7 @@ pub fn riders(root: &Path) -> Vec<Rider> {
             let said: Value = serde_json::from_str(&fs::read_to_string(entry.path()).ok()?).ok()?;
             Some(Rider {
                 head: said["head"].as_str()?.to_owned(),
+                passed: said["passed"].as_str().map(str::to_owned),
                 branch: said["branch"].as_str()?.to_owned(),
                 at: said["at"].as_u64()?,
             })
@@ -283,11 +305,12 @@ pub const UNIT: &str = "merge-net-train.service";
 /// What the unit's description says.
 const DESCRIBED: &str = "merge-net's train merges the changes that passed together";
 
-/// Board the change at `head`, asked from `branch`, and start the train
-/// unless it goes, saying what was done; nothing when the train can't
-/// take it and it runs again alone as before.
+/// Board the change at `head`, asked from `branch`, its pass the one at
+/// `passed` when that isn't its own, and start the train unless it goes,
+/// saying what was done; nothing when the train can't take it and it runs
+/// again alone as before.
 #[must_use]
-pub fn offer(head: &str, branch: &str) -> Option<String> {
+pub fn offer(head: &str, passed: Option<&str>, branch: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     let boarded = rider_at(&root, head).is_some();
     match seat(boarded, fell(&root, head)) {
@@ -296,6 +319,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         Seat::Board => {
             let rider = Rider {
                 head: head.to_owned(),
+                passed: passed.map(str::to_owned),
                 branch: branch.to_owned(),
                 at: crate::state::now(),
             };
@@ -489,11 +513,7 @@ fn say_it_runs(candidate: &str, merged: &[String]) {
     println!(
         "merge-net: the train runs changed-checks at {} over {}",
         short(candidate),
-        merged
-            .iter()
-            .map(|head| short(head))
-            .collect::<Vec<_>>()
-            .join(", ")
+        shorts(merged)
     );
 }
 
@@ -509,6 +529,25 @@ fn fall_conflicting(root: &Path, conflicted: &[String], base: &str) {
     }
 }
 
+/// The candidate the train runs next on `base` through `git`: the one
+/// `kept` from a ride a stop cut short, when it still speaks for its
+/// riders (`running.rs`), or else one cut afresh of `mergings`, each rider
+/// that conflicts falling from the train under `root`.
+fn cut_or_resume(
+    root: &Path,
+    kept: Option<running::Running>,
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    base: &str,
+    mergings: &[Merging],
+) -> Result<Cut, String> {
+    if let Some(done) = running::resumed(root, kept, git, base, mergings) {
+        return Ok(done);
+    }
+    let done = cut(git, base, mergings)?;
+    fall_conflicting(root, &done.conflicted, base);
+    Ok(done)
+}
+
 /// Open the train's run under `root`, `began` then, to changes that would
 /// merge alone. Only a clear run takes them, so none boards a red's search
 /// or an outage only to fall with its riders. One that boards rides the
@@ -521,17 +560,25 @@ fn open_the_run(root: &Path, began: u64) {
     );
 }
 
+/// The train's own checkout under `root`, cloned from `url` on its first
+/// ride. Candidates are cut and reset there, so no one's working tree is
+/// touched, and it is kept between rides so each fetches only what moved.
+fn checkout_of(root: &Path, url: &str) -> Result<PathBuf, String> {
+    let checkout = folder(root).join("checkout");
+    if !checkout.join(".git").exists() {
+        run_git(
+            &folder(root),
+            &["clone", "--quiet", url, &checkout.display().to_string()],
+        )?;
+    }
+    Ok(checkout)
+}
+
 /// Ride the train whose state is under `root` from the repository at
 /// `url`, until no one waits on it.
 fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let root = root.to_path_buf();
-    let checkout = folder(&root).join("checkout");
-    if !checkout.join(".git").exists() {
-        run_git(
-            &folder(&root),
-            &["clone", "--quiet", url, &checkout.display().to_string()],
-        )?;
-    }
+    let checkout = checkout_of(&root, url)?;
     let slug = slug_of(url);
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
@@ -539,6 +586,9 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let mut waits = pulls::Waits::new();
     let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
     let mut flakes = flaky::Flakes::default();
+    // Taken at the first cut, so only a candidate a stop cut short runs
+    // again.
+    let mut kept = running::kept(&root);
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -564,8 +614,10 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         }
         git(&["fetch", "--quiet", "origin", "main"])?;
         let base = git(&["rev-parse", "refs/remotes/origin/main"])?;
-        let done = cut(&git, &base, &mergings)?;
-        fall_conflicting(&root, &done.conflicted, &base);
+        // Read from main rather than the candidate, whose riders could
+        // otherwise excuse their own red by listing it.
+        let quarantine = git(&["show", &format!("{base}:{}", crate::world::QUARANTINE)]);
+        let done = cut_or_resume(&root, kept.take(), &git, &base, &mergings)?;
         if done.merged.is_empty() {
             continue;
         }
@@ -576,7 +628,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             open_the_run(&root, began);
         }
         say_it_runs(&candidate, &done.merged);
-        let (ended, code) = gate(&checkout, &log);
+        let (ended, code) = gate_kept(&root, &checkout, &log, &candidate, &base, &done.merged);
         let gated_red = flaky::Red {
             checkout: &checkout,
             base: &base,
@@ -592,7 +644,15 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 right_of_way::run_ends(&root);
                 splitting.taken();
                 way(&root, &Ended::Otherwise);
-                red(&root, &candidate, &log, &done.merged, &mut splitting);
+                let red_of = Red {
+                    checkout: &checkout,
+                    base: &base,
+                    candidate: &candidate,
+                    log: &log,
+                    merged: &done.merged,
+                    quarantine: quarantine.as_deref().unwrap_or_default(),
+                };
+                red(&root, &red_of, &mut splitting);
                 continue;
             }
             Gated::Unsent => {
@@ -790,9 +850,20 @@ fn unsent(
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
-/// `log`: the next takes fewer riders, or the rider that rode it alone
-/// falls, or every rider does, as `splitting` says.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+/// `log`: it runs once more, when its red is wholly on the quarantine
+/// list, or the riders that moved what failed fall (`blame.rs`), or else
+/// the next takes fewer riders, or the rider that rode it alone falls, or
+/// every rider does, as `splitting` says.
+fn red(root: &Path, red_of: &Red, splitting: &mut Splitting) {
+    if blamed(root, red_of, splitting) {
+        return;
+    }
+    let Red {
+        candidate,
+        log,
+        merged,
+        ..
+    } = *red_of;
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -825,6 +896,171 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         );
         let _ = fall(root, head, &said);
     }
+}
+
+/// Heads as they're said in the train's words: short, between commas.
+fn shorts(heads: &[String]) -> String {
+    heads
+        .iter()
+        .map(|head| short(head))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A candidate that failed: the train's checkout it was cut in, the main
+/// it was cut on, its commit, the log its words went to, the riders merged
+/// into it, and main's quarantine list as it was cut on.
+struct Red<'a> {
+    checkout: &'a Path,
+    base: &'a str,
+    candidate: &'a str,
+    log: &'a Path,
+    merged: &'a [String],
+    quarantine: &'a str,
+}
+
+#[cfg(test)]
+impl<'a> Red<'a> {
+    /// A red cut on a main whose quarantine list is empty.
+    fn unexcused(candidate: &'a str, log: &'a Path, merged: &'a [String]) -> Self {
+        Red {
+            checkout: Path::new("/nonexistent"),
+            base: "main",
+            candidate,
+            log,
+            merged,
+            quarantine: "",
+        }
+    }
+}
+
+/// Whether the red `red_of` was settled by what failed in it: run once
+/// more, being wholly on main's quarantine list, once for the same
+/// riders, or put on the riders whose own passes moved what failed, or
+/// for a check every rider moved, whose own diffs touched a file its words
+/// name, which fall while the rest ride on. Neither, and the search halves
+/// as before.
+fn blamed(root: &Path, red_of: &Red, splitting: &mut Splitting) -> bool {
+    let Red {
+        candidate,
+        log,
+        merged,
+        quarantine,
+        ..
+    } = *red_of;
+    let words = words_of(log);
+    let Some(failing) = blame::failed(&words) else {
+        return false;
+    };
+    let failing_said = failing.iter().cloned().collect::<Vec<_>>().join(", ");
+    let listed = serde_json::from_str::<Value>(quarantine)
+        .map(|list| blame::listed(&list))
+        .unwrap_or_default();
+    if blame::flaky(&failing, &listed) && splitting.again(merged) {
+        println!(
+            "merge-net: the candidate {} failed only in {failing_said}, each on the quarantine \
+             list, so it runs once more before any rider is blamed",
+            short(candidate)
+        );
+        return true;
+    }
+    if merged.len() < 2 {
+        return false;
+    }
+    let riders = suspects(root, red_of);
+    let named = named_anew(root, candidate, &words, &failing);
+    let Some(owners) = blame::owners(&failing, &riders, &named) else {
+        return false;
+    };
+    splitting.blamed();
+    println!(
+        "merge-net: the candidate {} failed changed-checks in {failing_said}, which {} of its \
+         {} riders moved, or touched a file its words name that main doesn't fail, or can't \
+         say they didn't, so they fall back to running again alone and the rest ride on",
+        short(candidate),
+        owners.len(),
+        merged.len()
+    );
+    let said = format!(
+        "the candidate {} failed changed-checks in {failing_said}, which its own pass moved, \
+         or its own diff touched a file those checks' words name that main doesn't fail, or \
+         it can't say it didn't; its words are in {}",
+        short(candidate),
+        log.display()
+    );
+    for head in &owners {
+        let _ = fall(root, head, &said);
+    }
+    true
+}
+
+/// Each rider of the red `red_of` as blame reads it: what its own pass
+/// moved, and what its own diff from the candidate's main touched.
+fn suspects(root: &Path, red_of: &Red) -> Vec<blame::Suspect> {
+    red_of
+        .merged
+        .iter()
+        .map(|head| blame::Suspect {
+            head: head.clone(),
+            moved: blame::moved_in(&passes_of(root, head)),
+            touched: blame::touched(red_of.checkout, red_of.base, head),
+        })
+        .collect()
+}
+
+/// The files each of the `failing` checks of `candidate` names in its
+/// gate's `words` that it doesn't name where the train built it at the
+/// candidate's base, under the state folder `root`.
+fn named_anew(
+    root: &Path,
+    candidate: &str,
+    words: &str,
+    failing: &BTreeSet<String>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    failing
+        .iter()
+        .map(|check| {
+            let at_base = flaky::built_log(root, candidate, check, flaky::AT_BASE);
+            let named = blame::named_anew(words, &blame::said_at_base(&at_base), check);
+            (check.clone(), named)
+        })
+        .collect()
+}
+
+/// What nix-offload kept of the passes that speak for the rider at `head`:
+/// its own, and the earlier one `ready` boarded it on, whose table says
+/// what it moved when the head's own run never ran.
+fn passes_of(root: &Path, head: &str) -> String {
+    let earlier = rider_at(root, head)
+        .and_then(|rider| rider.passed)
+        .map(|passed| crate::ready::record(&passed))
+        .unwrap_or_default();
+    format!("{}\n{earlier}", crate::ready::record(head))
+}
+
+/// Run the gate at `candidate`, which merged `merged` on `base`, in
+/// `checkout`, its words going to `log`, kept under `root` as running
+/// while it runs, so a train stopped meanwhile runs it again
+/// (`running.rs`): how it ended.
+fn gate_kept(
+    root: &Path,
+    checkout: &Path,
+    log: &Path,
+    candidate: &str,
+    base: &str,
+    merged: &[String],
+) -> (Gated, Option<i32>) {
+    running::keep(
+        root,
+        &running::Running {
+            candidate: candidate.to_owned(),
+            base: base.to_owned(),
+            merged: merged.to_vec(),
+        },
+    );
+    let gated = gate(checkout, log);
+    running::ended(root);
+    gated
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
