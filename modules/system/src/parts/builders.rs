@@ -468,6 +468,67 @@ mod tests {
     }
 
     #[test]
+    fn a_known_word_is_matched_in_the_form_a_look_would_show_it() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "answering ." },
+            { "name": "kite", "state": "running;", "lent": true,
+              "said": " pass\u{200b}ing." },
+            { "name": "tern", "state": "unknown." },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", Health::Good, "is lent and takes builds"),
+                ("osprey", Health::Good, "answers and takes builds"),
+                ("tern", Health::Good, "hasn't been heard from"),
+            ],
+            "a state or lender's word that a look would show as a known word is that word, \
+             so no look names a word this build knows"
+        );
+    }
+
+    #[test]
+    fn a_state_and_a_lender_s_word_are_read_by_their_first_line_as_a_reason_is() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "answering\nsince noon" },
+            { "name": "kite", "state": "running", "said": "dropped\nsince noon" },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                (
+                    "kite",
+                    Health::Watch,
+                    "runs but is left out, its proofs failing"
+                ),
+                ("osprey", Health::Good, "answers and takes builds"),
+            ],
+            "a state's or a lender's second line is no part of its word, as it is none of a \
+             reason's"
+        );
+    }
+
+    #[test]
+    fn a_padded_unknown_is_unheard_as_unknown_is() {
+        for state in [" unknown ", "\u{200b}unknown\u{1b}[0m", "unknown"] {
+            let said = read(&json!([{ "name": "tern", "state": state }]));
+            assert_eq!(
+                (said[0].1, said[0].2.as_str(), said[0].3.len()),
+                (Health::Good, "hasn't been heard from", 0),
+                "{state:?} is the node's unknown, a builder unheard by design, not a look"
+            );
+        }
+    }
+
+    #[test]
     fn builders_whose_names_read_alike_are_one_said_at_its_worst() {
         let failing = json!({ "name": "kite\u{200b}", "state": "not answering" });
         let fine = json!({ "name": "kite", "state": "answering" });
