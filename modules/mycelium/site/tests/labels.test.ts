@@ -338,3 +338,44 @@ it("networks whose keys differ only in spaces a page runs together are told apar
     `two told names read alike once drawn: ${told.map((said) => JSON.stringify(said)).join(" | ")}`,
   );
 });
+
+// The names the page gives its own groups of cells (view.js): the receptors
+// at the realm's edge, and the cells working alone, by machine where there
+// are several.
+const OWN = ["Receptors", "Working alone", "Working alone on the-longest-machine-in-the-fleet"];
+
+it("a network titled as one of the page's own groups carries its id", () => {
+  const titled = (id: string, name: string) => ({
+    key: `orchestration.${id}`,
+    name,
+    carries: name,
+  });
+  const networks = [
+    titled("heron1", "Receptors"),
+    titled("heron2", " Working\talone "),
+    titled("heron3", "Working alone on the-longest-machine-in-the-fleet-too"),
+    titled("heron4", "Chart the Harbour"),
+  ];
+  const told = toldApart(networks, OWN);
+  const labels = labelsApart(networks, told, clip, ROOM);
+  assert.deepEqual(
+    networks.map((n) => told.get(n.key)),
+    [
+      "Receptors (HERON1)",
+      "Working alone (HERON2)",
+      "Working alone on the-longest-machine-in-the-fleet-too",
+      "Chart the Harbour",
+    ],
+    "a network titled as one of the page's own groups was told by its title alone",
+  );
+  assert.deepEqual(
+    networks.map((n) => labels.get(n.key)),
+    [
+      "Receptors (HERON1)",
+      "Working alone (HERON2)",
+      "Working alone on the-longest... (HERON3)",
+      "Chart the Harbour",
+    ],
+    "a network labelled as one of the page's own groups was labelled by its title alone",
+  );
+});
