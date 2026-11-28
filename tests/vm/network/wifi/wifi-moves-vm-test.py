@@ -559,7 +559,7 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         assert "before it's dropped" not in said, f"wifid moved the card for a plain ask:\n{said}"
         # A hold let go after the line, or a move wpa_supplicant began on its own after the
         # signal, comes within milliseconds, so a second on either would have come.
-        machine.sleep(1)
+        machine.sleep(timedelta(seconds=1))
         held = held_at(machine)
         assert held == SECOND, f"a plain ask left the card held to {held}, not {SECOND}"
         machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
