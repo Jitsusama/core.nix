@@ -16,48 +16,28 @@
   # kept under the node's row:, what its Return posed is held by the record's
   # own key, and the answer standing in its row's place keeps the row's key
   # (modules/quickshell/tests/on-selection-keys.qml), with pi-verbs and the
-  # clipboard daemon stood in by one Daemon, answering an ask at once, and
-  # Ask's warm pi by the case.
+  # clipboard daemon stood in by one Daemon, answering an ask at once
+  # (modules/quickshell/tests/stand-ins/selection-daemon.qml), and Ask's warm
+  # pi by the case.
   the-selections-rows-keep-the-records-key =
-    let
-      daemon = pkgs.writeText "Daemon.qml" ''
-        import QtQuick
-
-        QtObject {
-          property string socket: ""
-          property string kind: ""
-          property bool connects: false
-          property bool live: true
-          readonly property var held: ({})
-          property var wire: null
-          signal told(var answer)
-          function ask(said, then) {
-            then({ ok: true, system: "Explain.", prompt: said.selection, use: "use-1" });
-          }
-          function tell(said) {}
-          function find(said, then) {}
-        }
+    pkgs.runCommandLocal "the-selections-rows-keep-the-records-key" { FONTCONFIG_FILE = noFonts; }
+      ''
+        ${copied [
+          "Words.qml"
+          "launcher/OnSelection.qml"
+          "launcher/Provider.qml"
+          "launcher/words.json"
+        ]}
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${../tests/on-selection-keys.qml} shell.qml
+        cp ${../../../tests/lib/Expect.js} Expect.js
+        cp ${../tests/stand-ins/selection-daemon.qml} Daemon.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        mkdir -m 700 $XDG_RUNTIME_DIR
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
       '';
-    in
-    pkgs.runCommandLocal "the-selections-rows-keep-the-records-key" { } ''
-      mkdir launcher
-      ${copied [
-        "Words.qml"
-        "launcher/OnSelection.qml"
-        "launcher/Provider.qml"
-        "launcher/words.json"
-      ]}
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../tests/on-selection-keys.qml} shell.qml
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${daemon} Daemon.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
-    '';
 
   # The selected text heads the place on one line, given way at a whole word
   # (VKCF3Z, e684d7ae), an answer is named by its first sentence, and pi-verbs'
