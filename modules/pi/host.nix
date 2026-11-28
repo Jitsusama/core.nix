@@ -567,23 +567,32 @@ in
               program its build can run, from the store and with its context,
               as lib.getExe gives one. A machine built on another platform,
               whose builder can't run its programs, goes without that proof,
-              and warns of it unless conversationHeapGrowthMayGoUnproven is
-              set.
+              and warns of it unless conversationHeapGrowthVouchedNode names
+              that node.
+            '';
+          };
+          conversationHeapGrowthVouchedNode = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = ''
+              The node known to take conversationHeapGrowingPercent, which a
+              machine built on another platform may run unproven, saying
+              nothing, while it is the realm's node. Its builder can't run the
+              node, so the machine warns, which a check that a machine
+              evaluates without warnings refuses. Name the node once one built
+              the same way on the machine's own platform shows it takes the
+              percent. Given another node, the realm warns again, so a node
+              changed later doesn't go unproven unsaid, unless it is named by
+              the expression giving the realm's node, which vouches unproven for
+              each later node. A machine built on its own platform is proven
+              either way.
             '';
           };
           conversationHeapGrowthMayGoUnproven = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = ''
-              Whether a machine built on another platform may go without the
-              proof that the realm's node takes conversationHeapGrowingPercent,
-              saying nothing. Its builder can't run the node, so the proof
-              stands unproven, and the machine warns of it, which a check that
-              a machine evaluates without warnings refuses. Set it once the
-              node is known to take the percent, as one built the same way on
-              the machine's own platform shows. A machine built on its own
-              platform is proven either way.
-            '';
+            visible = false;
+            description = "Gone, but kept so a machine setting it is told to name the node in conversationHeapGrowthVouchedNode.";
           };
           asyncContextFrame = lib.mkOption {
             type = lib.types.bool;
@@ -743,7 +752,11 @@ in
           if one then "Drop it." else "Drop each one."
         } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
-    ) cfg;
+    ) cfg
+    ++ lib.mapAttrsToList (realm: host: {
+      assertion = !host.conversationHeapGrowthMayGoUnproven;
+      message = "jitsusama.pi.hosts.${realm}.conversationHeapGrowthMayGoUnproven is gone: name the node known to take conversationHeapGrowingPercent in conversationHeapGrowthVouchedNode instead, so a node changed later warns again.";
+    }) cfg;
 
   # A realm whose proof stands unproven, as on a machine built on another
   # platform, says so here, since its switch can't.
@@ -757,7 +770,7 @@ in
         lib.optional (
           host.conversationHeapGrowingPercent != null
           && growthTaken ? unproven
-          && !host.conversationHeapGrowthMayGoUnproven
+          && toString host.conversationHeapGrowthVouchedNode != toString host.node
         ) growthTaken.unproven
       ) cfg
     )

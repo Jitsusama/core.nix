@@ -15,14 +15,25 @@ fi
 # when the node outlives its seconds, and 137 when it then outlives the
 # five more that follow its kill. A node can exit 124 itself, though, and
 # 137 is also a node the kernel killed for memory or something outside
-# killed, so either reads as slow only once the seconds have passed, timed
-# to the microsecond, since whole seconds would round a quick death up.
-started=${EPOCHREALTIME/./}
-timeout --kill-after=5 "$seconds" "$node" "$word" -e 0
+# killed, so either reads as slow only where timeout says it sent its
+# signal. That rests on timeout's word rather than the clock, which a
+# loaded builder or a clock step would make lie. Its words are read in C,
+# so no locale translates them, and from a file the node can't write to:
+# the node's own stderr goes straight on to the log, as each message says
+# it's above, so a line it leaves unended or one it prints can't hide or
+# fake timeout's.
+heard=$(mktemp)
+exec 3>&2
+# shellcheck disable=SC2016 # expanded by the inner shell, from its arguments
+LC_ALL=C timeout --verbose --kill-after=5 "$seconds" \
+  "$BASH" -c 'exec "$@" 2>&3 3>&-' node "$node" "$word" -e 0 2>"$heard"
 said=$?
-lasted=$((${EPOCHREALTIME/./} - started))
-outlived=$((lasted >= seconds * 1000000))
-case $said:$outlived in
+exec 3>&-
+fired=0
+if grep -q '^timeout: sending signal ' "$heard"; then
+  fired=1
+fi
+case $said:$fired in
   0:*) touch "$out" ;;
   9:*)
     echo "$refusal" >&2
