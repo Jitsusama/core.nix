@@ -232,7 +232,7 @@ fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
 }
 
 /// What a socket that can't be listened on fails as.
-fn unlistened(why: std::io::Error) -> Failure {
+fn unlistened(why: &std::io::Error) -> Failure {
     Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
 }
 
@@ -253,9 +253,12 @@ fn listening(socket: Option<&str>, lend: Option<&str>) -> Result<Handed, Failure
             .try_this("model-relay --origin URL --socket PATH"));
         }
     };
-    handed.agents.set_nonblocking(true).map_err(unlistened)?;
+    handed
+        .agents
+        .set_nonblocking(true)
+        .map_err(|why| unlistened(&why))?;
     if let Some(lend) = &handed.lend {
-        lend.set_nonblocking(true).map_err(unlistened)?;
+        lend.set_nonblocking(true).map_err(|why| unlistened(&why))?;
     }
     Ok(handed)
 }
@@ -331,11 +334,12 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
     let served = runtime.block_on(async move {
-        let listener = tokio::net::UnixListener::from_std(listener).map_err(unlistened)?;
+        let listener =
+            tokio::net::UnixListener::from_std(listener).map_err(|why| unlistened(&why))?;
         let lend = lend
             .map(tokio::net::UnixListener::from_std)
             .transpose()
-            .map_err(unlistened)?;
+            .map_err(|why| unlistened(&why))?;
         // systemd stops it with SIGTERM, which it takes as its word to
         // leave once its answers end rather than at once, and a second as
         // its word to leave now. Each is heard for as long as it runs,
