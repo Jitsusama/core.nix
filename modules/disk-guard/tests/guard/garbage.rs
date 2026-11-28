@@ -107,9 +107,14 @@ fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
     let nix = fake_nix(dir.path(), 2500);
     let dead = list(&nix, Path::new(STORE), false).unwrap();
     assert_eq!(dead.len(), 2500);
+    let sizes: Vec<u64> = dead
+        .iter()
+        .filter(|path| path.path == "/nix/store/p2499")
+        .map(|path| path.size)
+        .collect();
     assert!(
-        dead.iter()
-            .any(|path| path.path == "/nix/store/p2499" && path.size == 1)
+        sizes.contains(&1),
+        "the last batch's path isn't listed at 1 byte: {sizes:?}"
     );
     let asked = fs::read_to_string(dir.path().join("asked")).unwrap();
     assert_eq!(asked, "1000\n1000\n500\n");
@@ -377,7 +382,8 @@ fn temporary_roots_are_read_from_each_process_s_file() {
         roots,
         ["/nix/st", "/nix/store/a", "/nix/store/b", "/nix/store/c"]
     );
-    assert!(temp_roots(&dir.path().join("nowhere")).is_empty());
+    let none = temp_roots(&dir.path().join("nowhere"));
+    assert!(none.is_empty(), "roots from a missing folder: {none:?}");
 }
 
 // The two below give Linux's /proc as a folder of stand-ins. A Mac reads
@@ -428,7 +434,11 @@ fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
         ]
     );
     let nowhere = disk_guard::garbage::runtime_roots(&dir.path().join("nowhere"), &store);
-    assert!(nowhere.paths.is_empty() && nowhere.links.is_empty());
+    assert_eq!(
+        (nowhere.paths.len(), nowhere.links.len()),
+        (0, 0),
+        "held from a missing folder: {nowhere:?}"
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -764,5 +774,6 @@ fn nix_path_info_is_read_for_what_each_dead_path_weighs_and_refers_to() {
         parse("[]").is_err(),
         "the older list shape isn't guessed at"
     );
-    assert!(parse(r#"{"/nix/store/x": {"narSize": 1}}"#).is_err());
+    parse(r#"{"/nix/store/x": {"narSize": 1}}"#)
+        .expect_err("a path with no registration time or references was read");
 }
