@@ -174,7 +174,7 @@ in
     shell.reports = lib.mkForce false;
   };
 
-  # With reports off, a lagging key's line says an arrow whole and a step by
+  # With reports off, a lagging key's line says down and up whole and a step by
   # its arrow and the launcher's own place it took, by key, as each of
   # keyTimed's callers in Launcher.qml says its key is, a key listed without
   # an answer and the answer late count its letters, and a program's lagging
@@ -335,6 +335,7 @@ in
     pkgs.runCommandLocal "the-launcher-remakes-what-it-holds" { } ''
       cp ${../tests/held.qml} held.qml
       cp ${../launcher/Held.js} Held.js
+      cp ${../launcher/Thrown.js} Thrown.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -860,6 +861,7 @@ in
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a
   # key's act is said shown by the first frame begun after its refresh, and
+  # what waits on a frame runs each in turn though one throws, and
   # an opening weighs the foot's verbs only once its words or face change,
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of
@@ -889,6 +891,7 @@ in
       cp ${../launcher/Presented.js} Presented.js
       cp ${../launcher/Spots.js} Spots.js
       cp ${../launcher/Thread.js} Thread.js
+      cp ${../launcher/Thrown.js} Thrown.js
       cp ${../launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

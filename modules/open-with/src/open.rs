@@ -377,7 +377,11 @@ mod tests {
         let processes = &listed[0]["tabs"][0]["windows"][0]["foreground_processes"];
         assert_eq!(processes[0]["pgrp"], 7);
         assert_eq!(processes[1]["pgrp"], 7);
-        assert!(processes[2].get("pgrp").is_none());
+        assert_eq!(
+            processes[2].get("pgrp"),
+            None,
+            "a process gone has no group to give"
+        );
     }
 
     #[test]

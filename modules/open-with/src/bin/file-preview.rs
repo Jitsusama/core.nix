@@ -554,14 +554,18 @@ mod tests {
         read.truncate(READ + 1);
         let lines = lines_of(&read).unwrap();
         assert_eq!(lines.len(), LINES);
-        assert!(lines.iter().all(|line| line == "a line"));
+        assert_eq!(
+            lines.iter().find(|line| *line != "a line"),
+            None,
+            "every line shown should be whole"
+        );
     }
 
     #[test]
     fn a_character_cut_by_the_read_is_still_text() {
         let mut read = vec![b'a'; READ - 1];
         read.extend("é\n".as_bytes());
-        assert!(lines_of(&read).is_some());
+        lines_of(&read).expect("a read ending in a character it cut was taken for no text");
     }
 
     #[test]
@@ -613,7 +617,11 @@ mod tests {
         assert_eq!(said.len(), 4);
         assert_eq!(said[0]["count"], 2);
         assert_eq!(said[1], json!({}));
-        assert!(said[2]["error"].as_str().unwrap().contains("gone"));
+        let error = said[2]["error"].as_str().unwrap();
+        assert!(
+            error.contains("gone"),
+            "a missing folder's error should name it: {error}"
+        );
         assert_eq!(said[3]["error"], USAGE);
         fs::remove_dir_all(folder).unwrap();
     }
@@ -647,7 +655,10 @@ mod tests {
         assert_eq!(left, [".being-made.png", "mid.png", "new.png"]);
         // However small the cap, the one just made, the newest, is kept.
         pruned(&folder, 0);
-        assert!(folder.join("new.png").is_file());
+        assert!(
+            folder.join("new.png").is_file(),
+            "the newest preview should be kept, however small the cap"
+        );
         fs::remove_dir_all(folder).unwrap();
     }
 

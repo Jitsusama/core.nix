@@ -609,35 +609,51 @@ fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_u
 #[test]
 fn a_link_put_above_the_copy_before_it_s_entered_leaves_it_untaken() {
     // A find of what isn't a file or a folder that, once it has looked,
-    // moves the quest's scratch aside and puts a link at its name to a
-    // decoy holding the job's folders, as a job of the quest may
-    // meanwhile: the cd and the copy's name read again then both lead into
-    // the decoy, so only where the copy was as it was made tells.
-    let finding = refusing(
-        "find",
-        "*\" -type l -o -type p \"*",
-        "find \"$@\"; found=$?; s=${1%/*/*}; [ -e \"$HOME/aside\" ] ||
-         { mkdir -p \"$HOME/decoy/${1#\"$s\"/}/sub/deep\" && mv \"$s\" \"$HOME/aside\" &&
-           ln -s \"$HOME/decoy\" \"$s\"; }; exit $found",
-    );
-    let (code, err, home) = far_line_in(
-        Path::new("sub/deep"),
-        Left::Whole,
-        &[("sub/deep/x", "x")],
-        "touch \"$HOME/ran\"",
-        &kind(""),
-        None,
-        &[(finding.0, finding.1.as_str())],
-    );
-    assert!(
-        home.join("aside").exists() && !home.join("ran").exists(),
-        "the job ran in a decoy reached through a link put above its copy ({code:?}): {err}"
-    );
-    assert!(
-        code == Some(75) && err.contains("the job's copy was moved or linked from its place"),
-        "the far line didn't leave the job untaken and say its copy moved ({code:?}): {err}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // moves the folder the quest's scratch lies in aside and puts a link
+    // at its name to a decoy holding the job's folders, as a job of the
+    // quest may meanwhile: the cd and the copy's name read again then both
+    // lead into the decoy, so only where the copy was as it was made
+    // tells. A link at the scratch itself is refused by name before the
+    // cd, as `copies` refuses it, so the copy stays.
+    for (above, says) in [
+        (
+            "${1%/*/*/*}",
+            "the job's copy was moved or linked from its place",
+        ),
+        (
+            "${1%/*/*}",
+            "or one stands at the quest's scratch, so its copy stays",
+        ),
+    ] {
+        let finding = refusing(
+            "find",
+            "*\" -type l -o -type p \"*",
+            &format!(
+                "find \"$@\"; found=$?; s={above}; [ -e \"$HOME/aside\" ] ||
+                 {{ mkdir -p \"$HOME/decoy/${{1#\"$s\"/}}/sub/deep\" &&
+                   mv \"$s\" \"$HOME/aside\" && ln -s \"$HOME/decoy\" \"$s\"; }}; exit $found"
+            ),
+        );
+        let (code, err, home) = far_line_in(
+            Path::new("sub/deep"),
+            Left::Whole,
+            &[("sub/deep/x", "x")],
+            "touch \"$HOME/ran\"",
+            &kind(""),
+            None,
+            &[(finding.0, finding.1.as_str())],
+        );
+        assert!(
+            home.join("aside").exists() && !home.join("ran").exists(),
+            "the job ran in a decoy reached through a link put at {above} ({code:?}): {err}"
+        );
+        assert!(
+            code == Some(75) && err.contains(says),
+            "the far line didn't leave the job untaken past a link put at {above}, saying \
+             {says:?} ({code:?}): {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 #[test]

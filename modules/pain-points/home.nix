@@ -41,8 +41,9 @@ in
   home.packages = [ package ];
 
   # Made at login, so hear's first run can write there before any pi
-  # session has made it. Its lines say what each session needed of
-  # another, so only his account reads it.
+  # session has made it. Its lines say what one session needed of
+  # another, so only his account reads it. The harness names no mode of
+  # its own, and runs as his account, so this one costs it nothing.
   systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} 0700 - - -" ];
 
   systemd.user.services.pain-points = {

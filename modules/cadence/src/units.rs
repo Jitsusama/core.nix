@@ -8,6 +8,10 @@
 //! the unit's owner once for each spell, with since when and its last
 //! error line. `read` reads the journal, systemd and the sockets; the rest
 //! is a decision over what was read, and main.rs sends.
+//!
+//! Long because each thing told (a loop, a failure, a daemon's source) is
+//! decided here beside the night's journal that shows it, replayed tick by
+//! tick in the tests.
 
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Write};
@@ -46,11 +50,26 @@ pub const BROKEN: [&str; 3] = ["signed-out", "unreachable", "refused"];
 /// unit's process died, as opposed to one asked for by a switch or a person.
 pub const RESTART_SCHEDULED: &str = "5eb03494b6584870a536b337290809b3";
 
-/// One restart systemd scheduled, of `unit`, at a moment in seconds.
+/// systemd's journal message for a unit's process ending, with how it
+/// ended (`EXIT_CODE`, "exited" when it exited itself) and its status.
+pub const PROCESS_EXITED: &str = "98e322203f7a4ed290d09fe03c09fe15";
+
+/// How long before the restarts counted their exits are read, so the exit
+/// before the first restart counted is read too: well past the longest
+/// wait before a restart of a unit naming retry statuses, repos-refresh's
+/// 30 seconds, and the account's other units' 60.
+const EXITS_BEFORE: i64 = 5 * 60;
+
+/// One restart systemd scheduled, of `unit`, at a moment in seconds; the
+/// status its process exited with just before, when it exited itself
+/// rather than being killed; and whether any exit of it was read before
+/// it, since systemd journals a failed exit or a kill but not a clean one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Restart {
     pub unit: String,
     pub at: i64,
+    pub after: Option<u32>,
+    pub exited: bool,
 }
 
 /// A unit in the failed state, since when, when systemd says, and whether
@@ -86,10 +105,20 @@ pub struct Daemon {
     pub answer: Answer,
 }
 
-/// What one tick read.
+/// What one tick read. `retries` are, for each unit restarted after an
+/// exit of its own, the statuses its `RestartForceExitStatus` names: the
+/// unit retries on these by design, as repos-refresh does on 69 while the
+/// network is away, so a restart after one is no loop, and its start limit
+/// fails it, told as failed, if the retries never end. `quiet` are those
+/// whose retries are clean exits systemd doesn't journal, as the build
+/// lenders' 75 and 100 are, also their `SuccessExitStatus`: restarted
+/// only on failure, with no exit read before, such a restart followed one
+/// of those, as a failure or a kill is journalled.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Read {
     pub restarts: Vec<Restart>,
+    pub retries: BTreeMap<String, Vec<u32>>,
+    pub quiet: std::collections::BTreeSet<String>,
     pub failed: Vec<Failed>,
     pub daemons: Vec<Daemon>,
 }
@@ -149,21 +178,70 @@ pub fn answer(line: &str) -> Answer {
     Answer::Answered(sources)
 }
 
-/// Reads the restarts in journalctl's JSON lines, one object a line.
+/// Reads the restarts in journalctl's JSON lines, one object a line, in
+/// the journal's order, each with the status of its unit's exit before
+/// it. A line of a process's exit is no restart; any other is one.
 #[must_use]
 pub fn restarts(journal: &str) -> Vec<Restart> {
-    journal
+    let mut exited: BTreeMap<String, Option<u32>> = BTreeMap::new();
+    let mut restarts = Vec::new();
+    for entry in journal
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter_map(|entry| {
-            let unit = entry.get("USER_UNIT").or_else(|| entry.get("UNIT"))?;
-            let micros: i64 = entry.get("__REALTIME_TIMESTAMP")?.as_str()?.parse().ok()?;
-            Some(Restart {
-                unit: unit.as_str()?.to_owned(),
-                at: micros / 1_000_000,
-            })
-        })
+    {
+        let field = |name: &str| entry.get(name).and_then(serde_json::Value::as_str);
+        let Some(unit) = field("USER_UNIT").or_else(|| field("UNIT")) else {
+            continue;
+        };
+        if field("MESSAGE_ID") == Some(PROCESS_EXITED) {
+            let status = field("EXIT_STATUS").and_then(|s| s.parse().ok());
+            let own = field("EXIT_CODE") == Some("exited");
+            exited.insert(unit.to_owned(), status.filter(|_| own));
+            continue;
+        }
+        let Some(micros) = field("__REALTIME_TIMESTAMP").and_then(|t| t.parse::<i64>().ok()) else {
+            continue;
+        };
+        let exit = exited.remove(unit);
+        restarts.push(Restart {
+            unit: unit.to_owned(),
+            at: micros / 1_000_000,
+            after: exit.flatten(),
+            exited: exit.is_some(),
+        });
+    }
+    restarts
+}
+
+/// The exit statuses `systemctl show -p RestartForceExitStatus --value`
+/// names, the numbers alone: a signal it names is a kill, which is no
+/// exit of the unit's own.
+#[must_use]
+pub fn retry_statuses(shown: &str) -> Vec<u32> {
+    shown
+        .split_whitespace()
+        .filter_map(|word| word.parse().ok())
         .collect()
+}
+
+/// A unit's retry statuses, and whether its retries are quiet, from
+/// `systemctl show -p Restart -p RestartForceExitStatus -p
+/// SuccessExitStatus`'s `Key=value` lines: quiet when it restarts only
+/// on failure and every retry status is a success status too.
+#[must_use]
+pub fn retrying(shown: &str) -> (Vec<u32>, bool) {
+    let value = |key: &str| {
+        shown
+            .lines()
+            .find_map(|line| line.strip_prefix(key)?.strip_prefix('='))
+            .unwrap_or_default()
+    };
+    let statuses = retry_statuses(value("RestartForceExitStatus"));
+    let succeeding = retry_statuses(value("SuccessExitStatus"));
+    let quiet = value("Restart") == "on-failure"
+        && !statuses.is_empty()
+        && statuses.iter().all(|s| succeeding.contains(s));
+    (statuses, quiet)
 }
 
 /// Reads what a tick needs: the restarts systemd scheduled in the
@@ -180,16 +258,45 @@ pub fn read(at: i64, now: bool, runtime: Option<&Path>) -> Read {
             "json",
             "--no-pager",
             "--since",
-            &format!("@{}", at - WITHIN),
+            &format!("@{}", at - WITHIN - EXITS_BEFORE),
             "--until",
             &format!("@{at}"),
             &format!("MESSAGE_ID={RESTART_SCHEDULED}"),
+            &format!("MESSAGE_ID={PROCESS_EXITED}"),
         ],
     );
     let mut read = Read {
         restarts: restarts(&journal.unwrap_or_default()),
         ..Read::default()
     };
+    // The exits before were read only to pair them; a restart counts in
+    // the `WITHIN` alone, as `cadence units` says them.
+    read.restarts.retain(|r| r.at > at - WITHIN);
+    let retried: std::collections::BTreeSet<String> = read
+        .restarts
+        .iter()
+        .filter(|r| (r.after.is_some() || !r.exited) && !a_run(&r.unit))
+        .map(|r| r.unit.clone())
+        .collect();
+    for unit in retried {
+        let show = [
+            "--user",
+            "show",
+            "-p",
+            "Restart",
+            "-p",
+            "RestartForceExitStatus",
+            "-p",
+            "SuccessExitStatus",
+            "--",
+            &unit,
+        ];
+        let (statuses, quiet) = retrying(&run("systemctl", &show).unwrap_or_default());
+        if quiet {
+            read.quiet.insert(unit.clone());
+        }
+        read.retries.insert(unit, statuses);
+    }
     if !now {
         return read;
     }
@@ -352,10 +459,18 @@ pub fn due(
 fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) -> Vec<Broken> {
     let mut broken = Vec::new();
     let mut looping: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
+    let retry = |r: &Restart| {
+        let listed = r.after.is_some_and(|status| {
+            read.retries
+                .get(&r.unit)
+                .is_some_and(|s| s.contains(&status))
+        });
+        listed || (!r.exited && read.quiet.contains(&r.unit))
+    };
     for r in read
         .restarts
         .iter()
-        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit))
+        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit) && !retry(r))
     {
         looping.entry(&r.unit).or_default().push(r.at);
     }
@@ -466,6 +581,8 @@ mod tests {
             .map(|&at| Restart {
                 unit: unit.to_owned(),
                 at,
+                after: None,
+                exited: false,
             })
             .collect()
     }
@@ -711,14 +828,164 @@ mod tests {
             [
                 Restart {
                     unit: "slack-unreads.service".into(),
-                    at: 1_794_620_862
+                    at: 1_794_620_862,
+                    after: None,
+                    exited: false,
                 },
                 Restart {
                     unit: "merge-net.service".into(),
-                    at: 1_794_620_013
+                    at: 1_794_620_013,
+                    after: None,
+                    exited: false,
                 },
             ],
             "each line's unit and moment, in seconds"
+        );
+    }
+
+    /// A journal line, as journalctl writes them: a process's exit, or a
+    /// restart scheduled after it.
+    fn exit(unit: &str, code: &str, status: &str) -> String {
+        serde_json::json!({
+            "__REALTIME_TIMESTAMP": "1794620800000000", "USER_UNIT": unit,
+            "MESSAGE_ID": PROCESS_EXITED, "EXIT_CODE": code, "EXIT_STATUS": status,
+        })
+        .to_string()
+    }
+
+    fn restart(unit: &str, seconds: i64) -> String {
+        serde_json::json!({
+            "__REALTIME_TIMESTAMP": format!("{seconds}000000"), "USER_UNIT": unit,
+            "MESSAGE_ID": RESTART_SCHEDULED,
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_restart_carries_the_status_its_unit_exited_with_just_before() {
+        // Two units' exits come before either's restart, as when the
+        // network drops, so each must keep its own.
+        let journal = [
+            exit("repos-refresh.service", "exited", "69"),
+            exit("pi-sweep.service", "killed", "15"),
+            restart("repos-refresh.service", 100),
+            // Restarted again with no exit read before it.
+            restart("repos-refresh.service", 200),
+            restart("pi-sweep.service", 300),
+        ]
+        .join("\n");
+        let after: Vec<(String, Option<u32>, bool)> = restarts(&journal)
+            .into_iter()
+            .map(|r| (r.unit, r.after, r.exited))
+            .collect();
+        assert_eq!(
+            after,
+            [
+                ("repos-refresh.service".to_owned(), Some(69), true),
+                ("repos-refresh.service".to_owned(), None, false),
+                ("pi-sweep.service".to_owned(), None, true),
+            ],
+            "a restart didn't carry its own exit's status, took another unit's, or a kill's \
+             signal was read as one"
+        );
+    }
+
+    #[test]
+    fn retry_statuses_read_the_numbers_and_quiet_ones_are_clean_on_failure_alone() {
+        assert_eq!(
+            (
+                retry_statuses("75 100"),
+                retry_statuses("69 SIGHUP\n"),
+                retry_statuses("")
+            ),
+            (vec![75, 100], vec![69], vec![]),
+            "a unit's retry statuses were misread"
+        );
+        let shown = |restart: &str, force: &str, success: &str| {
+            format!(
+                "Restart={restart}\nRestartForceExitStatus={force}\nSuccessExitStatus={success}\n"
+            )
+        };
+        assert_eq!(
+            [
+                retrying(&shown("on-failure", "75 100", "75 100")),
+                retrying(&shown("on-failure", "69", "")),
+                retrying(&shown("always", "75 100", "75 100")),
+                retrying(&shown("on-failure", "75 100", "75")),
+                retrying(&shown("on-failure", "", "")),
+            ],
+            [
+                (vec![75, 100], true),
+                (vec![69], false),
+                (vec![75, 100], false),
+                (vec![75, 100], false),
+                (vec![], false),
+            ],
+            "a unit's retries were read quiet though systemd journals some of their exits, \
+             or not quiet though it journals none"
+        );
+    }
+
+    #[test]
+    fn a_unit_retrying_on_its_own_listed_status_is_no_loop_and_any_other_still_is() {
+        let restarted = |unit: &str, after: Option<u32>| -> Vec<Restart> {
+            [TICK + 60, TICK + 120, TICK + 180]
+                .iter()
+                .map(|&at| Restart {
+                    unit: unit.to_owned(),
+                    at,
+                    after,
+                    exited: after.is_some(),
+                })
+                .collect()
+        };
+        let mut restarts = restarted("repos-refresh.service", Some(69));
+        // Another unit's listed status is no retry of this one's.
+        restarts.extend(restarted("nix-offload-more.service", Some(69)));
+        restarts.extend(restarted("slack-unreads.service", None));
+        // A lender's retries leave no exit, as systemd journals no clean
+        // one; a kill of it is journalled, and counts.
+        let mut quiet = restarted("nix-offload.service", None);
+        let mut killed = restarted("nix-offload-vm.service", None);
+        for r in &mut killed {
+            r.exited = true;
+        }
+        // Two listed retries and one other restart: only one counts.
+        quiet[1].exited = true;
+        restarts.extend(quiet);
+        restarts.extend(killed);
+        let lender = |unit: &str| (unit.to_owned(), vec![75, 100]);
+        let read = Read {
+            restarts,
+            retries: [
+                ("repos-refresh.service".to_owned(), vec![69]),
+                lender("nix-offload-more.service"),
+                lender("nix-offload.service"),
+                lender("nix-offload-vm.service"),
+            ]
+            .into(),
+            quiet: [
+                "nix-offload.service",
+                "nix-offload-more.service",
+                "nix-offload-vm.service",
+            ]
+            .map(str::to_owned)
+            .into(),
+            ..Read::default()
+        };
+        let told: Vec<String> = due(&read, &mut Told::default(), TICK + 200, watchdog, clock)
+            .into_iter()
+            .map(|tell| tell.unit)
+            .collect();
+        assert_eq!(
+            told,
+            [
+                "nix-offload-more.service",
+                "nix-offload-vm.service",
+                "slack-unreads.service"
+            ],
+            "a retry on a listed status, or a quiet one, was told as a loop, or a loop on \
+             another status or a kill wasn't"
         );
     }
 }

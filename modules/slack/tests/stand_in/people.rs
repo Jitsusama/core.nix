@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use super::{Heard, StandIn, WORDS, cache, credentials, forget};
+use super::{Heard, StandIn, WORDS, cache, credentials, forget, no_sign_in, shut_out, told_of};
 
 /// Runs the program over the stand-in, given these lines, and says what
 /// it said back, a line each. What it keeps goes in a cache home beside
@@ -40,21 +40,44 @@ fn started(origin: &str, credentials: &PathBuf) -> Child {
     program(origin, credentials).spawn().unwrap()
 }
 
-/// The program to run over Slack at `origin` with this sign-in, and only
-/// that one: never one the keyring of whoever runs the tests would give,
-/// which would reach the stand-in and be printed by any assert of what
-/// it heard.
+/// The program to run over Slack at `origin` with this sign-in, reading
+/// nothing of whoever runs the tests that `shut_out` takes away. A case
+/// handing it the launcher's words sets them after.
 fn program(origin: &str, credentials: &PathBuf) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_slack-people"));
     command
         .arg(credentials)
         .arg(origin)
         .env("XDG_CACHE_HOME", cache(credentials))
-        .env_remove("SIGN_IN_KEYRING")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    shut_out(&mut command);
     command
+}
+
+#[test]
+fn slack_people_reads_nothing_of_whoever_runs_it_but_what_the_case_sets() {
+    let path = PathBuf::from("sign-in.json");
+    assert_eq!(
+        told_of(&program("http://origin", &path)),
+        [
+            ("SIGN_IN_KEYRING", None),
+            ("LAUNCHER_WORDS", None),
+            ("NOTIFY_SOCKET", None)
+        ]
+    );
+    let mut words = program("http://origin", &path);
+    words.env("LAUNCHER_WORDS", WORDS);
+    assert_eq!(
+        told_of(&words),
+        [
+            ("SIGN_IN_KEYRING", None),
+            ("LAUNCHER_WORDS", Some(WORDS.to_owned())),
+            ("NOTIFY_SOCKET", None)
+        ],
+        "the words a case hands it after are kept"
+    );
 }
 
 /// Ada as the program says her, her zone with her, active.
@@ -555,7 +578,7 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
 #[test]
 fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
     let stand_in = StandIn::new(slack);
-    let missing = std::env::temp_dir().join("slack-people-no-such-file.json");
+    let missing = no_sign_in("people-none");
     let said = told(&stand_in, &missing, "ada@example.com\n?grace@example.com\n");
     assert_eq!(said, [r#"{"signedIn":false}"#; 2]);
     let heard = stand_in.heard();

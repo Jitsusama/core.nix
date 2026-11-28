@@ -447,7 +447,10 @@ mod tests {
         let link = &connections(&listed(&[entry]))[0];
         assert!(link.outgoing, "this end started it");
         assert!(!link.central(), "the other end leads it");
-        assert!(link.authenticated() && link.encrypted() && link.secure());
+        assert!(
+            link.authenticated() && link.encrypted() && link.secure(),
+            "its mode should say it is authenticated, encrypted and secure: {link:?}"
+        );
     }
 
     /// An adapter's `hci_dev_info`, as the kernel fills it.
