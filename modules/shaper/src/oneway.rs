@@ -989,10 +989,10 @@ impl Way {
         // by cable came while the VPN's own queue was held, which is why
         // its seconds count none.
         let dropping = heard && ours.queued && ours.waiting && lost >= offered * DROPPED_PAST;
-        // A moment with nothing queued offers the router nothing to drop,
-        // so it says nothing of a stand's quiet (drops stand longer round
-        // 5's F2).
-        let telling = heard && ours.queued;
+        // A moment with nothing queued and waiting offers the router nothing
+        // to drop, so it says nothing of a stand's quiet (drops stand longer
+        // round 5's F2, round 6's F12).
+        let telling = heard && ours.queued && ours.waiting;
         let by_drops = self.count_drops(at, dt, dropping, telling) && (backing_off || !line_full);
         // With the other way's queue standing late, our flows wait on acks
         // that come late, so they send under any rate, the router's line
@@ -6128,28 +6128,65 @@ mod tests {
         );
     }
 
-    // A moment with nothing queued offers the router nothing to drop, so
-    // an idle stand isn't heard quiet (drops stand longer round 5's F2).
+    // A moment with nothing queued and waiting offers the router nothing to
+    // drop, so an idle stand isn't heard quiet (drops stand longer round
+    // 5's F2, round 6's F12).
     #[test]
     fn an_idle_moment_says_nothing_of_a_stand_s_quiet() {
-        let mut c = anchored(12_000.0);
-        let up = &mut c.up;
-        let mut at = 0.0;
-        while at < 10.0 {
-            up.own(
-                at,
-                1.0,
-                Ours::default(),
-                (1_000.0, 1_000.0),
-                Tunnel::Unheard,
+        let queued = Ours {
+            queued: true,
+            ..Ours::default()
+        };
+        for (how, ours) in [("with nothing queued", Ours::default()), ("queued", queued)] {
+            let mut c = anchored(12_000.0);
+            let up = &mut c.up;
+            let mut at = 0.0;
+            while at < 10.0 {
+                up.own(at, 1.0, ours, (1_000.0, 1_000.0), Tunnel::Unheard);
+                at += 1.0;
+            }
+            assert!(
+                up.heard_s.abs() < 1e-9,
+                "ten seconds {how} with nothing waiting were heard for {} s",
+                up.heard_s
             );
-            at += 1.0;
         }
-        assert!(
-            up.heard_s.abs() < 1e-9,
-            "ten idle seconds were heard for {} s",
-            up.heard_s
-        );
+    }
+
+    // Only a moment heard with something queued and waiting tells of a
+    // stand's quiet: one waiting with nothing queued offers the router
+    // nothing to drop either, and one beside a copy at home that outweighs
+    // what crossed isn't heard, so neither counts toward it. The last case
+    // shows such a moment is counted at all (drops stand longer round 6's
+    // F23).
+    #[test]
+    fn only_a_heard_moment_queued_and_waiting_tells_of_a_stand_s_quiet() {
+        let waiting = Ours {
+            waiting: true,
+            ..Ours::default()
+        };
+        let both = Ours {
+            queued: true,
+            ..waiting
+        };
+        for (how, ours, (crossed, carried), heard) in [
+            ("waiting alone", waiting, (1_000.0, 1_000.0), 0.0),
+            ("beside a copy at home", both, (1_000.0, 3_000.0), 0.0),
+            ("queued and waiting", both, (1_000.0, 1_000.0), 10.0),
+        ] {
+            let mut c = anchored(12_000.0);
+            let up = &mut c.up;
+            let mut at = 0.0;
+            while at < 10.0 {
+                up.own(at, 1.0, ours, (crossed, carried), Tunnel::Unheard);
+                at += 1.0;
+            }
+            assert!(
+                (up.heard_s - heard).abs() < 1e-9,
+                "ten seconds {how} were heard for {} s, not {heard}",
+                up.heard_s
+            );
+        }
     }
 
     // A return is judged on its own drops: those the stand's probes made
@@ -6189,6 +6226,38 @@ mod tests {
             found.is_some_and(|after| after >= again - 0.2),
             "found again {found:?} s after the return, not after {again} s of its own drops"
         );
+    }
+
+    // Drops for `DROPS_SHARE` of `DROPS_AGAIN_S` find the hold again only
+    // while they come within `DROPS_AGAIN_S` of a quiet return. Drops that
+    // start later come once the return has carried the anchor's hold for
+    // that long, so they're judged over the whole of `DROPS_LOOK_S` as any
+    // others are (drops stand longer round 6's F22).
+    #[test]
+    fn drops_find_a_hold_again_at_once_only_soon_after_a_quiet_return() {
+        let again = DROPS_AGAIN_S * DROPS_SHARE;
+        let look = DROPS_LOOK_S * DROPS_SHARE;
+        for (start, needed) in [(1.0, again), (DROPS_AGAIN_S + 1.0, look)] {
+            let mut c = anchored(12_000.0);
+            let up = &mut c.up;
+            up.found_by_drops(0.0);
+            let returned = DROPPED_STANDS_S;
+            heard_for(up, (returned - DROPS_LOOK_S, returned), 0.0);
+            up.returned(returned);
+            assert!(up.returned_at.is_some(), "the quiet return wasn't judged");
+            let (mut at, mut found) = (returned, None);
+            while found.is_none() && at < returned + DROPS_LOOK_S {
+                if up.count_drops(at, 0.1, at - returned >= start, true) {
+                    found = Some(at - returned - start);
+                }
+                at += 0.1;
+            }
+            assert!(
+                found.is_some_and(|after| (after - needed).abs() < 0.5),
+                "drops from {start} s after a quiet return found the hold again after \
+                 {found:?} s of them, not {needed} s"
+            );
+        }
     }
 
     // Drops that went on under a stand, as weak air's, don't follow the
@@ -6372,6 +6441,48 @@ mod tests {
                 judged,
                 "held at {held} as the stand lapsed, the return was judged {}",
                 up.returned_at.is_some()
+            );
+        }
+    }
+
+    // The guard is what forgets a stand that lapses with the upload back
+    // at its share: once the hold is cut low for a delay later, its return
+    // has no lowered bar, and the next hold found by drops stands only
+    // `DROPPED_STANDS_S`. A stand that lapses held low is still returned
+    // from, and its doubled stand kept for drops found again (drops stand
+    // longer round 6's F18 and F24).
+    #[test]
+    fn the_guard_forgets_a_stand_that_lapses_with_the_upload_at_its_share() {
+        let anchor = 12_000.0;
+        let stands = 2.0 * DROPPED_STANDS_S;
+        for (held, judged) in [(anchor * ANCHOR_HOLD, false), (6_000.0, true)] {
+            let mut c = anchored(anchor);
+            c.up.found_by_drops(0.0);
+            c.up.dropped_stands_s = stands;
+            c.up.hold_at(0.0, held);
+            let (mut at, mut guarded) = (1.0, false);
+            while !guarded && at < stands + 2.0 * ANCHOR_LOW_S {
+                // A cut for a delay after the stand lapses, as a drops
+                // stand's own return would never make.
+                if (at - (stands + 10.0)).abs() < 1e-9 {
+                    c.up.hold_at(at, 6_000.0);
+                }
+                c.up.count_drops(at, 1.0, false, true);
+                guarded = c.guard_the_anchor(at, None, false);
+                at += 1.0;
+            }
+            assert!(guarded, "held at {held}, the guard never returned it");
+            assert_eq!(
+                c.up.returned_at.is_some(),
+                judged,
+                "held at {held} as the stand lapsed, the return was judged {}",
+                c.up.returned_at.is_some()
+            );
+            let next = if judged { stands } else { DROPPED_STANDS_S };
+            assert!(
+                (c.up.dropped_stands_s - next).abs() < 1e-9,
+                "held at {held} as the stand lapsed, the next stands {} s, not {next}",
+                c.up.dropped_stands_s
             );
         }
     }
