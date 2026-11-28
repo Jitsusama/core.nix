@@ -92,8 +92,9 @@ function screensSaid(times) {
 // work isn't said as the opening's (F47 on #6984). The monotonic clock is read first, so a delay
 // between the two reads lengthens the chord's figure and never flatters the 50 ms bar.
 function chordBefore(chordAt, sized, mono, wall) {
-    if (chordAt < 0)
+    if (chordAt < 0) {
         return -1;
+    }
     const monoNow = mono();
     return Math.round(wall() - chordAt - (monoNow - sized));
 }
