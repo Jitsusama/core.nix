@@ -6,14 +6,15 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too (`answer_of`), which finds the want by the session's address; the
-//! shell names the want it was shown, and one the session no longer asks
-//! is refused. Each says too whether it rings the
-//! shell's bell (`rings`) and who it is (`known`), by which the shell
-//! rings once for each (Sessions.qml's stopped), so the shell judges no
-//! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one
-//! off for an hour (`PutOff`), and it says so and rings for none of it, so
-//! the shell leaves it out of what needs him until then.
+//! too, by the shell alone (main.rs's `answered`), and `answer_of` finds
+//! the want by the session's address; the shell names the want it was
+//! shown, and one the session no longer asks is refused. Each says too
+//! whether it rings the shell's bell (`rings`) and who it is (`known`), by
+//! which the shell rings once for each (Sessions.qml's stopped), so the
+//! shell judges no want itself (KRINS0 item 4, ending #3853's stopgap).
+//! Joel may put one off for an hour (`PutOff`), and it says so and rings
+//! for none of it, so the shell leaves it out of what needs him until
+//! then.
 //!
 //! Long because a want's record, its putting off, its ring and the
 //! answer steered to it are each read from the same session's presence,
@@ -37,6 +38,10 @@ pub const KIND: &str = "want";
 
 /// The place its keys are under, Agents'.
 const PLACE: &str = "agents";
+
+/// The ask that answers a want, which only the shell may make, since
+/// the node takes its answer as Joel's.
+pub const ASK: &str = "answer";
 
 /// The want records served last, for answering one: shared between the
 /// daemon's loop, which holds them, and its asks.
@@ -328,7 +333,7 @@ fn answers(wants: &Value) -> Value {
 /// goes once they all have (42P0R4, by Thu 3 Dec). None for any other
 /// ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
-    if said["ask"] != "answer" {
+    if said["ask"] != ASK {
         return None;
     }
     let address = said["address"].as_str().unwrap_or("").to_uppercase();

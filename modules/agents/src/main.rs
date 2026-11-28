@@ -202,7 +202,7 @@ fn args(args: &[String]) -> Result<Args, Failure> {
 /// says, handed `told` to the daemon's loop, and a row's act, done by
 /// asking the node at `node`, refused where there's none, and a line Joel
 /// tells whoever `routes` says hears it. Joel's feedback on one of
-/// `landings` is kept in the file at `kept`. An answer goes to the one
+/// `landings` is kept in the file at `kept`. Not Now puts off the one
 /// of `wants` its session asks.
 fn own(
     told: mpsc::Sender<Heard>,
@@ -300,9 +300,6 @@ fn own(
                 Err(why) => json!({"error": {"code": "not-an-ask", "message": why}}),
             });
         }
-        if let Some(answered) = wants.answer(said, node.as_deref(), now) {
-            return Some(answered);
-        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -311,22 +308,23 @@ fn own(
     })
 }
 
-/// Start New Work, where it can begin, whether the cloud can take it, and
-/// Let Them Start, asked of
-/// `node` only for the shell, told apart by the connection each came on,
-/// so no agent lifts the stop Joel put on their starts or reads his
-/// places; what the node says of the starts once they're let start is
-/// `stood` at once, rather than at the next poll. Feedback, a sprout,
-/// the places and letting them start wait on the node, so none holds up
-/// an ask after it. Each start the shell names by a
+/// Start New Work, where it can begin, whether the cloud can take it, Let
+/// Them Start and an answer to what a session asks, asked of `node` only
+/// for the shell, told apart by the connection each came on, so no agent
+/// lifts the stop Joel put on their starts, reads his places nor answers
+/// one of `wants` as him; what the node says of the starts once they're
+/// let start is `stood` at once, rather than at the next poll. Feedback,
+/// a sprout, the places, the offers, letting them start and an answer
+/// wait on the node, so none holds up an ask after it. Each start the
+/// shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
 /// shell nor one of this daemon ends it untold or tells it twice. The
 /// loop is told each change, to serve the starts' records anew.
-fn sprouts_for_the_shell(
+fn for_the_shell_alone(
     shared: &Shared,
-    node: Option<PathBuf>,
+    (node, wants): (Option<PathBuf>, Wants),
     keeping: Keeping,
     told: mpsc::Sender<Heard>,
     (stood, words): (Arc<starts_stopped::Told>, Said),
@@ -339,6 +337,7 @@ fn sprouts_for_the_shell(
             starts::TOLD,
             starts::KEPT,
             starts_stopped::ASK,
+            wants::ASK,
         ],
         Box::new(move |said, stream| {
             if said["ask"] == places::ASK {
@@ -346,6 +345,10 @@ fn sprouts_for_the_shell(
             }
             if said["ask"] == offers::ASK {
                 return Some(offers::answer(|| asker::the_shell(stream), node.as_deref()));
+            }
+            if said["ask"] == wants::ASK {
+                let asker = asker::the_shell(stream);
+                return Some(answered(asker, &wants, said, node.as_deref()));
             }
             if said["ask"] == starts_stopped::ASK {
                 let (answer, now) =
@@ -397,19 +400,66 @@ fn sprouts_for_the_shell(
             Some(answer)
         }),
     );
-    // Told asks the shell's systemd who the shell is, as a sprout does.
-    // An answer waits on the node up to acts.rs's PATIENCE, so queued
-    // behind the shell's other acts it could come back after the Talk lets
-    // a second go (TalkAnswers.js's SENT_STANDS_MS).
+    // Told and an answer ask the shell's systemd who the shell is, as a
+    // sprout does. An answer waits on the node up to acts.rs's PATIENCE
+    // besides, so queued behind the shell's other acts it could come back
+    // after the Talk lets a second go (TalkAnswers.js's SENT_STANDS_MS).
     shared.slow(&[
-        "answer",
         "feedback",
         sprout::ASK,
         places::ASK,
         offers::ASK,
         starts::TOLD,
         starts_stopped::ASK,
+        wants::ASK,
     ]);
+}
+
+/// What an answer the shell's check refused is told, as Let Them Start
+/// says its own. Joel reads it where his own Return was refused because
+/// the check couldn't be made, so it says what the daemon couldn't tell
+/// rather than who may answer.
+const ONLY_THE_SHELL: &str =
+    "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
+
+/// The most of a refused answer's `want` or `address` its journal line
+/// says, its quoted JSON cut short: a want's id and an address are far
+/// shorter.
+const NAMED_AT_MOST: usize = 120;
+
+/// Joel's answer to one of `wants`, steered through `node` only where
+/// `asker` says the shell asked it: the node takes it as his, so an
+/// agent answering its own ask through this daemon would answer as him
+/// (ISXEG8's R-agent-answers-own-ask).
+fn answered(asker: Result<(), String>, wants: &Wants, said: &Value, node: Option<&Path>) -> Value {
+    if let Err(why) = asker {
+        // Why it was refused is journalled with what it named, beside the
+        // line asker.rs writes of who asked, so an agent answering its own
+        // ask can be traced to it. What it named is the asker's own, cut
+        // short, so no ask writes more than a line.
+        let named = |value: &Value| {
+            value
+                .to_string()
+                .chars()
+                .take(NAMED_AT_MOST)
+                .collect::<String>()
+        };
+        let why: &str = if why == asker::REFUSED {
+            "who asked isn't the shell"
+        } else {
+            why.as_str()
+        };
+        eprintln!(
+            "agents: an answer to {} for {} wasn't taken: {why}",
+            named(&said["want"]),
+            named(&said["address"])
+        );
+        return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
+    }
+    // Only an answer reaches here, so the wants always have one to give.
+    wants
+        .answer(said, node, clock::now_ms())
+        .unwrap_or_else(|| json!({"error": {"code": "not-an-ask", "message": "not an answer"}}))
 }
 
 /// Follows the node: every kind of record it holds that Agents reads.
@@ -553,9 +603,9 @@ fn serve(args: Args) -> Result<(), Failure> {
     // Read before the socket listens, so a shell's first ask of which are
     // kept is answered from them, though no record is served yet.
     let keeping = Keeping::read(&args.kept.with_file_name(starts::FILE), clock::now_ms());
-    sprouts_for_the_shell(
+    for_the_shell_alone(
         &shared,
-        args.node.clone(),
+        (args.node.clone(), wants.clone()),
         keeping.clone(),
         to.clone(),
         (Arc::clone(&starts_told), starts_said),
@@ -642,6 +692,8 @@ fn serve(args: Args) -> Result<(), Failure> {
     Ok(())
 }
 
+// Its socket's asks, as `serve` serves them, in a file of their own
+// beside this one, so neither passes 800 lines.
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod sprouts;
