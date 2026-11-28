@@ -1144,8 +1144,9 @@ impl Chooser {
     }
 
     /// Takes in that the move this chooser asked for to `to` at `asked`
-    /// began, or that `to` is out of reach (`moves::Back::Answered`): a
-    /// give-way asked then is followed from now (`followed`). Any other
+    /// began (`moves::Back::Answered`), or that `to` is out of reach for a
+    /// move other than a way back (`out_of_reach`): a give-way asked then
+    /// is followed from now (`followed`). Any other
     /// answer is of a move since replaced, and changes nothing.
     pub fn answered(&mut self, now: Instant, to: &str, asked: Instant) {
         if let Some(gave) = self.gave.as_mut()
@@ -1196,17 +1197,36 @@ impl Chooser {
             self.moved = unmade(now, trial.moved_before, spanned);
             return Refusal::Undone;
         }
-        let back = self
-            .back_to
-            .as_ref()
-            .is_some_and(|(back, at)| *at == asked && back == to);
-        if back {
+        if self.goes_back(to, asked) {
             self.back_to = None;
             self.joined = None;
             Refusal::WayBack
         } else {
             Refusal::Stale
         }
+    }
+
+    /// Takes in that `to` was out of reach as the move asked for at `asked`
+    /// was (`moves::Back::OutOfReach`). A trial's way back is taken as
+    /// refused, as the card never went back (`refused`), so it isn't held
+    /// on `to` as gone back should wpa_supplicant roam it there later. Any
+    /// other move is taken as answered, so a give-way is followed as one
+    /// that may never get there, and kept off as unreached (`answered`).
+    /// Says what it made of a way back, as `refused` does.
+    pub fn out_of_reach(&mut self, now: Instant, to: &str, asked: Instant) -> Option<Refusal> {
+        if self.goes_back(to, asked) {
+            return Some(self.refused(now, to, asked));
+        }
+        self.answered(now, to, asked);
+        None
+    }
+
+    /// Whether the move asked for to `to` at `asked` is the way back from
+    /// a trial, still open.
+    fn goes_back(&self, to: &str, asked: Instant) -> bool {
+        self.back_to
+            .as_ref()
+            .is_some_and(|(back, at)| *at == asked && back == to)
     }
 
     /// Takes in that the card gave way during a call from one access point
@@ -4451,6 +4471,27 @@ pub(crate) mod tests {
             joined: Some((point.to_owned(), since)),
             ..Chooser::default()
         }
+    }
+
+    /// A chooser that tried the hall from the desk at `start` and has just
+    /// sent the card back to the desk, and when it asked the way back.
+    pub(crate) fn sent_back_from_the_hall(start: Instant) -> (Chooser, Instant) {
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let around = [desk_at(-50, None), hall(-45, Some(20), None)];
+        let mut chooser = after_a_bad_minute(DESK);
+        let tried = chooser.choose(start, (DESK, &unloaded(45), -50, CH52), &around, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall wasn't tried");
+        let back = start + TRIAL;
+        let judged = chooser.choose(back, (HALL, &unloaded(60), -45, CH52), &around, false);
+        assert_eq!(
+            judged,
+            Choice::Back(DESK.into()),
+            "the hall wasn't gone back from"
+        );
+        (chooser, back)
     }
 
     /// The point a chooser found its card on, while it holds one.

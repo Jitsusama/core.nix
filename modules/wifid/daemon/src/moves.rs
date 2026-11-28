@@ -27,11 +27,20 @@ use crate::state::{Joined, State};
 pub enum Back {
     /// The card's look ended in time for it to be chosen for again.
     Looked(String),
-    /// The card's move to `to` began, or was refused as out of reach
-    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
-    /// the move was asked, even after a look. Its chooser follows the move
-    /// as one that may never get there (`Chooser::answered`).
+    /// The card's move to `to` began. Its chooser follows the move as one
+    /// that may never get there (`Chooser::answered`).
     Answered {
+        card: String,
+        to: String,
+        asked: Instant,
+    },
+    /// The card's move to `to` was refused as out of reach
+    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
+    /// the move was asked, even after a look. Its chooser follows a
+    /// give-way or trial as one that may never get there, and takes a
+    /// way back as refused, as the card never went back
+    /// (`Chooser::out_of_reach`).
+    OutOfReach {
         card: String,
         to: String,
         asked: Instant,
@@ -531,7 +540,7 @@ async fn roam(
         Err(refused) => {
             eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
             if refused == Refused::NotNearby {
-                Back::Answered { card, to, asked }
+                Back::OutOfReach { card, to, asked }
             } else {
                 Back::Refused { card, to, asked }
             }
@@ -998,7 +1007,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_move_to_a_point_unheard_after_a_look_is_answered_as_one_to_follow() {
+    async fn a_move_to_a_point_unheard_after_a_look_is_handed_back_as_out_of_reach() {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (state, air) = watch::channel(State::default());
@@ -1025,12 +1034,13 @@ mod tests {
 
         assert_eq!(
             came.try_recv().ok(),
-            Some(Back::Answered {
+            Some(Back::OutOfReach {
                 card: "wlan0".into(),
                 to: HALL.into(),
                 asked
             }),
-            "a point out of reach wasn't answered as a move to follow, to keep off as unreached"
+            "a point out of reach wasn't handed back as one, for its chooser to follow a give-way \
+             or forget a way back"
         );
     }
 
