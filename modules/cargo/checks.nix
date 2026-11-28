@@ -15,12 +15,12 @@ onLinux {
   # when rustflags ask for another linker, as rustc's own -fuse-ld does.
   cargo-links-with-mold =
     let
-      settings = (account workstation).home;
-      files = settings.file;
-      # rustflags the account's environment sets, which a cache reads as the
-      # config file's.
+      home = account workstation;
+      files = home.home.file;
+      # rustflags the account's environment sets, from its shells or its user
+      # manager, which a cache reads as the config file's.
       flagged = builtins.filter (pkgs.lib.hasInfix "RUSTFLAGS") (
-        builtins.attrNames settings.sessionVariables
+        builtins.attrNames (home.home.sessionVariables // home.systemd.user.sessionVariables)
       );
     in
     pkgs.runCommandCC "cargo-links-with-mold"
