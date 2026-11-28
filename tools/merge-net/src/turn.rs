@@ -210,7 +210,7 @@ pub struct Ahead<'a> {
 }
 
 /// The change asking to merge: when its gate counts as having started,
-/// the tree it's in, and the files it changes.
+/// the tree it's in, the files it changes, and those it renames or deletes.
 pub struct Asking<'a> {
     pub started: u64,
     /// When it was first held back, which [`PATIENCE`] counts from
@@ -218,13 +218,15 @@ pub struct Asking<'a> {
     pub waits_from: u64,
     pub here: &'a Path,
     pub ours: &'a [String],
+    pub gone: &'a [String],
 }
 
 /// The gate among `gates` that holds back the change `asking`: the
 /// earliest that counts, as `place` says, as started before it, still runs
 /// as `alive` says of it, hasn't run past [`LONGEST`] by `now` since it
-/// really started, and changes, as `files_of` says, a file of its that's no
-/// list. A change that passed [`PATIENCE`] ago waits on none.
+/// really started, and changes, as `files_of` says, a file of its, changed
+/// or gone, that's no list. A change that passed [`PATIENCE`] ago waits on
+/// none.
 pub fn ahead<'a>(
     gates: &'a [Gate],
     asking: &Asking,
@@ -239,6 +241,7 @@ pub fn ahead<'a>(
     let ours: BTreeSet<&str> = asking
         .ours
         .iter()
+        .chain(asking.gone)
         .map(String::as_str)
         .filter(|file| crate::lists::list(file).is_none())
         .collect();
@@ -292,16 +295,17 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let waited = Waited::read(&file);
     let kept = kept_at(passes, &crate::ready::record, &written_at);
     let waits_from = waited.since(patch.as_deref(), &here, kept, now);
+    let ours_gone = gone_since_main(Path::new("."), commit).unwrap_or_default();
     let asking = Asking {
         started: places.start(&here, its_gate, now),
         waits_from,
         here: &here,
         ours,
+        gone: &ours_gone,
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
     let crates = Crates::at(Path::new("."), commit);
     let fates = judged_by(commit);
-    let ours_gone = gone_since_main(Path::new("."), commit).unwrap_or_default();
     let merging = Side {
         changed: ours,
         gone: &ours_gone,

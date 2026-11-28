@@ -52,6 +52,7 @@ fn asking<'a>(started: u64, here: &'a str, ours: &'a [String]) -> Asking<'a> {
         waits_from: NOW,
         here: Path::new(here),
         ours,
+        gone: &[],
     }
 }
 
@@ -352,6 +353,33 @@ fn a_gate_renaming_a_file_out_of_a_fate_holds_a_change_in_it() {
         held.map(|held| held.shared),
         Some(ours.clone()),
         "a gate renaming a file out of the map's fate held nothing"
+    );
+}
+
+#[test]
+fn a_change_renaming_a_file_out_of_a_fate_waits_behind_a_gate_in_it() {
+    // The gate measures the fate with the file the change takes away, so
+    // the change merging first would leave that measure stale.
+    let fates = fates::parse("the map: modules/mycelium/site/ modules/local-sites/")
+        .expect("the map's fate reads");
+    let theirs = owned(&["modules/local-sites/kit/head.css"]);
+    let ours = owned(&["modules/elsewhere/old-view.js"]);
+    let moved = owned(&["modules/mycelium/site/old-view.js"]);
+    let crates = Crates::of("");
+    let touch = |_: &Gate| {
+        let (gate, merging) = (side(&theirs, &[]), side(&ours, &moved));
+        Some(shares(&gate, &none_apart, &merging, &crates, &fates))
+    };
+    let gates = [gate(1, "/map", 100)];
+    let renaming = Asking {
+        gone: &moved,
+        ..asking(200, "/moving", &ours)
+    };
+    let held = ahead(&gates, &renaming, NOW, &own, &everyone, &touch);
+    assert_eq!(
+        held.map(|held| held.shared),
+        Some(moved.clone()),
+        "a change renaming a file out of the map's fate wasn't held"
     );
 }
 
