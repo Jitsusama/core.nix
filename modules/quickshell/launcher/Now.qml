@@ -1052,22 +1052,25 @@ Provider {
     // workstream where most moved, since its note already names each one
     // (Joel, 2026-11-11 22:00: every row has a drawer giving a little more
     // than its line). Holding none, once he's stepped in and it was all
-    // looked at elsewhere, it says nothing moved. A fact the daemon gave
-    // no count for is left out rather than said as nought. Busiest is said
-    // only where one workstream moved more than every other: with one,
-    // it would say the note again, and on a tie it would call one busiest
-    // that isn't.
+    // looked at elsewhere, it says nothing moved. While the daemon gave
+    // no count for one workstream, every fact is left out rather than
+    // said as nought, since a total or a busiest without it would be
+    // wrong. Busiest is said only where one workstream moved more than
+    // every other: with one, it would say the note again, and on a tie it
+    // would call one busiest that isn't. Leading alone among two, it
+    // moved at least two, so its count is always said as many.
     function movedDrawer(rows) {
         const title = Words.name("on:moved");
         if (rows.length === 0)
             return { title, body: Words.of("on:moved").empty ?? "" };
         const said = Words.of("on:moved").said ?? {};
-        const asks = rows.map(row => row.movedAsks ?? { landed: 0, moved: 0 });
+        if (rows.some(row => !row.movedAsks))
+            return null;
+        const asks = rows.map(row => row.movedAsks);
         const total = which => asks.reduce((sum, one) => sum + one[which], 0);
         const most = Math.max(...asks.map(one => one.moved));
         const busiest = asks.findIndex(one => one.moved === most);
         const alone = asks.filter(one => one.moved === most).length === 1;
-        const counted = count => ForYou.filled(count === 1 ? said.ask : said.asks, { count });
         const facts = [total("moved") === 0 ? null : {
             label: Words.name("on:moved:landed"),
             value: String(total("landed")),
@@ -1075,7 +1078,7 @@ Provider {
         }, most === 0 || rows.length < 2 || !alone ? null : {
             label: Words.name("on:moved:busiest"),
             value: rows[busiest].name,
-            qualifier: counted(asks[busiest].moved)
+            qualifier: ForYou.filled(said.asks, { count: asks[busiest].moved })
         }].filter(fact => fact !== null);
         return facts.length === 0 ? null : { title, facts };
     }
@@ -2249,7 +2252,7 @@ Provider {
     // the session, which answers nothing. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
-    // answer too, naming the want itself; the rows are still made here
+    // answer too, naming the want this row was made from; the rows are still made here
     // until it serves For You's rows ready, as it does Agents'.
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;
@@ -2263,15 +2266,28 @@ Provider {
         // answers a question in full); "" where it says no more.
         const whole = () => TalkAnswers.whole(provider.source("agents")?.wantOf(address) ?? null);
         // Said answered only once the node has put it in the session's
-        // inbox, since one it couldn't put never reached the session.
+        // inbox, since one it couldn't put never reached the session. It names the want this
+        // row was made from (a changed one makes it anew), so the node refuses it once the
+        // session asks something else (wants.rs's answer_of), as a Talk's answer is. It's kept
+        // among the session's answers as a Talk's is (Agents.qml's answerKept), so its Talk
+        // shows it, and a Return there right after doesn't send a second.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
-            const answered = put => {
-                if (put)
+            // One nothing said of may have arrived, so the foot says so rather than nothing;
+            // one refused (a second, as answerKept refuses) says why, as it never went.
+            const answered = (put, why, unheard, refused) => {
+                if (refused === true)
+                    provider.launcher?.say([[why, ""]], true);
+                else if (put)
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+                else if (unheard === true)
+                    provider.launcher?.say([[filledIn(
+                        Words.of("verb:agent:talk").said?.unheardWhy ?? "",
+                        { name: session().title ?? address }), ""]]);
             };
             if (agents)
-                agents.answerWant(address, fields, answered);
+                agents.answerKept(address, Object.assign({ want: answers.want }, fields),
+                    { label, typed: label, answers }, answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),

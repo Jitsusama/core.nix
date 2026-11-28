@@ -5,6 +5,9 @@ use std::fs;
 
 use super::*;
 
+mod split;
+mod withdrawals;
+
 const NOW: i64 = 1_795_700_000;
 
 fn sent(text: &str, ago: i64, to: &str) -> Message {
@@ -124,6 +127,63 @@ fn an_unfolded_class_keeps_only_its_senders_first_hundred_letters() {
     );
 }
 
+/// One line can't keep a cause of any length, nor count changes without
+/// end: a case keeps its first `SAID_AT_MOST` letters, and a line its
+/// first `CHANGES_PER_LINE` changes.
+#[test]
+fn a_line_keeps_only_so_much_of_its_cause_and_so_many_changes() {
+    let named: Vec<String> = (1..=CHANGES_PER_LINE + 5)
+        .map(|n| format!("core.nix#{n}"))
+        .collect();
+    let line = format!(
+        "cause: {} | change: {}",
+        "word ".repeat(SAID_AT_MOST),
+        named.join(", ")
+    );
+    let cases = cause_line(&line, NOW);
+    assert_eq!(
+        cases
+            .iter()
+            .map(|case| case.change.as_str())
+            .collect::<Vec<_>>(),
+        named[..CHANGES_PER_LINE],
+        "a line counted changes past its cap, or not its first ones"
+    );
+    assert!(
+        cases
+            .iter()
+            .all(|case| case.said.chars().count() <= SAID_AT_MOST),
+        "a case kept its cause at any length: {} letters",
+        cases[0].said.chars().count()
+    );
+    for (letters, kept) in [
+        (SAID_AT_MOST, SAID_AT_MOST),
+        (SAID_AT_MOST + 1, SAID_AT_MOST),
+    ] {
+        let line = format!("cause: {} | change: core.nix#1", "x".repeat(letters));
+        let said = cause_line(&line, NOW)[0].said.chars().count();
+        assert_eq!(
+            said, kept,
+            "a cause of {letters} letters wasn't kept to {kept}, so the cap has moved"
+        );
+    }
+    let repeated = cause_line(
+        &format!(
+            "cause: x | change: {}core.nix#7",
+            "core.nix#1, ".repeat(CHANGES_PER_LINE)
+        ),
+        NOW,
+    );
+    assert_eq!(
+        repeated
+            .iter()
+            .map(|case| case.change.as_str())
+            .collect::<Vec<_>>(),
+        ["core.nix#1", "core.nix#7"],
+        "a change named again filled the cap before a later one was read"
+    );
+}
+
 #[test]
 fn a_change_is_read_by_its_repository_however_it_is_written() {
     assert_eq!(
@@ -210,13 +270,14 @@ fn one_message_or_one_hour_puts_only_so_many_classes_to_their_owners() {
 }
 
 /// A burst of unfolded wordings, which any cell can make, can't push a
-/// vetted class out of those an hour names, though theirs sort first.
+/// vetted class out of those an hour names, though theirs sort first by
+/// name and are on more changes, so being vetted must outrank both.
 #[test]
 fn a_vetted_class_is_named_ahead_of_unfolded_ones() {
     let vetted = "a vetted class";
     let mut cases: Vec<Case> = (0..=NAMED_AT_MOST)
         .flat_map(|n| {
-            (1..=3).map(move |c| {
+            (1..=4).map(move |c| {
                 case(
                     &format!("{}junk {n:02}", folds::UNFOLDED),
                     &format!("r#{c}"),
@@ -289,51 +350,6 @@ fn a_cause_found_again_and_again_never_leads_what_comes_after_it() {
         super::super::drag(&measures).map(|m| m.key.as_str()),
         Some("far"),
         "a cause filed with its own owners apart led the hour"
-    );
-}
-
-#[test]
-fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
-    let cases = [
-        case(TEST_PASSES_UNDONE, "core.nix#1", 100),
-        case(TEST_PASSES_UNDONE, "core.nix#2", 100),
-        case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
-        case(TEST_PASSES_UNDONE, "mycelium#4", 100),
-        case("a pinned copy lags the tree", "core.nix#5", 100),
-        case("a pinned copy lags the tree", "core.nix#6", 100),
-        case("a pinned copy lags the tree", "mycelium#7", 100),
-    ];
-    let m = recurring(&cases, NOW);
-    assert_eq!(
-        m.now, 2.0,
-        "a class split by repository counted more than once"
-    );
-    let owners: Vec<(&str, &str)> = m
-        .behind
-        .iter()
-        .filter_map(|line| line.rsplit_once(" · "))
-        .map(|(line, owner)| (class_of(line), owner))
-        .collect();
-    let half = |repo: &str| format!("{TEST_PASSES_UNDONE} in {repo}");
-    let (harness, core, mycelium) = (
-        half("agentic-harness.pi"),
-        half("core.nix"),
-        half("mycelium"),
-    );
-    assert_eq!(
-        owners,
-        [
-            (harness.as_str(), "85PKB2"),
-            (core.as_str(), "80ECO2"),
-            (mycelium.as_str(), "1JQPPC"),
-            (PIN_LAGS, "16V6F4"),
-        ],
-        "a class wasn't split by repository to each owner, or one owned whole was split"
-    );
-    assert!(
-        m.behind[1].contains("on 2 of its 4 changes in a week, core.nix#1, core.nix#2 ·"),
-        "a repository's half didn't name its own changes: {}",
-        m.behind[1]
     );
 }
 
@@ -510,7 +526,9 @@ fn a_kept_case_is_folded_again_by_its_wording() {
 }
 
 /// An hour that can't keep what it read says so on the card, naming no
-/// class, so the week read again each hour isn't silent.
+/// class, and first, above the classes over the bar, since the card
+/// shows only its first few lines; so the week read again each hour
+/// isn't silent.
 #[test]
 fn what_couldnt_be_kept_is_said_and_names_no_class() {
     let home = tempfile::tempdir().expect("a temporary home");
@@ -519,143 +537,29 @@ fn what_couldnt_be_kept_is_said_and_names_no_class() {
         .path()
         .join("pi/agentic-harness.pi/mesh-workflow/messages");
     fs::create_dir_all(&messages).expect("the messages folder");
+    let line = sent(
+        "cause: flaky gate | change: core.nix#1, #2, #3",
+        600,
+        "@1JQPPC",
+    );
+    write(&messages, &line, 600);
     let gone = folder.path().join("gone");
     let m = read(home.path(), &gone, NOW, true);
     assert!(
         m.past().is_some()
-            && m.behind.len() == 1
+            && m.behind.len() == 2
             && class_of(&m.behind[0]) == UNKEPT
-            && names_no_class(&m.behind[0]),
-        "a reading that couldn't be kept went unsaid, or was counted as a class: {:?}",
+            && names_no_class(&m.behind[0])
+            && !names_no_class(&m.behind[1]),
+        "a reading that couldn't be kept went unsaid, or below a class, or was counted as \
+         one: {:?}",
         m.behind
     );
     let kept = read(home.path(), folder.path(), NOW, true);
     assert!(
-        kept.behind.is_empty(),
+        kept.behind.len() == 1 && !names_no_class(&kept.behind[0]),
         "a reading kept whole said it wasn't: {:?}",
         kept.behind
-    );
-}
-
-/// A line relayed here after its sender's withdrawal was read, and let go
-/// by the mesh, still stays out.
-#[test]
-fn a_withdrawal_is_kept_for_a_line_written_here_after_it() {
-    let home = tempfile::tempdir().expect("a temporary home");
-    let folder = tempfile::tempdir().expect("a temporary folder");
-    let messages = home
-        .path()
-        .join("pi/agentic-harness.pi/mesh-workflow/messages");
-    fs::create_dir_all(&messages).expect("the messages folder");
-    let first = format!("{}-SENDER-1-00000001", (NOW - 1200) * 1000);
-    let mut withdraws = sent("no cause here after all", 600, "@1JQPPC");
-    withdraws.supersedes = Some(first.clone());
-    write(&messages, &withdraws, 600);
-    let heard = read(home.path(), folder.path(), NOW, true);
-    assert_eq!(
-        heard.now, 0.0,
-        "a withdrawal alone read as a cause: {:?}",
-        heard.behind
-    );
-    fs::remove_dir_all(&messages).expect("the mesh lets the withdrawal go");
-    fs::create_dir_all(&messages).expect("an empty messages folder");
-    for n in 1..=3 {
-        let line = format!("cause: flaky gate | change: core.nix#{n}");
-        let mut m = sent(&line, 1200, "@1JQPPC");
-        m.id = format!("{}-SENDER-1-0000000{n}", (NOW - 1200) * 1000);
-        write(&messages, &m, -7200);
-    }
-    let later = read(home.path(), folder.path(), NOW + 7300, true);
-    assert_eq!(
-        later.now, 0.0,
-        "a line written here after its withdrawal was let go counted: {:?}",
-        later.behind
-    );
-}
-
-/// A sender whose clock runs fast still withdraws its line, though the
-/// withdrawal, stamped past the hour's slack, isn't kept.
-#[test]
-fn a_withdrawal_stamped_ahead_still_withdraws_its_line() {
-    let home = tempfile::tempdir().expect("a temporary home");
-    let folder = tempfile::tempdir().expect("a temporary folder");
-    let messages = home
-        .path()
-        .join("pi/agentic-harness.pi/mesh-workflow/messages");
-    fs::create_dir_all(&messages).expect("the messages folder");
-    let mut line = sent(
-        "cause: flaky gate | change: core.nix#1, #2, #3",
-        0,
-        "@1JQPPC",
-    );
-    line.id = format!("{}-SENDER-1-00000001", (NOW + DAY) * 1000);
-    write(&messages, &line, 600);
-    let look = read(home.path(), folder.path(), NOW, false);
-    assert_eq!(
-        look.now, 1.0,
-        "a line stamped ahead didn't count before its withdrawal: {:?}",
-        look.behind
-    );
-    let mut withdraws = sent("no cause here after all", 0, "@1JQPPC");
-    withdraws.id = format!("{}-SENDER-1-00000002", (NOW + DAY) * 1000);
-    withdraws.supersedes = Some(line.id.clone());
-    write(&messages, &withdraws, 300);
-    let hour = read(home.path(), folder.path(), NOW, true);
-    assert_eq!(
-        hour.now, 0.0,
-        "a line stamped ahead still counted once its sender withdrew it: {:?}",
-        hour.behind
-    );
-    let kept = fs::read_to_string(folder.path().join("causes.json")).expect("a kept reading");
-    assert!(
-        !kept.contains(&line.id),
-        "a withdrawal stamped past the slack was kept, or its line was: {kept}"
-    );
-}
-
-/// A withdrawal is kept only while the line it withdraws could still
-/// count, and one stamped past now or running long isn't kept at all, so
-/// the kept file can't grow without end.
-#[test]
-fn a_kept_withdrawal_is_let_go_after_its_line_and_a_false_one_isnt_kept() {
-    let home = tempfile::tempdir().expect("a temporary home");
-    let folder = tempfile::tempdir().expect("a temporary folder");
-    let messages = home
-        .path()
-        .join("pi/agentic-harness.pi/mesh-workflow/messages");
-    fs::create_dir_all(&messages).expect("the messages folder");
-    let real = format!("{}-SENDER-1-00000001", (NOW - 1200) * 1000);
-    let ahead = format!("{}-SENDER-1-00000002", (NOW + DAY) * 1000);
-    let long = format!("{}-SENDER-1-{}", (NOW - 1200) * 1000, "0".repeat(200));
-    for (n, id) in [&real, &ahead, &long].into_iter().enumerate() {
-        let mut m = sent("no cause here after all", 600, "@1JQPPC");
-        m.id = format!("{}-SENDER-1-0000001{n}", (NOW - 600) * 1000);
-        m.supersedes = Some(id.clone());
-        write(&messages, &m, 600);
-    }
-    let first = read(home.path(), folder.path(), NOW, true);
-    assert_eq!(
-        first.now, 0.0,
-        "withdrawals alone read as a cause: {:?}",
-        first.behind
-    );
-    let kept = fs::read_to_string(folder.path().join("causes.json")).expect("a kept reading");
-    assert!(
-        kept.contains(&real) && !kept.contains(&ahead) && !kept.contains(&long),
-        "a real withdrawal wasn't kept, or one stamped ahead or running long was: {kept}"
-    );
-    fs::remove_dir_all(&messages).expect("the mesh lets the withdrawals go");
-    fs::create_dir_all(&messages).expect("an empty messages folder");
-    let late = read(home.path(), folder.path(), NOW + KEPT_FOR, true);
-    assert_eq!(
-        late.now, 0.0,
-        "an empty mesh read as a cause: {:?}",
-        late.behind
-    );
-    let kept = fs::read_to_string(folder.path().join("causes.json")).expect("a kept reading");
-    assert!(
-        !kept.contains(&real),
-        "a withdrawal was kept past the line it withdraws: {kept}"
     );
 }
 
@@ -678,11 +582,31 @@ fn a_kept_reading_that_doesnt_parse_is_unread_and_another_version_is_read_anew()
         "a kept reading that doesn't parse passed as none: {:?}",
         torn.behind
     );
-    fs::write(&kept_at, r#"{"v":1,"through_ms":1,"cases":[]}"#).expect("an old reading");
+    assert!(
+        torn.behind[0].contains("moved aside, the week would be read anew, forgetting"),
+        "a torn reading didn't say what moving it aside would cost: {}",
+        torn.behind[0]
+    );
+    // An old reading over the bar on its own, so one read as kept would
+    // count it; read anew, the empty mesh counts nothing.
+    let old_cases: Vec<String> = (1..=AT_LEAST)
+        .map(|n| {
+            format!(
+                r#"{{"class":"stale docs","said":"stale docs","change":"core.nix#{n}","at":{}}}"#,
+                NOW - 100
+            )
+        })
+        .collect();
+    let old_reading = format!(
+        r#"{{"v":1,"through_ms":{},"cases":[{}]}}"#,
+        (NOW - 100) * 1000,
+        old_cases.join(",")
+    );
+    fs::write(&kept_at, old_reading).expect("an old reading");
     let old = read(home.path(), folder.path(), NOW, true);
     assert!(
         old.past().is_none() && old.behind.is_empty(),
-        "a kept reading of another version wasn't read anew: {:?}",
+        "a kept reading of another version was counted rather than read anew: {:?}",
         old.behind
     );
 }

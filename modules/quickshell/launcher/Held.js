@@ -12,6 +12,7 @@
 // and `all`, whether every step was made again; leaveTo says where that
 // leave goes.
 .pragma library
+.import "Thrown.js" as Thrown
 
 // Each step from `from` on made again from the rows the one above it
 // offers now, `rows` for the first. A step entered from what was typed is
@@ -373,26 +374,8 @@ function answer(made) {
     return "left";
 }
 
-// A throw caught as the launcher refreshes a source, as one journal line:
-// its kind and where it threw first, never its message, which could
-// carry what a source served, nor every frame, which would bury the
-// journal. The kind always ends "Error:", as the VM tests' error nets
-// look for, a thrown value that isn't an Error, or one named otherwise,
-// said as "Error"; and a first line not shaped wholly as a frame, as
-// another engine's "Error: message" is, is left out, so no message can
-// come in through it.
-const errorKind = /^[A-Za-z]*Error$/;
-const frameLine = /^[^\s@]*@[^\s@]+:\d+(:\d+)?$/;
-function thrown(error) {
-    const real = error instanceof Error;
-    const kind = real && errorKind.test(`${error.name}`) ? error.name : "Error";
-    const first = real ? `${error.stack ?? ""}`.split("\n")[0] : "";
-    const where = frameLine.test(first) ? ` at ${first}` : "";
-    return `${kind}: ${real ? "" : `${typeof error} `}thrown${where}`;
-}
-
 // What a call for the launcher's state answers: what read gives, or,
-// where it threw, JSON naming what threw as thrown says it, told to said
+// where it threw, JSON naming what threw as Thrown.js says it, told to said
 // as well for the journal, since a call once answered an empty line and
 // kept nothing of why (vm-desktop-looks, 22 Nov). The desktop tests read
 // "threw" (tests/desktop/heard.py's shown); the state itself has no key
@@ -401,7 +384,7 @@ function answered(read, said) {
     try {
         return read();
     } catch (error) {
-        const threw = thrown(error);
+        const threw = Thrown.shown(error);
         said(threw);
         return JSON.stringify({ threw });
     }

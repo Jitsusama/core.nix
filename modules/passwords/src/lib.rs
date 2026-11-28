@@ -221,6 +221,14 @@ pub enum Ask {
 /// longer, which a client says by its own patience.
 pub const PATIENCE: u64 = 10_000;
 
+/// The name of the thread each copy waits to clear on, which Linux shows
+/// in its `comm`: at most 15 bytes, as longer is cut there.
+pub const CLEAR_WAIT: &str = "copy-clears";
+const _: () = assert!(
+    CLEAR_WAIT.len() <= 15,
+    "Linux cuts a thread's name past 15 bytes"
+);
+
 /// The kind a line asks for: a list of kinds is the entries with the
 /// asks' rows, or none it keeps; a kind said alone is that kind.
 fn kind_of(said: &Value, asks_place: bool) -> String {

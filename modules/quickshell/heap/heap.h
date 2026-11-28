@@ -40,8 +40,10 @@ public:
     // Where the heap stands against the collector, as weigh() says it but
     // without walking a chunk, so it's cheap enough to read as an opening
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
-    // in megabytes, and `collecting`, whether a collection is under way
-    // between its slices. Openings whose longest stall the collector ran
+    // in megabytes; `roomsCapAt`, where the rooms alone cap the chunks
+    // before what the sweeps keep moves it, or -1 with no room left; and
+    // `collecting`, whether a collection is under way between its slices.
+    // Openings whose longest stall the collector ran
     // in say it, read once their room is left: the room each limit had
     // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;

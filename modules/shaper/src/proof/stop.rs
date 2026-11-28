@@ -393,9 +393,15 @@ pub mod tests {
             !STOPPED.load(Ordering::Relaxed),
             "a SIGHUP nohup ignores stopped it"
         );
-        // SAFETY: back to the default, so the stops below are heard.
+        // Every stop back to the default, so the stops below are heard:
+        // a shell that isn't a terminal's starts its background commands
+        // with SIGINT ignored, as nohup does SIGHUP, and `hear_stops`
+        // keeps it so.
+        // SAFETY: setting the default disposition.
         unsafe {
-            libc::signal(libc::SIGHUP, libc::SIG_DFL);
+            for signal in STOPS {
+                libc::signal(signal, libc::SIG_DFL);
+            }
         }
         hear_stops();
         for signal in STOPS {

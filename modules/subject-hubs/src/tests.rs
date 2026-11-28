@@ -257,3 +257,24 @@ fn the_list_is_read_from_the_line_with_its_id() {
         "no node read as one with no hubs"
     );
 }
+
+#[test]
+fn a_node_that_never_answers_is_given_up_on_by_the_deadline() {
+    let folder = Folder::new("silent");
+    let socket = folder.0.join("work.sock");
+    // Bound and never accepted, so the connect lands in its backlog and
+    // no line ever comes back.
+    let _listener = std::os::unix::net::UnixListener::bind(&socket).expect("bound");
+    let begun = std::time::Instant::now();
+    let error = listed_within(&socket, Duration::from_millis(200)).expect_err("no answer");
+    assert_eq!(
+        error.kind(),
+        io::ErrorKind::TimedOut,
+        "a silent node wasn't said as one out of time: {error}"
+    );
+    assert!(
+        begun.elapsed() < Duration::from_secs(2),
+        "the ask outlasted its deadline: {:?}",
+        begun.elapsed()
+    );
+}

@@ -470,8 +470,9 @@
     nothing
   '';
   an-ipc-reply-arrives-whole = ''
-    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
-    function that isn't there ends qs with a failure
+    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, a call to a
+    function that isn't there ends qs with a failure, and a call to one that answers nothing ends
+    it with success, having been given its words
   '';
   an-untrusted-client-passes-only-named-env = ''
     the Nix daemon hands a client that isn't trusted only the impure-env variables the machine
@@ -1327,6 +1328,11 @@
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
+  '';
+  every-failed-read-says-why = ''
+    every Rust file read outside tests whose failure its expression takes as nothing says why in
+    a comment, but those still waiting to say it couldn't read, once a planted tree shows each
+    shape counted
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
@@ -2726,12 +2732,21 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
-    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
-    memory_available an Option<u64> and, from the lock that first has it, memory_full an
-    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
-    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
-    it doesn't join are refused
+    says its ceiling, a memory_full or io_full of 0 and the groups its disk pressure is read
+    from included, one naming no groups names none, and one not kept lively says none, one
+    declaring nothing has no file, and agents in a realm it doesn't join are refused
+  '';
+  mycelium-reads-a-lively-ceiling = ''
+    the locked mycelium reads the ceiling a machine kept lively says as kept_lively, an
+    Option<Lively> whose fields, by name and in any order, are cpu a u32, memory_available an
+    Option<u64> and, from the lock that first has each, memory_full and io_full an Option<u32>
+    and io_full_from a Vec<String>, read by a scan that fails on what it can't read; no serde
+    attribute stands over Declared or Lively, a cfg_attr's included, and kept_lively and each
+    of Lively's fields take only default, skip_serializing_if and their own readers. Copies of
+    today's source, each with Lively or Declared renamed or refusing unknown fields, a field
+    skipped, read otherwise, retyped or renamed, or kept_lively retyped or skipped, are each
+    refused for that reason alone, and one with its fields reordered isn't. A lock that drops
+    a part also passes, since core can't tell which lock is meant to have which part
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3311,6 +3326,11 @@
     passwords completes in zsh with keys, help and keys' --json, and none of the commands that
     reached an entry or a secret before the daemon answered the shell alone
   '';
+  passwords-copier-check-reads-are-bounded = ''
+    the copier check's reads of how a copier ended each answer within its patience, a child
+    holding the copier's standard error open, a copier never ending, a reader never reading and
+    a copier saying nothing included, and each says how the copier ended and what it said
+  '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
@@ -3318,8 +3338,8 @@
     in locked memory as the secret is long, says it's ready only once it can't be read and held
     once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
     locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
-    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
-    held either, and refuses to say ready or held for a copy that isn't sensitive
+    MiB, which stays locked, refuses a standard input it can't read or one a byte past that cap,
+    never saying it held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -3863,6 +3883,12 @@
     pi's text, strings and deepest thinking are the account's text, string and alert colours, and
     every colour it names is hex
   '';
+  pi-windowed-reads-left-out-entries-light = ''
+    a windowed pi reads light the large values of what its log's kept view leaves out, while its
+    entries, context and branches read as a whole read gives them, a move to a left-out entry and
+    a rewrite of the log hold what they need whole, a later compaction lets go only of entries
+    whose place pi knows, and a log pi migrates or with an unfinished last line is read whole
+  '';
   pixels-probe-holds-every-pixel = ''
     the web-design skill's pixels probe, and its words and names probes beside it, in headless
     Chromium at a phone's width, names a page wider than its window and what reaches past it
@@ -4328,9 +4354,10 @@
   '';
   sign-in-program-never-waits-for-good = ''
     a sign-in program's token is taken trimmed, slow, ending after its output or once a hold
-    writing it is let go; one failing, printing nothing, missing, printing what isn't text or
-    past 64 KiB is none; one hanging, lingering or printing for good runs over within its
-    patience, killed with what it started
+    writing it is let go; one failing, printing nothing, printing what isn't text or past 64
+    KiB is none, as is one held for writing all its patience; one missing is none at once; one
+    hanging, lingering or printing for good runs over within its patience, killed with what it
+    started
   '';
   sign-in-program-passes-clippy = ''
     clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
@@ -4825,7 +4852,8 @@
     below a case's hard limit, says so once with the hard limit in force, what would fit and
     ulimit's reason, and runs no case; the check fails where that can't be shown; a case
     whose limits are refused as it is run fails unrun rather than running with none; and a run
-    that can't make both its scratch files stops before any case, leaving neither behind
+    that can't make both its scratch files stops before any case, saying mktemp's reason and
+    leaving neither behind, while one that makes both lets both go as it ends
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -5161,11 +5189,14 @@
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
-    ahead of the step back, after a frame, and one told while already there, making no row on the
-    step back, though none as an opening fills in at home or in another place, under a viewer's
-    command line, or shut with a step held, and sees one made since, remaking only the quests a change
-    names and none a list written again leaves the same, and breaking each title into the pieces
-    A to Z reads once, again only when it changes
+    ahead of the step back, after a frame, and one told while already there once its sources have
+    woken, making no row on the step back, a turn's worth a frame, one at least, felt as Quests'
+    ahead, one that throws once made let go, not left made, and made whole at its step back, and
+    the rest made still, though none as an opening fills in at home, holds another place's step
+    or wakes its sources, under a viewer's command line, shut with a step held, owing a row told
+    then, or as a close runs a batch waiting on its frame, and sees one made since, remaking only
+    the quests a change names and none a list written again leaves the same, and breaking each
+    title into the pieces A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -5309,9 +5340,11 @@
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, and none over a viewer, so a change nobody
     sees builds none; and a key's act is said shown by the first frame begun after its refresh,
-    which another act refreshed while that frame is drawn never holds back; and an opening says what its own work
-    went on slowest first, and weighs the foot's room for Return's verbs again only once the
-    words file or the face has changed; and a daemon's changes are timed from the first line
+    which another act refreshed while that frame is drawn never holds back, and the helper the
+    launcher hands what waits on a frame runs each in turn, one that throws said in a line by
+    its kind and where, never its message, and the rest run still; and an opening says what its
+    own work went on slowest first, and weighs the foot's room for Return's verbs again only once
+    the words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is, a refresh
     held for home's find said apart from the pace and held from when it was first due; and y's
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
@@ -6184,6 +6217,13 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-stays-light-allowing-only-what-was-taken = ''
+    what the-shell-stays-light-on-niri lets the heap's resident climb by for pages the kernel
+    took is the lesser of what the machine took, by the page size given and a MB of 2**20 bytes,
+    and the most any closing held but hadn't resident, a closing of unknown resident skipped,
+    one with none resident counting all it held and one holding less than it has resident none,
+    and a round with no closing known allows nothing
+  '';
   the-shell-stays-light-on-niri = ''
     opening every place the desktop's chords open and typing at home, three rounds over, the
     third round keeps no more than a tenth more of the shell's JavaScript heap live than the
@@ -6451,7 +6491,9 @@
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
-    tuple, among them every command core runs against it and the flags its followers pass
+    tuple, among them every command core runs against it and the flags its followers pass, in a
+    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
+    runtime or data folder outside that folder
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
@@ -6459,7 +6501,9 @@
     unfavorite; and its script, which stops Tuple's daemon, refuses before reaching tuple from a
     person's shell in their home or a checkout, the repository's dev shell, a bare environment and
     a home holding its own runtime and data folders, and from the build with any one of its four
-    signs moved, while run as the build is it reaches tuple
+    signs moved or unset, its build folder set above or below the one it's in with a dev shell's
+    sign or without, or a runtime or data folder whose name only begins with the build folder's,
+    while run as the build is it reaches tuple
   '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
@@ -6487,7 +6531,11 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it
+    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
+    folder to find; first, the folder of its own that the checks running the real tuple share
+    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
+    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
+    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight
@@ -6499,7 +6547,9 @@
     session's own twin with it; the window of a twin put back after the walk on the connector a
     window put back before it didn't take, unless a session took that connector, when the
     session's twin goes with it; gives windows no connector from sessions handed over outside a
-    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; notes a
+    walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; gives
+    twin sessions of one boot a connector each, as the places their boot kept say; puts a session
+    kept on a screen that's gone on the screen in use as its walk began, the other twin; notes a
     window away from a screen named constructor or __proto__ as any other, without a throw; and
     ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
@@ -7211,9 +7261,9 @@
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit
-    however a program names itself, one line a name, catches a holder that forks, empties when they
-    close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of
-    another name
+    however a program names itself, yet names one in that account's own unit of the relay's name,
+    one line a name, catches a holder that forks, empties when they close it or the camera stops,
+    keeps its folder, follows a new loopback, and takes no loopback of another name
   '';
   vm-machines-find-each-other-at-home = ''
     a machine on a network it trusts finds another there by its .local name through both

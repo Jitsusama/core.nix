@@ -22,6 +22,7 @@ import "Moved.js" as Moved
 import "Presented.js" as Presented
 import "ActsSaid.js" as ActsSaid
 import "Beneath.js" as Beneath
+import "Thrown.js" as Thrown
 import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
 
@@ -229,12 +230,14 @@ Scope {
     // while the launcher is open and these rows aren't wanted, rather than all at the step back
     // to them. A step back to Now made 31 to 37 of Quests' rows after 20 minutes of changes to
     // their sessions, and 224 after its daemon started again (2026-11-23). Never while shut,
-    // with nothing drawn to step back to, and only rows made before. A place whose rows change
-    // each second leaves it off, since each change would be made with nobody seeing it.
+    // with nothing drawn to step back to, nor for a launcher with no frames to pace them by,
+    // and only rows made before. A place whose rows change each second leaves it off, since
+    // each change would be made with nobody seeing it.
     property bool madeAhead: false
-    // The rows owed so, by key, and how many are made a turn.
+    // The rows owed so, by key, and how many are made a turn, at least one, which a case sets
+    // lower to see a batch span turns; no place sets it.
     readonly property var owedAhead: ({})
-    readonly property int aheadEachTurn: 8
+    property int aheadEachTurn: 8
     // Elsewhere is a step held in another place, settled, not only these rows unwanted: they're
     // unwanted too as a kept opening fills in at home, before their turn to wake, and under a
     // viewer's command line (Wanted.js), and a chord or a kept opening holds its place's step
@@ -253,31 +256,26 @@ Scope {
     }
 
     // Each turn after the launcher's next frame (its afterFrame), so no one frame makes them
-    // all, or the next turn of the event loop where it has no frames to wait on.
+    // all. Every launcher Quests is drawn in has one, the shell's and each case's stand-in.
     function aheadSoon() {
-        if (!makingAhead || aheadWaiting || Object.keys(owedAhead).length === 0)
+        if (!makingAhead || aheadWaiting || Object.keys(owedAhead).length === 0
+            || typeof maker?.launcher?.afterFrame !== "function")
             return;
-        if (typeof maker?.launcher?.afterFrame !== "function") {
-            aheadTurn.start();
-            return;
-        }
         aheadWaiting = true;
-        // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
-        // wraps do.
         maker.launcher.afterFrame(() => {
             aheadWaiting = false;
-            if (typeof maker.felt === "function")
-                maker.felt("ahead", makeAhead);
-            else
-                makeAhead();
+            aheadFelt();
         });
     }
     property bool aheadWaiting: false
 
-    Timer {
-        id: aheadTurn
-        interval: 0
-        onTriggered: ready.makeAhead()
+    // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
+    // wraps do.
+    function aheadFelt() {
+        if (typeof maker?.felt === "function")
+            maker.felt("ahead", makeAhead);
+        else
+            makeAhead();
     }
 
     // A close runs what waits on a frame in its own turn, which can come before `drawn` has
@@ -287,14 +285,24 @@ Scope {
             return;
         let count = 0;
         for (const key of Object.keys(owedAhead)) {
-            if (count === aheadEachTurn) {
+            if (count >= Math.max(1, aheadEachTurn)) {
                 aheadSoon();
                 return;
             }
             delete owedAhead[key];
-            if (!(key in made) && served(key) !== null) {
+            if (key in made || served(key) === null)
+                continue;
+            count += 1;
+            // One row that throws is said, where it was thrown, and what it made of the row
+            // let go, so its step back makes it whole; the rest owed are made still, rather
+            // than waiting for the next row told. Its key is quoted as a search's is, being a
+            // daemon's.
+            try {
                 rowAt(key);
-                count += 1;
+            } catch (error) {
+                const row = Presented.quoted(Presented.rowShown({ key }, Options.reports));
+                console.warn(`launcher: ${place}'s ${row} not made ahead: ${Thrown.shown(error)}`);
+                unmade(key);
             }
         }
     }
@@ -392,13 +400,26 @@ Scope {
     // place is kept on, so a list of them shown last goes only once four
     // more have been; its view keeps only each row's mark, never the row.
     function letGoInside() {
-        for (const key of Beneath.madeInside(made, served)) {
-            delete madeOf[made[key]?.key];
-            delete made[key];
-            delete madeFrom[key];
-            delete lending[key];
-            delete clocked[key];
+        for (const key of Beneath.madeInside(made, served))
+            unmade(key);
+    }
+    // What it made of a row let go, so the next to want it makes it afresh.
+    // Its made row's key is read last and in a try, since a row whose key throws is what rowAt
+    // was making when it threw, so letting it go throws nothing in turn; nothing names it then.
+    function unmade(key) {
+        const row = made[key];
+        delete made[key];
+        delete madeFrom[key];
+        delete lending[key];
+        delete clocked[key];
+        let named;
+        try {
+            named = row?.key;
+        } catch (unread) {
+            return;
         }
+        if (named !== undefined && madeOf[named] === key)
+            delete madeOf[named];
     }
 
     // Which record each row made was made of, by the row's key, for its
@@ -591,9 +612,9 @@ Scope {
             asking,
             reasked,
             lostTwice,
-            found: found.words,
-            held: found.keys.length,
-            all: found.found,
+            foundWords: found.words,
+            keysHeld: found.keys.length,
+            foundAll: found.found,
             lost: lost?.words ?? null,
             typedAsking,
             typedReasked,

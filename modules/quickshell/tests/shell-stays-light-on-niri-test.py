@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
+from resident_allowance import allowance
 
 if TYPE_CHECKING:
     import pytest
@@ -172,21 +173,21 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     resident = [
         float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
     ]
-    # A take in the third round only lowers it, so only what was taken before it counts: no more
-    # than the machine took anywhere, nor than the shell held but hadn't resident at any of the
-    # second round's closings, since a page taken of its heap stays held, give or take the
-    # headers and rounding the docstring names. The machine's count alone would let a busy
-    # builder pass any climb.
-    machine = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
-    shell_took = max((max(held - said, 0) for held, said in residents[1] if said >= 0), default=0)
-    allowed = min(machine, float(shell_took))
+    # A take in the third round only lowers it, so only what was taken by the second's end counts.
+    room = allowance(
+        started=started,
+        taken=taken[1],
+        page_size=os.sysconf("SC_PAGE_SIZE"),
+        closings=residents[1],
+    )
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
         print(
             f"resident after each round's closings, medians in MB: {resident}, letting the"
-            f" second {allowed:.1f} MB higher for pages taken before the third, the least of"
-            f" {machine:.1f} MB the machine took and {shell_took} MB the shell held unresident",
+            f" second {room.allowed:.1f} MB higher for pages taken before the third, the least of"
+            f" {room.machine:.1f} MB the machine took and {room.shell} MB the shell held"
+            " unresident",
             flush=True,
         )
     assert all(rounds), f"a round's closings weren't collected: {rounds}"
@@ -203,9 +204,9 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     assert all(said >= 0 for each in residents for _, said in each), (
         f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
     )
-    assert resident[2] <= (resident[1] + allowed) * GROWTH, (
+    assert resident[2] <= (resident[1] + room.allowed) * GROWTH, (
         f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
-        f" round before, which the kernel could have taken {allowed:.1f} MB of (medians by"
+        f" round before, which the kernel could have taken {room.allowed:.1f} MB of (medians by"
         f" round, in MB: {resident}), so the heap keeps pages it no longer uses"
     )
 
