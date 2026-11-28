@@ -366,8 +366,19 @@ mod tests {
             mark(&history, "new:model:opus", 1.0).unwrap(),
             "new:model:opus"
         );
-        mark(&history, "new:tool:a%", 1.0).expect_err("a % should match no key");
-        assert!(mark(&history, "new:model:op", 1.0).is_err(), "two start so");
+        assert_eq!(
+            mark(&history, "new:tool:a%", 1.0),
+            Err(Unmarked::Unheld("new:tool:a%".into())),
+            "a % should match no key, so none holds by it"
+        );
+        let two = mark(&history, "new:model:op", 1.0);
+        assert!(
+            matches!(
+                &two,
+                Err(Unmarked::Several(key, keys)) if key == "new:model:op" && keys.len() == 2
+            ),
+            "both opus keys start new:model:op, so it should be refused as several, not {two:?}"
+        );
     }
 
     // Marking this week's near cap leaves next week's to ask.

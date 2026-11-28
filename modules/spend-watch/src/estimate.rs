@@ -283,8 +283,11 @@ mod tests {
             "opus should bill 0.83 of its price: {opus:?}"
         );
         assert!(
-            opus.low <= 0.77 && opus.high >= 0.89,
-            "opus's range should span at least 0.77 to 0.89: {opus:?}"
+            (opus.low - 0.76).abs() < 1e-9 && (opus.high - 0.90).abs() < 1e-9,
+            "opus's range should run from its cheaper days' 0.76 to its dearer days' 0.90, \
+             not {} to {}",
+            opus.low,
+            opus.high
         );
         assert_eq!(
             ratios.of("never-billed"),

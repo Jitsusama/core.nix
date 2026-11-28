@@ -61,6 +61,11 @@ mod tests {
         let ones: Vec<u64> = (0..100).map(|_| one.next_u64()).collect();
         let others: Vec<u64> = (0..100).map(|_| other.next_u64()).collect();
         assert_eq!(ones, others, "one seed should draw the same numbers");
+        let (seven, eight) = (Random::seeded(7).next_u64(), Random::seeded(8).next_u64());
+        assert_ne!(
+            seven, eight,
+            "seeds 7 and 8 drew the same first number, as if the seed were ignored"
+        );
     }
 
     #[test]

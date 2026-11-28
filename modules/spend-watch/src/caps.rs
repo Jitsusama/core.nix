@@ -748,12 +748,12 @@ mod tests {
         );
         assert!(
             (clock.cap_within_day - 0.5).abs() < 1e-9,
-            "the cap should fall half a day in, not at {}",
+            "half the paths should reach the cap within a day, not {}",
             clock.cap_within_day
         );
         assert!(
             (clock.warn_within_day - 0.5).abs() < 1e-9,
-            "the warning should fall half a day in, not at {}",
+            "half the paths should reach the warning within a day, not {}",
             clock.warn_within_day
         );
         assert_eq!(clock.frees_at, None);

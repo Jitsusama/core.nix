@@ -662,12 +662,16 @@ pub(crate) mod tests {
 
     #[test]
     fn a_timestamp_is_told_by_when_it_is_not_how_its_written() {
-        let (half, tenth) = (instant("1730300001.5"), instant("1730300001.000100"));
+        // Each is unwrapped before it's compared, since None orders below
+        // any Some and would pass either comparison on a timestamp unread.
+        let half = instant("1730300001.5").expect("1730300001.5 wasn't read");
+        let tenth = instant("1730300001.000100").expect("1730300001.000100 wasn't read");
         assert!(
             half > tenth,
             "a half second should come after a ten-thousandth: {half:?}, {tenth:?}"
         );
-        let (nine, ten) = (instant("999999999.000000"), instant("1000000000.000000"));
+        let nine = instant("999999999.000000").expect("999999999.000000 wasn't read");
+        let ten = instant("1000000000.000000").expect("1000000000.000000 wasn't read");
         assert!(
             nine < ten,
             "nine digits of seconds should come before ten: {nine:?}, {ten:?}"
