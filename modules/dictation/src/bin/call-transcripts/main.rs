@@ -101,6 +101,7 @@ mod split;
 mod summarizer;
 mod summary;
 mod times;
+mod unheard;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -413,8 +414,8 @@ fn summarize(
     // A call's one file is summed up from its transcript alone, never
     // from a summary already over it.
     let text = filed::transcript(&file);
-    if said::too_little(text) {
-        println!("{}", said::TOO_LITTLE);
+    if let Some(written) = said::in_place_of_a_summary(text) {
+        println!("{written}");
         return Ok(());
     }
     let mut model = ask::load(summarizer).map_err(|unloaded| match unloaded {
