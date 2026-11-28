@@ -36,18 +36,58 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 /// read them, since the node then writes no builders' line at all. Two
 /// builders whose names are drawn alike are one to the reader and one
 /// record, so only the worse is kept: a fine one never hides a failing one.
-/// Builders without a name are all said unnamed, so they too are one,
-/// said at its worst.
+/// Two as bad are joined, each saying its own words, so neither the node's
+/// order nor a tie decides which the reader hears of. Builders without a
+/// name are all said unnamed, so they too are one, said at its worst.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
         .and_then(Value::as_array)
         .map(|all| all.iter().map(builder).collect())
         .unwrap_or_default();
-    read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
-    let mut named = std::collections::HashSet::new();
-    read.retain(|(thing, _)| named.insert(thing.name.clone()));
-    read
+    // By what each says after its health and name, so builders drawn alike
+    // meet in an order of their own rather than the node's; one saying
+    // what another drawn alike says adds nothing to it.
+    read.sort_by(|(a, _), (b, _)| {
+        b.health
+            .cmp(&a.health)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.says.cmp(&b.says))
+    });
+    read.dedup_by(|(a, _), (b, _)| a.name == b.name && a.says == b.says);
+    let mut kept: Vec<(Thing, Vec<String>)> = Vec::new();
+    let mut at = std::collections::HashMap::new();
+    for (thing, looks) in read {
+        if let Some(&first) = at.get(&thing.name) {
+            joined(&mut kept[first], thing, looks);
+        } else {
+            at.insert(thing.name.clone(), kept.len());
+            kept.push((thing, looks));
+        }
+    }
+    kept
+}
+
+/// `first` with what `other`, a builder drawn alike after it, says, where it
+/// stands as badly: its words after the first's, and each look it raises
+/// beside the first's, or the words of one they share after the first's
+/// own. One better than the first adds nothing, so a fine builder never
+/// softens a failing one.
+fn joined(first: &mut (Thing, Vec<String>), other: Thing, words: Vec<String>) {
+    let (thing, said) = first;
+    if other.health != thing.health {
+        return;
+    }
+    thing.says = format!("{}; {}", thing.says, other.says);
+    for (look, word) in other.looks.into_iter().zip(words) {
+        if let Some(shared) = thing.side.iter().position(|side| *side == look.side) {
+            said[shared] = format!("{}; {word}", said[shared]);
+        } else {
+            thing.side.push(look.side.clone());
+            thing.looks.push(look);
+            said.push(word);
+        }
+    }
 }
 
 /// One builder: how it stands, and what in that is worth a look, as a
