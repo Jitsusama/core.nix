@@ -188,12 +188,6 @@
   "modules/slices/jobs-sorter/src/main.rs" = 21;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
   "modules/slices/jobs-sorter/src/revive.rs" = 20;
-  "modules/spend-watch/src/collection.rs" = 10;
-  "modules/spend-watch/src/config.rs" = 13;
-  "modules/spend-watch/src/feed_tests.rs" = 11;
-  "modules/spend-watch/src/history.rs" = 8;
-  "modules/spend-watch/src/series.rs" = 9;
-  "modules/spend-watch/src/status.rs" = 3;
   "modules/spotify/pause-for-calls/src/main.rs" = 3;
   "modules/spotify/spotify-recent/src/recent.rs" = 13;
   "modules/spotify/spotify-recent/src/token.rs" = 9;
@@ -205,8 +199,6 @@
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
   "modules/v4l2loopback/holders/src/main.rs" = 4;
-  "modules/warp/src/read.rs" = 1;
-  "modules/warp/src/switch.rs" = 6;
   "modules/wifid/daemon/src/check.rs" = 4;
   "modules/wifid/daemon/src/detail.rs" = 2;
   "modules/wifid/daemon/src/link.rs" = 4;
