@@ -2804,11 +2804,15 @@ impl Wifid<'_> {
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
                 self.picked.borrow_mut().remove(card);
+                // Forgotten before the refusal is said, so whoever asked
+                // finds nothing saved once told: told first, a test's
+                // Describe read the network still saved 0.1 s later
+                // (2026-11-27).
+                if *new && let Err(error) = self.store.forget(name) {
+                    eprintln!("<4>can't forget {name} again: {error:?}");
+                }
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
-                    if let Err(error) = self.store.forget(name) {
-                        eprintln!("<4>can't forget {name} again: {error:?}");
-                    }
                     let _ = self.given_everything().await;
                 } else {
                     self.add_card_named(card).await;
