@@ -474,9 +474,11 @@ in
   # Read from the source of the Mesa the XPS 14's graphics drivers are,
   # with its patches, that preference no longer hangs off the branch every
   # memory object takes first, and anv still prefers those tiles
-  # (tests/iris-tiles-memory-objects-as-anv-does.sh). The same read of
-  # Mesa's own source must fail, so the check is seen to catch the bug
-  # each time it runs, not only once by hand.
+  # (tests/iris-tiles-memory-objects-as-anv-does.sh). Mesa's own iris must
+  # fail at that shadowing, so the check is seen to catch the bug each time
+  # it runs, and its cases edit all three files as a later Mesa might, so
+  # a check that stops seeing a failure one of them makes fails here
+  # (tests/iris-tiles-memory-objects-as-anv-does-cases.py).
   iris-tiles-memory-objects-as-anv-does =
     let
       mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
@@ -486,16 +488,18 @@ in
         resource
         image
       ];
+      own = patched mesa.src [ ] [ resource ];
+      bash = lib.getExe pkgs.bash;
+      check = ./tests/iris-tiles-memory-objects-as-anv-does.sh;
+      read = "${source}/${resource} ${source}/${image} ${own}/${resource}";
     in
-    pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
-      check=${./tests/iris-tiles-memory-objects-as-anv-does.sh}
-      ${lib.getExe pkgs.bash} "$check" ${source}/${resource} ${source}/${image}
-      if ${lib.getExe pkgs.bash} "$check" ${mesa.src}/${resource} ${mesa.src}/${image}; then
-        echo "The check passes on Mesa's own source, so it can't tell the patch is there." >&2
-        exit 1
-      fi
-      touch $out
-    '';
+    pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        ${bash} ${check} ${read}
+        python3 ${./tests/iris-tiles-memory-objects-as-anv-does-cases.py} ${bash} ${check} ${read}
+        touch $out
+      '';
 
   # xe's 2 MiB buffer pages had the thread asking reclaim and compact for
   # them, round after round, while memory was fragmented, and niri stalled
