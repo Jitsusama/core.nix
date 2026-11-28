@@ -10,8 +10,9 @@ sky, never call a node it never heard quiet, say what it couldn't read, say
 broken when the node stops while keeping what it drew and live once it's back,
 say stale when the server goes, draw a murmur's words as words and never as
 markup, step its cursor by the keys and by a tap on the keys its head shows,
-and pass the web-design skill's page checks at a phone's width and a desk's in
-both looks. Anything the page logs fails it. The server, the browser and the tab are
+keep its headline and lede to the lines they open on whatever it says, and pass
+the web-design skill's page checks at a phone's width and a desk's in both
+looks. Anything the page logs fails it. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's, which opens once more a tab whose
 renderer died before its first reading, as a busy builder's sometimes does.
 """
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import HEAD_HEIGHTS, LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Error, Page, expect
 from stand_in_daemon import StandIn
 
@@ -52,6 +53,54 @@ COUNTED = "Three murmured, two still in the air."
 BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
+# The newest murmur still in the air, which the lede quotes. Nearly every murmur a cell says
+# runs past the characters the lede quotes before it trims, as this one does.
+NEWEST = (
+    "Gulls are back on the breakwater, a week before the almanac said they would be, and "
+    "they're nesting low on the seaward side where the spring tides reach the rocks."
+)
+# Every other headline and lede the page writes, made by its own model and markup, which must
+# take the lines the ones it opens on do. The headlines: a node never reached, and every count
+# said in words, any part of it settled, then counts past them in numerals. The ledes: a node
+# never reached, nothing said, all settled, and the longest the model writes, a quest's name and
+# a murmur's prose both in Title Case or both in lower case, each cut where the model cuts it,
+# which must fit the four lines the lede's box holds.
+HEAD_FORMS = """async () => {
+  const { headline, lede, UNHEARD } = await import("./model.js");
+  const { escaped, headlineOf } = await import("./draw.js");
+  const said = (count, open, quest = "Watch the shore", words = "The tide turned.") =>
+    Array.from({ length: count }, (_, at) => ({
+      key: `murmur:SHORES:${at}`, writer: "SHORES", quest, words, ties: [],
+      settled: at < open ? null : "Done.", at: count - at }));
+  const counts = [[110, 0], [110, 7], [1204, 117]];
+  for (let count = 0; count <= 12; count += 1) {
+    for (let open = 0; open <= count; open += 1) {
+      counts.push([count, open]);
+    }
+  }
+  const lower = "gulls are back on the breakwater, a week before the almanac said they " +
+    "would be, then they nest low on the seaward side.";
+  const title = "Gulls Are Back On The Breakwater, A Week Before The Almanac Said They " +
+    "Would Be, Then They Nest Low On The Seaward Side.";
+  return {
+    headline: [
+      escaped(UNHEARD.headline),
+      ...counts.map(([count, open]) => headlineOf(headline(said(count, open)))),
+    ],
+    lede: [
+      UNHEARD.lede,
+      ...[
+        said(0, 0), said(3, 0),
+        said(1, 1, "Keep Mycelia Fast and Whole Through Each Gate Tonight", title),
+        said(1, 1, "make the nightly audits find everything in order and keep it", lower),
+      ].map(lede),
+    ].map(escaped),
+  };
+}"""
+# The lines the lede's box holds, which every lede the model writes fits, within a pixel, since
+# the page rounds the height it lays out.
+LEDE_LINES = 4
+LAID_WITHIN = 1
 
 
 def murmur(writer: str, at: int, words: str, **more: object) -> dict[str, object]:
@@ -88,7 +137,7 @@ def murmuring_node(tmp_path: Path, said_at: tuple[int, ...]) -> Iterator[StandIn
         murmur(
             "OSPREY", osprey, "The harbour chart is a day behind.", settled="charted this morning"
         ),
-        murmur("TERNAA", tern, "Gulls are back on the breakwater."),
+        murmur("TERNAA", tern, NEWEST),
     ]
     stand_in = StandIn(tmp_path / "node.sock", "node", {"murmur": murmurs}).start()
     yield stand_in
@@ -403,7 +452,7 @@ def quiet_node(tmp_path: Path) -> Iterator[StandIn]:
 def heard_nothing(page: Page) -> None:
     """Read the page live with nothing murmured, its first reading."""
     the_page_stands(page, "live")
-    the_page_counts(page, "Nothing murmured yet.", "the quiet page miscounted")
+    the_page_counts(page, "Nothing murmured, nothing in the air.", "the quiet page miscounted")
 
 
 def said_quiet(page: Page, why: str) -> None:
@@ -493,7 +542,7 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
                 "data-key", key
             )
             quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
-            roosts = "Two murmured, every one come to roost."
+            roosts = "Two murmured, all come to roost."
             the_page_counts(page, roosts, "the settling went unheard")
             expect(title, "the air filter outlived the air").to_have_text("The murmurs")
             expect(options, "the settled murmurs hid").to_have_count(2)
@@ -507,7 +556,9 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
 def never_reached(page: Page) -> None:
     """Read the page broken with nothing heard, as a node never reached leaves it."""
     the_page_stands(page, "broken")
-    the_page_counts(page, "Nothing to hear yet.", "a node never reached wasn't said unheard")
+    the_page_counts(
+        page, "Not hearing the mycelium node.", "a node never reached wasn't said unheard"
+    )
 
 
 def test_a_node_never_reached_is_said_unheard_and_never_quiet(
@@ -529,7 +580,9 @@ def test_a_node_never_reached_is_said_unheard_and_never_quiet(
             for page in (first.page, second.page):
                 quiet = page.locator("#quiet")
                 expect(quiet, "a node never reached was called quiet").to_be_hidden()
-                the_page_counts(page, "Nothing to hear yet.", "the unheard page changed its word")
+                the_page_counts(
+                    page, "Not hearing the mycelium node.", "the unheard page changed its word"
+                )
         finally:
             if second is not None:
                 second.close()
@@ -543,6 +596,44 @@ def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: 
         opened.first(drawn)
         opened.keeps_to(BUDGET)
         the_page_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+# Past SIZES' desk the head lays out as it does there, its type no longer fluid and its parts
+# capped in width, so a wider desk would only repeat it. Between them, a narrow window gives
+# the headline's box four lines where its opening words take three, and a wider one three where
+# they take two.
+BETWEEN = [(520, 900), (660, 900)]
+
+
+@pytest.mark.parametrize("size", [*SIZES, *BETWEEN])
+def test_the_head_keeps_the_lines_it_opens_on(
+    browser: Browser, murmurs_served: Served, size: tuple[int, int]
+) -> None:
+    # Every headline the page writes must take the lines the one it opens on does, and every
+    # lede must fit whole in the box it opens in, or everything under them moves as the node
+    # answers and as murmurs settle.
+    root, _ = murmurs_served
+    opened = Opened(browser, f"{root}web/", size, "light")
+    try:
+        opened.first(drawn)
+        forms = opened.page.evaluate(HEAD_FORMS)
+        heights = opened.page.evaluate(HEAD_HEIGHTS, [["headline", "lede"], forms])
+        for part, said in heights.items():
+            assert said["live"] == said["opening"], (
+                f"at {size} the live {part} is {said['live']} px, not {said['opening']}"
+            )
+            grew = {
+                words: px
+                for words, px in zip(forms[part], said["forms"], strict=True)
+                if px != said["opening"]
+            }
+            assert not grew, f"at {size} these {part} forms leave {said['opening']} px: {grew}"
+        lede = heights["lede"]
+        assert abs(lede["opening"] - LEDE_LINES * lede["line"]) < LAID_WITHIN, (
+            f"at {size} the lede's box is {lede['opening']} px, not {LEDE_LINES} lines"
+        )
     finally:
         opened.close()
 

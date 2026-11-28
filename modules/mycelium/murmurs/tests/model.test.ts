@@ -7,6 +7,10 @@ import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { ago, headline, lede, murmursOf, questsOf, trimmed } from "../model.ts";
 
+// The isolate the lede holds a quest's name and a murmur's words in, and its pop.
+const FSI = "\u2068";
+const PDI = "\u2069";
+
 /** A murmur record by `writer` at `at`, with `more` over its fields. */
 function murmur(writer: string, at: number, more: { readonly [field: string]: unknown } = {}) {
   return {
@@ -131,9 +135,9 @@ it("the headline turns when none or all have settled, and when nothing was said"
   const settledAll = murmursOf(holding([murmur("KESTRL", 100, { settled: "Done." })])).murmurs;
   const openAll = murmursOf(holding([murmur("KESTRL", 100), murmur("OSPREY", 50)])).murmurs;
   const says = (one: ReturnType<typeof headline>): string => `${one.lead} ${one.turn}`;
-  assert.equal(says(headline(settledAll)), "One murmured, every one come to roost.", "all settled");
+  assert.equal(says(headline(settledAll)), "One murmured, all come to roost.", "all settled");
   assert.equal(says(headline(openAll)), "Two murmured, all still in the air.", "none settled");
-  assert.equal(says(headline([])), "Nothing murmured yet.", "nothing said");
+  assert.equal(says(headline([])), "Nothing murmured, nothing in the air.", "nothing said");
 });
 
 it("the lede quotes the newest still in the air, cut on a word", () => {
@@ -143,10 +147,67 @@ it("the lede quotes the newest still in the air, cut on a word", () => {
   );
   const line = lede(murmurs);
   assert.ok(
-    line.startsWith("Newest in the air, from Watch the osprey shore: gulls wheel"),
+    line.startsWith(`Newest in the air, from ${FSI}Watch the osprey shore${PDI}: ${FSI}gulls`),
     `the lede should quote osprey's murmur, not kestrel's settled one: ${line}`,
   );
-  assert.ok(line.endsWith("over the..."), `the quote should end on a whole word: ${line}`);
+  assert.ok(line.endsWith(`wheel over...${PDI}`), `the quote should end on a whole word: ${line}`);
+});
+
+it("the lede keeps room for the murmur however long its quest's name runs", () => {
+  // A purpose with no colon is a quest's whole name, which its author may make any length.
+  const purpose = `${"the nightly audit, which found everything in order ".repeat(4)}end`;
+  const long = `${"gulls wheel over the cistern ".repeat(8)}end`;
+  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text: long })]));
+  const line = lede(murmurs);
+  assert.ok(
+    line.startsWith(
+      `Newest in the air, from ${FSI}the nightly audit, which found...${PDI}: ${FSI}`,
+    ),
+    `the quest's name should be cut on a word before the murmur: ${line}`,
+  );
+  const quoted = `${"gulls wheel over the cistern ".repeat(2)}gulls wheel over...`;
+  assert.ok(
+    line.endsWith(`: ${FSI}${quoted}${PDI}`),
+    `the murmur should follow the name, cut at its own most: ${line}`,
+  );
+});
+
+it("the lede drops the controls of direction a name or a murmur holds", () => {
+  // An override left open, a pop that would close the lede's isolate early, and an isolate of
+  // the murmur's own: any of them would bend the lede's own isolates.
+  const purpose = `\u202e${"the nightly audit, which found everything in order ".repeat(2)}`;
+  const text = "Gulls\u2069 are \u2067back\u2069.";
+  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text })]));
+  const line = lede(murmurs);
+  assert.ok(
+    line.startsWith(`Newest in the air, from ${FSI}the nightly audit, which found`),
+    `the name's override should go: ${line}`,
+  );
+  assert.ok(
+    line.endsWith(`...${PDI}: ${FSI}Gulls are back.${PDI}`),
+    `only the lede's own isolates should hold the name and the quote: ${line}`,
+  );
+});
+
+it("a murmur is read without its controls of direction, for its row as for its lede", () => {
+  // A paragraph's end closes every isolate open in it, so it's read as the space it stands for.
+  const text = "Gulls\u2029are\u0085back\u202b.";
+  const settled = "\u2066Done\u2069.";
+  const [read] = murmursOf(holding([murmur("OSPREY", 200, { text, settled })])).murmurs;
+  assert.equal(read?.words, "Gulls are back.", "the words should be plain");
+  assert.equal(read?.settled, "Done.", "the settling should be plain");
+  const [named] = murmursOf(
+    holding([murmur("OSPREY", 200, { purpose: "\u202e\u2066: the tide" })]),
+  ).murmurs;
+  assert.equal(named?.quest, "OSPREY", "a name of nothing but controls should be the writer's");
+  const [quiet] = murmursOf(holding([murmur("OSPREY", 200, { settled: "\u202e\u2066" })])).murmurs;
+  assert.equal(quiet?.settled, null, "a settling of nothing but controls should be in the air");
+});
+
+it("a murmur's ties are read plain, and its own cell among them still left out", () => {
+  const ties = ["QEST-20261116-\u202eKESTRL", "QEST-20261116-OSPREY", "HERONS\u2069"];
+  const [read] = murmursOf(holding([murmur("OSP\u2066REY", 100, { tied_to: ties })])).murmurs;
+  assert.deepEqual(read?.ties, ["KESTRL", "HERONS"], "each tie should be plain, the writer's gone");
 });
 
 it("a murmur's words are cut on a word, without a stop before the ellipsis", () => {
