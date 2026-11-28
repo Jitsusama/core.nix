@@ -582,6 +582,40 @@ READING_TALK = "Reading what passed between cells."
 # messages, and the words its drawer says that in.
 UNTIED = f"c:HERON2|c:{HEARD}"
 UNTIED_TALK = "Talk on the mesh in the last ten minutes"
+# A pair the node ties, so its drawer counts the talk from the tie.
+TIED = f"c:HERON1|c:{HEARD}"
+# How node.json's cells head their drawers and name a talk's ends (view.js's
+# shortName): by their window's middle where one is open, else by their title.
+HEADED = {
+    "TERN01": "Mend the Sails",
+    "HERON1": "Chart the Harbour",
+    "HERON2": "Sound the Channel",
+    HEARD: "Count the Cleats",
+}
+
+
+def the_drawer_is(page: Page, *named: str, why: str) -> None:
+    """Wait until the drawer shown is the one headed by each of `named`, in order.
+
+    A drawer keeps its words on screen until the one opened is drawn, and Now,
+    a cell's drawer and another talk's say the same of messages yet to answer,
+    so a drawer's words are read only once its heading shows it is the one meant.
+    """
+    heading = re.compile(".*".join(map(re.escape, named)), re.IGNORECASE)
+    expect(page.locator("#panel-title"), why).to_have_text(heading)
+
+
+def cell_opens(page: Page, cell: str) -> None:
+    """Open `cell`'s drawer by its hash, and wait until it is the drawer shown."""
+    page.evaluate(f"location.hash = '#cell={cell}'")
+    the_drawer_is(page, HEADED[cell], why=f"{cell}'s drawer never opened")
+
+
+def talk_opens(page: Page, pair: str) -> None:
+    """Open the talk drawer of `pair` by its hash, and wait until it is the drawer shown."""
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{pair}')")
+    ends = [HEADED[end.removeprefix("c:")] for end in pair.split("|")]
+    the_drawer_is(page, *ends, why=f"the talk drawer of {pair} never opened")
 
 
 @pytest.fixture
@@ -613,21 +647,22 @@ def test_the_map_draws_before_the_node_says_what_passed(
     box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
     assert box, "the map drew no TERN01 to open"
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    the_drawer_is(page, HEADED["TERN01"], why="a click on TERN01 didn't open its drawer")
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
     )
     # HERON2 has no tie, so its talk is counted from the messages alone, and
     # the counts line stays hidden rather than saying none passed.
-    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
-    expect(drawer, "an untied talk's drawer didn't open").to_contain_text(UNTIED_TALK)
+    talk_opens(page, UNTIED)
+    expect(drawer, "an untied talk's drawer didn't say it was untied").to_contain_text(UNTIED_TALK)
     expect(
         drawer, "an untied talk's drawer said nothing passed before it was heard"
     ).to_contain_text("Still reading")
     expect(
         drawer.locator(".counts"), "an untied talk counted messages before they were heard"
     ).to_have_count(0)
-    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    talk_opens(page, TIED)
     expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
     )
@@ -640,7 +675,7 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(
         drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
     ).to_have_count(TALKERS["HERON1"])
-    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
+    talk_opens(page, UNTIED)
     expect(drawer.locator(".counts"), "an untied talk didn't count what was heard").to_have_text(
         re.compile(rf"^{TALKERS['HERON2']} message\b")
     )
@@ -695,7 +730,7 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
     # A drawer open as the line passes its patience says what the line says.
-    page.evaluate("location.hash = '#cell=TERN01'")
+    cell_opens(page, "TERN01")
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     expect(asof, "the map still said it was reading what never answered").to_contain_text(
@@ -711,7 +746,7 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     expect(drawer, "a cell's drawer said reading and waiting at once").not_to_contain_text(
         DRAWER_READING
     )
-    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    talk_opens(page, TIED)
     expect(drawer, "a talk's drawer was still reading what the line waits on").to_contain_text(
         DRAWER_WAITING
     )
@@ -768,7 +803,7 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
-    page.evaluate("location.hash = '#cell=TERN01'")
+    cell_opens(page, "TERN01")
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     opened.loses(server)
@@ -788,7 +823,7 @@ def test_a_stale_map_says_nothing_of_waiting_on_its_messages(
     page = opened.page
     the_map_stands(page, "live")
     asof = page.locator("#asof")
-    page.evaluate("location.hash = '#cell=TERN01'")
+    cell_opens(page, "TERN01")
     drawer = page.locator("#panel-body")
     # Past its patience the line waits on the messages, and so does the drawer.
     expect(asof, "the map never said it was waiting on its messages").to_contain_text(
@@ -898,7 +933,7 @@ def test_messages_broken_before_they_answer_are_said_broken(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
-    page.evaluate("location.hash = '#cell=TERN01'")
+    cell_opens(page, "TERN01")
     drawer = page.locator("#panel-body")
     expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     slow_talk_node.cut("message")
@@ -911,7 +946,7 @@ def test_messages_broken_before_they_answer_are_said_broken(
     expect(drawer, "a cell's drawer was still reading what broke").to_contain_text(
         DRAWER_BROKEN, timeout=PACE_MS
     )
-    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    talk_opens(page, TIED)
     expect(drawer, "a talk's drawer was still reading what broke").to_contain_text(DRAWER_BROKEN)
     expect(drawer, "a talk's drawer said reading what broke").not_to_contain_text(DRAWER_READING)
     opened.close()
