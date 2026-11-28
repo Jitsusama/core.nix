@@ -78,6 +78,42 @@ fn each_line_counts_toward_what_it_says() {
     );
 }
 
+/// The lend's 502s, each as model-relay writes it.
+const LENT_ANSWERED: [&str; 5] = [
+    "model-relay: a request couldn't be carried, so the lend's request is answered 502: \
+     connection error: connection reset",
+    "model-relay: the origin reset a request on connection 1.12, kept, after 40 asked and 2 \
+     cancelled on it: http2 error: stream error received: refused stream before processing any \
+     application logic; the lend's request is answered 502",
+    "model-relay: 4 of the lend's requests already go alone, so one more is answered 502",
+    "model-relay: the lend's request had no connection to go alone on, so it's answered 502",
+    "model-relay: the lend's request went alone on 4.17 and couldn't be carried, so it's \
+     answered 502: connection error: connection reset",
+];
+
+#[test]
+fn the_lends_502s_count_with_pis_under_their_own_causes() {
+    let journal = LENT_ANSWERED.join("\n");
+    let measures = relay(Some(&journal));
+    let answered = by_key(&measures, ANSWERED_502);
+    assert_eq!(answered.now, 5.0, "each of the lend's 502s counts once");
+    assert_eq!(
+        answered.behind,
+        [
+            "2 on connection error: connection reset",
+            "1 on 4 of the lend's requests already go alone",
+            "1 on http2 error: stream error received: refused stream before processing any \
+             application logic",
+        ],
+        "the lend's 502s group by their causes, the most first"
+    );
+    assert_eq!(
+        by_key(&measures, DIRECT).now,
+        0.0,
+        "a 502 of the lend's was counted as sent direct"
+    );
+}
+
 #[test]
 fn a_reset_answered_502_is_counted_under_its_resets_own_error() {
     let journal = [RESET_ANSWERED, RESET_ANSWERED].join("\n");
