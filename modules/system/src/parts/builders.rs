@@ -65,16 +65,13 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// building that this build was never told of. A look carries the node's
 /// reason whole, since what to do about a builder is in it. Its name is
 /// made plain as any text the system shows, and a state or lender's word is
-/// matched once plain, so padding never turns a known word into a look.
+/// matched in the one form a look would show it (`plain`), so no look ever
+/// names a word this build knows.
 fn builder(said: &Value) -> (Thing, Vec<String>) {
     let name = plain_name(said);
-    let word = |key: &str| said.get(key).and_then(Value::as_str);
-    // A word as it reads, its hidden characters and padding gone.
-    let drawn = |word: &str| crate::plain::words(word).trim().to_owned();
-    let proof = word("said")
-        .map(drawn)
-        .filter(|said| PROOFS.contains(&said.as_str()));
-    let why = word("said").filter(|_| proof.is_none()).and_then(plain);
+    let lender = said.get("said").and_then(Value::as_str).and_then(plain);
+    let proof = lender.as_deref().filter(|said| PROOFS.contains(said));
+    let why = lender.clone().filter(|_| proof.is_none());
     let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
     let takes = match said.get("jobs").and_then(Value::as_u64) {
@@ -93,15 +90,14 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
         None | Some(Value::Null) => "unknown".to_owned(),
         Some(state) => state
             .as_str()
-            .map(drawn)
-            .filter(|state| plain(state).is_some())
+            .and_then(plain)
             .unwrap_or_else(|| "unreadable".to_owned()),
     };
     let (health, says, look) = match state.as_str() {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
         "running" => match &why {
             Some(why) => unknown(format!("runs, its lender saying {why}")),
-            None => running(lent, &takes, proof.as_deref()),
+            None => running(lent, &takes, proof),
         },
         "not running" => (
             Health::Good,
@@ -113,10 +109,8 @@ fn builder(said: &Value) -> (Thing, Vec<String>) {
             with_why("isn't answering"),
             Some("not answering".to_owned()),
         ),
-        other => match plain(other).filter(|_| other != "unknown") {
-            Some(state) => unknown(with_why(&format!("is {state}"))),
-            None => (Health::Good, with_why("hasn't been heard from"), None),
-        },
+        "unknown" => (Health::Good, with_why("hasn't been heard from"), None),
+        other => unknown(with_why(&format!("is {other}"))),
     };
     let looks: Vec<String> = look.iter().map(|_| says.clone()).collect();
     let thing = Thing {
@@ -191,12 +185,13 @@ fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Opt
 }
 
 /// A node's words as one plain clause of a line: the first line, made
-/// plain as every text the system shows is (`plain::words`), with no
-/// closing stop, and cut at a word past `REASON_AT_MOST`; none when
-/// nothing is left.
+/// plain as every text the system shows is (`plain::words`, which trims it
+/// too), with no closing stop, and cut at a word past `REASON_AT_MOST`;
+/// none when nothing is left. A state and a lender's word are read in this
+/// form as well as said in it, so what is matched is what a look shows.
 fn plain(said: &str) -> Option<String> {
     let line = crate::plain::words(said.lines().next().unwrap_or(""));
-    let line = line.trim().trim_end_matches(['.', ';', ':', ',', ' ']);
+    let line = line.trim_end_matches(['.', ';', ':', ',', ' ']);
     if line.is_empty() {
         return None;
     }
