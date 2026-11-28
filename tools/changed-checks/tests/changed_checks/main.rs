@@ -3,11 +3,12 @@
 //! names each side's checks and their derivations from files the test
 //! writes, and records what it's asked to build. The stand-ins and what
 //! the tests share are here; the tests are beside this, a file to each of
-//! building, evaluating, keeping a base, what each check read alone, and
-//! the command.
+//! building, evaluating, keeping a base, carrying one past a record, what
+//! each check read alone, and the command.
 
 mod alone;
 mod building;
+mod carrying;
 mod command;
 mod evaluating;
 mod keeping;

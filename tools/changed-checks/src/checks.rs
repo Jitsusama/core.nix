@@ -340,6 +340,20 @@ pub fn kept(
     Ok(found)
 }
 
+/// What `kept` gives, and whether `evaluate` ran to give it, rather than
+/// another run having kept it before its lock was taken.
+pub fn kept_or_evaluated(
+    path: &Path,
+    evaluate: impl FnOnce() -> Result<Derivations, String>,
+) -> Result<(Derivations, bool), String> {
+    let mut ran = false;
+    let found = kept(path, || {
+        ran = true;
+        evaluate()
+    })?;
+    Ok((found, ran))
+}
+
 /// The checks among `derivations` whose derivation takes `source`, the
 /// flake's whole source, in, so its build may read any file though no trace
 /// saw it read: `formatting`'s evaluation read 408 files on 12 November.

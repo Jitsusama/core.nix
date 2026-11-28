@@ -125,8 +125,8 @@ pub fn keep(
         }
         if bounded {
             eprintln!(
-                "changed-checks: a gate kept {} while this keep began, so it counts as \
-                 carried and the next keep evaluates it whole",
+                "changed-checks: a gate kept {} while this keep began, so this keep \
+                 evaluated none of it and counts as one more carry",
                 short(base)
             );
         }
