@@ -14,6 +14,16 @@
 //! the VPNs' own packets by their marks, and the VPNs give up what those
 //! carry past their CAKEs' count, so what they cost the connection is the
 //! share they're held to.
+//!
+//! That cost is read over several seconds, never one. WARP sends what its
+//! CAKE passed it in bursts, so in one second its own packets may run well
+//! over the count and in the next well under. Read a second at a time, and
+//! kept at its highest while it fell back slowly, those swings alone held
+//! the cost near their peaks: on 28 November WARP's CAKE stood at 5,444
+//! kbit/s, its 9,310 less 3,866 of cost, while the whole upload was about
+//! 5 Mbit/s, and the model relay's calls inside it were dropped.
+
+use std::collections::VecDeque;
 
 use serde_json::Value;
 
@@ -24,16 +34,23 @@ pub const COUNTER: &str = "vpnout";
 
 /// How much of the gap a second closes when what the VPN costs past its
 /// count falls: it gives the rate back over about ten seconds, since a
-/// download starting again would cost it at once.
+/// download starting again would cost it within the window.
 const FALL: f64 = 0.9;
+
+/// The seconds over which what the VPN costs past its count is read: long
+/// enough that a burst WARP sends and the lull after it fall in the same
+/// read, short enough that a download's cost is given up within a few
+/// seconds of its start.
+const WINDOW_S: f64 = 6.0;
 
 /// What a VPN carries past its CAKE's count, in kbit/s, from the counters
 /// read about once a second.
 #[derive(Clone, Debug, Default)]
 pub struct Cost {
     /// What the connection had carried for the VPNs and what their CAKEs
-    /// had counted, in bytes, and when, in seconds.
-    seen: Option<(u64, u64, f64)>,
+    /// had counted, in bytes, and when, in seconds: the reads of the last
+    /// `WINDOW_S`, with the one just before it.
+    seen: VecDeque<(u64, u64, f64)>,
     /// What they carry past it, smoothed.
     extra: f64,
 }
@@ -43,25 +60,32 @@ impl Cost {
     /// their CAKEs have counted sending, at `t` seconds, and answers what
     /// the VPNs carry past that count, in kbit/s.
     pub fn sample(&mut self, carried: u64, counted: u64, t: f64) -> u64 {
-        if let Some((was_carried, was_counted, at)) = self.seen
-            && carried >= was_carried
-            && counted >= was_counted
-        {
-            let dt = t - at;
-            if dt <= 0.0 {
-                return whole(self.extra);
+        match self.seen.back() {
+            Some(&(_, _, at)) if t <= at => return whole(self.extra),
+            // A counter that went back was made again: counting starts
+            // over from it, and what was learned of the VPN still holds.
+            Some(&(was_carried, was_counted, _))
+                if carried < was_carried || counted < was_counted =>
+            {
+                self.seen.clear();
             }
-            let kbit = |bytes: u64| float(bytes) * 8.0 / 1_000.0 / dt;
-            let now = (kbit(carried - was_carried) - kbit(counted - was_counted)).max(0.0);
+            _ => {}
+        }
+        let last = self.seen.back().map(|&(_, _, at)| at);
+        self.seen.push_back((carried, counted, t));
+        while self.seen.get(1).is_some_and(|&(_, _, at)| at <= t - WINDOW_S) {
+            self.seen.pop_front();
+        }
+        if let (Some(at), Some(&(first_carried, first_counted, from))) = (last, self.seen.front()) {
+            let span = t - from;
+            let kbit = |bytes: u64| float(bytes) * 8.0 / 1_000.0 / span;
+            let now = (kbit(carried - first_carried) - kbit(counted - first_counted)).max(0.0);
             self.extra = if now >= self.extra {
                 now
             } else {
-                now + (self.extra - now) * FALL.powf(dt)
+                now + (self.extra - now) * FALL.powf(t - at)
             };
         }
-        // A counter that went back was made again: counting starts over
-        // from it, and what was learned of the VPN still holds.
-        self.seen = Some((carried, counted, t));
         whole(self.extra)
     }
 }
@@ -162,7 +186,10 @@ mod tests {
         assert_eq!(cost.sample(bytes(12_000), bytes(10_000), 1.0), 2000);
         // The download ends: the connection carries what was counted.
         let after = cost.sample(bytes(22_000), bytes(20_000), 2.0);
-        assert_eq!(after, 1800, "a tenth of the gap closes in a second");
+        assert_eq!(
+            after, 1900,
+            "the window halves the gap and a tenth of the rest closes in a second"
+        );
         let mut last = after;
         for second in 3..30 {
             let n = u64::try_from(second).expect("a small count");
@@ -173,10 +200,47 @@ mod tests {
             );
         }
         assert!(last < 200, "given back within half a minute: {last}");
+        // A download starting again costs 3 Mbit/s past the count.
+        let mut costs = Vec::new();
+        for second in 30..36 {
+            let n = u64::try_from(second - 29).expect("a small count");
+            costs.push(cost.sample(
+                bytes(2000 + 290_000 + 13_000 * n),
+                bytes(290_000 + 10_000 * n),
+                f64::from(second),
+            ));
+        }
+        assert!(
+            costs.windows(2).all(|pair| pair[0] < pair[1]),
+            "a download starting again costs more each second: {costs:?}"
+        );
         assert_eq!(
-            cost.sample(bytes(2000 + 300_000 + 13_000), bytes(310_000), 30.0),
-            3000,
-            "a download starting again costs it at once"
+            costs.last(),
+            Some(&3000),
+            "a download starting again costs it whole within the window: {costs:?}"
+        );
+    }
+
+    // On 28 November WARP's CAKE stood at 5,444 kbit/s, 3,866 under its
+    // 9,310, with the whole upload about 5 Mbit/s: WARP sends in bursts, and
+    // its cost read one second at a time and kept at its peak stood near
+    // the bursts' peaks.
+    #[test]
+    fn a_vpn_s_bursts_cost_what_they_carry_past_the_count_on_the_whole() {
+        let mut cost = Cost::default();
+        cost.sample(0, 0, 0.0);
+        // The CAKE counts 4 Mbit/s each second, and WARP sends 2 and 7 in
+        // turn: 4.5 on the whole, half a megabit past the count.
+        let (mut carried, mut counted) = (0, 0);
+        let mut costs = Vec::new();
+        for second in 1..40 {
+            carried += bytes(if second % 2 == 1 { 2000 } else { 7000 });
+            counted += bytes(4000);
+            costs.push(cost.sample(carried, counted, f64::from(second)));
+        }
+        assert!(
+            costs.iter().all(|&kbit| kbit <= 600),
+            "bursts carrying 500 kbit/s past the count on the whole cost {costs:?}"
         );
     }
 
