@@ -104,7 +104,6 @@ in
         "pain-hear.timer"
         "pain-points.timer"
         "night-shift-*.timer"
-        "pi-packages.timer"
         "pi-measure.timer"
       ];
     };

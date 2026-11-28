@@ -41,16 +41,21 @@
   # it matters, offers its choices with what follows each, each answered by
   # a steer to the session that left it or its quest's, saying so when it
   # may not have gone, and gathers what other sources give it, as
-  # Passwords' one to-do, weighed beside the rest or done, as
-  # modules/quickshell/tests/for-you.qml holds ForYou.js, LookForm.js and
-  # Looks.js to it in Qt's own engine.
+  # Passwords' one to-do, weighed beside the rest or done, and has Later's
+  # drawer say what each waits for and how long, and History's how many
+  # each source keeps, as modules/quickshell/tests/for-you.qml holds
+  # ForYou.js, ForYouDrawers.js, LookForm.js and Looks.js to it in Qt's
+  # own engine.
   for-you-weighs-what-needs-joel =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what the shell runs them with.
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
       cp ${../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/ForYouDrawers.js} ForYouDrawers.js
       cp ${../launcher/LookForm.js} LookForm.js
       cp ${../launcher/Looks.js} Looks.js
       cp ${../launcher/Order.js} Order.js

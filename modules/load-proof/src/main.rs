@@ -446,7 +446,7 @@ fn ran(context: &Context) -> Result<(), Failure> {
         }
         match run.first_failed() {
             Some(builds) => {
-                let _ = writeln!(lines, "fails: from {builds} builds on");
+                let _ = writeln!(lines, "fails: first at {builds} builds");
             }
             None => lines.push_str("fails: the load didn't run to the end\n"),
         }

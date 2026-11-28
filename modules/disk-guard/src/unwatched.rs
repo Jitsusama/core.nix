@@ -44,4 +44,12 @@ impl Watch {
     pub fn wait(&self, _within: Duration) -> io::Result<Vec<Seen>> {
         match self.never {}
     }
+
+    pub fn tidy(&self) -> Vec<PathBuf> {
+        match self.never {}
+    }
+
+    pub fn holds(&self, _key: &[u8]) -> bool {
+        match self.never {}
+    }
 }

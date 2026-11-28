@@ -261,6 +261,7 @@
         loader-first-in-boot-order =
           script "loader-first-in-boot-order" ../../modules/lanzaboote/loader-first.sh
             { };
+        lock-follows = script "lock-follows" ../../modules/lock-follows/lock-follows.sh { };
         lock-for-sleep = script "lock-for-sleep" ../../modules/swayidle/lock-for-sleep.sh { };
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
         mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
