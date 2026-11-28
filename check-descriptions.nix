@@ -2288,10 +2288,17 @@
     daemon, and says a missing daemon broken with why
   '';
   lock-follows-opens-one-change-per-rev = ''
-    lock-follows does nothing while main locks upstream's newest, opens one draft change
-    locking that input alone at a newer, listing upstream's merges between, opens nothing while
-    it's open, closes it naming the one opened for a newer still, and writes a line for each
-    run, a failed fetch's too, which ends it non-zero
+    lock-follows does nothing while main locks upstream's newest; opens one draft change locking
+    that input alone at a newer, listing upstream's merges between, each subject in a code span so
+    a closing word closes nothing; opens nothing while it's open; once main moves on and upstream
+    with it, replaces that draft, naming it in the new one, commenting, closing, then deleting its
+    branch; replaces none whose lock commit someone amended, in its lock or its message, nor one
+    marked ready, another input's or a fork's; opens a declined rev's again neither while its
+    branch stands nor once deleted; leaves as taken a branch of its name holding the tool's commit
+    with someone's file amended in; ends non-zero when opening fails and opens on the pushed branch
+    next run, a fork's closed draft of that name declining nothing; leaves the older open when its
+    close fails, and closed with its branch kept when its delete is refused, saying so; and ends
+    with 75 when listing changes or fetching fails, writing a line for each run
   '';
   lock-follows-runs-every-quarter-hour = ''
     lock-follows runs every 15 minutes in the background, catching up on a quarter slept

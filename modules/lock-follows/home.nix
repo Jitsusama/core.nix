@@ -65,8 +65,9 @@ in
     };
     prCommand = lib.mkOption {
       description = ''
-        The command pull requests are listed, opened and closed with,
-        taking gh's words: gh from the account's PATH unless named.
+        The command pull requests are listed, opened, commented on and
+        closed with, taking gh's words: gh from the account's PATH unless
+        named.
       '';
       type = lib.types.str;
       default = "gh";

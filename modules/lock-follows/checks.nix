@@ -14,16 +14,21 @@ onLinux {
   # lock-follows runs against a bare origin, an upstream git reaches in
   # GitHub's place, and stand-ins for gh and nix (lock-follows-test.sh):
   # up to date it does nothing; behind it opens one draft pull request
-  # locking mycelium alone; behind with that one open it does nothing; a
-  # newer upstream, after main moved on, opens the newer and closes the
-  # older; the newest closes none of another input's, a fork's or one
-  # whose lock commit someone amended work into; a rev whose draft was
-  # closed by hand isn't opened again or pushed over, nor once its branch
-  # is deleted; a branch of its name holding someone else's commit is
-  # left as taken; a failed create ends it non-zero, and the next run
-  # opens on the branch already pushed, a fork's closed draft of that
-  # name declining nothing; a refused delete leaves the older open; and
-  # a fetch that fails ends it non-zero, its line written.
+  # locking mycelium alone, each upstream subject in a code span so a
+  # "Fixes #12" closes nothing; behind with that one open it does
+  # nothing; a newer upstream, after main moved on, opens the newer and
+  # replaces the older draft, naming it, commenting, closing, then
+  # deleting its branch; the newest replaces none of an older whose lock
+  # commit someone amended (another input's rev, or its message), one
+  # marked ready, another input's or a fork's, keeping each branch; a rev
+  # whose draft was closed by hand isn't opened again or pushed over, nor
+  # once its branch is deleted; a branch of its name holding the tool's
+  # commit with someone's file amended in is left as taken; a failed
+  # create ends it non-zero, and the next run opens on the branch already
+  # pushed, a fork's closed draft of that name declining nothing; a
+  # failed close leaves the older open, its branch kept; a refused delete
+  # leaves the olders closed, their branches kept, and says so; and a
+  # failed listing or fetch ends it with 75, its line written.
   lock-follows-opens-one-change-per-rev =
     pkgs.runCommandLocal "lock-follows-opens-one-change-per-rev"
       {
