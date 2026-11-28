@@ -67,6 +67,7 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.elsewhere
           core.homeModules.health
           core.homeModules.local-sites
+          core.homeModules.lock-follows
           core.homeModules.merge-net
           core.homeModules.model-relay
           core.homeModules.network-revive
