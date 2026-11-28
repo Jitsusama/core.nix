@@ -307,7 +307,7 @@ type Traced = Result<(Derivations, Reads, String, Evaluation), String>;
 /// keeps waited there 119 to 704 s before they began tracing, and one
 /// after the other, each half waiting on its slowest chunk, a keep took
 /// 679 s. Elsewhere, or with the derivations kept, they go one at a time.
-pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Result<(), String> {
+pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Result<bool, String> {
     let base = Base {
         root,
         commit,
@@ -318,25 +318,25 @@ pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Res
     let path = checks::keeping(&crate::cache(), commit, system);
     let builder = std::env::var_os(crate::HERE).is_some();
     if !builder || path.exists() {
-        let kept = checks::kept(&path, || {
+        let (kept, evaluated) = checks::kept_or_evaluated(&path, || {
             let (vm, ordinary) = split(&base.flake, system)?;
             one_at_a_time(&base, &vm, &ordinary, checks::at_once_here(builder), noted)
         })?;
         keep(root, commit, system, &kept, noted);
-        return Ok(());
+        return Ok(evaluated);
     }
     let (vm, ordinary) = split(&base.flake, system)?;
     if vm.is_empty() {
-        checks::kept(&path, || {
+        return checks::kept_or_evaluated(&path, || {
             one_at_a_time(&base, &vm, &ordinary, checks::at_once_here(builder), noted)
-        })?;
-        return Ok(());
+        })
+        .map(|(_, evaluated)| evaluated);
     }
     let at_once = checks::at_once_each_of_two_here();
     std::thread::scope(|scope| {
         let tracing = || traced(root, commit, system, &vm, &base.at, at_once);
         let mut beside = Some(scope.spawn(tracing));
-        let kept = checks::kept(&path, || {
+        let kept = checks::kept_or_evaluated(&path, || {
             let mut found = ordinarily(&base, &ordinary, at_once, noted)?;
             let traced = beside
                 .take()
@@ -348,13 +348,13 @@ pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Res
         // while it ran, or the ordinary checks failed.
         if let Some(beside) = beside {
             let traced = joined(beside);
-            if let Ok(kept) = &kept
+            if let Ok((kept, _)) = &kept
                 && let Err(why) = checked(&base.at, kept, &vm, traced, noted)
             {
                 unrecorded(system, commit, &why);
             }
         }
-        kept.map(|_| ())
+        kept.map(|(_, evaluated)| evaluated)
     })
 }
 

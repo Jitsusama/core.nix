@@ -239,6 +239,35 @@ fn a_clean_tree_is_kept_by_its_commit() {
 }
 
 #[test]
+fn a_base_holding_a_tree_kept_at_another_commit_evaluates_nothing() {
+    // On 28 November the train landed each candidate on main as a commit of
+    // its own holding the candidate's tree, and its next run evaluated that
+    // commit again as its base.
+    let stand_in = StandIn::new("landed-tree");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", BASE);
+    fs::write(stand_in.path("clean"), "").expect("written");
+    fs::write(stand_in.path("tree.fedcba9876543210fedc"), "landed").expect("written");
+    fs::write(stand_in.path("tree.1a96207100000000000a"), "landed").expect("written");
+    let first = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(first.status.success(), "{}", text(&first.stderr));
+    // Were the base evaluated, its checks would now all be removed.
+    stand_in.checks("base", "{}");
+
+    let ran = stand_in.run(&["--base", "older", "--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "");
+    assert!(
+        text(&ran.stderr).contains("1a9620710000 holds the tree landed"),
+        "{}",
+        text(&ran.stderr)
+    );
+    let runs = stand_in.runs();
+    assert!(evaluated(&runs[1]).is_empty(), "{}", runs[1]);
+}
+
+#[test]
 fn two_chunks_are_evaluated_at_once() {
     let stand_in = StandIn::new("at-once");
     // Ninety ordinary checks are three chunks: forty, forty and ten.

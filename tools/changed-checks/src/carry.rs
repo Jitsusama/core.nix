@@ -21,7 +21,9 @@
 //! check a carry would have given another derivation, so a carry that went
 //! wrong shows. Derivations a gate kept first may have been carried, so
 //! they count as a carry; past the bound they're set aside and the keep
-//! evaluates whole all the same, naming each check a gate kept otherwise.
+//! evaluates whole all the same, naming each check a gate kept otherwise,
+//! unless a gate keeps the base again while the keep waits on its lock,
+//! when the keep evaluated nothing and counts one more carry.
 //! On 14 November two keeps past the bound found their bases kept by gates
 //! and evaluated nothing, counting a seventh and an eighth carry.
 
@@ -51,16 +53,33 @@ struct Record {
     refused: Option<String>,
 }
 
+/// Where a keep that may not carry sets a base's kept derivations aside
+/// while it evaluates the base whole, from `path`, where they're kept.
+pub fn set_aside(path: &std::path::Path) -> std::path::PathBuf {
+    path.with_extension("gated")
+}
+
+/// What a keep of a base came to: how many keeps in a row have carried to
+/// its derivations, and whether this keep evaluated them itself.
+pub struct Kept {
+    pub carried: u64,
+    pub evaluated: bool,
+}
+
 /// Keep `base`'s derivations, carried from the newest record when they may
-/// be, or else as `whole` keeps them, and give how many keeps in a row have
-/// carried to them.
+/// be, or else as `whole` keeps them, saying whether it evaluated them
+/// itself. Derivations another run had kept by the time `whole` read them,
+/// a gate's or a tree's seed, count as one more carry rather than as an
+/// evaluation, since they may have been carried there: taken as whole,
+/// they would end the bound on carries and be kept by their tree as a
+/// correction.
 pub fn keep(
     root: &str,
     base: &str,
     system: &str,
     noted: &mut Run,
-    whole: impl FnOnce(&mut Run) -> Result<(), String>,
-) -> Result<u64, String> {
+    whole: impl FnOnce(&mut Run) -> Result<bool, String>,
+) -> Result<Kept, String> {
     let record = newest(root, base, system);
     if let Some(record) = &record {
         match &record.refused {
@@ -70,13 +89,16 @@ pub fn keep(
             ),
             None => {
                 if let Some(carried) = carried(root, base, system, record, noted)? {
-                    return Ok(carried);
+                    return Ok(Kept {
+                        carried,
+                        evaluated: false,
+                    });
                 }
             }
         }
     }
     let path = checks::keeping(&crate::cache(), base, system);
-    let aside = path.with_extension("gated");
+    let aside = set_aside(&path);
     let bounded = record
         .as_ref()
         .is_some_and(|record| record.refused.is_some());
@@ -86,23 +108,44 @@ pub fn keep(
     if bounded && path.exists() {
         moved(&path, &aside)?;
     }
-    let fresh = !path.exists();
-    if let Err(why) = whole(noted) {
-        // Put back what a gate kept, so later gates on the base needn't
-        // evaluate it again.
-        if aside.exists() && !path.exists() {
+    let evaluated = match whole(noted) {
+        Ok(evaluated) => evaluated,
+        Err(why) => {
+            // Put back what a gate kept, so later gates on the base needn't
+            // evaluate it again.
+            if aside.exists() && !path.exists() {
+                moved(&aside, &path)?;
+            }
+            return Err(why);
+        }
+    };
+    if !evaluated {
+        if path.exists() {
+            let _ = fs::remove_file(&aside);
+        } else if aside.exists() {
             moved(&aside, &path)?;
         }
-        return Err(why);
+        if bounded {
+            eprintln!(
+                "changed-checks: a gate kept {} while this keep began, so this keep \
+                 evaluated none of it and counts as one more carry",
+                short(base)
+            );
+        }
+        return Ok(Kept {
+            carried: record.map_or(1, |record| record.carried + 1),
+            evaluated: false,
+        });
     }
-    if !fresh {
-        return Ok(record.map_or(0, |record| record.carried + 1));
-    }
+    let whole = Kept {
+        carried: 0,
+        evaluated: true,
+    };
     let Ok(Some(evaluated)) = checks::read_kept(&path) else {
-        return Ok(0);
+        return Ok(whole);
     };
     if let Ok(Some(gated)) = checks::read_kept(&aside) {
-        drifted(base, system, &evaluated, &gated, "a gate kept");
+        drifted(base, system, &evaluated, &gated, "were kept before");
     }
     // Gone or not, it's no longer needed.
     let _ = fs::remove_file(&aside);
@@ -112,7 +155,7 @@ pub fn keep(
         let than = format!("carrying from {} gave", short(&record.head));
         drifted(base, system, &evaluated, &carry.known, &than);
     }
-    Ok(0)
+    Ok(whole)
 }
 
 /// The newest record of a head of main `base` came after, and whether a
