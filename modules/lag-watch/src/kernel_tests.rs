@@ -98,6 +98,34 @@ fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
 }
 
 #[test]
+fn a_dotted_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
+    // 7.3.4 prints the bare key, but some older kernels print the stats
+    // under a dotted prefix, so the wait is read there too. The wait for a
+    // disk comes first, so a key read by its ending alone would take it.
+    let kept = sched_of(
+        "slack",
+        "7",
+        "se.statistics.iowait_sum     :        900.000000\n\
+         se.statistics.wait_sum       :         12.250000\n",
+    );
+    assert_eq!(
+        waited(&kept),
+        Some(12_250_000),
+        "the wait wasn't read from its dotted line"
+    );
+    let only_io = sched_of(
+        "slack",
+        "7",
+        "se.statistics.iowait_sum     :        900.000000\n",
+    );
+    assert_eq!(
+        waited(&only_io),
+        None,
+        "a dotted wait for a disk read as one for a CPU"
+    );
+}
+
+#[test]
 fn a_thread_s_name_can_t_forge_its_fair_count() {
     // The kernel prints the name a thread gave itself as it was given,
     // newlines and all, so this one's header spans three lines, the second

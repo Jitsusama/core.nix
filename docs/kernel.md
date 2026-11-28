@@ -177,8 +177,16 @@ count, `wait_sum` in the thread's `sched` file, grew by at most 2 ms on
 every one of them. It counts sleeps of its own, though: the time a sleeper
 stays queued before it leaves, which over 30 s put Chrome's drawing thread
 at 310 ms against run_delay's 125. Each counts every real wait, so
-lag-watch takes the lesser of what the two grew by. call-under-load still
-reads the schedstat's alone, so the 9 the patch leaves stay in its waits.
+lag-watch takes the lesser of what the two grew by between reads, keeping
+what one grew by and the other didn't until the next read in case the other
+books it late. It accepts counting short a wait the schedstat booked part of
+at a move: what was booked two or more reads before the wait ended is let
+go, and of two such waits back to back, the fair count's late booking of the
+first pairs with the second's early part, so the lesser early part is lost.
+Keeping what's owed longer, or pairing it before the two counts' own growth,
+would let a sleep of seconds pair with the other count's excess.
+call-under-load still reads the schedstat's alone, so the 9 the patch leaves
+stay in its waits.
 
 7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
 processor that needs the mitigation for Indirect Target Selection, while the
