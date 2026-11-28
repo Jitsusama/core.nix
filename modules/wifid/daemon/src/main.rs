@@ -135,6 +135,13 @@ const DEPARTED: usize = 4;
 /// joining or on (`dbus_new_handlers.c`, 2.12).
 const NOT_CONNECTED: &str = "fi.w1.wpa_supplicant1.NotConnected";
 
+/// What wpa_supplicant answers a move to an access point it no longer
+/// holds, having not heard it for 180 s (`wpas_dbus_handler_roam` in
+/// hostap's `dbus_new_handlers.c`): the name every bad argument shares,
+/// and words only this case says.
+const INVALID_ARGS: &str = "fi.w1.wpa_supplicant1.InvalidArgs";
+const BSS_FORGOTTEN: &str = "Target BSS not found";
+
 /// wpa_supplicant's name on the bus.
 const SUPPLICANT: WellKnownName<'static> =
     WellKnownName::from_static_str_unchecked("fi.w1.wpa_supplicant1");
@@ -1618,6 +1625,38 @@ fn refused(failure: store::Failure) -> Refused {
             reason: error.to_string(),
         },
     }
+}
+
+/// What a move wpa_supplicant refused is answered with. One to a point it
+/// forgot is out of reach as one wifid doesn't hear is, so a chooser keeps
+/// it off as never reached rather than taking the move as never asked and
+/// asking again.
+fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
+    let forgotten = matches!(
+        error,
+        zbus::Error::MethodError(name, _, reply) if forgot(name.as_str(), reply)
+    );
+    if forgotten {
+        println!("<6>{card} didn't move to {bssid}, which wpa_supplicant no longer holds");
+        return Refused::NotNearby;
+    }
+    Refused::Failed {
+        reason: format!("{card} didn't move to {bssid}: {error}"),
+    }
+}
+
+/// Whether wpa_supplicant refused a move as it no longer holds the access
+/// point asked for: a bad argument saying so in its reply's second string.
+/// Every bad argument shares the name, and hostap's reply to one gives the
+/// same words first and what was wrong only after them
+/// (`wpas_dbus_error_invalid_args`, 2.12), so the words zbus takes from
+/// the first string never tell a forgotten point.
+fn forgot(name: &str, reply: &zbus::Message) -> bool {
+    name == INVALID_ARGS
+        && reply
+            .body()
+            .deserialize::<(String, String)>()
+            .is_ok_and(|(_, wrong)| wrong == BSS_FORGOTTEN)
 }
 
 /// How often a card on a network reads its link while someone asks for a
@@ -3106,9 +3145,7 @@ impl Wifid<'_> {
                 self.together(&card, joining != Some(card.as_str())).await;
                 self.let_go(&card, false).await;
             }
-            return Err(Refused::Failed {
-                reason: format!("{card} didn't move to {bssid}: {error}"),
-            });
+            return Err(refused_move(&card, bssid, &error));
         }
         println!("<6>{card} moved to {bssid}, as asked");
         println!("<7>{card} keeps to {bssid} until it comes off its network");
@@ -3680,6 +3717,9 @@ impl Wifid<'_> {
             return;
         }
         println!("<4>{card}'s look for the points asked never ended in time, so may join any");
+        // The look was the warning's heed, so a call waits on it no more.
+        let on = self.state.borrow().point_of(card);
+        self.heed_ended(card, on.as_deref());
         self.let_go(card, joining != Some(card)).await;
     }
 
@@ -3799,6 +3839,7 @@ impl Wifid<'_> {
                 Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
                 Err(refused) => {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
+                    self.heed_ended(card, from.as_deref());
                 }
             },
             Heed::Look(channels) => {
@@ -3810,18 +3851,33 @@ impl Wifid<'_> {
                     });
                 }
                 println!("<6>{card} can't look for the points asked, so may join any again");
+                self.heed_ended(card, from.as_deref());
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::LetGo if looked == Looked::Failed => {
                 println!("<6>{card}'s look for the points asked failed, so may join any again");
+                self.heed_ended(card, from.as_deref());
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::LetGo => {
                 println!("<6>{card} hears none of the points asked, so may join any again");
+                // A look this warning began was its heed, and has ended.
+                if looked != Looked::Not {
+                    self.heed_ended(card, from.as_deref());
+                }
                 self.let_go(card, joining != Some(card)).await;
             }
         }
         None
+    }
+
+    /// Ends the heed of the warning from the point a card is on, as
+    /// wifid's move off it couldn't start, or its look first lapsed, so a
+    /// call's give-way doesn't wait on it (`State::heed_ended`).
+    fn heed_ended(&self, card: &str, from: Option<&str>) {
+        if let Some(from) = from {
+            change(self.state, |state| state.heed_ended(card, from));
+        }
     }
 
     /// Has a card look over these channels for the points a request names,
@@ -3991,6 +4047,46 @@ impl Wifid<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// wpa_supplicant's refusal of a roam, as it sends one: an error by
+    /// this name replying to the call, with these two strings.
+    fn refusal(name: &str, said: &(&str, &str)) -> zbus::Error {
+        let roam = zbus::Message::method_call("/fi/w1/wpa_supplicant1/Interfaces/0", "Roam")
+            .and_then(|call| call.build(&"02:00:00:00:0a:00"))
+            .expect("a roam to a made-up point couldn't be built");
+        let reply = zbus::Message::error(&roam.header(), name)
+            .and_then(|error| error.build(said))
+            .expect("a refusal of the roam couldn't be built");
+        zbus::Error::from(reply)
+    }
+
+    #[test]
+    fn a_move_to_a_point_wpa_supplicant_forgot_is_told_from_other_bad_asks() {
+        // hostap's own words for every bad argument, said first.
+        let bad = "Did not receive correct message arguments.";
+        let refused = |name: &str, said: (&str, &str)| {
+            refused_move("wlan0", "02:00:00:00:0a:00", &refusal(name, &said))
+        };
+        assert_eq!(
+            refused(INVALID_ARGS, (bad, BSS_FORGOTTEN)),
+            Refused::NotNearby,
+            "a move to a forgotten point wasn't refused as out of reach"
+        );
+        assert!(
+            matches!(
+                refused(INVALID_ARGS, (bad, "Invalid hardware address format")),
+                Refused::Failed { .. }
+            ),
+            "a malformed address was taken for a forgotten point"
+        );
+        assert!(
+            matches!(
+                refused(NOT_CONNECTED, (bad, BSS_FORGOTTEN)),
+                Refused::Failed { .. }
+            ),
+            "another refusal was taken for a forgotten point"
+        );
+    }
 
     #[test]
     fn a_card_handed_over_has_landed_only_if_it_stayed_on_one_point_throughout() {
