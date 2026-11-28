@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use super::{Heard, StandIn, WORDS, cache, credentials, forget, no_sign_in, shut_out, told_of};
+use super::{Case, Heard, StandIn, WORDS, cache, shut_out, told_of};
 
 /// Runs the program over the stand-in, given these lines, and says what
 /// it said back, a line each. What it keeps goes in a cache home beside
@@ -203,7 +203,8 @@ fn busy(line: &str) -> String {
 #[test]
 fn who_an_address_is_is_found_once_and_how_they_are_asked_each_time() {
     let stand_in = StandIn::new(slack);
-    let path = credentials("found");
+    let case = Case::new("found");
+    let path = case.signed_in();
     let said = told(
         &stand_in,
         &path,
@@ -252,13 +253,13 @@ fn who_an_address_is_is_found_once_and_how_they_are_asked_each_time() {
     );
     // Only ever reading: nothing is posted, nothing sent.
     assert!(only_read(&heard), "{heard:?}");
-    forget(&path);
 }
 
 #[test]
 fn who_was_found_is_said_at_once_after_a_restart_then_how_they_are() {
     let first = StandIn::new(slack);
-    let path = credentials("kept");
+    let case = Case::new("kept");
+    let path = case.signed_in();
     told(&first, &path, "ada@example.com\nnobody@example.com\n");
     let again = StandIn::new(slack);
     let said = told(&again, &path, "ada@example.com\nnobody@example.com\n");
@@ -273,13 +274,13 @@ fn who_was_found_is_said_at_once_after_a_restart_then_how_they_are() {
         .collect();
     // Nobody is looked up by address again; Ada is only asked how she is.
     assert_eq!(asked, ["GET /api/users.info", "GET /api/users.getPresence"]);
-    forget(&path);
 }
 
 #[test]
 fn their_conversation_with_joel_is_found_ahead_once_and_again_at_each_step_in() {
     let first = StandIn::new(slack);
-    let path = credentials("talk");
+    let case = Case::new("talk");
+    let path = case.signed_in();
     let ahead = told(&first, &path, "?lin@example.com\n?lin@example.com\n");
     let asked = |stand_in: &StandIn| -> Vec<String> {
         stand_in
@@ -343,13 +344,13 @@ fn their_conversation_with_joel_is_found_ahead_once_and_again_at_each_step_in() 
     assert_eq!(ahead.len(), 2, "{ahead:?}");
     assert!(!ahead[0].contains("conversation"), "{}", ahead[0]);
     assert!(ahead[1].contains(r#""channel":"D4""#), "{}", ahead[1]);
-    forget(&path);
 }
 
 #[test]
 fn who_was_kept_is_said_before_slack_answers() {
     let first = StandIn::new(slack);
-    let path = credentials("before");
+    let case = Case::new("before");
+    let path = case.signed_in();
     told(&first, &path, "ada@example.com\n");
     // A Slack that takes each request and never answers it.
     let silent = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -363,13 +364,13 @@ fn who_was_kept_is_said_before_slack_answers() {
     program.kill().unwrap();
     program.wait().unwrap();
     assert_eq!(said.trim_end(), ADA_UNSAID);
-    forget(&path);
 }
 
 #[test]
 fn asking_ahead_finds_who_they_are_after_any_step_in_and_not_how_they_are() {
     let stand_in = StandIn::new(slack);
-    let path = credentials("ahead");
+    let case = Case::new("ahead");
+    let path = case.signed_in();
     let said = told(
         &stand_in,
         &path,
@@ -396,16 +397,15 @@ fn asking_ahead_finds_who_they_are_after_any_step_in_and_not_how_they_are() {
         "{heard:?}"
     );
     assert!(only_read(&heard), "{heard:?}");
-    forget(&path);
 }
 
 #[test]
 fn slack_too_busy_to_say_how_they_are_leaves_who_they_are_said() {
     let stand_in = StandIn::new(busy);
-    let path = credentials("busy");
+    let case = Case::new("busy");
+    let path = case.signed_in();
     let said = told(&stand_in, &path, "ada@example.com\nada@example.com\n");
     assert_eq!(said, [ADA_UNSAID, ADA_UNSAID]);
-    forget(&path);
 }
 
 /// How many asks `pausing` has answered.
@@ -424,7 +424,8 @@ fn pausing(line: &str) -> String {
 #[test]
 fn asked_to_wait_it_asks_nothing_until_then_and_drops_nobody_ahead() {
     let stand_in = StandIn::new(pausing);
-    let path = credentials("pausing");
+    let case = Case::new("pausing");
+    let path = case.signed_in();
     let said = told(&stand_in, &path, "?ada@example.com\n?grace@example.com\n");
     // Ada, whose ask Slack refused, is asked again once the wait is over.
     assert!(said.contains(&ADA_UNSAID.to_owned()), "{said:?}");
@@ -435,13 +436,13 @@ fn asked_to_wait_it_asks_nothing_until_then_and_drops_nobody_ahead() {
         waited >= Duration::from_millis(1900),
         "asked again after {waited:?}"
     );
-    forget(&path);
 }
 
 #[test]
 fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
     let stand_in = StandIn::new(slack);
-    let path = credentials("grid");
+    let case = Case::new("grid");
+    let path = case.signed_in();
     let said = told(&stand_in, &path, "grace@example.com\neve@example.com\n");
     assert_eq!(said, [GRACE.to_owned(), nobody("eve@example.com")]);
     let heard = stand_in.heard();
@@ -453,23 +454,23 @@ fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
     );
     // Still only reading: a look-up, a search, a profile and presence.
     assert!(only_read(&heard), "{heard:?}");
-    forget(&path);
 }
 
 #[test]
 fn a_refused_sign_in_is_said_once_and_nobody_more_is_asked_about() {
     let stand_in = StandIn::new(|_| r#"{"ok": false, "error": "invalid_auth"}"#.into());
-    let path = credentials("refused");
+    let case = Case::new("refused");
+    let path = case.signed_in();
     let said = told(&stand_in, &path, "ada@example.com\ngrace@example.com\n");
     assert_eq!(said, [r#"{"signedOut":true}"#]);
     assert_eq!(stand_in.heard().len(), 1);
-    forget(&path);
 }
 
 #[test]
 fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     let stand_in = StandIn::new(slack);
-    let path = credentials("words");
+    let case = Case::new("words");
+    let path = case.signed_in();
     // The launcher's words, as the people daemon's unit hands them. Ada
     // asked again says her status, which only Slack's profile of her
     // holds. Nobody, asked ahead once stepped into, as the daemon's watch
@@ -573,16 +574,15 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
         serde_json::json!([{"key": "verb:person:slack:reply",
             "open": "slack://channel?team=T1&id=D4", "main": true}])
     );
-    forget(&path);
 }
 
 #[test]
 fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
     let stand_in = StandIn::new(slack);
-    let missing = no_sign_in("people-none");
+    let case = Case::new("people-none");
     let said = told(
         &stand_in,
-        &missing.path(),
+        &case.sign_in(),
         "ada@example.com\n?grace@example.com\n",
     );
     assert_eq!(said, [r#"{"signedIn":false}"#; 2]);
