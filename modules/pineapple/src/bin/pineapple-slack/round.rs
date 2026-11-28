@@ -133,7 +133,9 @@ pub(super) fn round(
             // each search is counted on its own, so one blink doesn't
             // widen a row, and one failing every round is told. Of the
             // rest, only both unasked, neither waiting, is a round no
-            // search was answered in, which a gateway's reader counts.
+            // search was answered in, which a gateway's reader counts; one
+            // unasked beside one waiting read neither whole, so it's told
+            // apart from a round read in part.
             let unasked = Some(Round::Unasked);
             let unreadable = failed.contains(&Some(unread));
             let left = |search: Search, query: &str, answer: Option<Round>| {
@@ -144,7 +146,8 @@ pub(super) fn round(
                 left(Search::Tag, &tag, failed[1]),
             ) {
                 (Some(_), Some(_)) => Round::Unasked,
-                (one, other) => Round::Partly(one.or(other)),
+                (Some(search), None) | (None, Some(search)) => Round::Waiting(search),
+                (None, None) => Round::Partly(None),
             };
             return [
                 Round::Deaf(Deafness::Refused),

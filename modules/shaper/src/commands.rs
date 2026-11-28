@@ -93,7 +93,7 @@ fn replay() -> Help {
         )
         .example(
             "shaper replay --controller held --heard /var/lib/shaper/heard \
-             --anchor 6c:ae:f6:c2:d6:b2=12000 *.jsonl",
+             --anchor 00:00:5e:00:53:01=12000 *.jsonl",
             "what the shaper held, against the line",
         )
         .argument("<files>...", "the recorded days")

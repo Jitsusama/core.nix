@@ -30,6 +30,7 @@ mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;
+pub mod site;
 #[cfg(test)]
 mod slipped;
 mod slips;

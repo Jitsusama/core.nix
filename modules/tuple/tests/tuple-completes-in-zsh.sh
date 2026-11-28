@@ -9,13 +9,13 @@
 set -euo pipefail
 
 # Whole paths, since the folder of its own becomes the current one.
-completion=$(realpath -- "$2")
-tuples=$(realpath -- "$3")
+editors=$(realpath -- "$2")
+completion=$(realpath -- "$3")
 # The library is handed in by its store path; shellcheck reads it from here.
 # shellcheck source=SCRIPTDIR/tuple-in-a-folder-of-its-own.sh
 source "$1"
 ended=0
-timeout -k 5 300 zsh -f "$completion" "$tuples" || ended=$?
+timeout -k 5 300 zsh -f "$editors" "$completion" || ended=$?
 if [[ $ended -eq 124 || $ended -eq 137 ]]; then
   echo "zsh was cut off (status $ended) in the last editor it named" >&2
 fi

@@ -24,6 +24,47 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// What the programs read from the environment, never taken from
+/// whoever runs the tests: the keyring's sign-in, which would reach the
+/// stand-in and be printed by any assert of what it heard; the
+/// launcher's words, which change what is said; and systemd's watchdog
+/// socket, which would be told each round. A case wanting the words or
+/// the socket sets its own.
+const SHUT_OUT: [&str; 3] = ["SIGN_IN_KEYRING", "LAUNCHER_WORDS", "NOTIFY_SOCKET"];
+
+/// Takes from `command` each of `SHUT_OUT` the case hasn't set on it.
+fn shut_out(command: &mut Command) -> &mut Command {
+    let set: Vec<_> = command
+        .get_envs()
+        .filter(|(_, value)| value.is_some())
+        .map(|(name, _)| name.to_owned())
+        .collect();
+    for name in SHUT_OUT {
+        if !set.iter().any(|kept| kept == name) {
+            command.env_remove(name);
+        }
+    }
+    command
+}
+
+/// What `command` is told of each of `SHUT_OUT`: `None` where it's taken
+/// away, its value where the case set one.
+fn told_of(command: &Command) -> Vec<(&'static str, Option<String>)> {
+    SHUT_OUT
+        .into_iter()
+        .map(|name| {
+            let found = command.get_envs().find(|(key, _)| **key == *name);
+            let Some((_, value)) = found else {
+                panic!("{name} isn't taken from whoever runs the tests");
+            };
+            (
+                name,
+                value.map(|value| value.to_string_lossy().into_owned()),
+            )
+        })
+        .collect()
+}
+
 /// The launcher's own words (tests/words.json), which the check
 /// `the-daemons-test-the-launchers-words` holds to words.json, handed to
 /// a case's daemon as its unit hands it words.json itself.
@@ -128,6 +169,21 @@ fn forget(credentials: &std::path::Path) {
     let _ = std::fs::remove_dir_all(cache(credentials));
 }
 
+/// A sign-in's file that isn't there, named for the test and this run so
+/// no other run's file stands in for it.
+fn no_sign_in(test: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "slack-{test}-no-such-file-{}.json",
+        std::process::id()
+    ));
+    assert!(
+        std::fs::symlink_metadata(&path).is_err(),
+        "{} is there, so a case without a sign-in would read it",
+        path.display()
+    );
+    path
+}
+
 /// Slack as it answers what wants Joel: Ada's direct message with two
 /// unread, a channel with one unread and a mention of him, another unread
 /// with none, and three mentions in threads.
@@ -155,10 +211,36 @@ fn wants_joel(line: &str) -> String {
     said.into()
 }
 
+/// A slack-unreads a case started, stopped once the case lets go of it,
+/// so a case failing partway leaves no daemon asking a stand-in that's
+/// gone.
+struct Running(Child);
+
+impl Running {
+    /// Stops it, and waits for it to end.
+    fn stop(mut self) {
+        self.end()
+            .expect("slack-unreads couldn't be stopped, or wasn't seen to end");
+    }
+
+    /// Kills it and waits for it, as both stopping and letting go do.
+    fn end(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        self.0.kill()?;
+        self.0.wait()
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        // Stopped already, or failing: either way, nothing more to say.
+        let _ = self.end();
+    }
+}
+
 /// slack-unreads, started over the stand-in with this sign-in, asking
 /// every 50 ms, answering on a socket beside `run`, a path of the test's
 /// own, and keeping what it asks of Joel beside it too (`waiting`).
-fn unreads(stand_in: &StandIn, credentials: &std::path::Path, run: &std::path::Path) -> Child {
+fn unreads(stand_in: &StandIn, credentials: &std::path::Path, run: &std::path::Path) -> Running {
     unreads_from(
         Command::new(env!("CARGO_BIN_EXE_slack-unreads")),
         stand_in,
@@ -169,24 +251,63 @@ fn unreads(stand_in: &StandIn, credentials: &std::path::Path, run: &std::path::P
 
 /// slack-unreads as `unreads` starts it, through `command`.
 fn unreads_from(
+    command: Command,
+    stand_in: &StandIn,
+    credentials: &std::path::Path,
+    run: &std::path::Path,
+) -> Running {
+    Running(
+        unreads_command(command, stand_in, credentials, run)
+            .spawn()
+            .unwrap(),
+    )
+}
+
+/// `command` set to run slack-unreads as `unreads_from` starts it, reading
+/// only what the case gives it.
+fn unreads_command(
     mut command: Command,
     stand_in: &StandIn,
     credentials: &std::path::Path,
     run: &std::path::Path,
-) -> Child {
+) -> Command {
     command
         .arg(credentials)
         .arg(socket(run))
         .arg(waiting(run))
         .arg(&stand_in.origin)
         .arg("50")
-        // Only the sign-in a case writes is read, never one the keyring
-        // of whoever runs the tests would give, which would reach the
-        // stand-in and be printed by any assert of what it heard.
-        .env_remove("SIGN_IN_KEYRING")
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap()
+        .stderr(Stdio::null());
+    shut_out(&mut command);
+    command
+}
+
+#[test]
+fn slack_unreads_reads_nothing_of_whoever_runs_it_but_what_the_case_sets() {
+    let stand_in = StandIn::new(wants_joel);
+    let run = PathBuf::from("run");
+    let plain = unreads_command(Command::new("slack-unreads"), &stand_in, &run, &run);
+    assert_eq!(
+        told_of(&plain),
+        [
+            ("SIGN_IN_KEYRING", None),
+            ("LAUNCHER_WORDS", None),
+            ("NOTIFY_SOCKET", None)
+        ]
+    );
+    let mut command = Command::new("slack-unreads");
+    command.env("LAUNCHER_WORDS", WORDS);
+    command.env("NOTIFY_SOCKET", "notify");
+    let set = unreads_command(command, &stand_in, &run, &run);
+    assert_eq!(
+        told_of(&set),
+        [
+            ("SIGN_IN_KEYRING", None),
+            ("LAUNCHER_WORDS", Some(WORDS.to_owned())),
+            ("NOTIFY_SOCKET", Some("notify".to_owned()))
+        ],
+        "what a case sets is kept"
+    );
 }
 
 /// Where `run` asks Joel to sign in again.

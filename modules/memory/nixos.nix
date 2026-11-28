@@ -32,6 +32,7 @@ let
   defragModeIsSafe = lib.versionAtLeast config.boot.kernelPackages.kernel.version "7.3.4";
   hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
+  zswapShrinker = "/sys/module/zswap/parameters/shrinker_enabled";
 in
 {
   # Swap through a zstd-compressed pool in memory, held to a fifth of it,
@@ -44,6 +45,17 @@ in
   # so reclaim gave up with 13 GB of file cache unreclaimed. The pool can't
   # grow past its fifth, and its shrinker writes back the coldest pages as
   # memory runs short, which zram, full, did with the newest instead.
+  #
+  # The shrinker writes back in every group reclaim reaches, kswapd's
+  # included, however small the pool is (zswap_shrinker_count in Linux
+  # 7.3's mm/zswap.c). On 27 November every page agents swapped to disk was
+  # its writing back, 8,703 of 8,703 in 30 s, with the pool at 1.7 GB of its
+  # 12.8 and 25 GB of memory available, while agents' tasks stalled on the
+  # disk 9.4% of each minute. It stays on all the same: off, a group at its
+  # MemoryHigh can't write out its own share of the pool, which is charged
+  # to it, a pool that fills turns every page away until it's down to nine
+  # tenths, and a machine that hibernates counts all of it as in use. Which
+  # weighs more is measured with `memory-zswap-shrinker@n` (below).
   boot.kernelParams = [
     "zswap.enabled=1"
     "zswap.compressor=zstd"
@@ -157,7 +169,7 @@ in
   ];
 
   # The machine's administrators, agents included since they work as Joel's
-  # account, may change eight of the kernel's memory settings for as long as
+  # account, may change nine of the kernel's memory settings for as long as
   # the machine runs without a password (memory-tune.rules), so an A/B of
   # them under load waits for no one. On 30 October kswapd gave up on the
   # whole machine under builds, and the settings that might have caused it,
@@ -184,15 +196,20 @@ in
   # stays off for what it cost Joel's apps at once (above). The kernel asks
   # for it right after boot, since memory already fragmented recovers
   # slowly, so a trial turned on mid-run pays its cost at once and reads its
-  # gain over hours. Each unit writes its instance and only a value the rules list:
+  # gain over hours. So could whether zswap's shrinker writes the pool's
+  # coldest pages to disk before the pool is full, which is on for the
+  # reasons by the pool above, and which a trial turns off with
+  # `memory-zswap-shrinker@n` and back on with `@y`. Each unit writes its
+  # instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
-  # (in KiB) or `memory-defrag-mode@1`. The most one can do is make reclaim
-  # worse until it's put back, never reach another setting. A
-  # switch that changes the sysctls writes them back; otherwise start the
-  # unit again with the value this file sets. At boot huge pages return to
-  # this file's choice, and the LRU to the kernel's own.
+  # (in KiB), `memory-defrag-mode@1` or `memory-zswap-shrinker@n`. The most
+  # one can do is make reclaim worse until it's put back, never reach
+  # another setting. A switch that changes the sysctls writes them back,
+  # and every switch writes huge pages back; otherwise start the unit again
+  # with the value this file sets. At boot huge pages and the shrinker
+  # return to this file's choice, and the LRU to the kernel's own.
   security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;
@@ -205,6 +222,7 @@ in
   systemd.services."memory-defrag-mode@" = lib.mkIf defragModeIsSafe (
     tune "pageblock defrag_mode" defragMode
   );
+  systemd.services."memory-zswap-shrinker@" = tune "zswap shrinker" (write zswapShrinker);
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.

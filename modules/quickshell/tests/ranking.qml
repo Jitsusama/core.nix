@@ -49,7 +49,19 @@ QtObject {
         return out;
     }
 
+    // A throw before the last case ends as a failure at once, naming it,
+    // rather than leaving qml running until the check's timeout ends it
+    // with nothing said.
     Component.onCompleted: {
+        try {
+            run();
+        } catch (error) {
+            console.warn(`the test threw: ${error}`);
+            Qt.exit(1);
+        }
+    }
+
+    function run() {
         const failures = [];
         let asked = 0;
         const expect = (what, got, wanted) => {
@@ -513,14 +525,18 @@ QtObject {
         // Latching a pick costs walks over the rows picked, never a walk
         // for each latch: a Set in Qt's engine looks a key up by walking
         // every key it holds (H6EDLC, 2026-11-11). It's held to twenty
-        // walks making and reading an object of the keys, which a latch up
-        // to a few times slower than today's still passes: healthy latching
-        // took 5 to 14 walks on lenders, and a Set 46 to 63 (#6941's lent
-        // runs, 2026-11-27). Each batch times a walk and the latching back
-        // to back, the collector run twice before each, as member-light's
-        // weighing does, so neither pays for the other's garbage. A walk is
+        // walks making and reading an object of the keys: in batches timing
+        // a walk and the latching back to back, healthy latching took 5 to
+        // 14 walks on busy lenders, and a Set 46 to 63 (#6941's lent runs,
+        // 2026-11-27), so twenty leaves room for a healthy run's spread and
+        // fails a Set in every batch, though at the slow end of that spread
+        // a latching half again as slow would fail. Those batches timed a
+        // walk over about 4 ms with one collection before; a walk is now
         // timed over fifty rounds, about 20 ms, so the clock's millisecond
-        // and one stall weigh as little on it as on a latching's ten.
+        // and one stall weigh as little on it as on a latching's ten. Those
+        // fifty rounds leave fifty objects of every key behind, so the
+        // collector runs twice before each timing, as member-light's
+        // weighing does, and neither pays to collect the other's garbage.
         // Timed apart, as the fastest of the walks against the fastest of
         // the latchings, a quiet walk could be held against latchings
         // that were all busy: 5.2 ms against 0.4 on a lender running 315

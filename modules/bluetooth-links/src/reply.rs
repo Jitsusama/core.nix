@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn only_data_links_that_are_up_are_kept() {
         let headphones = [0xcc, 0xbb, 0xaa, 0x66, 0x1b, 0x00];
-        let mouse = [0x6e, 0xf3, 0x2a, 0xe3, 0x9c, 0xc3];
+        let mouse = [0x00, 0xc3, 0x00, 0x00, 0x00, 0xc2];
         let list = listed(&[
             entry(0x000b, headphones, ACL_LINK, CONNECTED),
             // The headset's voice link beside it.
@@ -430,7 +430,7 @@ mod tests {
                 },
                 Connection {
                     handle: 0x0040,
-                    address: "C3:9C:E3:2A:F3:6E".into(),
+                    address: "C2:00:00:00:C3:00".into(),
                     le: true,
                     outgoing: false,
                     mode: 0x0005,
@@ -447,7 +447,10 @@ mod tests {
         let link = &connections(&listed(&[entry]))[0];
         assert!(link.outgoing, "this end started it");
         assert!(!link.central(), "the other end leads it");
-        assert!(link.authenticated() && link.encrypted() && link.secure());
+        assert!(
+            link.authenticated() && link.encrypted() && link.secure(),
+            "its mode should say it is authenticated, encrypted and secure: {link:?}"
+        );
     }
 
     /// An adapter's `hci_dev_info`, as the kernel fills it.

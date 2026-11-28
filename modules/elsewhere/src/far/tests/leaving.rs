@@ -2,9 +2,11 @@
 //! names it takes, its archives, the list of them, and the bytes it says
 //! they take; and the cache the far line finds that handover in.
 
-use super::{Left, far_run, kind, scratch, work};
+use super::handing::pinning;
+use super::{Left, far_line, far_run, kind, scratch, work};
 use crate::far::{
-    Folders, LARGEST_FILE, LEFT, MOST_BYTES, TREE, archive, gathered, leave, left, tracked,
+    Folders, HANDOVER, LARGEST_FILE, LEFT, MOST_BYTES, TREE, archive, gathered, leave, left,
+    tracked,
 };
 use std::path::Path;
 
@@ -354,10 +356,17 @@ thread_local! {
 /// What `run` answers, with each far line it runs given a `HOME` that
 /// names no folder.
 fn home_gone<T>(run: impl FnOnce() -> T) -> T {
+    /// Clears `HOME_GONE` as it drops, so a `run` that panics leaves no
+    /// home gone for the tests its thread runs after.
+    struct Back;
+    impl Drop for Back {
+        fn drop(&mut self) {
+            HOME_GONE.set(false);
+        }
+    }
     HOME_GONE.set(true);
-    let ran = run();
-    HOME_GONE.set(false);
-    ran
+    let _back = Back;
+    run()
 }
 
 // A cache named by XDG_CACHE_HOME is a cache though the home it names is
@@ -370,6 +379,49 @@ fn a_far_machine_whose_home_is_gone_still_frees_its_copy() {
     assert!(
         code == Some(0) && !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
         "a far machine whose home is gone didn't run the job or kept its copy ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// As above for a far line stopped by a signal, whose clearing steps out
+// of the copy before it takes it away.
+#[test]
+fn a_far_machine_whose_home_is_gone_still_frees_its_copy_once_stopped() {
+    let (code, err, home) = home_gone(|| far_run(Left::Whole, &[("x", "x")], "kill -TERM $PPID"));
+    let signal = std::fs::read_to_string(home.join("signal")).unwrap();
+    assert!(
+        signal == "15"
+            && !home.join("gone").exists()
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists(),
+        "a far machine whose home is gone wasn't stopped or kept its copy ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// As above for a far line that brings nothing back past a link at its
+// handover it can't clear, which steps out of the copy before it takes
+// it away. The link leads beside the home that's gone, never into it, so
+// that home stays gone.
+#[test]
+fn a_far_machine_whose_home_is_gone_still_frees_its_copy_past_a_link_it_can_t_clear() {
+    let job = format!(
+        "mkdir out && printf a > out/a && beside=${{XDG_CACHE_HOME%/*}} &&
+         mkdir \"$beside/beyond\" && mv ../../{HANDOVER}/1 \"$beside/moved\" &&
+         ln -s \"$beside/beyond\" ../../{HANDOVER}/1"
+    );
+    let (rm, refused) = pinning();
+    let programs = [(rm, refused.as_str())];
+    let (code, err, home) =
+        home_gone(|| far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, &programs));
+    assert!(
+        code == Some(0)
+            && err.contains("a link it left at its handover couldn't be cleared, so nothing")
+            && !home.join("gone").exists()
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists(),
+        "a far machine whose home is gone didn't run the job past a link it can't clear, or \
+         kept its copy ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
