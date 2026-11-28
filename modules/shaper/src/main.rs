@@ -1131,6 +1131,7 @@ fn primary_after<V>(
 fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> classes::Local {
     let mut local = classes::Local::default();
     local.links.extend(vpns.keys().cloned());
+    local.vpn_links.extend(vpns.keys().cloned());
     local
         .marks
         .extend(vpns.values().filter_map(|v| v.mark.clone()));
@@ -1347,6 +1348,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut last_resent: Option<(u64, Instant)> = None;
     let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
     let mut up_tins = qdisc::TinRates::default();
+    let mut relay = rate::Counted::default();
     let mut primary: Option<String> = None;
     let mut call = Call::default();
     let mut live = started_live(options);
@@ -1381,7 +1383,8 @@ fn run(options: &Options) -> Result<(), Failure> {
             }
             primary = primary_after(order.as_deref(), &shaped, primary);
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-            let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            let inside = (up_tins.kbit(), relay.kbit(), t);
+            let read = follow_vpns(&mut vpns, &options.vpns, rides, inside);
             // A restart left the old shaper's queues; once this one has
             // taken up the links and VPNs it shapes, the rest go.
             if !swept && may_sweep(read, order.as_deref(), &shaped) {
@@ -1410,7 +1413,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         // the sets are also written every few seconds, changed or not.
         let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-        read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
+        read_vpns(&vpns.0, (&mut heard, &mut up_tins, &mut relay), rides, t);
         let on_a_call = call.may_be_on();
         let text = [
             classes::transaction(TABLE, &sets, &reach),
@@ -1564,12 +1567,17 @@ fn since(before: Option<u64>, now: u64) -> u64 {
 
 /// Counts each VPN's CAKE at every step, at `t` seconds: whether any held
 /// a queue, and what they dropped, are counted to the primary uplink they
-/// ride, whose queue it is, and what each of their tins sent to `tins`.
-/// The VPN's tins are read rather than the uplink's, where the tunnel's
-/// packets all wait in best effort, whatever class they carry.
+/// ride, whose queue it is, and what each of their tins sent to `tins`,
+/// with what the model relay sent inside them to `relay`. The VPN's tins
+/// are read rather than the uplink's, where the tunnel's packets all wait
+/// in best effort, whatever class they carry.
 fn read_vpns(
     vpns: &BTreeMap<String, Vpn>,
-    (heard, tins): (&mut BTreeMap<String, Heard>, &mut qdisc::TinRates),
+    (heard, tins, relay): (
+        &mut BTreeMap<String, Heard>,
+        &mut qdisc::TinRates,
+        &mut rate::Counted,
+    ),
     primary: Option<&mut Shaped>,
     t: f64,
 ) {
@@ -1597,6 +1605,14 @@ fn read_vpns(
         }
     }
     tins.take(sent, t);
+    // Read beside the tins, so the relay's rate spans the same seconds.
+    let relayed = if vpns.is_empty() {
+        None
+    } else {
+        let counter = format!("nft -j list counter inet {TABLE} {}", lanes::RELAY_COUNTER);
+        sh(&words(&counter)).ok()
+    };
+    relay.take(relayed.as_deref().and_then(cost::counter_bytes), t);
     if let Some(s) = primary {
         s.vpn_reads.0 += read.0;
         s.vpn_reads.1 += read.1;
@@ -1625,16 +1641,17 @@ type Vpns = (BTreeMap<String, Vpn>, cost::Cost);
 /// the primary uplink's lanes give the VPNs riding it, less what their own
 /// packets cost the uplink past what their CAKE counts; down, at a share
 /// of the uplink's rate. Splits the primary uplink's lanes on the way,
-/// from what was sent inside the VPNs, `inside`, and what their bulk
-/// holds. Lets go of one that's gone or has no uplink to ride. What a VPN
-/// receives goes straight in, past its IFB, while the uplink's does. Read
-/// at `t` seconds. Gives whether every VPN there was taken up: one whose
-/// read failed is left as it was, and one with no link to ride is let go.
+/// from what was sent inside the VPNs ahead of bulk, `inside`, the model
+/// relay's part of it, `relay`, and what their bulk holds. Lets go of one
+/// that's gone or has no uplink to ride. What a VPN receives goes straight
+/// in, past its IFB, while the uplink's does. Read at `t` seconds. Gives
+/// whether every VPN there was taken up: one whose read failed is left as
+/// it was, and one with no link to ride is let go.
 fn follow_vpns(
     (applied, spent): &mut Vpns,
     names: &[String],
     primary: Option<&mut Shaped>,
-    (inside, t): (Option<qdisc::Tins>, f64),
+    (inside, relay, t): (Option<qdisc::Tins>, Option<u64>, f64),
 ) -> bool {
     let mut every_read = true;
     let read: Vec<String> = applied
@@ -1661,16 +1678,6 @@ fn follow_vpns(
             },
         },
     );
-    // What the tins ahead of bulk carried: Joel's, and agents' model calls.
-    let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
-    let base = primary.map(|s| {
-        let vpn = s.share_lanes((joel, agents), t);
-        // Held under its tunnel's pace while it waits inside it, so the
-        // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = lanes::vpn_held(vpn, s.vpn_share, joel);
-        s.vpn_least = lanes::vpn_least(vpn, joel);
-        (rate::whole(held), s.applied.1, s.download.straight())
-    });
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
         cost::COUNTER
@@ -1682,6 +1689,23 @@ fn follow_vpns(
         (Some(carried), Some(counted)) => spent.sample(carried, counted, t),
         _ => 0,
     };
+    // What the tins ahead of bulk carried: Joel's, and agents' model calls,
+    // which the split counts only up to the floor's most (model calls ahead
+    // round 6's F46). The floor keeps the relay's part, never over what the
+    // CAKE was given last (model calls ahead round 3's F2).
+    let ahead = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
+    let relay = relay.map_or(0.0, float);
+    let joel = lanes::joel_inside(ahead, relay);
+    let given = applied.values().map(|v| float(v.up)).reduce(f64::max);
+    let cost = float(extra);
+    let base = primary.map(|s| {
+        let vpn = s.share_lanes((joel, agents), t);
+        // Held under its tunnel's pace while it waits inside it, so the
+        // queue stands in this CAKE; agents' direct lane borrows the rest.
+        let (held, least) = lanes::vpn_given(vpn, s.vpn_share, ahead, relay, given, cost);
+        s.vpn_least = least;
+        (rate::whole(held), s.applied.1, s.download.straight())
+    });
     for name in names {
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
@@ -1691,7 +1715,7 @@ fn follow_vpns(
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = up.saturating_sub(extra).max(FLOOR.up);
+        let up = up.max(FLOOR.up);
         let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.

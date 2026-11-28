@@ -26,7 +26,8 @@
 //! agent has something waiting, a quarter of the rate is theirs whatever
 //! Joel wants: agents are always usable. Agents' model calls go inside
 //! the VPN as best effort (shaper.nft says why), so here they count as
-//! Joel's: what's agents' is what they send as bulk.
+//! Joel's, up to `AHEAD_MOST` (`joel_inside`): what's agents' is what they
+//! send as bulk.
 //!
 //! What Joel carries now on both lanes comes first, and the VPN's share
 //! is set from it. What his straight lane was given is held past that, as
@@ -550,36 +551,129 @@ fn need(carried: f64) -> f64 {
 /// again (model calls ahead round 1's F16).
 const AHEAD_MOST: f64 = 4_000.0;
 
+/// The counter shaper.nft keeps of what the model relay sent inside the
+/// VPNs as best effort, in bytes.
+pub const RELAY_COUNTER: &str = "relayvpn";
+
+/// What Joel carried inside the VPN, for the split, in kbit/s: what its
+/// tins ahead of bulk carried, `ahead`, with the model relay's part of it,
+/// `relay`, counted up to `AHEAD_MOST`, as the VPN's floor counts it.
+/// Joel's two lanes shrink alike when together they'd pass his room, so
+/// a relay counted whole, filling what best effort is given, trimmed his
+/// straight lane's headroom: at 20 Mbit/s with agents waiting, the relay
+/// carrying 20 left his 5 straight about 3.3 of the 7 he needs (model calls
+/// ahead round 6's F46). The relay is counted by shaper.nft, before the
+/// VPN's CAKE, whose ACK filter drops some of what it counted, so it never
+/// counts past `ahead`.
+pub fn joel_inside(ahead: f64, relay: f64) -> f64 {
+    let relay = relay.clamp(0.0, ahead);
+    ahead - relay + relay.min(AHEAD_MOST)
+}
+
 /// What the VPN's own CAKE is held to, in kbit/s: under its lane's rate,
-/// at the share the VPN's own hold leaves it, but never under what its
-/// tins ahead of bulk carried, `carried`, with Joel's headroom past it, up
-/// to `AHEAD_MOST`. Those carry Joel's own and agents' model calls
-/// (shaper.nft says why), so a hold that misreads the tunnel takes back
-/// only bulk until that floor. On 27 November from 14:08 a hold read the
-/// air's round trip as a queue in the tunnel and held the VPN at 1 to 2.6
-/// Mbit/s for five minutes, under the 3 Mbit/s the model relay carried;
-/// about one model call in five failed from 14:10.
-pub fn vpn_held(lane: f64, share: f64, carried: f64) -> f64 {
+/// at the share the VPN's own hold leaves it, less what the VPN's packets
+/// cost the uplink past what its CAKE counts, `extra` (src/cost.rs); but
+/// never under what its tins ahead of bulk carried, `carried`, with Joel's
+/// headroom past it, up to `AHEAD_MOST`. Those carry Joel's own and agents'
+/// model calls (shaper.nft says why), so a hold that misreads the tunnel
+/// takes back only bulk until that floor. On 27 November from 14:08 a hold
+/// read the air's round trip as a queue in the tunnel and held the VPN at
+/// 1 to 2.6 Mbit/s for five minutes, under the 3 Mbit/s the model relay
+/// carried; about one model call in five failed from 14:10. Nor is it held
+/// under the relay's part, `relay` (`relay_kept`), past that most: on 28
+/// November the relay sent 3.0 to 4.6 Mbit/s inside a tunnel losing 5% of
+/// its packets with no queue behind them, and a hold at a floor of 4 left
+/// its calls dropped. The floor binds on the rate the CAKE is given, after
+/// the cost comes off, since that's what its tins are sent at (model calls
+/// ahead round 3's F1); and it is never over the lane less that cost, so
+/// the VPN with its cost never passes its lane (round 4's F1).
+pub fn vpn_held(lane: f64, share: f64, carried: f64, relay: f64, extra: f64) -> f64 {
     let whole = lane * VPN_HELD;
-    (whole * share).max(ahead_floor(whole, carried))
+    let floor = ahead_floor(whole, carried, relay).min(whole - extra);
+    (whole * share - extra).max(floor).max(0.0)
 }
 
 /// The share of its lane at or under which `vpn_held` keeps the VPN's
 /// CAKE at its floor, so the VPN's own hold cutting under it lowers
 /// nothing (src/tunnel.rs).
-pub fn vpn_least(lane: f64, carried: f64) -> f64 {
+pub fn vpn_least(lane: f64, carried: f64, relay: f64, extra: f64) -> f64 {
     let whole = lane * VPN_HELD;
     if whole > 0.0 {
-        ahead_floor(whole, carried) / whole
+        ((ahead_floor(whole, carried, relay) + extra.max(0.0)) / whole).min(1.0)
     } else {
         0.0
     }
 }
 
+/// What the VPN's CAKE is given, in kbit/s, and the share of its lane at or
+/// under which its own hold lowers nothing, as each second takes them:
+/// `vpn_held` and `vpn_least`, with the relay's part of the floor from
+/// what it sent inside the VPN, `relay`, and what the CAKE was given the
+/// step before, `was` (`relay_kept`).
+pub fn vpn_given(
+    lane: f64,
+    share: f64,
+    carried: f64,
+    relay: f64,
+    was: Option<f64>,
+    extra: f64,
+) -> (f64, f64) {
+    // The relay is counted before the CAKE, whose ACK filter drops some of
+    // what it counted, so it never counts past what the tins carried.
+    let kept = relay_kept(relay.clamp(0.0, carried.max(0.0)), was);
+    let held = vpn_held(lane, share, carried, kept, extra);
+    (held, vpn_least(lane, carried, kept, extra))
+}
+
+/// The most the model relay's own rate lifts the VPN's floor, in kbit/s:
+/// past the 4.6 Mbit/s it sent on 28 November, with some room, and under
+/// most of a home uplink, so a relay filling what it's given can pin the
+/// hold no higher than this, and the hold still takes back what's above
+/// it (model calls ahead round 3's F16).
+const RELAY_MOST: f64 = 6_000.0;
+
+/// The share of what the VPN's CAKE was given at or past which the relay
+/// is taken to fill it, and so to ask for more than it was given.
+const RELAY_FILLS: f64 = 0.95;
+
+/// How far the relay's part of the floor rises in a step while the relay
+/// fills what the CAKE was given: a quarter, so a relay asking more is
+/// given its most within a few seconds of any floor.
+const RELAY_RISE: f64 = 1.25;
+
+/// The room the relay's part of the floor keeps past what a relay that
+/// doesn't fill the CAKE sent, so it reads under `RELAY_FILLS` of what
+/// it's given and the floor stands still, rather than rising and falling
+/// by turns.
+const RELAY_ROOM: f64 = 1.1;
+
+/// The relay's part of the VPN's floor, in kbit/s, from what shaper.nft
+/// counted it sending inside the VPN, `relay`, and the rate the VPN's CAKE
+/// was given the step before, `was`, never past `RELAY_MOST`. A relay that
+/// fills what was given asks for more than the CAKE passes it, and how much
+/// more no count shows: the count comes before the CAKE's drops, and with
+/// ECN marks it reads no more than was given. So the floor rises by
+/// `RELAY_RISE` a step while the relay fills it. Held at what was given, a
+/// relay asking more could never lift it while the hold sat at its floor
+/// (model calls ahead round 4's F17); taken from the count alone, it would
+/// creep up by the CAKE's drops (round 3's F2). A relay that doesn't fill
+/// it keeps what it sent with `RELAY_ROOM`, so the floor falls with it at
+/// once; and with nothing given before, as at a start or a VPN brought
+/// back, the same (round 4's F20).
+pub fn relay_kept(relay: f64, was: Option<f64>) -> f64 {
+    let kept = match was {
+        Some(was) if relay >= was * RELAY_FILLS => was * RELAY_RISE,
+        _ => relay * RELAY_ROOM,
+    };
+    kept.clamp(0.0, RELAY_MOST)
+}
+
 /// What the VPN's CAKE is never held under, of its `whole`, for what its
-/// tins ahead of bulk carried, in kbit/s.
-fn ahead_floor(whole: f64, carried: f64) -> f64 {
-    need(carried).min(AHEAD_MOST).min(whole)
+/// tins ahead of bulk carried, `carried`, with the relay's part `relay`,
+/// in kbit/s: Joel's headroom past what they carried up to `AHEAD_MOST`,
+/// or the relay's part (`relay_kept`), whichever is more.
+fn ahead_floor(whole: f64, carried: f64, relay: f64) -> f64 {
+    need(carried).min(AHEAD_MOST).max(relay.max(0.0)).min(whole)
 }
 
 /// Agents' lane's class, under which their CAKE stands.
@@ -765,7 +859,7 @@ mod tests {
 
     #[test]
     fn the_vpn_s_hold_never_takes_what_is_ahead_of_bulk() {
-        let held = vpn_held(10_000.0, 0.25, 2_000.0);
+        let held = vpn_held(10_000.0, 0.25, 2_000.0, 0.0, 0.0);
         assert!(
             (held - 3_400.0).abs() < 1e-9,
             "a hold to a quarter left {held} kbit/s for 2,000 ahead of bulk"
@@ -776,9 +870,9 @@ mod tests {
     fn what_fills_best_effort_never_lifts_the_hold_past_its_most() {
         // Best effort that fills what it's given carries about what the
         // CAKE was held to the second before.
-        let mut held = vpn_held(RATE, 0.25, 0.0);
+        let mut held = vpn_held(RATE, 0.25, 0.0, 0.0, 0.0);
         for _ in 0..30 {
-            held = vpn_held(RATE, 0.25, held * 0.98);
+            held = vpn_held(RATE, 0.25, held * 0.98, 0.0, 0.0);
         }
         assert!(
             (held - AHEAD_MOST).abs() < 1e-9,
@@ -786,9 +880,170 @@ mod tests {
         );
     }
 
+    // A relay that fills what it's given is counted a little over what the
+    // CAKE passed it, since the count comes before the CAKE's drops. From
+    // the whole lane, a hold to a quarter still brings the CAKE down to the
+    // relay's most, each step at or under the last.
+    #[test]
+    fn a_relay_filling_best_effort_from_the_whole_lane_is_cut_to_its_most() {
+        let whole = 20_000.0 * VPN_HELD;
+        let mut given = whole;
+        for _ in 0..30 {
+            let sent = given * 1.02;
+            let next = vpn_held(20_000.0, 0.25, sent, relay_kept(sent, Some(given)), 0.0);
+            assert!(
+                next <= given + 1e-9,
+                "a relay sending {sent:.0} lifted the hold from {given:.0} to {next:.0}"
+            );
+            given = next;
+        }
+        assert!(
+            near(given, RELAY_MOST),
+            "a hold to a quarter of {whole:.0} beside a filling relay stood at {given:.0}"
+        );
+    }
+
+    #[test]
+    fn the_relay_s_part_rises_by_a_quarter_while_it_fills_the_cake_up_to_its_most() {
+        // Counted 2% over what was given, or just at it under ECN, or a
+        // burst well past it: each rises by a quarter of what was given.
+        for counted in [4_080.0, 4_000.0, 5_500.0] {
+            let kept = relay_kept(counted, Some(4_000.0));
+            assert!(near(kept, 5_000.0), "a relay counted {counted} kept {kept}");
+        }
+        let kept = relay_kept(9_000.0, Some(9_000.0));
+        assert!(near(kept, RELAY_MOST), "over its most: {kept}");
+        let kept = relay_kept(3_000.0, Some(4_000.0));
+        assert!(
+            near(kept, 3_300.0),
+            "a relay under what it's given kept {kept}"
+        );
+        let kept = relay_kept(4_600.0, None);
+        assert!(near(kept, 5_060.0), "with nothing given before: {kept}");
+        assert!(near(relay_kept(-5.0, Some(4_000.0)), 0.0), "under nothing");
+    }
+
+    #[test]
+    fn the_vpn_with_its_cost_never_passes_its_lane_at_its_floor() {
+        let whole = 6_000.0 * VPN_HELD;
+        let held = vpn_held(6_000.0, 0.25, 5_500.0, 5_600.0, 800.0);
+        assert!(
+            near(held, whole - 800.0),
+            "a floor of 5,600 beside a cost of 800 left {held:.0} of {whole:.0}"
+        );
+        let held = vpn_held(6_000.0, 0.25, 5_500.0, 5_600.0, whole + 100.0);
+        assert!(near(held, 0.0), "a cost past the lane left {held:.0}");
+    }
+
+    // On 28 November the model relay alone sent up to 4.6 Mbit/s inside
+    // the VPN, past `AHEAD_MOST`, while WARP's CAKE was held to 9,310 less
+    // 3,866 of cost.
+    #[test]
+    fn the_vpn_s_hold_never_takes_what_the_relay_sends_after_its_cost() {
+        let held = vpn_held(9_800.0, 0.5, 4_800.0, 4_600.0, 3_866.0);
+        assert!(
+            near(held, 4_600.0),
+            "a hold to a half less 3,866 of cost left {held:.0} beside a relay sending 4,600"
+        );
+        let least = vpn_least(9_800.0, 4_800.0, 4_600.0, 3_866.0);
+        assert!(
+            near(least * 9_800.0 * VPN_HELD, 4_600.0 + 3_866.0),
+            "the hold's least, {least:.3}, isn't where the relay's 4,600 and the cost stand"
+        );
+    }
+
+    /// The VPN's CAKE followed a second at a time, as each second takes it:
+    /// the relay asks to send `demand` inside it and sends again what the
+    /// tunnel loses, `loss`, never past what the CAKE was given, and
+    /// shaper.nft counts it before the CAKE's drops, a little over that.
+    /// WARP's own packets run `over` past the count on the whole, in a
+    /// burst every other second (src/cost.rs).
+    struct Loop {
+        cost: crate::cost::Cost,
+        given: Option<f64>,
+        bytes: (u64, u64),
+        second: u32,
+    }
+
+    impl Loop {
+        fn new() -> Self {
+            let mut cost = crate::cost::Cost::default();
+            cost.sample(0, 0, 0.0);
+            let (given, bytes, second) = (None, (0, 0), 0);
+            Self {
+                cost,
+                given,
+                bytes,
+                second,
+            }
+        }
+
+        /// One second: the rate the CAKE is given, and the cost read.
+        fn step(&mut self, lane: f64, share: f64, demand: f64, path: (f64, f64)) -> (f64, f64) {
+            let (loss, over) = path;
+            let was = self.given.unwrap_or(lane * VPN_HELD);
+            let sent = demand * (1.0 + loss);
+            let (relay, passed) = (sent.min(was * 1.01), sent.min(was));
+            self.second += 1;
+            let burst = if self.second % 2 == 0 {
+                2.0 * over
+            } else {
+                0.0
+            };
+            self.bytes.0 += whole((passed + burst) * 125.0);
+            self.bytes.1 += whole(passed * 125.0);
+            let at = f64::from(self.second);
+            let extra = crate::rate::float(self.cost.sample(self.bytes.0, self.bytes.1, at));
+            let (held, _) = vpn_given(lane, share, relay, relay, self.given, extra);
+            self.given = Some(held);
+            (held, extra)
+        }
+    }
+
+    // The relay's demand rises, rises past its most, falls and stops,
+    // inside lanes of 20 and 6 Mbit/s, with and without the tunnel's loss
+    // and WARP's bursts, the hold at its floor and at its ceiling. From 8
+    // seconds after the demand moves, the CAKE is never held under what
+    // the relay asks, up to its most and the lane less its cost, so it
+    // neither pins nor slides; it is never sent past its lane with its
+    // cost; and when the relay asks less, the hold takes back all but the
+    // relay's demand with a tenth's room (model calls ahead round 4's F17,
+    // F13, F20 and F1).
+    #[test]
+    fn the_vpn_s_cake_follows_the_relay_at_its_floor_and_its_ceiling() {
+        let paths = [(0.0, 0.0), (0.05, 0.0), (0.0, 500.0), (0.05, 500.0)];
+        for (lane, share, path) in [20_000.0, 6_000.0]
+            .into_iter()
+            .flat_map(|lane| [0.25, 1.0].map(|share| (lane, share)))
+            .flat_map(|(lane, share)| paths.map(|path| (lane, share, path)))
+        {
+            let whole = lane * VPN_HELD;
+            let mut at = Loop::new();
+            for demand in [3_000.0, 5_500.0, 9_000.0, 2_000.0, 0.0] {
+                let sent = demand * (1.0 + path.0);
+                for second in 0..20 {
+                    let (given, extra) = at.step(lane, share, demand, path);
+                    let case = format!(
+                        "lane {lane}, share {share}, loss and bursts {path:?}, demand {demand}, \
+                         second {second}: given {given:.0}, cost {extra:.0}"
+                    );
+                    assert!(given + extra <= whole + 1.0, "past its lane: {case}");
+                    if second < 8 {
+                        continue;
+                    }
+                    let asked = sent.min(RELAY_MOST).min(whole - extra);
+                    assert!(given >= asked - 1.0, "held under the relay: {case}");
+                    let room = (sent * 1.1).min(RELAY_MOST);
+                    let most = (whole * share).max(need(sent).min(AHEAD_MOST)).max(room);
+                    assert!(given <= most + 1.0, "not taken back: {case}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_vpn_s_hold_takes_bulk_back_as_before() {
-        let held = vpn_held(10_000.0, 0.25, 0.0);
+        let held = vpn_held(10_000.0, 0.25, 0.0, 0.0, 0.0);
         assert!(
             (held - 10_000.0 * VPN_HELD * 0.25).abs() < 1e-9,
             "with nothing ahead of bulk the hold left {held} kbit/s"
@@ -797,7 +1052,7 @@ mod tests {
 
     #[test]
     fn what_is_ahead_of_bulk_never_lifts_the_vpn_past_its_lane() {
-        let held = vpn_held(4_000.0, 0.25, 3_500.0);
+        let held = vpn_held(4_000.0, 0.25, 3_500.0, 3_500.0, 0.0);
         assert!(
             (held - 4_000.0 * VPN_HELD).abs() < 1e-9,
             "the VPN was held at {held} kbit/s, past its lane of 4,000"
@@ -805,11 +1060,57 @@ mod tests {
     }
 
     #[test]
-    fn an_unheld_vpn_keeps_its_whole_lane() {
-        let held = vpn_held(10_000.0, 1.0, 3_000.0);
+    fn an_unheld_vpn_keeps_its_whole_lane_less_its_cost() {
+        let held = vpn_held(10_000.0, 1.0, 3_000.0, 0.0, 500.0);
         assert!(
-            (held - 10_000.0 * VPN_HELD).abs() < 1e-9,
-            "an unheld VPN was held at {held} kbit/s"
+            (held - (10_000.0 * VPN_HELD - 500.0)).abs() < 1e-9,
+            "an unheld VPN costing 500 was held at {held} kbit/s"
+        );
+    }
+
+    #[test]
+    fn the_relay_counts_as_joel_s_inside_the_vpn_up_to_its_most() {
+        assert!(
+            near(joel_inside(9_000.0, 8_000.0), 1_000.0 + AHEAD_MOST),
+            "Joel's 1,000 beside a relay of 8,000 counted {}",
+            joel_inside(9_000.0, 8_000.0)
+        );
+        assert!(
+            near(joel_inside(3_000.0, 2_000.0), 3_000.0),
+            "a relay under its most counted {} of 3,000",
+            joel_inside(3_000.0, 2_000.0)
+        );
+        assert!(
+            near(joel_inside(1_000.0, 1_500.0), 1_000.0),
+            "a relay counted past what the tins carried gave {}",
+            joel_inside(1_000.0, 1_500.0)
+        );
+    }
+
+    #[test]
+    fn a_busy_relay_leaves_joel_s_straight_lane_its_headroom() {
+        // Model calls ahead round 6's F46: on 20 Mbit/s with agents
+        // waiting on both lanes, Joel's 5 straight and his two lanes' room
+        // of 15 fit beside a relay at its most, so a relay filling 20
+        // inside the VPN takes nothing more from his straight lane.
+        let rate = 20_000.0;
+        let busy = Seen {
+            rate,
+            ..seen(
+                (5_000.0, joel_inside(20_000.0, 20_000.0)),
+                (waiting(2), waiting(30)),
+            )
+        };
+        let split = Lanes::default().split(&busy, 1.0);
+        assert!(
+            adds_up(split, rate),
+            "the classes don't add up to the rate: {split:?}"
+        );
+        assert!(
+            near(split.joel, need(5_000.0)),
+            "a relay of 20,000 left Joel's straight lane {} of {}",
+            split.joel,
+            need(5_000.0)
         );
     }
 

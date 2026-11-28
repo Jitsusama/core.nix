@@ -46,6 +46,11 @@ set uplinks { type ifname; }
 # the shaper holds its VPNs by (src/cost.rs says why).
 set vpns { type mark; }
 counter vpnout { }
+# Every VPN's device, and what the model relay sent inside one as best
+# effort, which the shaper tells apart from Joel's own there, as the
+# VPN's CAKE can't (src/lanes.rs's `joel_inside`).
+set vpnlinks { type ifname; }
+counter relayvpn { }
 # Each VPN flow leaving by an uplink in the last five minutes, by where it
 # goes and the port its socket sends from, which the shaper reads to probe
 # the way to the VPN's server and to see a new socket (src/pin.rs).
@@ -138,6 +143,7 @@ chain classify {
   # failed for four minutes. Inside best effort CAKE shares by host, so
   # the relay's many connections to one origin count as one beside the
   # hosts Joel's apps reach.
+  socket cgroupv2 level 5 @models5 oifname @vpnlinks counter name "relayvpn" goto best
   socket cgroupv2 level 5 @models5 goto best
 
   # The work Joel started rather than the programs he's using, and a pi

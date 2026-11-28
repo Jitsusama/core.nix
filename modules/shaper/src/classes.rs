@@ -297,10 +297,12 @@ pub fn managers(root: &Path) -> Vec<String> {
 
 /// The links the shaper holds, and the addresses they reach without the
 /// router, which it leaves unshaped, and the marks its VPNs' own packets
-/// carry on them, which it counts.
+/// carry on them, which it counts. Of the links, the VPNs' are named again
+/// alone, so what the model relay sends inside them is counted apart.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Local {
     pub links: Vec<String>,
+    pub vpn_links: Vec<String>,
     pub v4: Vec<String>,
     pub v6: Vec<String>,
     pub marks: Vec<String>,
@@ -340,6 +342,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("typed5", &sets.typed5, true);
     fill("calling", &sets.calling, false);
     fill("vpns", &local.marks, false);
+    fill("vpnlinks", &local.vpn_links, true);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
     fill("uplinks", &local.links, true);
@@ -651,7 +654,8 @@ mod tests {
             ..Sets::default()
         };
         let local = Local {
-            links: vec!["enp1".into()],
+            links: vec!["enp1".into(), "wg0".into()],
+            vpn_links: vec!["wg0".into()],
             v4: vec!["192.168.4.0/22".into()],
             v6: vec![],
             marks: vec!["0xca6c".into(), "0x80000".into()],
@@ -676,11 +680,13 @@ mod tests {
              flush set inet shaper calling\n\
              flush set inet shaper vpns\n\
              add element inet shaper vpns { 0xca6c, 0x80000 }\n\
+             flush set inet shaper vpnlinks\n\
+             add element inet shaper vpnlinks { \"wg0\" }\n\
              flush set inet shaper local4\n\
              add element inet shaper local4 { 192.168.4.0/22 }\n\
              flush set inet shaper local6\n\
              flush set inet shaper uplinks\n\
-             add element inet shaper uplinks { \"enp1\" }\n",
+             add element inet shaper uplinks { \"enp1\", \"wg0\" }\n",
             "the transaction left a set unflushed, filled an empty one, or named a member wrong"
         );
     }
