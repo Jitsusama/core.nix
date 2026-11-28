@@ -20,7 +20,7 @@ use repos::using::{LONGEST as LONGEST_SHARE, Process, Sample};
 
 use super::{
     Disk, Journal, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health,
-    measures, ready, settle,
+    journalled, measures, ready, settle,
 };
 
 fn of(name: &str) -> Of {
@@ -352,11 +352,11 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     // why, as it does for a reading that stops, but as none that ever
     // answered. Grown old past SAMPLED, as the daemon's three paces are,
     // the first take waits SAMPLED out still young, and says nothing;
-    // one past `old` is late and waits on nothing. What holds the
-    // reading up is named only where one is, which a stand-in reading
-    // never is, so the line is the late one whole. It's heard where the
-    // daemon says it, as `take` tells it, and the thread says nothing
-    // while its first walk is held.
+    // one past `old` is late and waits on nothing. A stand-in names the
+    // process the walk is held up reading, as the real walk would, so
+    // the late line names it, whole, and no take after it names it
+    // again. It's heard where the daemon says it, as `take` tells it,
+    // and the thread says nothing while its first walk is held.
     let old = YOUNG_PAST_A_WAIT;
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
@@ -370,6 +370,7 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 8));
             Sample::default()
         },
+        || Some(4_242),
         move |said| {
             let _ = tell.send(said);
         },
@@ -389,7 +390,10 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         "a take after the first waited {waited:?}"
     );
     let said: Vec<String> = told.try_iter().collect();
-    let unread = " s, so what works in each repository is said unread until it answers";
+    let unread = concat!(
+        " s, held up reading the memory of process 4242,",
+        " so what works in each repository is said unread until it answers",
+    );
     let seconds = said
         .first()
         .and_then(|said| said.strip_prefix("no reading of /proc has answered in "))
@@ -402,9 +406,16 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
                 .is_some_and(|seconds| (old.as_secs()..=(old + LATE).as_secs()).contains(&seconds)),
         "the journal wasn't told once that no reading answered: {said:?}"
     );
+    // Still held up on the same process, a take after names it no more.
+    working.take(folders.clone());
+    let again: Vec<String> = told.try_iter().collect();
+    assert!(
+        again.is_empty(),
+        "a holder the late line named was named again: {again:?}"
+    );
 
     // Freed, the held walk lands already old, and the next answers: said
-    // once, and not as answering again, as none had.
+    // once, and not as answering again, as none had, nor held up.
     drop(free);
     let answers = |said: &String| said.starts_with("the reading of /proc answers");
     let mut heard = Vec::new();
@@ -455,8 +466,13 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
     // says the share unmeasured from the second on, which the case
     // doesn't judge. The first walk's age counts from its own start, so
     // the case times `old` from when the walk says it began, however late
-    // its thread started.
+    // its thread started. A stand-in names a process the second walk is
+    // held up reading, as the real walk would, yet the landing take names
+    // none, as the reading it found was held up by nothing; the stand-in
+    // stops before the second walk is freed, so no take after names it.
     let old = YOUNG_PAST_A_WAIT;
+    let holder = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(4_242));
+    let held = std::sync::Arc::clone(&holder);
     let (walking, walked) = mpsc::channel::<Instant>();
     let (free, freed) = mpsc::channel::<()>();
     let (again, freed_again) = mpsc::channel::<()>();
@@ -478,6 +494,10 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
                 let _ = freed_again.recv_timeout(SAMPLED * 8);
             }
             Sample::default()
+        },
+        move || {
+            let pid = held.load(std::sync::atomic::Ordering::Relaxed);
+            (pid != 0).then_some(pid)
         },
         move |said| {
             let _ = tell.send(said);
@@ -502,7 +522,12 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         said.len() == 1 && said[0].starts_with("no reading of /proc has answered in "),
         "a first reading landing old wasn't said once as none answering: {said:?}"
     );
+    assert!(
+        !said[0].contains("held up") && !said[0].contains("process"),
+        "a reading that landed named what held up the walk after it: {said:?}"
+    );
 
+    holder.store(0, std::sync::atomic::Ordering::Relaxed);
     drop(again);
     let mut heard = Vec::new();
     let until = Instant::now() + LATE;
@@ -515,6 +540,100 @@ fn a_first_reading_that_lands_old_is_said_as_none_answering_and_then_at_last() {
         heard,
         ["the reading of /proc answers at last"],
         "the journal wasn't told once that a reading answered at last"
+    );
+}
+
+#[test]
+fn a_holder_found_after_the_late_line_is_named_once() {
+    // A walk that lands old is held up by nothing, so its late line names
+    // no process; when the walk after it is then stuck on one, as a
+    // restart or a slow disk leaves it, that process is named on its own
+    // line, once, and not again before the reading answers. The first
+    // walk answers at once, the second is held past `old` and freed
+    // between two takes, and the third holds until the case frees it.
+    // The third, freed a few paces after it began, lands young however
+    // late a wake comes, as `old` leaves it two whole late wakes of room.
+    let old = LATE * 3;
+    let holder = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let held = std::sync::Arc::clone(&holder);
+    let (walking, walked) = mpsc::channel::<Instant>();
+    let (free, freed) = mpsc::channel::<()>();
+    let (again, freed_again) = mpsc::channel::<()>();
+    let (landed, heard_landed) = mpsc::channel::<()>();
+    let mut calls = 0_u32;
+    let (tell, told) = mpsc::channel();
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start_saying(
+        BRISK,
+        old,
+        folders.clone(),
+        move |_: &[PathBuf]| {
+            calls += 1;
+            if calls == 2 {
+                let _ = walking.send(Instant::now());
+                let _ = freed.recv_timeout(SAMPLED * 8);
+            } else if calls == 3 {
+                let _ = landed.send(());
+                let _ = freed_again.recv_timeout(SAMPLED * 8);
+            }
+            Sample::default()
+        },
+        move || {
+            let pid = held.load(std::sync::atomic::Ordering::Relaxed);
+            (pid != 0).then_some(pid)
+        },
+        move |said| {
+            let _ = tell.send(said);
+        },
+    );
+    let until = Instant::now() + LATE;
+    working.take(folders.clone());
+    while working.unread() && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+    }
+    assert!(!working.unread(), "the first walk never answered");
+    let began = walked
+        .recv_timeout(LATE)
+        .expect("the second walk never began");
+    std::thread::sleep(old.saturating_sub(began.elapsed()) + BRISK);
+    drop(free);
+    heard_landed
+        .recv_timeout(LATE)
+        .expect("the second walk never landed");
+    let mut heard: Vec<String> = Vec::new();
+    working.take(folders.clone());
+    heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+
+    // Stuck on a process the late line couldn't name, and still so over
+    // the takes after the one that names it.
+    holder.store(4_242, std::sync::atomic::Ordering::Relaxed);
+    for _ in 0..4 {
+        working.take(folders.clone());
+        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+        std::thread::sleep(BRISK);
+    }
+
+    holder.store(0, std::sync::atomic::Ordering::Relaxed);
+    drop(again);
+    let until = Instant::now() + LATE;
+    let answers = |said: &String| said.starts_with("the reading of /proc answers");
+    while !heard.iter().any(answers) && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+        heard.extend(told.try_iter().filter(|said| of_the_reading(said)));
+    }
+    let stale = concat!(
+        " s old with none newer,",
+        " so what works in each repository is said unread until it answers",
+    );
+    assert!(
+        heard.len() == 3
+            && heard[0].starts_with("the reading of /proc is ")
+            && heard[0].ends_with(stale)
+            && heard[1] == "the reading of /proc is held up reading the memory of process 4242"
+            && heard[2] == "the reading of /proc answers again",
+        "a holder found after the late line wasn't named once before the answer: {heard:?}"
     );
 }
 
@@ -534,6 +653,7 @@ fn a_first_reading_slower_than_a_wait_that_answers_young_says_nothing() {
             std::thread::sleep(SAMPLED + LATE);
             Sample::default()
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
@@ -852,6 +972,7 @@ fn the_reading_thread_says_a_lost_share_once_and_its_return_once() {
                 processes: Vec::new(),
             }
         },
+        || None,
         move |said| {
             let _ = tell.send(said);
         },
@@ -1033,6 +1154,11 @@ fn it_says_how_long_it_took_to_be_ready_in_the_words_health_times() {
         ready(Duration::from_micros(1_234_567)),
         "repos: ready in 1234 ms, every repository read and the socket listening"
     );
+}
+
+#[test]
+fn each_line_of_the_readings_is_journalled_after_the_daemons_name() {
+    assert_eq!(journalled("x".to_owned()), "repos: x");
 }
 
 #[test]

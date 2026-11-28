@@ -244,6 +244,14 @@ struct Working {
     /// Where what the journal is told goes, from the loop and the thread
     /// alike.
     say: Arc<dyn Fn(String) + Send + Sync>,
+    /// The process a walk is held up reading the memory of, where one is:
+    /// `using::reading`, which only the real walk sets, so a case stands
+    /// one in to make a holder appear.
+    reading: Box<dyn Fn() -> Option<u32> + Send + Sync>,
+    /// Whether the journal has named what holds the reading up since one
+    /// last answered, so a holder found only after the late line is named,
+    /// and named once.
+    named: bool,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
     placed: BTreeSet<PathBuf>,
@@ -298,20 +306,20 @@ impl Working {
         folders: Vec<PathBuf>,
         sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
     ) -> Self {
-        Self::start_saying(pace, old, folders, sample, |said| {
-            eprintln!("repos: {said}");
-        })
+        Self::start_saying(pace, old, folders, sample, using::reading, journal)
     }
 
-    /// Starts as [`Working::start`] does, saying to `say` what the
-    /// journal would be told, of the share of a core as each reading
-    /// judges it and of the reading's age as [`Working::take`] finds it,
-    /// so a case can hear what the daemon says.
+    /// Starts as [`Working::start`] does, asking `reading` which process
+    /// a walk is held up on and saying to `say` what the journal would be
+    /// told, of the share of a core as each reading judges it and of the
+    /// reading's age as [`Working::take`] finds it, so a case can make a
+    /// holder appear and hear what the daemon says.
     fn start_saying(
         pace: Duration,
         old: Duration,
         folders: Vec<PathBuf>,
         mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
+        reading: impl Fn() -> Option<u32> + Send + Sync + 'static,
         say: impl Fn(String) + Send + Sync + 'static,
     ) -> Self {
         let say: Arc<dyn Fn(String) + Send + Sync> = Arc::new(say);
@@ -374,6 +382,8 @@ impl Working {
             at: None,
             standing: Standing::Unwaited,
             say,
+            reading: Box::new(reading),
+            named: false,
             used: BTreeMap::new(),
             measured: false,
             placed: BTreeSet::new(),
@@ -388,7 +398,8 @@ impl Working {
     /// that waited in the slot past that is never said as now. Where none
     /// has answered by then, the journal says so, as a restart reaching a
     /// process still holding its memory map would leave it: what it says,
-    /// once as the reading grows stale and once as it answers, is
+    /// once as the reading grows stale, once as what holds it up is found
+    /// where the stale line couldn't name it, and once as it answers, is
     /// returned.
     #[must_use = "its line is the only word that /proc is held up"]
     fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
@@ -413,6 +424,8 @@ impl Working {
         let age = self.at.unwrap_or(self.since).elapsed();
         let was = self.standing.late();
         if age < self.old {
+            // A reading that answers ends the spell its holder was named in.
+            self.named = false;
             let again = self.standing.ever_fresh();
             self.standing = if self.at.is_some() {
                 Standing::Fresh
@@ -436,20 +449,29 @@ impl Working {
         };
         self.used.clear();
         self.measured = false;
-        if was {
-            return None;
-        }
         // A restart reads the same process again, and waits on it again,
         // so the line names it rather than offering one. A reading that
         // just landed was held up by nothing, and the process the next
         // walk reads is only passing through, so none is named then.
-        let held = if landed {
-            String::new()
-        } else {
-            using::reading().map_or(String::new(), |pid| {
-                format!(", held up reading the memory of process {pid}")
-            })
-        };
+        let holder = if landed { None } else { (self.reading)() };
+        if was {
+            // A restart, or a slow reading of the disk, can leave a walk
+            // stuck on one process after the late line was said without
+            // it, and that process is what the operator acts on, so it's
+            // named once found, and once in a spell.
+            if self.named {
+                return None;
+            }
+            let pid = holder?;
+            self.named = true;
+            return Some(format!(
+                "the reading of /proc is held up reading the memory of process {pid}"
+            ));
+        }
+        self.named = holder.is_some();
+        let held = holder.map_or(String::new(), |pid| {
+            format!(", held up reading the memory of process {pid}")
+        });
         // A first reading that lands already old never answered either,
         // so it's said as none, as its answer will be said at last.
         let late = if answered {
@@ -493,9 +515,9 @@ impl Working {
     }
 }
 
-/// What the journal last said of the share of a core: nothing until two
-/// readings have said whether one is measured, so the first says why it
-/// isn't, and after that whether it was, so a loss is said once.
+/// Whether the readings before measured a share of a core, so the journal
+/// says a loss once and its end once: nothing until two readings have said
+/// whether one is measured, so the first says why it isn't.
 #[derive(Default)]
 struct Journal {
     measuring: Option<bool>,
@@ -638,6 +660,20 @@ fn follow_again(folders: &mut Folders, moved: &BTreeSet<Of>) {
 fn ready(took: Duration) -> String {
     let ms = took.as_millis();
     format!("repos: ready in {ms} ms, every repository read and the socket listening")
+}
+
+/// A line of the readings as the journal is told it: every line the daemon
+/// journals opens with its name, as `ready`'s does, so one read out of the
+/// journal alone still says whose it is.
+fn journalled(mut said: String) -> String {
+    said.insert_str(0, "repos: ");
+    said
+}
+
+/// Tells the journal a line of the readings, on standard error, which the
+/// journal reads.
+fn journal(said: String) {
+    eprintln!("{}", journalled(said));
 }
 
 /// What `reading` gives, saying how long it took for health.
