@@ -2304,7 +2304,7 @@ in
           # place::login_runtime finds, refusing the request where there is
           # none, which is all that keeps the type's relative upstream in
           # the account's own folder; and it parses the file as Written,
-          # the struct the scan reads.
+          # the struct the scan reads, in read, which written takes it from.
           joins =
             reads 14 [
               "    let upstream = if budget.upstream.is_absolute() {"
@@ -2315,10 +2315,15 @@ in
             ]
             && lib.hasInfix "crate::place::login_runtime())" source;
           parsing = ".map_err(|error| unparsed(&error)))";
-          parses = reads 3 [
-            "    fn written(&self) -> Result<Written, Refusal> {"
-            ("            .and_then(|text| serde_json::from_slice(&text)" + parsing)
-          ];
+          parses =
+            reads 3 [
+              "    fn read(&self) -> Result<Written, String> {"
+              ("            .and_then(|text| serde_json::from_slice(&text)" + parsing)
+            ]
+            && reads 1 [
+              "    fn written(&self) -> Result<Written, Refusal> {"
+              "        self.read().map_err(|why| {"
+            ];
           # The fields of struct NAME in LINES, each by its name to its
           # type. serde reads them so only while the struct derives
           # Deserialize with nothing but deny_unknown_fields over it, and no
