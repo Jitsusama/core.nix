@@ -4,11 +4,13 @@
 # upstream is a repository git reaches in GitHub's place, and gh and nix
 # are stand-ins. gh keeps its pull requests in a JSON file and opens one
 # only for a branch origin has; nix's `flake update INPUT` locks INPUT at
-# what upstream's HEAD is, touching nothing else. Six cases: up to date
+# what upstream's HEAD is, touching nothing else. Seven cases: up to date
 # does nothing; behind opens one; behind with one open does nothing; newer
-# opens the newer and closes the older; newest closes only its own older,
-# not another input's or a fork's, and keeps a branch someone pushed
-# work onto; a failed fetch exits non-zero and writes its line.
+# opens the newer and closes the older, deleting its branch; newest
+# closes none of another input's, a fork's or one someone pushed work
+# onto, whose branch stays; declined, its draft closed by hand, isn't
+# opened again or pushed over; a failed fetch exits non-zero and writes
+# its line.
 #
 #   lock-follows-test.sh LOCK-FOLLOWS
 set -euo pipefail
@@ -292,16 +294,37 @@ git -C "$upstream" commit --quiet --allow-empty --message "the newest change"
 
 run "newest" 0 opened
 states=$(jq -r 'map(.state) | join(" ")' "$prs")
-if [ "$states" != "closed closed open open open" ]; then
-  fail "newest: it didn't close only its own older, leaving another input's and a fork's: $states"
+if [ "$states" != "closed open open open open" ]; then
+  fail "newest: it closed one with someone's work, another input's or a fork's: $states"
 fi
 closed=$(jq -c .closed <<<"$line")
-if [ "$closed" != "[2]" ]; then
-  fail "newest: its line doesn't name only its own older as closed: $line"
+if [ "$closed" != "[]" ]; then
+  fail "newest: its line names one closed: $line"
 fi
-kept=$(git -C "$here/origin.git" branch --list "$newer_branch")
-if [ -z "$kept" ]; then
-  fail "newest: it deleted a branch someone had pushed work onto"
+kept=$(git -C "$here/origin.git" log -1 --format=%s "$newer_branch" 2>/dev/null || true)
+if [ "$kept" != "someone's work" ]; then
+  fail "newest: it deleted or moved a branch someone had pushed work onto: $kept"
+fi
+
+# The newest's draft is closed by hand, to decline that rev; its branch
+# stays on origin, as GitHub leaves it.
+newest_branch=$(jq -r '.[4].headRefName' "$prs")
+jq '.[4].state = "closed"' "$prs" >"$prs.new"
+mv "$prs.new" "$prs"
+before=$(git -C "$here/origin.git" rev-parse "$newest_branch")
+
+run "declined" 0 declined
+counted
+if [ "$count" != "5 3" ]; then
+  fail "declined: it opened one again: $count"
+fi
+after=$(git -C "$here/origin.git" rev-parse "$newest_branch")
+if [ "$after" != "$before" ]; then
+  fail "declined: it pushed over the declined rev's branch"
+fi
+said=$(jq -r .branch <<<"$line")
+if [ "$said" != "$newest_branch" ]; then
+  fail "declined: its line doesn't name the branch: $line"
 fi
 
 # Origin can't be reached.

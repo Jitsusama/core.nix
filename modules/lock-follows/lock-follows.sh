@@ -9,7 +9,10 @@
 # commits the lock alone, as the account's git config signs. It pushes that
 # branch, never main, and opens a draft whose body lists upstream's merges
 # between the two revs. A newer rev opens a new pull request and closes the
-# older, naming each in the other. It never merges.
+# older, naming each in the other, unless someone pushed work onto the
+# older's branch, which leaves it open. A rev whose branch stands with no
+# open pull request was declined, and isn't opened again. It never
+# pushes over a branch, and never merges.
 #
 # Each input's run adds one JSON line to the record, and prints it: when,
 # the input, the rev locked, upstream's, and what it did. A failure writes
@@ -44,7 +47,8 @@ FLAGS
                      closed with, taking gh's words (gh)
 
 EXIT
-  0   each input locked at upstream's newest, or a PR open
+  0   each input locked at upstream's newest, a PR open,
+      or its rev declined
   1   a step failed, named in its line
   64  asked wrongly
   75  origin or upstream couldn't be read; tried next run
@@ -130,6 +134,21 @@ ended() {
   esac
 }
 
+# Whether origin's BRANCH holds the tool's one lock commit for INPUT on
+# main and nothing else, printing its head when it does and nothing when
+# it doesn't or can't be read, so a branch someone pushed work onto is
+# neither replaced nor deleted.
+ours() {
+  local branch=$1 input=$2 theirs ahead subject
+  git fetch --quiet origin "refs/heads/$branch" || return 0
+  theirs=$(git rev-parse FETCH_HEAD) || return 0
+  ahead=$(git rev-list --count "origin/main..$theirs") || return 0
+  subject=$(git log -1 --format=%s "$theirs") || return 0
+  if [ "$ahead" = 1 ] && [[ $subject == "build($input): lock $input "* ]]; then
+    echo "$theirs"
+  fi
+}
+
 record_folder=$(dirname -- "$record")
 mkdir -p -- "$record_folder"
 body=$(mktemp)
@@ -203,6 +222,15 @@ for input in "$@"; do
     said open-already "$already"
     continue
   fi
+  # Its branch standing on origin with no open pull request means one was
+  # closed over it, by hand to decline this rev, or merged and reverted,
+  # so it isn't opened again; a newer rev opens anew.
+  step='reading the branch'
+  if git ls-remote --quiet --exit-code origin "refs/heads/$branch" >/dev/null; then
+    declined=$(jq -cn --arg branch "$branch" '{branch: $branch}')
+    said declined "$declined"
+    continue
+  fi
   # Any other open for this input locks an older rev, since upstream's
   # newest is this one. Its branch is the stem and eight hex digits, so
   # an input whose name extends this one with a dash isn't caught.
@@ -226,7 +254,9 @@ for input in "$@"; do
     --message "Moves $input from ${locked:0:8} to $short, its upstream's newest." \
     -- flake.lock
   step='pushing'
-  git push --quiet --force origin "HEAD:refs/heads/$branch"
+  # Only where origin has no such branch: one a pull request was closed
+  # over is declined, above, and is never pushed over.
+  git push --quiet --force-with-lease="refs/heads/$branch:" origin "HEAD:refs/heads/$branch"
 
   step='listing upstream merges'
   git fetch --quiet -- "$source" "+$ref:refs/lock-follows/$input"
@@ -266,19 +296,15 @@ for input in "$@"; do
   closed='[]'
   while read -r number older_branch; do
     if [ -n "$number" ]; then
-      "$pr" pr close "$number" --comment "Replaced by $opened, which locks $input at $short."
-      # Its branch goes only while it holds the tool's one commit on
-      # main, so work someone pushed onto it stays.
-      if git fetch --quiet origin "refs/heads/$older_branch" &&
-        theirs=$(git rev-parse FETCH_HEAD) &&
-        ahead=$(git rev-list --count "origin/main..$theirs") &&
-        subject=$(git log -1 --format=%s "$theirs") &&
-        [ "$ahead" = 1 ] &&
-        [[ $subject == "build($input): lock $input "* ]]; then
+      # Only while its branch holds the tool's one commit on main: one
+      # someone pushed work onto stays open, its branch kept.
+      theirs=$(ours "$older_branch" "$input")
+      if [ -n "$theirs" ]; then
+        "$pr" pr close "$number" --comment "Replaced by $opened, which locks $input at $short."
         git push --quiet --force-with-lease="refs/heads/$older_branch:$theirs" \
           origin --delete "$older_branch"
+        closed=$(jq -c --argjson number "$number" '. + [$number]' <<<"$closed")
       fi
-      closed=$(jq -c --argjson number "$number" '. + [$number]' <<<"$closed")
     fi
   done <<<"$older"
 

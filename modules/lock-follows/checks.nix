@@ -15,8 +15,11 @@ onLinux {
   # GitHub's place, and stand-ins for gh and nix (lock-follows-test.sh):
   # up to date it does nothing; behind it opens one draft pull request
   # locking mycelium alone; behind with that one open it does nothing; a
-  # newer upstream opens the newer and closes the older; and a fetch that
-  # fails ends it non-zero, its line written.
+  # newer upstream opens the newer and closes the older; the newest
+  # closes none of another input's, a fork's or one someone pushed work
+  # onto; a rev whose draft was closed by hand isn't opened again or
+  # pushed over; and a fetch that fails ends it non-zero, its line
+  # written.
   lock-follows-opens-one-change-per-rev =
     pkgs.runCommandLocal "lock-follows-opens-one-change-per-rev"
       {
