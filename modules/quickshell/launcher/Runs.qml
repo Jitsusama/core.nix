@@ -19,6 +19,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../PiSource.js" as Pi
 import "Order.js" as Order
+import "Presented.js" as Presented
 
 Provider {
     id: provider
@@ -84,8 +85,9 @@ Provider {
     })
 
     // Each kind by Agents' own word for it: a fleet or a council is several
-    // subagents at once.
-    readonly property var kinds: ({
+    // subagents at once. With no prototype, so a round the node names
+    // "constructor" is a review, never a function written into its row.
+    readonly property var kinds: Object.assign(Object.create(null), {
         fleet: "fleet",
         council: "council",
         judge: "judge",
@@ -228,7 +230,7 @@ Provider {
         const spent = cost(run.participants);
         const row = member({
             thing: true,
-            key: run.key,
+            key: Presented.keyServed(run.key),
             verb: session ? "go to" : "copy",
             // With no session to go to, it copies its id for want of one, as
             // a job's row does, so Return goes into its parts instead

@@ -5,7 +5,9 @@
 //! would read nought on a week that found it on forty. The keeper folded
 //! that day's 169 lines by hand with these patterns, and a wording none of
 //! them names is counted under its own words, marked unfolded, so a
-//! pattern missing from here shows on the card rather than hiding.
+//! pattern missing from here shows on the card rather than hiding. The
+//! keeper gave `HOST_READ` and the classes after it on 27 November, from
+//! the wordings the first live hour left unfolded.
 
 /// The mark an unfolded class's name opens with.
 pub const UNFOLDED: &str = "(unfolded) ";
@@ -28,8 +30,19 @@ pub const PIN_LAGS: &str = "a pinned copy lags the tree";
 pub const TIMING: &str = "a timing check fails under load";
 /// A result waited on isn't sent to the one waiting.
 pub const UNSENT: &str = "a result waited on isn't sent to the waiter";
-/// A lent builder behaves unlike the run done locally.
-pub const LENT_BUILDER: &str = "lent builder unlike the local run";
+/// A check reads the host it runs on: a lent builder unlike the local
+/// run, a setting it can't see, a pid in another namespace.
+pub const HOST_READ: &str = "a check reads the host it runs on";
+/// A run promised never started, and the one waiting on it wasn't told.
+pub const PROMISED_UNSTARTED: &str = "a promised run never started, and its waiter wasn't told";
+/// A failing check is found only at the gate, not while editing.
+pub const GATE_ONLY: &str = "a check failing found only at the gate";
+/// Two readers of one thing say it differently.
+pub const READERS_DISAGREE: &str = "two readers of one thing disagree";
+/// A check said passed wasn't run at the head that merges.
+pub const NOT_AT_HEAD: &str = "check not run at the head";
+/// A budget set by working it out rather than by measuring.
+pub const ARITHMETIC_BUDGET: &str = "a budget set by arithmetic, not measured";
 
 /// One way of saying a class: a run of steps, each a set of words, one of
 /// which must come after the step before it, as a pattern `a.*(b|c)` does.
@@ -44,8 +57,38 @@ type Pattern = &'static [&'static [&'static str]];
 const FOLDS: &[(&str, &[Pattern])] = &[
     (TWIN, &[&[&["twin"]]]),
     (
-        LENT_BUILDER,
-        &[&[&["lent builder", "builder kernel", "lender"]]],
+        HOST_READ,
+        &[&[&[
+            "lent builder",
+            "builder kernel",
+            "lender",
+            "host setting",
+            "host it runs",
+            "pid namespace",
+        ]]],
+    ),
+    (PROMISED_UNSTARTED, &[&[&["never started", "never starts"]]]),
+    (
+        GATE_ONLY,
+        &[
+            &[&["only at the gate", "only at gate"]],
+            &[&["long file"], &["reason"]],
+        ],
+    ),
+    (
+        READERS_DISAGREE,
+        &[
+            &[&["two views", "two readers", "two readings"]],
+            &[&["same data"], &["different", "disagree"]],
+        ],
+    ),
+    (
+        NOT_AT_HEAD,
+        &[&[&["not run at the head", "not at the head", "an older head"]]],
+    ),
+    (
+        ARITHMETIC_BUDGET,
+        &[&[&["budget"], &["arithmetic", "not measured", "unmeasured"]]],
     ),
     (
         TEST_PASSES_UNDONE,
@@ -252,8 +295,48 @@ mod tests {
         ("a time read once that a suspend ages", TIMING),
         ("date moved late, a train split went unseen", UNSENT),
         ("background wake reports late after a pi restart", UNSENT),
-        ("lent builder lacks what the local run has", LENT_BUILDER),
+        ("lent builder lacks what the local run has", HOST_READ),
     ];
+
+    /// What the first live hour, at 02:11 on 27 November, left unfolded,
+    /// and a cell's case sent that night, each beside the class the keeper
+    /// gave it.
+    const UNFOLDED_AT_FIRST: &[(&str, &str)] = &[
+        (
+            "a booked review round never started, and the asker wasn't told",
+            PROMISED_UNSTARTED,
+        ),
+        (
+            "a relay's promised runs never started, and two promised times passed unsaid",
+            PROMISED_UNSTARTED,
+        ),
+        (
+            "a check failing on lines or docs found only at the gate (…)",
+            GATE_ONLY,
+        ),
+        ("a long file without its reason", GATE_ONLY),
+        (
+            "check fails or skips by host setting it cannot see",
+            HOST_READ,
+        ),
+        (
+            "#2248's /tmp sweep judged a run file's pid with kill(pid, 0) across pid namespaces",
+            HOST_READ,
+        ),
+        ("two views show the same data differently", READERS_DISAGREE),
+        ("check not run at the head", NOT_AT_HEAD),
+        (
+            "page budget set by arithmetic, not measured",
+            ARITHMETIC_BUDGET,
+        ),
+    ];
+
+    #[test]
+    fn what_the_first_live_hour_left_unfolded_folds_into_the_keepers_classes() {
+        for &(said, class) in UNFOLDED_AT_FIRST {
+            assert_eq!(fold(said), class, "{said:?} folded into the wrong class");
+        }
+    }
 
     #[test]
     fn each_wording_cells_sent_folds_into_the_class_the_keeper_gave_it() {

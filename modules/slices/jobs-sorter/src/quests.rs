@@ -17,8 +17,9 @@
 //! as an NVMe drive, orders whole slices by latency but not one quest over
 //! another, so there the weight waits for io.cost. Under BFQ, systemd
 //! scales a weight above 100 down first, so a quest at 400 gets about 127
-//! against one at 100, and priority orders quests far less than io.cost
-//! would.
+//! against one at 100, and priority orders quests above 100 far less than
+//! io.cost would. A weight at or below 100 passes as it stands, so a quest
+//! at 25 keeps its quarter against one at 100 under both.
 //!
 //! Work naming no quest, or one the file doesn't list, stays where it
 //! went before. The file is read again whenever it changes, and a quest

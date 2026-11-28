@@ -64,6 +64,11 @@ RESTS = 2.0
 # How long before the keys rest a case that must beat them sends its keys back by, for the
 # shell to hear them on a loaded builder.
 SPARE = 0.5
+# How far, in ms, the shell's date of a scroll may fall before the keys that set it off were
+# sent, both read from the one wall clock. niri says how long ago it began to a fraction of a
+# millisecond, but the shell's clock, which it takes that from, reads in whole ones, up to one
+# short; the other is room for the clocks' reads on either side.
+CLOCKED = 2
 # The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
 # it may hide it.
 SHORTEST_BEAT = 110
@@ -154,9 +159,7 @@ def awake(request: pytest.FixtureRequest) -> Iterator[None]:
     with the launcher up would leave the cat held for the next, so each
     closes it, to fail alone. The cat is held from the card's first frame,
     while it's still opening, when the launcher doesn't yet say it's open,
-    so the opening is waited out first. One that never ends is unopened by
-    a toggle, and then closed if it had already opened, as the launcher's
-    own shut does; the wait's failure is still said. A case that asks for no
+    which launcher_left_closed waits out first. A case that asks for no
     shell judges logic alone, so it neither starts one nor waits on one.
     """
     if "shell" not in request.fixturenames:
@@ -165,16 +168,7 @@ def awake(request: pytest.FixtureRequest) -> Iterator[None]:
     shell: Shell = request.getfixturevalue("shell")
     wake(shell)
     yield
-    try:
-        shell.launcher_until(lambda shown: not shown["opening"])
-    finally:
-        try:
-            if shell.showing()["opening"]:
-                print("the launcher was left opening, so it's unopened for the next test")
-                shell.as_account(shell.ipc("toggle"))
-                shell.launcher_until(lambda shown: not shown["opening"], timedelta(seconds=10))
-        finally:
-            shell.launcher_left_closed()
+    shell.launcher_left_closed()
 
 
 def wake(shell: Shell) -> None:
@@ -676,33 +670,63 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     # A report the wait found in its last poll returns a poll and a read past its deadline, so
     # only one past half the spare is too late for the shell to hear the keys before they rest.
     assert took < RESTS - SPARE / 2, f"the keys came back {took:.2f} s on, too near their rest"
+    # On the wall clock, the shell's own, which dates the scroll it heard last by niri's begin.
+    sent = time.time() * 1000
     shell.as_account(f"niri msg action focus-window --id {third['id']}")
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
+    places = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    # It rides back or sits there at once, never walks: its column is neither grown nor was it
+    # held short of its seat (MarginCatCarried.js's backOn). Only a walk to its seat on its own
+    # window counts. On a loaded builder the keys' rest on the other column can still set one
+    # off there, whose reports name the window it sat on until it arrives, departing it.
+    walked = [
+        at
+        for at in places
+        if at is not None
+        and at.get("walk")
+        and at.get("window") == third["id"]
+        and not at.get("departing")
+    ]
+    assert not walked, f"the cat walked back to its seat rather than riding: {walked[:1]}"
     back_on = [
         at
-        for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
+        for at in places
         if at is not None and not at.get("walk") and at.get("window") == third["id"]
     ]
     rode = [at for at in back_on if abs(at["drawn"]["x"] - at["x"]) >= 1]
     if not rode:
-        # A shell that hears of niri's scroll back only once niri's spring is done, as a
-        # loaded builder's can, finds its window at rest and sits on it at once, as it should.
-        # Its first report off where it was held says how long before the scroll began, so
-        # one that missed a scroll still under way fails (C1BD3E07, 2026-11-26).
-        seated = next((at for at in back_on if abs(at["x"] - held) >= 1), None)
-        assert seated is not None, f"the cat never left {held} for its seat: {back_on[-2:]}"
-        heard_late = seated["scrolled"] is not None and seated["scrolled"] >= seated["slides"]
-        assert heard_late, (
-            "niri scrolled its window back and the cat was put on its seat at once, "
-            f"{seated['scrolled']} ms into a scroll of {seated['slides']}"
-        )
+        seated_as_heard_late(back_on, held, sent)
         return
     # Drawn short of its seat by what's left of the scroll back, as its window is, from where
     # it was held: never set off from elsewhere, nor ahead of its window.
     scroll = rode[0]["x"] - held
     short = (rode[0]["x"] - rode[0]["drawn"]["x"]) / scroll if scroll else 0
     assert 0 < short <= 1, f"drawn {short:.2f} of the scroll back short of its place"
+
+
+def seated_as_heard_late(back_on: list[Json], held: float, sent: float) -> None:
+    """Fail unless the cat, put back on its seat at once, heard of niri's scroll back late.
+
+    A shell that hears of niri's scroll back only once niri's spring is done, as a loaded
+    builder's can, finds its window at rest and sits on it at once, as it should. Its first
+    report off where it was held says how long before the scroll began, so one that missed a
+    scroll still under way fails (C1BD3E07, 2026-11-26); and when, so one that never heard the
+    scroll back, dating only the scroll away, fails too.
+    """
+    seated = next((at for at in back_on if abs(at["x"] - held) >= 1), None)
+    assert seated is not None, f"the cat never left {held} for its seat: {back_on[-2:]}"
+    began = seated["scrollBegan"]
+    assert began is not None, "the cat was put on its seat at once, dating no scroll it heard"
+    assert began >= sent - CLOCKED, (
+        f"the cat was put on its seat at once, the last scroll it heard of begun at {began},"
+        f" before the keys came back at {sent:.0f}"
+    )
+    heard_late = seated["scrolled"] >= seated["slides"]
+    assert heard_late, (
+        "niri scrolled its window back and the cat was put on its seat at once, "
+        f"{seated['scrolled']} ms into a scroll of {seated['slides']}"
+    )
 
 
 def walked_report(shell: Shell, since: int) -> Json:

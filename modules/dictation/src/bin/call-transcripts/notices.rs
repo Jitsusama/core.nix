@@ -82,11 +82,32 @@ pub fn written_down(title: &str) -> Notice {
     }
 }
 
+/// A body said as words, which a notice carries as markup (the spec's,
+/// and the notices daemon's body.rs): an error's or a summary's `<` or
+/// `&` is shown, never read as a tag or an entity.
+fn plain(body: &str) -> String {
+    body.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 /// The notice when a call couldn't be heard at all.
 pub fn not_transcribed(title: &str, why: &str) -> Notice {
     Notice {
         heading: format!("{} Couldn't Be Transcribed", named(title, true)),
         body: why.to_owned(),
+        acts: vec![("forget", "Forget")],
+        quiet: true,
+    }
+}
+
+/// The notice when the speech model failed on part of a call that's on,
+/// saying `why`, so its transcript, left without it, isn't taken for
+/// whole.
+pub fn not_all_heard(title: &str, why: &str) -> Notice {
+    Notice {
+        heading: format!("Part of {} Wasn't Heard", named(title, false)),
+        body: format!("The speech model failed on part of it: {why}"),
         acts: vec![("forget", "Forget")],
         quiet: true,
     }
@@ -110,7 +131,8 @@ pub fn not_summed_up(title: &str, why: &str, can_pass: bool) -> Notice {
 }
 
 /// notify-send's arguments for a notice, the heading and body after `--`,
-/// since a body that opens with a dash is never an option.
+/// since a body that opens with a dash is never an option, and the body
+/// said as words, whichever notice it is.
 fn arguments(notice: &Notice) -> Vec<String> {
     let mut args = vec![
         "--app-name=Calls".to_owned(),
@@ -131,7 +153,7 @@ fn arguments(notice: &Notice) -> Vec<String> {
         "--wait".to_owned(),
         "--".to_owned(),
         notice.heading.clone(),
-        notice.body.clone(),
+        plain(&notice.body),
     ]);
     args
 }
@@ -386,6 +408,39 @@ mod tests {
             not_transcribed("", "x").heading,
             "The Call Couldn't Be Transcribed"
         );
+        assert_eq!(
+            not_all_heard("", "x").heading,
+            "Part of the Call Wasn't Heard"
+        );
+    }
+
+    #[test]
+    fn part_of_a_call_not_heard_is_said_quietly_with_why() {
+        let notice = not_all_heard("Standup", "the encoder failed");
+        assert_eq!(notice.heading, "Part of Standup Wasn't Heard");
+        assert_eq!(
+            notice.body,
+            "The speech model failed on part of it: the encoder failed"
+        );
+        assert!(notice.quiet, "it would chime mid-call");
+        let names: Vec<&str> = notice.acts.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["forget"]);
+    }
+
+    #[test]
+    fn every_notice_body_is_shown_as_words_not_markup() {
+        // The notices daemon reads a body as markup, so an error's or a
+        // summary's `<` or `&` is escaped, once, whichever notice says it.
+        let said = "infer failed (-1): <b>Exception</b> from src/ov.cpp & co";
+        let shown = "infer failed (-1): &lt;b&gt;Exception&lt;/b&gt; from src/ov.cpp &amp; co";
+        let body = |notice: Notice| arguments(&notice).pop().unwrap_or_default();
+        assert_eq!(body(not_transcribed("", said)), shown);
+        assert_eq!(
+            body(not_all_heard("", said)),
+            format!("The speech model failed on part of it: {shown}")
+        );
+        assert_eq!(body(not_summed_up("", said, false)), shown);
+        assert_eq!(body(summed_up("", said)), shown);
     }
 
     #[test]

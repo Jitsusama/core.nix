@@ -606,6 +606,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/plan.rs`, `pass.rs`  | the order, the windows, and a pass that measures as it goes |
 | `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
+| `src/survey/`             | what builds and every other kind of source offer         |
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |

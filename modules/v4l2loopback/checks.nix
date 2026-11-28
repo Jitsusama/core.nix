@@ -13,7 +13,8 @@ onLinux {
   # interfaces has a nonzero alternate setting, its file is named for the
   # camera, made a plain file name, and goes when its node does or the
   # watch is stopped; a name is one printable line, a wrapper's named for
-  # what it wraps, and only a unit in a process's cgroup is ignored. While
+  # what it wraps, and only a system unit a process's cgroup is in is
+  # ignored, never a person's own unit of the same name. While
   # it streams, it's said every ten seconds with the frames uvcvideo
   # counted over the stretch. What takes real holders is
   # vm-loopback-says-who-holds-it's.

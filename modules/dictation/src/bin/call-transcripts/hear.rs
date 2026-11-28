@@ -29,7 +29,12 @@
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
 //! are never held at once. What can't be heard is said in a notice
-//! (notices.rs).
+//! (notices.rs) and in the call's file (unheard.rs).
+//!
+//! Long because it is the one thread holding each call as it's heard,
+//! and each step a take goes through, heard, embedded, written down or
+//! told it wasn't, changes that call's state here; its cases are kept
+//! apart, in `hear_tests.rs`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -46,9 +51,11 @@ use dictation::voices::{self, Heard, Voices};
 use crate::Settings;
 use crate::book::{self, Attendance, Record, Shared, TRANSCRIPT, write_whole};
 use crate::filed;
+use crate::notices::{self, Notice};
 use crate::presence::{self, Present, Spoke, Who};
+use crate::said;
 use crate::split::{self, Piece};
-use crate::{notices, said};
+use crate::unheard::{self, Unheard};
 
 /// How long Parakeet is kept once the last call is written, so a call
 /// rejoined soon after needn't load it again.
@@ -94,6 +101,7 @@ pub enum Job {
 /// across a rejoin. Its `sound` is how loud each take of theirs heard
 /// was, words or none, so his words far under it are cut as their echo; one
 /// taken up from its file starts with none, since sound is never kept.
+/// What its speech model failed on is `unheard`, which its file says.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -108,6 +116,7 @@ struct Writing {
     told: HashMap<usize, usize>,
     left: HashSet<usize>,
     sound: Track,
+    unheard: Option<Unheard>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -181,7 +190,7 @@ impl Writing {
         start: usize,
         samples: &[f32],
         heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
-    ) -> (Option<String>, Vec<Word>) {
+    ) -> ((Option<String>, Vec<Word>), Option<String>) {
         if side == Side::Theirs && heard.is_ok() {
             self.sound.hear(start, samples);
         }
@@ -274,22 +283,8 @@ pub fn hear(
                 let _ = sums.send(key);
             }
         }
-        let job = if calls.is_empty() && speech.is_some() {
-            match jobs.recv_timeout(UNUSED) {
-                Ok(job) => job,
-                Err(RecvTimeoutError::Timeout) => {
-                    speech = None;
-                    speakers = Speakers::default();
-                    eprintln!("call-transcripts: Parakeet let go");
-                    continue;
-                }
-                Err(RecvTimeoutError::Disconnected) => return,
-            }
-        } else {
-            match jobs.recv() {
-                Ok(job) => job,
-                Err(_) => return,
-            }
+        let Some(job) = next_job(jobs, calls.is_empty(), &mut speech, &mut speakers) else {
+            return;
         };
         match job {
             Job::Take {
@@ -301,11 +296,20 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| taken_up(&mut ended, book, &key, me));
-                let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
-                    continue;
+                let parakeet = match loaded(settings, &mut speech) {
+                    Ok(parakeet) => parakeet,
+                    Err(why) => {
+                        let notice = || notices::not_transcribed(&title_of(book, &key), &why);
+                        shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                        continue;
+                    }
                 };
                 let heard = transcribe_take(parakeet, start, &samples);
-                let (text, words) = writing.take_heard(side, start, &samples, heard);
+                let ((text, words), failed) = writing.take_heard(side, start, &samples, heard);
+                if let Some(why) = failed {
+                    let notice = || notices::not_all_heard(&title_of(book, &key), &why);
+                    shown(not_heard(book, &key, writing, me, start, &mut told, notice));
+                }
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -393,17 +397,60 @@ pub fn transcribe_take(
     Ok((text, from_call_start(start, words)))
 }
 
-/// What the daemon goes on with from a take `heard`: what was heard, or,
-/// when it wasn't, no text and no words, logged once. One take not heard
-/// mustn't end the call: it's left out, a take of theirs still helps tell
-/// the voices apart, and the next is heard as ever.
+/// What the daemon goes on with from a take's `heard`: what was heard,
+/// or, when it wasn't, no text and no words, logged, and why. One take
+/// not heard mustn't end the call: it's left out, a take of theirs still
+/// helps tell the voices apart, and the next is heard as ever; why goes
+/// to the call's notice and its file says what's missing, so a call
+/// whose model fails on every take isn't left looking whole.
 fn heard_or_left_out(
     heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
-) -> (Option<String>, Vec<Word>) {
-    heard.unwrap_or_else(|why| {
-        eprintln!("call-transcripts: a take wasn't heard: {why}");
-        (None, Vec::new())
-    })
+) -> ((Option<String>, Vec<Word>), Option<String>) {
+    match heard {
+        Ok(kept) => (kept, None),
+        Err(why) => {
+            eprintln!("call-transcripts: a take wasn't heard: {why}");
+            ((None, Vec::new()), Some(why))
+        }
+    }
+}
+
+/// A take `start` samples into `key`'s call that wasn't heard, its model
+/// not loading or failing on it: counted in what the call's file says
+/// wasn't heard, the file written at once so a restart before another
+/// line is heard reads it back, and `notice` for it, unless the call
+/// was told already.
+fn not_heard(
+    book: &Shared,
+    key: &str,
+    writing: &mut Writing,
+    me: &str,
+    start: usize,
+    told: &mut HashSet<String>,
+    notice: impl FnOnce() -> Notice,
+) -> Option<Notice> {
+    writing.unheard = Some(unheard::and(writing.unheard, start));
+    write(book, key, writing, me, true);
+    told_once(told, key, notice)
+}
+
+/// A `notice`, shown, if there is one.
+fn shown(notice: Option<Notice>) {
+    if let Some(notice) = notice {
+        notices::show(&notice, |_| {});
+    }
+}
+
+/// The `notice` for a failure in `key`'s call, the first time one is told;
+/// none once it has been, `told` holding the calls told until each ends.
+/// Its model not loading and failing on part of it share it, so a call
+/// is told once, whichever came first.
+fn told_once(
+    told: &mut HashSet<String>,
+    key: &str,
+    notice: impl FnOnce() -> Notice,
+) -> Option<Notice> {
+    told.insert(key.to_owned()).then(notice)
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,
@@ -432,29 +479,43 @@ fn compile_ahead(settings: &Settings) {
     }
 }
 
-/// Parakeet, loaded first if it isn't; none when it won't load, which a
-/// notice says once a call, `told` holding the calls already told.
+/// Parakeet, loaded first if it isn't, or why it won't load, as a
+/// call's notice says it.
 fn loaded<'a>(
     settings: &Settings,
     speech: &'a mut Option<Parakeet>,
-    book: &Shared,
-    key: &str,
-    told: &mut HashSet<String>,
-) -> Option<&'a mut Parakeet> {
-    if speech.is_none() {
-        match settings.load() {
-            Ok(parakeet) => *speech = Some(parakeet),
-            Err(why) => {
-                eprintln!("call-transcripts: Parakeet didn't load: {why}");
-                if told.insert(key.to_owned()) {
-                    let title = title_of(book, key);
-                    let why = format!("The speech model didn't load: {why}");
-                    notices::show(&notices::not_transcribed(&title, &why), |_| {});
-                }
+) -> Result<&'a mut Parakeet, String> {
+    let parakeet = match speech.take() {
+        Some(parakeet) => parakeet,
+        None => settings.load().map_err(|why| {
+            eprintln!("call-transcripts: Parakeet didn't load: {why}");
+            format!("The speech model didn't load: {why}")
+        })?,
+    };
+    Ok(speech.insert(parakeet))
+}
+
+/// The next job, or none once no more can come. With no call being
+/// heard (`idle`) and Parakeet kept, it's let go with the speaker model
+/// when no job comes within `UNUSED`, and the wait goes on.
+fn next_job(
+    jobs: &Receiver<Job>,
+    idle: bool,
+    speech: &mut Option<Parakeet>,
+    speakers: &mut Speakers,
+) -> Option<Job> {
+    while idle && speech.is_some() {
+        match jobs.recv_timeout(UNUSED) {
+            Ok(job) => return Some(job),
+            Err(RecvTimeoutError::Timeout) => {
+                *speech = None;
+                *speakers = Speakers::default();
+                eprintln!("call-transcripts: Parakeet let go");
             }
+            Err(RecvTimeoutError::Disconnected) => return None,
         }
     }
-    speech.as_mut()
+    jobs.recv().ok()
 }
 
 /// A take of theirs embedded in pieces by the speaker model, as
@@ -704,6 +765,9 @@ fn title_of(book: &Shared, key: &str) -> String {
 
 /// A call taken up again: as this run held it when it ended, embeddings
 /// and all, so a rejoin is told apart whole; else as its file has it.
+/// Either is told anew of a failure, even one its file says was told: a
+/// notice raised before may have been put away, or gone with the daemon
+/// before it showed, and a second quiet one costs less than none.
 fn taken_up(ended: &mut Vec<(String, Writing)>, book: &Shared, key: &str, me: &str) -> Writing {
     match ended.iter().position(|(kept, _)| kept == key) {
         Some(at) => ended.remove(at).1,
@@ -725,12 +789,13 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
             ..Writing::default()
         };
     };
-    let mut lines: Vec<Line> = record
+    let file = record
         .transcript
         .as_ref()
         .and_then(|file| std::fs::read_to_string(file).ok())
-        .map(|text| transcript::read(filed::transcript(&text), me))
         .unwrap_or_default();
+    let said = filed::transcript(&file);
+    let mut lines: Vec<Line> = transcript::read(said, me);
     if their_side(&record, me) == TheirSide::Named {
         for line in &mut lines {
             line.name = None;
@@ -740,6 +805,7 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
         whole: lines.is_empty(),
         read: lines.len(),
         lines,
+        unheard: Unheard::read(said),
         ..Writing::default()
     }
 }
@@ -749,7 +815,9 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
 /// says in its record where it is, how it opens and whether it's still
 /// being written. The summary is the record's, so writing the
 /// transcript again keeps it; a call that's still on has none, since
-/// a rejoin lets the last one go.
+/// a rejoin lets the last one go. A call with nothing to say yet, no
+/// line heard and no take failed, has no file; one whose every take
+/// failed has one saying so, which a restart reads back.
 fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bool) {
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
@@ -757,7 +825,7 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
     };
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
-    if !writing.lines.is_empty() {
+    if !writing.lines.is_empty() || writing.unheard.is_some() {
         let them = record.them(me);
         let note = record.note(me);
         let said = transcript_of(writing, me, them.as_deref(), note.as_deref());
@@ -783,7 +851,8 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 }
 
 /// The transcript `writing` holds, under their side's name `them` where
-/// it's known and the voices' `note`. Joel's echoes are left out against
+/// it's known and the voices' `note`, after a note of what wasn't heard
+/// where some wasn't. Joel's echoes are left out against
 /// each take of theirs whole, never its parts, so a take split by voice
 /// neither brings back an echo of it nor takes away his answer to it.
 /// Lines read back from the file were told when first written, and are
@@ -792,7 +861,16 @@ fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&
     let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, &writing.sound, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
-    markdown_unechoed(&heard, me, them, note, guesses)
+    let unheard = writing.unheard.map(|unheard| {
+        if writing.lines.is_empty() {
+            unheard.note_with_none_heard()
+        } else {
+            unheard.note()
+        }
+    });
+    let notes: Vec<&str> = [unheard.as_deref(), note].into_iter().flatten().collect();
+    let notes = (!notes.is_empty()).then(|| notes.join("\n\n"));
+    markdown_unechoed(&heard, me, them, notes.as_deref(), guesses)
 }
 
 #[cfg(test)]

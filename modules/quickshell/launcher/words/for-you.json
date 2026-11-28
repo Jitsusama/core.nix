@@ -59,6 +59,11 @@
       "name": "Where"
     },
     {
+      "id": "pineapple:act:open",
+      "in": "for-you:source:pineapple",
+      "name": "Open"
+    },
+    {
       "id": "pineapple:fact:count",
       "in": "for-you:source:pineapple",
       "name": "Heard"

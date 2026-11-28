@@ -25,7 +25,9 @@ const RISE: f64 = 0.02;
 
 /// How many of a run's last judgements a wait is held against, twice
 /// `FAR_CUTS`: long enough that a far path's waver comes back to its
-/// height within them, short enough that one spike is forgotten.
+/// height within them, short enough that one spike is forgotten. A wait
+/// that steps down and stays, or wavers slower than they span, is cut
+/// toward `LEAST` until its old height passes out of them, about 20 s.
 const HEIGHTS: usize = 6;
 
 /// The VPN's own queue's hold: the share of its lane it's held to, and
@@ -217,22 +219,29 @@ mod tests {
         );
     }
 
-    /// Steps a hold through judgements whose two seconds each read the
-    /// next of `waits`, in ms, from `from`, judging the last too. Its step
-    /// is a power of two's part of a second, so each judgement falls on
-    /// its window's end exactly and takes in that window's waits alone.
-    /// Answers the least share it came to.
-    fn judged(hold: &mut Hold, from: f64, waits: &[f64]) -> f64 {
+    /// Steps a hold never judged through judgements whose two seconds
+    /// each read the next of `waits`, in ms, from 0 s, judging the last
+    /// too. Its step is a power of two's part of a second, so each
+    /// judgement falls on its window's end exactly and takes in that
+    /// window's waits alone; a hold judged before keeps its own phase,
+    /// which would split the windows (a cut takes the wait lower round
+    /// 4's F61 and F75). Answers the least share it came to.
+    fn judged(hold: &mut Hold, waits: &[f64]) -> f64 {
         const STEP: f64 = 0.125;
+        assert!(
+            hold.judged_at.is_none(),
+            "a hold judged at {:?} can't be stepped window by window",
+            hold.judged_at
+        );
         let mut least = hold.share();
-        let mut at = from;
-        let end = waits.iter().fold(from, |end, _| end + ELSEWHERE_S);
+        let mut at = 0.0;
+        let end = waits.iter().fold(0.0, |end, _| end + ELSEWHERE_S);
         while at <= end {
             let window = waits
                 .iter()
                 .zip(0_u32..)
                 .skip(1)
-                .take_while(|&(_, window)| from + ELSEWHERE_S * f64::from(window) < at)
+                .take_while(|&(_, window)| ELSEWHERE_S * f64::from(window) < at)
                 .last()
                 .map_or(waits[0], |(&ms, _)| ms);
             hold.step(at, STEP, Some(window), LATE_MS);
@@ -260,7 +269,7 @@ mod tests {
                     .map(|window| cycle[window % cycle.len()])
                     .collect();
                 let mut hold = Hold::default();
-                let least = judged(&mut hold, 0.0, &waits);
+                let least = judged(&mut hold, &waits);
                 // Seven cuts at most, 0.321 of the lane, where the old
                 // rule's went on to the least and stayed.
                 assert!(
@@ -278,27 +287,38 @@ mod tests {
         }
     }
 
-    // One spike sets a height the waver never comes back to, but only
-    // for `HEIGHTS` judgements: then it's forgotten, and the cuts are let
-    // go all the same.
+    // One spike sets a height the waver never comes back to, and a far
+    // wait that steps down and stays sets one it doesn't, but only for
+    // `HEIGHTS` judgements: then each is forgotten, and the cuts are let
+    // go all the same. On the way they take the share to its least for a
+    // judgement or two, the cost of a height kept that long (a cut takes
+    // the wait lower round 4's F56, F60 and F69).
     #[test]
-    fn a_spike_in_a_far_wait_is_forgotten() {
-        let waits = [
+    fn a_far_wait_s_spike_or_step_down_is_forgotten() {
+        let spike = [
             70.0, 150.0, 68.0, 72.0, 66.0, 70.0, 68.0, 74.0, 66.0, 70.0, 68.0, 74.0, 66.0,
         ];
-        let mut hold = Hold::default();
-        let least = judged(&mut hold, 0.0, &waits);
-        assert!(
-            (hold.share() - 1.0).abs() < f64::EPSILON,
-            "a far wait with one spike held the share at {:.3}, from a least of {least:.3}",
-            hold.share()
-        );
+        let step_down = [
+            80.0, 80.0, 80.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0,
+        ];
+        for waits in [spike, step_down] {
+            let mut hold = Hold::default();
+            let least = judged(&mut hold, &waits);
+            assert!(
+                (hold.share() - 1.0).abs() < f64::EPSILON,
+                "a far wait through {waits:?} held the share at {:.3}, from a least of \
+                 {least:.3}",
+                hold.share()
+            );
+        }
     }
 
     // A tunnel that slows mid-run refills, its wait climbing over the low
     // the cuts took it to, and drains again under cuts, short of a height
-    // it had. The queue first grows over the tunnel's pace, too. However
-    // often it refills, the drain keeps its hold.
+    // it had. The queue first grows over the tunnel's pace, too. Each
+    // drain keeps its hold while the height it drained from is among the
+    // last `HEIGHTS`: a refill back within the margin of that height reads
+    // as a far path's waver, and is let go.
     #[test]
     fn a_refilled_tunnel_drains_again_under_its_cuts() {
         let refills: [&[f64]; 4] = [
@@ -311,7 +331,7 @@ mod tests {
         ];
         for waits in refills {
             let mut hold = Hold::default();
-            let least = judged(&mut hold, 0.0, waits);
+            let least = judged(&mut hold, waits);
             assert!(
                 hold.share() < 0.5,
                 "a tunnel draining again after a refill through {waits:?} was let go, at \
@@ -319,6 +339,25 @@ mod tests {
                 hold.share()
             );
         }
+    }
+
+    // A drain that stops short of the late mark leaves a wait the cuts no
+    // longer lower, which reads as far once the height it drained from has
+    // passed out of the last `HEIGHTS` (a cut takes the wait lower round
+    // 4's F63 and F72).
+    #[test]
+    fn a_drain_that_stops_short_is_let_go_once_its_height_is_forgotten() {
+        let waits = [
+            100.0, 40.0, 20.0, 35.0, 28.0, 22.0, 22.0, 22.0, 22.0, 22.0, 22.0, 22.0,
+        ];
+        let mut hold = Hold::default();
+        let least = judged(&mut hold, &waits);
+        assert!(
+            (hold.share() - 1.0).abs() < f64::EPSILON,
+            "a wait standing at 22 ms under its cuts held the share at {:.3}, from a least of \
+             {least:.3}",
+            hold.share()
+        );
     }
 
     // Each far path found again is unheeded twice as long as the last, up
@@ -329,10 +368,20 @@ mod tests {
         let waits: Vec<f64> = (0..350)
             .map(|window| [68.0, 60.0, 74.0][window % 3])
             .collect();
-        judged(&mut hold, 0.0, &waits);
+        judged(&mut hold, &waits);
         assert!(
             hold.unheeded_for > FAR_S,
             "a far path found a second time went unheeded only {:.0} s",
+            hold.unheeded_for
+        );
+        let mut hold = Hold::default();
+        let waits: Vec<f64> = (0..3000)
+            .map(|window| [68.0, 60.0, 74.0][window % 3])
+            .collect();
+        judged(&mut hold, &waits);
+        assert!(
+            (hold.unheeded_for - FAR_MOST_S).abs() < f64::EPSILON,
+            "a far path found five times went unheeded {:.0} s, not at most {FAR_MOST_S:.0}",
             hold.unheeded_for
         );
     }
@@ -345,7 +394,7 @@ mod tests {
             unheeded_for: FAR_MOST_S,
             ..Hold::default()
         };
-        judged(&mut hold, 0.0, &[100.0, 60.0, 10.0]);
+        judged(&mut hold, &[100.0, 60.0, 10.0]);
         assert!(
             hold.unheeded_for.abs() < f64::EPSILON,
             "a run that drained left the unheeded time at {:.0} s",

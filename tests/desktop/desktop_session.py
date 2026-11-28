@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, said_by, shown, until_heard
+from heard import diagnosed, ended, flattened, moved_over, said_by, shown, until_heard, whole
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -1572,31 +1572,6 @@ def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
     )
 
 
-# The fewest reads that can show a word moving, and the most moved words a shot's
-# failure names before saying how many more (what_moved).
-TWO_READS = 2
-MOVED_NAMED = 30
-
-
-def flattened(value: object, at: str = "") -> dict[str, object]:
-    """Give each leaf of a JSON value by its path, as rows[2].words[0].text, to compare two."""
-    if isinstance(value, dict):
-        pairs = cast("dict[str, object]", value).items()
-        return {k: v for key, one in pairs for k, v in flattened(one, f"{at}.{key}").items()}
-    if isinstance(value, list):
-        items = enumerate(cast("list[object]", value))
-        return {k: v for n, one in items for k, v in flattened(one, f"{at}[{n}]").items()}
-    return {at.lstrip("."): value}
-
-
-def whole(said: str) -> object:
-    """Give what a read said as JSON, or nothing for one empty or cut short."""
-    try:
-        return json.loads(said)
-    except ValueError:
-        return {}
-
-
 def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
     """Say which of the launcher's laid-out words changed over a few reads, for a moving shot.
 
@@ -1607,6 +1582,7 @@ def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
     over: neither may raise in place of the failure it explains. A read is kept only when
     both calls came back whole, since one holding only showing's paths would read every
     laidOut path as moved, burying the words that did (round 1 on #6998, F1, F7 and F19).
+    What it compares and says is heard.py's, whose cases run off any VM.
     """
     seen: list[dict[str, object]] = []
     calls = ("laidOut", "showing")
@@ -1624,24 +1600,7 @@ def what_moved(desktop: Desktop, reads: int = 5, apart: float = 0.3) -> str:
         if n < reads - 1:
             # Apart by a span the shot found the screen changing within.
             time.sleep(apart)
-    if len(seen) < TWO_READS:
-        return "the launcher's laidOut couldn't be read twice to say what moved"
-    paths = sorted({path for one in seen for path in one})
-
-    def worded(one: dict[str, object], path: str) -> str:
-        # A path a read lacks, as a list grown shorter, apart from one that is null.
-        return repr(one[path]) if path in one else "absent"
-
-    moved = [
-        f"{path}: {' / '.join(dict.fromkeys(worded(one, path) for one in seen))}"
-        for path in paths
-        if len({worded(one, path) for one in seen}) > 1
-    ]
-    if not moved:
-        return f"none of the launcher's laid-out words moved over {len(seen)} reads"
-    shown = "; ".join(moved[:MOVED_NAMED])
-    more = f" and {len(moved) - MOVED_NAMED} more" if len(moved) > MOVED_NAMED else ""
-    return f"the launcher's laid-out words that moved over {len(seen)} reads: {shown}{more}"
+    return moved_over(seen)
 
 
 def laid_out(desktop: Desktop) -> Json:

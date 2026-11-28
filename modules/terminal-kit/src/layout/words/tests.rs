@@ -115,6 +115,18 @@ fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
 }
 
 #[test]
+fn items_sharing_a_hung_first_line_fill_that_line_s_room() {
+    // The first line holds 11 cells and the lines under it 9, so both
+    // items fit the first, where the hang's measure would send the
+    // second down.
+    assert_eq!(
+        hanging("aaaa \u{b7} bbbb", 0, Room::Cells(11)),
+        ["aaaa \u{b7} bbbb"],
+        "the items on the first line were measured to the hang's room"
+    );
+}
+
+#[test]
 fn an_item_too_long_for_a_line_keeps_the_dot_before_it() {
     // The second item breaks across lines, its first words sharing the
     // first line after the dot that parts it from the item before.

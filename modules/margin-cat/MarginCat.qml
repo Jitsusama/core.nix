@@ -120,9 +120,18 @@ Scope {
 
         // Asks that the next play be `play`, as a test watching it asks:
         // the scene waiting is drawn again with it, its rest left running.
+        // Only a shell that reports, as a test's does, takes it or says its
+        // level. Elsewhere the cat neither lets another program steer it
+        // nor tells one how long he's been away, though niri and his
+        // session may still say he's idle. Plays.ipcAsked and Plays.ipcLevel
+        // hold the gate, where a Qt case reaches it.
         function next(play: string): void {
-            root.asked = play;
-            root.refusedAt = null;
+            const ask = Plays.ipcAsked(Options.reports,
+                { asked: root.asked, refusedAt: root.refusedAt }, play);
+            if (!ask.taken)
+                return;
+            root.asked = ask.asked;
+            root.refusedAt = ask.refusedAt;
             if (root.coming !== null)
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
                     root.drawsWith(play));
@@ -132,7 +141,7 @@ Scope {
         // play only once the shell has heard the key: a scene asked for
         // while still idle can come up before, and the key cut it short.
         function level(): string {
-            return root.lively;
+            return Plays.ipcLevel(Options.reports, root.lively);
         }
     }
 

@@ -32,6 +32,47 @@ function carriedBy(landed, sat) {
     return landed === null ? sat : landed.id ?? null;
 }
 
+// How far niri's scroll of the strip carried the window the cat sits on,
+// `before` as the cat last heard it and `after` as it is now
+// (MarginCatTiles.js's of), as that window goes wholly off the screen with
+// the keys still in it (MarginCatScreen.qml's carriedOff). The answer is
+// across alone, the window keeping its column, size and top, since a
+// scroll moves nothing else. None comes for a floating window, for one
+// put in another column or on another workspace, or grown, shrunk or moved
+// up or down, as going fullscreen does, all of which the cat leaves rather
+// than rides; and none for a window that didn't move.
+function scrolledOff(before, after) {
+    if (!before || !after || before.column === null || after.column !== before.column) {
+        return null;
+    }
+    const kept = Math.abs(after.top - before.top) < 0.5
+        && Math.abs(after.width - before.width) < 0.5
+        && Math.abs(after.height - before.height) < 0.5;
+    const across = after.left - before.left;
+    return kept && Math.abs(across) >= 0.5 ? { x: across, y: 0 } : null;
+}
+
+// Where the cat goes as niri carries its window away and ends the puppy's
+// visit (MarginCatScreen.qml's follow), and how: to its seat `home` on that
+// window, or, with none, the window scrolled wholly off the screen, from
+// its `place` as far as niri carried it, `by`; none from nowhere. It
+// "rides" there on niri's spring while that spring slides its window
+// (`at.scrolling`: the strip scrolled, or its column moved beside another
+// opening, closing or resizing), or to wholly off the screen, where only a
+// scroll leaves it; and "sits" there at once as a floating window dragged
+// carries it, which niri doesn't animate, as backOn has it. Its place cut
+// mid-hop is a leap's frame above its seat, so it goes to that seat rather
+// than keeping the leap. Nowhere before, it sits on its seat at once, as
+// backOn has it, since a ride sets off from where it's drawn (rides).
+function visitCut(home, place, by, at) {
+    const to = home ?? (place === null ? null : { x: place.x + by.x, y: place.y + by.y });
+    if (to === null) {
+        return null;
+    }
+    const off = to.x + at.wide <= 0 || to.x >= at.across;
+    return { to, how: place !== null && (at.scrolling || off) ? "rides" : "sits" };
+}
+
 // How the cat goes back to its seat `there` on the column it sat on, as
 // niri's layout has it, from its `place` (MarginCatScreen.qml's follow):
 // "walks" there as its column was grown or shrunk across (`at.reshaped`),
@@ -40,8 +81,9 @@ function carriedBy(landed, sat) {
 // a ride under way running on as its window's spring does, never set off
 // again from a lag gone by, as the keys come back to a column still in
 // view; "rides" with its window from where it's drawn while niri's spring
-// slides the strip, a ride under way (`at.riding`) or a scroll niri told
-// of within its spring (`at.scrolling`), or from wholly off the screen,
+// slides its window, a ride under way (`at.riding`) or a scroll or its
+// column moved beside another, either told of by niri within its spring
+// (`at.scrolling`), or from wholly off the screen,
 // where only a scroll leaves it; and "sits" there at once otherwise,
 // nowhere before or as a floating window dragged carries it, which niri
 // doesn't animate.

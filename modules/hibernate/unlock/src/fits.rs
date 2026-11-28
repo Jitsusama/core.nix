@@ -15,10 +15,11 @@
 //! what zswap's pool already holds counts as in use. Unlike the graphics
 //! pool below, zswap's shrinker gives back only part of its pool, and late:
 //! 7.3's mm/zswap.c scales its count down by the compression ratio and by
-//! recent swap-ins from the disk, gives entries used lately a second
+//! recent swap-ins from the disk, gives entries stored lately a second
 //! chance, and takes a whole page for each entry before freeing it.
-//! zswap.rs says when the shrinker runs, and why what it writes out leaves
-//! the image no larger.
+//! zswap.rs says when the shrinker runs, and why what it writes out before
+//! the image's reclaim can only make the image smaller than `fits` reckons,
+//! while what it writes after may make it larger.
 //! Free pages waiting on each processor's own list count as in use there,
 //! since only the free lists mark a page free, but they're the first the
 //! image's own allocation takes, so here they're free: on a 1 GiB machine
@@ -375,14 +376,21 @@ mod tests {
 
     #[test]
     fn what_zswaps_pool_holds_counts_as_in_use() {
-        // 500,000 KiB of what was free now in zswap's pool: none of it is
-        // taken back, though its shrinker may write some out.
-        let pooled = LAPTOP.replace("3508048", "3008048") + "Zswap:            500000 kB\n";
+        // 500,000 KiB of what was free now in zswap's pool, holding
+        // 1,500,000 KiB uncompressed as a real meminfo says: none of it is
+        // taken back, read through either line, though its shrinker may
+        // write some out.
+        let pooled = LAPTOP.replace("3508048", "3008048")
+            + "Zswap:            500000 kB\nZswapped:        1500000 kB\n";
         let least = |meminfo: &str| {
             let memory = Memory::parse(meminfo).unwrap();
             Fit::of(memory, Zones::parse(ZONES), GIB, swap_room(SWAPS)).least
         };
-        assert_eq!(least(&pooled) - least(LAPTOP), 500_000 * 1024);
+        assert_eq!(
+            least(&pooled).checked_sub(least(LAPTOP)),
+            Some(500_000 * 1024),
+            "the pool wasn't counted as in use, at what it takes"
+        );
     }
 
     #[test]

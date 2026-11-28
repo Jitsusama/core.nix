@@ -16,7 +16,7 @@ function run(failures) {
     machine("no reader", Links.links(""), null);
     machine("a file that isn't the reader's", Links.links("{}"), null);
     machine("a link by its address", Links.of(Links.links(btFile), btClassic.address).rssi, -6);
-    machine("a device with no link", Links.of(Links.links(btFile), "C3:9C:E3:2A:F3:6E"), null);
+    machine("a device with no link", Links.of(Links.links(btFile), "C2:00:00:00:C3:00"), null);
     machine("a classic link below its best range", Links.signal(btClassic),
         { side: "-6 dB", value: 0.85,
             note: "below the range its radio hears best, sending at 4 dBm" });
