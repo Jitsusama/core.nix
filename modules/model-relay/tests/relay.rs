@@ -1330,12 +1330,12 @@ async fn the_lends_request_taken_while_stopped_goes_alone_and_pis_go_direct() {
 
     relay.stop();
     tokio::time::sleep(PROBED_AFTER_THE_STOP).await;
-    let lent = ask(&lend, request(&host, "/echo", b"lent")).await;
+    let carried = ask(&lend, request(&host, "/echo", b"lent")).await;
     let pis = ask(&relay.socket, request(&host, "/echo", b"")).await;
     let rest = body.collect().await.expect("the rest").to_bytes();
 
     assert_eq!(
-        (lent.status, lent.body.as_slice()),
+        (carried.status, carried.body.as_slice()),
         (StatusCode::CREATED, b"lent".as_slice()),
         "the lend's request taken after a stop wasn't carried"
     );

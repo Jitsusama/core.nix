@@ -231,6 +231,35 @@ fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
     listened
 }
 
+/// What a socket that can't be listened on fails as.
+fn unlistened(why: std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
+}
+
+/// The sockets systemd handed it, or else those it binds at `socket` and
+/// `lend`, ready to be answered without blocking.
+fn listening(socket: Option<&str>, lend: Option<&str>) -> Result<Handed, Failure> {
+    let handed = match (handed(), socket) {
+        (Some(handed), _) => handed,
+        (None, Some(path)) => Handed {
+            agents: bound(Path::new(path))?,
+            lend: lend.map(|lend| bound(Path::new(lend))).transpose()?,
+        },
+        (None, None) => {
+            return Err(Failure::new(
+                Exit::Usage,
+                "systemd handed it no socket, and it was given none",
+            )
+            .try_this("model-relay --origin URL --socket PATH"));
+        }
+    };
+    handed.agents.set_nonblocking(true).map_err(unlistened)?;
+    if let Some(lend) = &handed.lend {
+        lend.set_nonblocking(true).map_err(unlistened)?;
+    }
+    Ok(handed)
+}
+
 /// A number of seconds a flag was given, or `default` when it wasn't.
 fn seconds(given: Option<&str>, flag: &str, default: Duration) -> Result<Duration, Failure> {
     given.map_or(Ok(default), |text| {
@@ -296,40 +325,17 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     let Handed {
         agents: listener,
         lend,
-    } = match (handed(), given[1].as_deref()) {
-        (Some(handed), _) => handed,
-        (None, Some(path)) => Handed {
-            agents: bound(Path::new(path))?,
-            lend: given[7]
-                .as_deref()
-                .map(|lend| bound(Path::new(lend)))
-                .transpose()?,
-        },
-        (None, None) => {
-            return Err(Failure::new(
-                Exit::Usage,
-                "systemd handed it no socket, and it was given none",
-            )
-            .try_this("model-relay --origin URL --socket PATH"));
-        }
-    };
-    let cannot_listen = |why: std::io::Error| {
-        Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
-    };
-    listener.set_nonblocking(true).map_err(cannot_listen)?;
-    if let Some(lend) = &lend {
-        lend.set_nonblocking(true).map_err(cannot_listen)?;
-    }
+    } = listening(given[1].as_deref(), given[7].as_deref())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
     let served = runtime.block_on(async move {
-        let listener = tokio::net::UnixListener::from_std(listener).map_err(cannot_listen)?;
+        let listener = tokio::net::UnixListener::from_std(listener).map_err(unlistened)?;
         let lend = lend
             .map(tokio::net::UnixListener::from_std)
             .transpose()
-            .map_err(cannot_listen)?;
+            .map_err(unlistened)?;
         // systemd stops it with SIGTERM, which it takes as its word to
         // leave once its answers end rather than at once, and a second as
         // its word to leave now. Each is heard for as long as it runs,
