@@ -311,9 +311,9 @@ fn key(picture: &Picture, cut: Cut, piece: &Piece) -> String {
             ("", _) => format!("{} (no session)", piece.tool),
             ("elsewhere", _) => "elsewhere".into(),
             (session, Some(quest)) => {
-                format!("{} · {}", title(quest), &session[..session.len().min(8)])
+                format!("{} · {}", title(quest), short_session(session))
             }
-            (session, None) => format!("{} · {}", piece.repo, &session[..session.len().min(8)]),
+            (session, None) => format!("{} · {}", piece.repo, short_session(session)),
         },
         Cut::Tool => piece.tool.clone(),
         Cut::Day => Zone::day_name(picture.zone.day(crate::time::hour_start(piece.hour))),
@@ -322,6 +322,15 @@ fn key(picture: &Picture, cut: Cut, piece: &Piece) -> String {
         Cut::Budget => piece.budget.clone(),
         Cut::Machine => machine_name(picture, piece),
     }
+}
+
+/// A session's id as its rows name it: its first eight characters, cut at
+/// a whole character since a brought log can set an id of any text.
+pub(super) fn short_session(session: &str) -> &str {
+    session
+        .char_indices()
+        .nth(8)
+        .map_or(session, |(at, _)| &session[..at])
 }
 
 /// The machine a piece's work was done on: another machine by its name,
@@ -611,6 +620,33 @@ mod tests {
             rows.iter().any(|name| name == "codex (no machine)")
                 && rows.iter().any(|name| name == "slate"),
             "another tool's bill was cut together with this machine's work: {rows:?}"
+        );
+    }
+
+    // A session's id is cut to its first eight characters, not bytes: a
+    // brought log sets the id, and a cut inside a character panicked.
+    #[test]
+    fn a_session_is_cut_at_a_whole_character() {
+        let history = crate::history::History::memory();
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap();
+        // Seven bytes, then a character of two, so byte eight is inside it.
+        turn(&history, "abcdefg\u{e9}-on", Some("QEST-A"), NOW - 3600.0);
+        turn(&history, "hijklmn\u{e9}-on", None, NOW - 3600.0);
+        let picture = crate::picture::Picture::read(&history, &config, NOW).unwrap();
+        let mut names: Vec<String> = cut(&picture, Period::Today, Cut::Session, 10)
+            .rows
+            .into_iter()
+            .map(|row| row.name)
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [" · hijklmn\u{e9}", "QEST-A · abcdefg\u{e9}"],
+            "a session wasn't named by its first eight characters"
         );
     }
 

@@ -1,7 +1,7 @@
 //! The focused reports: the week at a glance, a cap's line, waste, quests,
 //! outliers, caps and the forecast.
 
-use super::cuts::{source_line, spend_cells, spend_columns};
+use super::cuts::{short_session, source_line, spend_cells, spend_columns};
 use super::{Period, Report, Row};
 use crate::findings::Finding;
 use crate::money::{dollars, percent, whole};
@@ -196,7 +196,7 @@ pub fn waste(picture: &Picture) -> Report {
         notes.push(format!(
             "The most after pauses was {} in session {}.",
             dollars(*spent),
-            &session[..session.len().min(8)]
+            short_session(session)
         ));
     }
     let today = picture.zone.day(picture.now);
@@ -302,13 +302,7 @@ pub fn outliers(picture: &Picture, false_discovery: f64, floor: f64) -> Report {
                 .and_then(|id| picture.quests.iter().find(|quest| &quest.id == id))
                 .map_or_else(
                     || outlier.work.session.clone(),
-                    |quest| {
-                        format!(
-                            "{} · {}",
-                            quest.title,
-                            &outlier.work.session[..8.min(outlier.work.session.len())]
-                        )
-                    },
+                    |quest| format!("{} · {}", quest.title, short_session(&outlier.work.session)),
                 );
             Row {
                 name,
@@ -455,5 +449,36 @@ pub fn forecast(picture: &Picture) -> Report {
         columns: Vec::new(),
         rows,
         notes,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z
+
+    /// A picture of nothing spent, in UTC at `NOW`, for what a report says
+    /// over figures set by hand.
+    fn an_empty_picture() -> Picture {
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap();
+        Picture::read(&crate::history::History::memory(), &config, NOW).unwrap()
+    }
+
+    // The session that rebuilt most is named by its first eight
+    // characters, not bytes, since a brought log sets its id.
+    #[test]
+    fn the_worst_session_is_cut_at_a_whole_character() {
+        let mut picture = an_empty_picture();
+        picture.waste.worst = Some(("abcdefg\u{e9}-on".into(), 12.0));
+        assert_eq!(
+            waste(&picture).notes.last().map(String::as_str),
+            Some("The most after pauses was $12 in session abcdefg\u{e9}."),
+            "the worst session wasn't named by its first eight characters"
+        );
     }
 }
