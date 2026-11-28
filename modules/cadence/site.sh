@@ -33,7 +33,9 @@ out="${folder}/$(date +%F).jsonl"
 # rather than an hour gone quiet.
 refused() {
   mkdir -p "${folder}"
-  jq --null-input --compact-output --argjson at "$(date +%s)" --arg error "$1" \
+  local now
+  now=$(date +%s)
+  jq --null-input --compact-output --argjson at "${now}" --arg error "$1" \
     '{at: $at, error: $error}' >>"${out}"
   printf '%s\n' "cadence-site $1" "  try  $2" >&2
   exit 64
