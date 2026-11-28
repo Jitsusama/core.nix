@@ -2569,6 +2569,7 @@ ShellRoot {
         answersInPlace(forYou);
         everyAskHasAWayOut(forYou, toDo);
         doneKept(toDo);
+        historyAddsUp(toDo);
         shut(piece, toDo);
         remakesWhatChanged(toDo);
     }
@@ -3009,6 +3010,52 @@ ShellRoot {
             JSON.stringify([now.tally.rows - before, moved]));
         WaitingOnYou.asked = [];
         WaitingOnYou.settled = {};
+        Facts.all = [];
+        agents.forYou = [];
+    }
+
+    // History's drawer says what its row's count is made of, a fact for
+    // each source, so it adds up to that count with every term of
+    // resolvedCount held at once: a look done with, the to-dos Joel said
+    // were done, what Mail and Slack finished and what a source gave done.
+    // Counted while only the notices were there, its sum missed four of
+    // the five terms, and a count shown under another source's name
+    // passed (#7188's review, finding 5). A done row that names no source
+    // is counted too, under its own word, last: dropped as named nothing,
+    // the drawer said one fewer than its row.
+    function historyAddsUp(toDo) {
+        const at = Date.now();
+        const hour = 3600000;
+        WaitingOnYou.asked = [toDo("Signed In"), toDo("Said Yes")];
+        WaitingOnYou.settled = { done: { "Signed In": at - hour, "Said Yes": at - 2 * hour } };
+        now.lookTexts = { "h.json": JSON.stringify({ v: 1, id: "h", kind: "page",
+            at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
+            title: "Looked at h", why: "Because.", state: "opened" }) };
+        const finishing = (lately, finished) => ({ entry: { mark: lately }, piece: {
+            present: true, active: true, group: "on", title: lately, value: "",
+            lately: lately, came: [], actions: [], finished: finished } });
+        const read = { how: "read", at: at - hour / 2 };
+        Facts.all = [finishing("mail", [{ subject: "Lunch", done: read }]),
+            finishing("slack", [{ who: "Ana", done: read }, { who: "Bo", done: read }])];
+        const merged = { how: "merged", at: at - 3 * hour };
+        agents.forYou = [
+            { row: { key: "agent:asked", name: "Asked", forYou: { source: "sessions" } },
+                done: merged },
+            { row: { key: "agent:merged", name: "Merged" }, done: merged },
+            { row: { key: "agent:landed", name: "Landed" }, done: merged }
+        ];
+        const facts = (now.historyRow?.drawer()?.facts ?? [])
+            .map(one => [one.label, Number(one.value)]);
+        same("History's drawer counts each source under its own name", facts, [
+            ["To-Dos", 2], ["Looks", 1], ["Mail", 1], ["Slack", 2], ["Sessions", 1],
+            ["Elsewhere", 2]]);
+        const sum = facts.reduce((all, one) => all + one[1], 0);
+        expect("History's drawer adds up to its row's count, every term held",
+            now.resolvedCount === 9 && sum === now.resolvedCount,
+            JSON.stringify([sum, now.resolvedCount]));
+        WaitingOnYou.asked = [];
+        WaitingOnYou.settled = {};
+        now.lookTexts = {};
         Facts.all = [];
         agents.forYou = [];
     }
