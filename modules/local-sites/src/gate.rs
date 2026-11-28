@@ -187,6 +187,7 @@ mod tests {
                     Kind {
                         fields: Some(vec!["title".to_owned(), "presence".to_owned()]),
                         deep: None,
+                        latest: None,
                     },
                 ),
             ]),
