@@ -336,11 +336,13 @@ pub fn names_no_class(line: &str) -> bool {
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
 /// before `now`, the vetted before the unfolded and most changes first,
-/// each with its owner after ` · `, so
-/// each is filed with its own. A class whose owner differs by repository
-/// has a line for each repository with an owner of its own that it was
-/// found in over the bar, named after the class, and one for the rest,
-/// since the class recurs though one part of it may not.
+/// each with its owner after ` · `, so each is filed with its own. A
+/// class whose owner differs by repository has a line for each
+/// repository with an owner of its own, named after the class, standing
+/// whenever the class is over the bar and found there on any change; and
+/// one for the rest, keyed as the class, standing while the rest is on
+/// `AT_LEAST` changes, since the class recurs though one part of it may
+/// not.
 #[must_use]
 pub fn recurring(cases: &[Case], now: i64) -> Measure {
     let mut changes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
