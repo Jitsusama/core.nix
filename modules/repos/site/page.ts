@@ -257,8 +257,9 @@ type Drawn = { readonly repos: boolean; readonly everyFeed: boolean };
  * Keeps the room each part the feeds draw took when the page was left, at this width, so the
  * next load holds it from its first paint (index.html puts it back) and nothing shifts as the
  * feeds arrive. A part `forgets` names, drawn from what a reload doesn't bring back (a name
- * found, a season unfolded), keeps no room, nor does any once the width changes. A visit with
- * none kept waits unseen (index.html) until the repositories draw, or ROOM_WAIT_MS at most.
+ * found, a season unfolded), keeps no room, kept as null so the next load waits for it, nor
+ * does any once the width changes. A visit with any part's room unkept waits unseen
+ * (index.html) until the repositories draw, or ROOM_WAIT_MS at most.
  * Returns what's told of each draw, which shows the page once the repositories have drawn and
  * lets the room go once every feed has, so the parts fit what they hold again.
  */
@@ -290,7 +291,7 @@ function keepRoom(forgets: () => readonly Room[]): (drawn: Drawn) => void {
     const heights = Object.fromEntries(
       ROOMS.map((id) => [
         id,
-        forgotten.includes(id) ? 0 : (document.getElementById(id)?.offsetHeight ?? 0),
+        forgotten.includes(id) ? null : (document.getElementById(id)?.offsetHeight ?? 0),
       ]),
     );
     try {

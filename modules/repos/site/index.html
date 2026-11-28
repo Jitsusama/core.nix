@@ -21,8 +21,6 @@
   } catch (_error) {
     // A browser that keeps nothing shows the system's theme, as it should.
   }
-  // The room each part the feeds draw took when the page was last left at this width, held
-  // until they draw again (page.ts), so the page doesn't shift as they arrive.
   // A visit with no room kept waits unseen until the repositories draw (page.ts), so its
   // first sight is the page whole rather than one that drops as each part arrives.
   document.documentElement.classList.add("waits");
@@ -35,15 +33,24 @@
       once: true,
     });
   }
+  // The room each part the feeds draw took when the page was last left at this width, held
+  // until they draw again (page.ts), so the page doesn't shift as they arrive. Only a visit
+  // that kept every part's room is seen at once: a part kept none of, as one it forgets,
+  // draws from nothing, so its visit waits as if it kept no room.
   try {
     const room = JSON.parse(localStorage.getItem("code-room") ?? "null");
     if (room?.width === innerWidth) {
+      let whole = true;
       for (const id of ["title", "lede", "grove", "list", "open"]) {
-        const px = Number(room.heights?.[id]);
-        if (px > 0) {
-          document.documentElement.classList.remove("waits");
+        const px = room.heights?.[id];
+        if (typeof px !== "number") {
+          whole = false;
+        } else if (px > 0) {
           document.documentElement.style.setProperty(`--room-${id}`, `${px}px`);
         }
+      }
+      if (whole) {
+        document.documentElement.classList.remove("waits");
       }
     }
   } catch (_error) {
