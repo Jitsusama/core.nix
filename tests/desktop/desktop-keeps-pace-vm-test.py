@@ -141,22 +141,32 @@ REACHING = timedelta(seconds=30)
 FREEZING = timedelta(minutes=3)
 # Each place a program gives, stepped into as Joel does, in rounds with the load frozen and
 # running by turns, after a first round that's only read, since a place's first step makes what
-# it keeps for the rest. A step is timed by the launcher from the key it heard to its frame, and
+# it keeps for the rest. A step is timed by the launcher from the key's press to its frame, and
 # said in its journal as `"\u2192 Name" took N ms to its frame` (Trials.js), which is what the
-# machine's own load proof reads of Joel's. Under load a place's middle step may take twice its
-# middle with the load frozen and STEPPED_MORE ms more, as a key may. Each place is moved in
-# once after its step, and the drawer made for the row moved onto, off the key's path as the
-# selection rests, is timed by the launcher from the work begun for it to its frame
-# (Launcher.qml's drawerMade), and the launcher's own making of it is held to the same. Its
-# wait for its frame and its drawing are said beside it, not judged: under load they took 68
-# to 148 ms and 23 to 83 of a drawer's 100 to 218, its making 2 to 19, and Qt's render loop
-# put that frame time in the swap onto niri, 11 to 183 ms, where polish and render took 0 to
-# 12. Judged whole, the same commit passed in one run and failed in the next (2026-11-11). The
-# render thread's swap reaches QML only queued, behind whatever the GUI thread does, so it
-# can't be taken out as a key's is.
+# machine's own load proof reads of Joel's, with how long after its press the key was heard
+# said last (STEP_HEARD). That heard part runs from the press the VM's kernel stamps to the
+# launcher's handler beginning, so it holds both the compositors handing the key on, which the
+# VM pays and a laptop doesn't, and the key queued in the shell's thread behind other work,
+# which the load is here to show. STEPPED_MORE was set on 10 November for steps timed from the
+# key the launcher heard, so a step is still judged from there, its frame less its heard part
+# (Step.judged), as a key's VM-only parts are taken out (round 2 on #7087, 19, 25 and 36). The
+# heard part isn't hidden, though: each loaded step's is said beside its frame, so a shell that
+# leaves keys queued under load shows in the run, and a step whose frame is shorter than its
+# heard part fails, since its frame wasn't timed from the press its lateness counts from (F43 on
+# #7087). Under load a place's middle step may take twice its middle with the load frozen and
+# STEPPED_MORE ms more, as a key may. Each place is moved in once after its step, and the drawer
+# made for the row moved onto, off the key's path as the selection rests, is timed by the
+# launcher from the work begun for it to its frame (Launcher.qml's drawerMade), and the
+# launcher's own making of it is held to the same. Its wait for its frame and its drawing are
+# said beside it, not judged: under load they took 68 to 148 ms and 23 to 83 of a drawer's 100
+# to 218, its making 2 to 19, and Qt's render loop put that frame time in the swap onto niri, 11
+# to 183 ms, where polish and render took 0 to 12. Judged whole, the same commit passed in one
+# run and failed in the next (2026-11-11). The render thread's swap reaches QML only queued,
+# behind whatever the GUI thread does, so it can't be taken out as a key's is.
 ROUNDS = 6
 STEPPED_MORE = 50
 STEP_SAID = re.compile(r'"\u2192 ([^"]+)" took (\d+) ms to its frame, (\d+) ms searching')
+STEP_HEARD = re.compile(r", heard (\d+) ms after its press$")
 # The programs whose pages are stepped into: what's typed to find each, and its row's key.
 PAGES = [
     ("chrome", "program:google-chrome"),
@@ -662,17 +672,54 @@ def stepped_round(desktop: Desktop) -> dict[str, Drawn]:
     return {place: drawer for place, drawer in drawers.items() if drawer is not None}
 
 
-def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
-    """Give each step timed since the mark: its place, its frame, its search and its line."""
+class Step(NamedTuple):
+    """A step into a place as the launcher's line says it (STEP_SAID and STEP_HEARD).
+
+    Its frame runs from the key's press, as the line says it, and its heard part from that press
+    to the launcher hearing the key, 0 where the line says none.
+    """
+
+    place: str
+    frame: int
+    heard: int
+    search: int
+    line: str
+
+    def judged(self) -> int:
+        """Give the step's frame from the key the launcher heard, which its bound was set for.
+
+        STEPPED_MORE was set before #7087, when a step was timed from the key heard, so the
+        heard part is taken out here and only here, and said apart where it's printed.
+        """
+        return self.frame - self.heard
+
+
+def steps_said(desktop: Desktop, since: str) -> list[Step]:
+    """Give each step timed since the mark, with its frame from its key's press as said.
+
+    Its heard part is given beside its frame rather than taken out of it, since that part holds
+    the key queued in the shell behind other work, which the load should show (STEP_HEARD).
+    A frame shorter than its heard part fails: it wasn't timed from the press its lateness
+    counts from, so taking that lateness out would take out time never put in (F43 on #7087).
+    """
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)} | grep -a -F ' ms to its frame'; true"
     )
-    return [
-        (found[1], int(found[2]), int(found[3]), found.string.strip())
+    steps = [
+        Step(found[1], int(found[2]), heard_late(found.string), int(found[3]), found.string.strip())
         for found in map(STEP_SAID.search, said.splitlines())
         if found
     ]
+    unpressed = [step.line for step in steps if step.frame < step.heard]
+    assert not unpressed, f"steps whose frame is shorter than their key's lateness: {unpressed}"
+    return steps
+
+
+def heard_late(line: str) -> int:
+    """Give how long after its press a step's key was heard, as its line says, else 0."""
+    heard = STEP_HEARD.search(line.strip())
+    return int(heard[1]) if heard else 0
 
 
 def makings_said(desktop: Desktop, since: str) -> list[str]:
@@ -746,6 +793,9 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     under: dict[str, list[int]] = {}
     free: dict[str, list[int]] = {}
     searching: dict[str, list[int]] = {}
+    # How long after its press each loaded step's key was heard, said and not judged, so a
+    # run shows how long keys waited for the shell under load (STEP_HEARD).
+    hearing: dict[str, list[int]] = {}
     # Each place's slowest step under load as the launcher said it, whose
     # parts say where its time went.
     slowest: dict[str, tuple[int, str]] = {}
@@ -771,11 +821,14 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
                 drawn[loaded].setdefault(place, []).append(drawer)
             early.extend(timed_early(framed(desktop), timed))
             made[loaded].extend(makings_said(desktop, since))
-            for place, took, search, line in steps_said(desktop, since):
-                (under if loaded else free).setdefault(place, []).append(took)
+            for step in steps_said(desktop, since):
+                (under if loaded else free).setdefault(step.place, []).append(step.judged())
                 if loaded:
-                    searching.setdefault(place, []).append(search)
-                    slowest[place] = max(slowest.get(place, (0, "")), (took, line))
+                    searching.setdefault(step.place, []).append(step.search)
+                    hearing.setdefault(step.place, []).append(step.heard)
+                    slowest[step.place] = max(
+                        slowest.get(step.place, (0, "")), (step.judged(), step.line)
+                    )
     finally:
         timing.finish()
         desktop.close_launcher()
@@ -786,9 +839,11 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     slowed = []
     for place in sorted(under):
         print(
-            f"stepping into {place}: under load {sorted(under[place])} ms to its frame,"
-            f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
-            f" with the load frozen; its slowest said {slowest[place][1]}"
+            f"stepping into {place}: under load {sorted(under[place])} ms to its frame from the"
+            f" key heard, {sorted(searching[place])} of it searching, its keys heard"
+            f" {sorted(hearing[place])} ms after their presses, against"
+            f" {sorted(free.get(place, []))} with the load frozen; its slowest said"
+            f" {slowest[place][1]}"
         )
         if place in free and middle(under[place]) > (
             SLOWER_MOST * middle(free[place]) + STEPPED_MORE

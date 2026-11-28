@@ -30,8 +30,8 @@ pub struct Pain {
     /// What slowed him: waiting, hunting, gave up or tried again; in pi
     /// also stopped it or an error, and in Chrome reloading or going back.
     pub slowed: String,
-    /// Which part was at fault: opening, search and drawing are the
-    /// shell's speed, finding the launcher's ranking and names; in pi, pi
+    /// Which part was at fault: opening, hearing, search and drawing are
+    /// the shell's speed, finding the launcher's ranking and names; in pi, pi
     /// itself, the provider, stopped or again; in Chrome, reload or back.
     pub part: String,
     /// How many times he opened the place for it; in pi, the messages
@@ -93,6 +93,10 @@ pub fn said(pain: &Pain) -> String {
     let doing = match pain.part.as_str() {
         _ if in_pi => "a pi session".to_owned(),
         "opening" => format!("opening the launcher for {}", named(&pain.trying)),
+        "hearing" => format!(
+            "waiting on the shell to hear keys for {}",
+            named(&pain.trying)
+        ),
         "search" => format!("searching for {}", named(&pain.trying)),
         "drawing" => format!("waiting on the launcher to draw {}", named(&pain.trying)),
         _ => format!("finding {}", named(&pain.trying)),
@@ -264,6 +268,18 @@ mod tests {
         assert_eq!(
             said(&waited),
             "opening the launcher for the session awake took 4 s"
+        );
+        let heard = Pain {
+            trying: "program:slack".into(),
+            seconds: 3.1,
+            part: "hearing".into(),
+            openings: 1,
+            ..Pain::default()
+        };
+        assert_eq!(
+            said(&heard),
+            "waiting on the shell to hear keys for Slack took 3 s",
+            "keys heard late behind the shell's other work are said as hearing, not finding"
         );
     }
 

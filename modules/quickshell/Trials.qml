@@ -74,8 +74,12 @@ Scope {
 
     // One key's search and the time to the frame that drew it, and what the
     // search spent its time on, and then `frame`, how long it waited for the
-    // frame that drew it and how long drawing it took, and last what the
-    // shell's thread did while it searched. A key slow enough to
+    // frame that drew it and how long drawing it took, how late the shell
+    // heard it, which the trial keeps beside its search so pain-points
+    // doesn't read it as drawing, when it was pressed from the opening's
+    // start, kept too so a wait is charged once, and last what the shell's
+    // thread did
+    // while it searched. A key slow enough to
     // feel is said in the journal too, with what was typed while reports
     // are on and how many letters otherwise, a `step` keeping its arrow
     // and saying the row it took by `stepKey` where that's the launcher's
@@ -84,7 +88,8 @@ Scope {
     // can be read as Joel types. Nothing asked for, such as a password, is
     // ever timed.
     function timed(searched, drawn, parts, typed, frame, step, own, stepKey) {
-        trial = Trials.timed(trial, searched, drawn, parts);
+        trial = Trials.timed(trial, { searched, drawn, heard: frame?.heardLate ?? 0,
+            pressed: frame?.pressed ?? -1 }, parts);
         const whole = Options.reports || own === true;
         if (Trials.felt(drawn))
             console.info(`launcher: ${Presented.timedShown(typed, step, whole, stepKey)} took`
@@ -101,7 +106,35 @@ Scope {
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + Thread.drawingApart(frame) + collecting(frame, drawn)
                     + framesBeforeSaid(frame)
-                    + Thread.said(searched, frame.thread, "its searching") : ""));
+                    + Thread.said(searched, frame.thread, "its searching") : "")
+                + heardLate(frame));
+    }
+
+    // How long a key took to its frame as Joel felt it, from `drawn`, the
+    // wall time its frame came, and `key` as Launcher.qml's keyTimed keeps
+    // it: from its handler's start, and how late after its press the shell
+    // heard it where the compositor stamped one, which `late` says apart.
+    // `pressed` is when, in ms from `from`, the opening's start on the clock
+    // its usable time is measured on, so pain-points can tell a key's wait
+    // before the opening was usable, which the opening's time already
+    // charges, and keys queued behind one stall, which waited once. A key no
+    // press made, as through IPC or typed by wtype with no time
+    // (keytimes.cpp), is timed from its handler alone and pressed at -1, as
+    // is one timed while no opening is felt, and one heard before its press,
+    // as a clock's step would read, as heard on time.
+    function fromPress(drawn, key, from) {
+        const late = key.stamped ? Math.max(0, Math.round(key.heard - key.pressed)) : 0;
+        const pressed = key.stamped && from >= 0 ? Math.round(key.pressed - from) : -1;
+        return { took: drawn - key.began + late, late: late, pressed: pressed };
+    }
+
+    // How long after its press the shell heard a key, where it was late,
+    // which its time to its frame counts from the press (fromPress); nothing
+    // where it was heard as it was pressed. Said last, so what reads a
+    // line's first figures, as desktop-keeps-pace's STEP_SAID does, reads a
+    // key heard late as it reads any other (#7087's review, F1).
+    function heardLate(frame) {
+        return (frame?.heardLate ?? 0) > 0 ? `, heard ${frame.heardLate} ms after its press` : "";
     }
 
     // How much of the key, from its being heard to its frame, Qt's

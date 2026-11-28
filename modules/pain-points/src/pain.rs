@@ -12,6 +12,10 @@
 //! typed (an abandoned search; one he cleared to read the lists is
 //! reading), and an opening he came straight back to (a u-turn or a
 //! reformulated search: the first didn't get him there).
+//!
+//! Long because more than half of it is the cases beside it, each a worked
+//! opening that pins one loss's charge; the losses themselves are under 500
+//! lines and change together, since each is a share of the same opening.
 
 use crate::trial::Trial;
 use serde::Serialize;
@@ -127,6 +131,9 @@ pub fn usable_of(message: &str) -> Option<f64> {
 pub struct Lost {
     /// Waiting for the launcher to be usable.
     pub opening: f64,
+    /// Waiting for the shell to hear a key behind other work, once however
+    /// many keys waited together.
+    pub hearing: f64,
     /// Waiting on a key's search.
     pub search: f64,
     /// Waiting on frames: a key's drawing or a stall.
@@ -141,7 +148,7 @@ pub struct Lost {
 
 impl Lost {
     pub fn waiting(&self) -> f64 {
-        self.opening + self.search + self.drawing
+        self.opening + self.hearing + self.search + self.drawing
     }
 
     pub fn total(&self) -> f64 {
@@ -150,21 +157,47 @@ impl Lost {
 }
 
 /// What one opening lost him.
+///
+/// Hearing is charged in wall time, as the union of each key's wait to be
+/// heard, from its press or the opening's being usable, whichever came
+/// later, and no longer than the key's time past its bar. A key pressed
+/// before the opening was usable waits in the queue until about then, and
+/// that wait is the opening's, which `opening` already charges; keys typed
+/// into one stall all wait behind it, and he waited for it once, not once a
+/// key: an arrow pressed 200 ms into an opening usable at 900 and framed at
+/// 920 was charged 670 ms of hearing beside the opening's 500, for a wait
+/// of 920 from the chord. A key with no press time keeps its own hearing,
+/// added apart, since when it waited is unknown.
 pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
     let mut it = Lost {
         opening: usable.map_or(0.0, |ms| (ms - USABLE_MS).max(0.0)),
         ..Lost::default()
     };
+    let mut waits = Vec::new();
     for key in trial.timed.iter().flat_map(|t| &t.felt) {
         let over = (key.drawn - FELT_MS).max(0.0);
-        let searching = if key.drawn > 0.0 {
-            (key.searched / key.drawn).clamp(0.0, 1.0)
+        // A key's time runs from its press, so one heard late waited behind
+        // the shell's other work before its search began: that wait came
+        // first and is neither searching nor drawing (#7087).
+        let late = key.heard.max(0.0);
+        let hearing = late.min(over);
+        let after = key.drawn - late;
+        let searching = if after > 0.0 {
+            (key.searched / after).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        it.search += over * searching;
-        it.drawing += over * (1.0 - searching);
+        match key.press() {
+            Some(pressed) => {
+                let from = usable.map_or(pressed, |ms| ms.max(pressed));
+                waits.push((from, (pressed + late).min(from + over)));
+            }
+            None => it.hearing += hearing,
+        }
+        it.search += (over - hearing) * searching;
+        it.drawing += (over - hearing) * (1.0 - searching);
     }
+    it.hearing += covered(waits);
     if let Some(frames) = trial.frames.as_ref().filter(|f| f.late > 0) {
         it.drawing += (frames.longest - STALL_MS).max(0.0);
     }
@@ -181,6 +214,23 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
         it.gave_up = float(trial.open.max(0)).min(GAVE_UP_MOST_MS);
     }
     it
+}
+
+/// How long the spans `(from, to)` cover between them, each moment once;
+/// a span that ends before it starts covers nothing.
+fn covered(mut spans: Vec<(f64, f64)>) -> f64 {
+    spans.retain(|(from, to)| to > from);
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut length = 0.0;
+    let mut reached = f64::MIN;
+    for (from, to) in spans {
+        let start = from.max(reached);
+        if to > start {
+            length += to - start;
+            reached = to;
+        }
+    }
+    length
 }
 
 /// Whether `next` was a second go at what `was` failed to do: a search
@@ -296,6 +346,7 @@ fn interaction(go: &[Trial], usable: &Usable, usual: &Usual) -> Painful {
         let ready = usable.near(trial.at);
         let it = lost(trial, ready, usual);
         sum.opening += it.opening;
+        sum.hearing += it.hearing;
         sum.search += it.search;
         sum.drawing += it.drawing;
         sum.hunting += it.hunting;
@@ -339,6 +390,7 @@ fn interaction(go: &[Trial], usable: &Usable, usual: &Usual) -> Painful {
     };
     let part = [
         (sum.opening, "opening"),
+        (sum.hearing, "hearing"),
         (sum.search, "search"),
         (sum.drawing, "drawing"),
         (finding, "finding"),
@@ -741,6 +793,7 @@ mod tests {
                 felt: vec![Felt {
                     searched: 150.0,
                     drawn: 250.0,
+                    ..Felt::default()
                 }],
             }),
             frames: Some(Frames {
@@ -756,6 +809,152 @@ mod tests {
             it.drawing,
             80.0 + 200.0,
             "the rest, and the stall past 100 ms"
+        );
+    }
+
+    fn keyed(searched: f64, drawn: f64, heard: f64) -> Trial {
+        Trial {
+            timed: Some(Timed {
+                felt: vec![Felt {
+                    searched,
+                    drawn,
+                    heard,
+                    pressed: None,
+                }],
+            }),
+            ..pick(AT, "program:slack", 1000)
+        }
+    }
+
+    /// An opening whose felt keys were each pressed at a time from its
+    /// start, as `(pressed, drawn, heard)`, each searching 2 ms.
+    fn pressed_at(keys: &[(f64, f64, f64)]) -> Trial {
+        Trial {
+            timed: Some(Timed {
+                felt: keys
+                    .iter()
+                    .map(|&(pressed, drawn, heard)| Felt {
+                        searched: 2.0,
+                        drawn,
+                        heard,
+                        pressed: Some(pressed),
+                    })
+                    .collect(),
+            }),
+            ..pick(AT, "program:slack", 1000)
+        }
+    }
+
+    #[test]
+    fn a_key_pressed_before_usable_waits_on_the_opening_alone() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let arrow = pressed_at(&[(200.0, 720.0, 700.0)]);
+        let it = lost(&arrow, Some(900.0), &usual);
+        assert_eq!(
+            (it.opening, it.hearing, it.search, it.drawing),
+            (500.0, 0.0, 0.0, 0.0),
+            "an arrow pressed 200 ms in, heard as the opening was usable at 900 and framed at \
+             920, waited on the opening, which charges its 500 ms past 400 once: {it:?}"
+        );
+    }
+
+    #[test]
+    fn keys_queued_behind_one_stall_charge_it_once() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let typed = pressed_at(&[
+            (100.0, 820.0, 800.0),
+            (150.0, 770.0, 750.0),
+            (200.0, 720.0, 700.0),
+        ]);
+        let it = lost(&typed, None, &usual);
+        assert_eq!(
+            it.hearing, 770.0,
+            "three keys pressed at 100, 150 and 200 and all heard at 900 waited 770 ms past \
+             the first's bar together, not 2160 ms between them: {it:?}"
+        );
+    }
+
+    #[test]
+    fn a_key_pressed_after_usable_and_heard_late_charges_its_late_part() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let late = lost(&pressed_at(&[(1000.0, 400.0, 300.0)]), Some(500.0), &usual);
+        assert_eq!(
+            late.hearing, 300.0,
+            "a key pressed 1000 ms in, after usable at 500, and heard 300 ms late waited \
+             that long to be heard: {late:?}"
+        );
+        let over = lost(&pressed_at(&[(1000.0, 95.0, 87.0)]), Some(500.0), &usual);
+        assert_eq!(
+            over.hearing, 45.0,
+            "a key heard 87 ms late and framed at 95 charges hearing only to its 45 ms \
+             past 50: {over:?}"
+        );
+    }
+
+    #[test]
+    fn a_key_with_no_press_time_keeps_its_own_hearing() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let mut trial = pressed_at(&[(200.0, 720.0, 700.0), (-1.0, 720.0, 700.0)]);
+        if let Some(timed) = trial.timed.as_mut() {
+            let unsaid = Felt {
+                pressed: None,
+                ..timed.felt[1].clone()
+            };
+            timed.felt.push(unsaid);
+        }
+        let it = lost(&trial, Some(900.0), &usual);
+        assert_eq!(
+            (it.opening, it.hearing),
+            (500.0, 670.0 + 670.0),
+            "a key written with no press and one kept before presses were said each charge \
+             their 670 ms past 50 to hearing, as before, beside the stamped key's none: {it:?}"
+        );
+    }
+
+    #[test]
+    fn a_key_heard_late_loses_its_hearing_before_its_search_and_drawing() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let it = lost(&keyed(100.0, 250.0, 50.0), None, &usual);
+        assert_eq!(
+            (it.hearing, it.search, it.drawing),
+            (50.0, 75.0, 75.0),
+            "50 of the 200 ms past 50 heard late, the rest split by the 100 ms searched \
+             of the 200 after it was heard"
+        );
+        let named = painful(&[keyed(2.0, 1500.0, 1200.0)], &Usable::new(vec![]), &usual);
+        assert_eq!(
+            (named[0].slowed, named[0].part),
+            ("waiting", "hearing"),
+            "a key heard more than a second late was slowed by its hearing: {named:?}"
+        );
+    }
+
+    #[test]
+    fn a_key_heard_later_than_it_was_over_loses_only_its_hearing() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let it = lost(&keyed(2.0, 45.0, 37.0), None, &usual);
+        assert_eq!(
+            it.total(),
+            0.0,
+            "45 ms, 37 of them heard late, is within the 50 ms bar"
+        );
+        let it = lost(&keyed(2.0, 95.0, 87.0), None, &usual);
+        assert_eq!(
+            (it.hearing, it.search, it.drawing),
+            (45.0, 0.0, 0.0),
+            "all 45 ms past 50 of a key heard 87 ms late were its hearing, none its drawing"
+        );
+    }
+
+    #[test]
+    fn a_key_kept_before_hearing_was_said_splits_as_before() {
+        let usual = usual_of("program:slack", &[2000, 2000, 2000]);
+        let trials = crate::trial::read(r#"{"timed":{"felt":[{"searched":150,"drawn":250}]}}"#);
+        let it = lost(&trials[0], None, &usual);
+        assert_eq!(
+            (it.hearing, it.search, it.drawing),
+            (0.0, 120.0, 80.0),
+            "a trial file with no heard reads it as heard on time"
         );
     }
 

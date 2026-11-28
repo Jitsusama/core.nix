@@ -163,22 +163,39 @@ QtObject {
 
         // Each key's search and frame are summed and their worst kept, and a
         // key slow enough to feel is kept with what took its time.
-        let keyed = Trials.timed(Trials.begun(0, "today"), 2, 5, null);
-        keyed = Trials.timed(keyed, 14, 20, { lists: 11, rows: 2, answers: 1 });
+        let keyed = Trials.timed(Trials.begun(0, "today"), { searched: 2, drawn: 5 }, null);
+        keyed = Trials.timed(keyed, { searched: 14, drawn: 20 },
+            { lists: 11, rows: 2, answers: 1 });
         expect("keys timed", keyed.timed.count === 2 && keyed.timed.searched === 16
             && keyed.timed.searchedMost === 14 && keyed.timed.drawn === 25
             && keyed.timed.drawnMost === 20, JSON.stringify(keyed.timed));
         expect("the felt key kept with its parts", keyed.timed.felt.length === 1
-            && keyed.timed.felt[0].parts.lists === 11 && keyed.timed.felt[0].drawn === 20,
+            && keyed.timed.felt[0].parts.lists === 11 && keyed.timed.felt[0].drawn === 20
+            && keyed.timed.felt[0].heard === 0, JSON.stringify(keyed.timed.felt));
+        // A key heard late keeps how late beside its search and drawing, so
+        // pain-points charges that wait to hearing and not to drawing.
+        const heard = Trials.timed(Trials.begun(0, "today"),
+            { searched: 2, drawn: 45, heard: 37 }, null).timed.felt[0];
+        expect("a felt key keeps how late it was heard", heard.heard === 37
+            && heard.searched === 2 && heard.drawn === 45, JSON.stringify(heard));
+        // A key keeps when it was pressed from the opening's start, so
+        // pain-points charges keys queued behind one wait it once, and -1
+        // where the shell had no press time.
+        const pressed = Trials.timed(Trials.begun(0, "today"),
+            { searched: 2, drawn: 720, heard: 700, pressed: 200 }, null).timed.felt[0];
+        expect("a felt key keeps when it was pressed", pressed.pressed === 200
+            && pressed.heard === 700, JSON.stringify(pressed));
+        expect("a felt key with no press time keeps -1", keyed.timed.felt[0].pressed === -1,
             JSON.stringify(keyed.timed.felt));
         expect("a frame's worth isn't felt", !Trials.felt(8) && Trials.felt(9), "felt");
         let many = Trials.begun(0, "today");
         for (let key = 0; key < 30; key += 1)
-            many = Trials.timed(many, 20, 30, null);
+            many = Trials.timed(many, { searched: 20, drawn: 30 }, null);
         expect("only the first felt keys kept", many.timed.felt.length === 20
             && many.timed.count === 30, many.timed.felt.length);
         expect("a trial from before the timing",
-            Trials.timed({ keys: {} }, 1, 2, null).timed.count === 1, "lost");
+            Trials.timed({ keys: {} }, { searched: 1, drawn: 2 }, null).timed.count === 1,
+            "lost");
 
         // A step says where its rows went: the place's own search, finding
         // in 7 ms and showing in 20, keeps its answers and their composing,
@@ -476,7 +493,7 @@ QtObject {
         const filing = { lists: 1, composing: { asking: 2, listing: 6.41, laying: 3.45,
             weighing: 4.6, drawer: { putting: 1.26, selecting: 0 },
             kept: { fresh: 3, laying: 3 } } };
-        const filed = Trials.timed(Trials.begun(0, "today"), 20, 30, filing)
+        const filed = Trials.timed(Trials.begun(0, "today"), { searched: 20, drawn: 30 }, filing)
             .timed.felt[0].parts.composing;
         expect("the trials file keeps a showing's parts in whole milliseconds, its own fine",
             filing.composing.laying === 3.45 && filing.composing.listing === 6.41

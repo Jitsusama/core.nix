@@ -7737,12 +7737,23 @@ Scope {
                 Awaited.framesTimed(surface.FramePresentation.framesBegun,
                     frame => surface.FramePresentation.timesOf(frame)), answersWaitedFor);
         Report.say(`key framed ${newest.text}`);
+        // Timed from its press, where the compositor stamped one, as Joel
+        // feels it: timed from its handler, a key heard 37 ms late behind an
+        // opening's work drew within 8 ms of it and was never said (ZINAWZ,
+        // 2026-11-27, #6934's arrow case). How late it was heard is said
+        // apart; a key no press made, as through IPC, is timed from its
+        // handler (Trials.qml's fromPress). When it was pressed is kept from
+        // the opening's start, where usable is measured from, so a wait
+        // before usable is charged to the opening alone.
+        const felt = trials.fromPress(drawn, newest, feltFrom);
         // Its time after its own work said apart, as a drawer's is: waiting
         // for the frame that drew it, then drawing it, so a key whose frame
         // came 80 ms after a 30 ms search says which held it (Joel's "ag",
         // 2026-11-11).
-        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text,
+        trials.timed(newest.searched, felt.took, newest.parts, newest.text,
             Object.assign({
+                heardLate: felt.late,
+                pressed: felt.pressed,
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
                 collecting: Math.round(Heap.collected() - newest.collected),

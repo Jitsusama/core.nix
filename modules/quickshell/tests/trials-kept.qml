@@ -8,7 +8,8 @@
 // are kept; a close after the pipe was killed is kept once it starts
 // again; and a start with too many lines cuts them, the next close
 // adding to the file cut rather than the one it replaced. Last, a slow key
-// and a slow step are timed, whose lines the check reads with reports off.
+// and a slow step are timed, whose lines the check reads with reports off,
+// the opening keeping how late each felt key was heard.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
@@ -136,12 +137,42 @@ ShellRoot {
             } else if (root.stage === "closing after the cut" && root.lines.length === 4) {
                 // A slow key, a slow step and a slow page down, said with
                 // reports off, which the check reads: by how many letters, the
-                // step keeping its arrow, and the launcher's own key whole.
+                // step keeping its arrow, and the launcher's own key whole;
+                // and a down arrow heard 37 ms after its press, timed from
+                // the press, which says how late it was heard.
+                // A stamped key is timed from its press, how late it was
+                // heard said apart; one with no press time, or heard before
+                // it, from its handler alone (Trials.qml's fromPress). A
+                // stamped key says when it was pressed from the opening's
+                // start, and one with no press time, or timed while no
+                // opening is felt, says -1.
+                const pressed = (stamped, heard, from) => root.made.fromPress(1000,
+                    { began: 960, stamped: stamped, heard: heard, pressed: 463 }, from);
+                const felt = [pressed(true, 500.4, 400), pressed(false, 500.4, 400),
+                    pressed(true, 450, 400), pressed(true, 500.4, -1)];
+                const meant = [{ took: 77, late: 37, pressed: 63 },
+                    { took: 40, late: 0, pressed: -1 }, { took: 40, late: 0, pressed: 63 },
+                    { took: 77, late: 37, pressed: -1 }];
+                if (JSON.stringify(felt) !== JSON.stringify(meant))
+                    return Expect.fail(`a key's press timed as ${JSON.stringify(felt)}`);
                 root.made.opened();
+                root.made.timed(2, 45, null, "down", { heardLate: 37, pressed: 63 }, "", true);
                 root.made.timed(2, 900, null, "Harbour House", null, "");
                 root.made.timed(2, 900, null, "\u2192 Harbour House", null,
                     "\u2192 Harbour House");
                 root.made.timed(2, 900, null, "page down", null, "", true);
+                // Each felt key keeps how late it was heard, 0 for one with
+                // no press time, so pain-points charges that wait to hearing
+                // rather than to drawing.
+                const heard = root.made.trial.timed.felt.map(key => key.heard);
+                if (JSON.stringify(heard) !== "[37,0,0,0]")
+                    return Expect.fail(`felt keys kept as heard ${JSON.stringify(heard)} ms late`);
+                // Each keeps when it was pressed too, -1 for one with no
+                // press time, so pain-points charges keys queued behind one
+                // wait, or waiting on the opening, once.
+                const presses = root.made.trial.timed.felt.map(key => key.pressed);
+                if (JSON.stringify(presses) !== "[63,-1,-1,-1]")
+                    return Expect.fail(`felt keys kept as pressed at ${JSON.stringify(presses)}`);
                 root.stage = "done";
                 console.info("every case holds");
                 Qt.callLater(() => Qt.exit(0));
