@@ -4,15 +4,19 @@
 # merged upstream reaches the lock without waiting on a hand bump. It reads
 # the rev origin's main locks the input at, and upstream's newest with git
 # ls-remote, from the source flake.lock says the input came from. When they
-# differ and no open pull request has the branch for that rev, it cuts
+# differ and no pull request has the branch for that rev, it cuts
 # PREFIX/INPUT-REV8 from origin's main, runs `nix flake update INPUT`, and
 # commits the lock alone, as the account's git config signs. It pushes that
 # branch, never main, and opens a draft whose body lists upstream's merges
 # between the two revs. A newer rev opens a new pull request and closes the
-# older, naming each in the other, unless someone pushed work onto the
-# older's branch, which leaves it open. A rev whose branch stands with no
-# open pull request was declined, and isn't opened again. It never
-# pushes over a branch, and never merges.
+# older once its branch is deleted, naming each in the other, unless
+# someone pushed or amended work onto the older's branch, which leaves it
+# open. A rev whose branch a closed pull request names was declined, and
+# isn't opened again, whether its branch stands or was deleted. A branch
+# standing with no pull request is opened on when it holds the tool's one
+# lock commit, an earlier run having failed before opening it, and is
+# left as taken when it holds anyone else's. It never pushes over a
+# branch, and never merges.
 #
 # Each input's run adds one JSON line to the record, and prints it: when,
 # the input, the rev locked, upstream's, and what it did. A failure writes
@@ -48,7 +52,7 @@ FLAGS
 
 EXIT
   0   each input locked at upstream's newest, a PR open,
-      or its rev declined
+      its rev declined, or its branch taken by others
   1   a step failed, named in its line
   64  asked wrongly
   75  origin or upstream couldn't be read; tried next run
@@ -136,15 +140,18 @@ ended() {
 
 # Whether origin's BRANCH holds the tool's one lock commit for INPUT on
 # main and nothing else, printing its head when it does and nothing when
-# it doesn't or can't be read, so a branch someone pushed work onto is
-# neither replaced nor deleted.
+# it doesn't or can't be read, so a branch someone pushed or amended work
+# onto is neither replaced nor deleted. What the commit changes is read
+# from where it left main, as main may have moved on since.
 ours() {
-  local branch=$1 input=$2 theirs ahead subject
+  local branch=$1 input=$2 theirs ahead subject changed
   git fetch --quiet origin "refs/heads/$branch" || return 0
   theirs=$(git rev-parse FETCH_HEAD) || return 0
   ahead=$(git rev-list --count "origin/main..$theirs") || return 0
   subject=$(git log -1 --format=%s "$theirs") || return 0
-  if [ "$ahead" = 1 ] && [[ $subject == "build($input): lock $input "* ]]; then
+  changed=$(git diff --name-only "origin/main...$theirs") || return 0
+  if [ "$ahead" = 1 ] && [[ $subject == "build($input): lock $input "* ]] &&
+    [ "$changed" = flake.lock ]; then
     echo "$theirs"
   fi
 }
@@ -222,14 +229,33 @@ for input in "$@"; do
     said open-already "$already"
     continue
   fi
-  # Its branch standing on origin with no open pull request means one was
-  # closed over it, by hand to decline this rev, or merged and reverted,
-  # so it isn't opened again; a newer rev opens anew.
-  step='reading the branch'
-  if git ls-remote --quiet --exit-code origin "refs/heads/$branch" >/dev/null; then
-    declined=$(jq -cn --arg branch "$branch" '{branch: $branch}')
+  # A closed pull request naming its branch means this rev was declined,
+  # by hand or merged and reverted, whether its branch stands or was
+  # deleted with it, so it isn't opened again; a newer rev opens anew.
+  step='listing closed pull requests'
+  declined=$("$pr" pr list --state closed --head "$branch" \
+    --json number,isCrossRepository |
+    jq -r 'map(select(.isCrossRepository | not) | .number) | first // empty')
+  if [ -n "$declined" ]; then
+    declined=$(jq -cn --arg branch "$branch" --argjson number "$declined" \
+      '{branch: $branch, number: $number}')
     said declined "$declined"
     continue
+  fi
+  # Its branch standing with no pull request is an earlier run's that
+  # failed before opening one, when it holds the tool's one lock commit,
+  # and is opened on rather than pushed again; holding anything else, it
+  # is someone's work, and is left as taken.
+  step='reading the branch'
+  standing=$(git ls-remote --quiet origin "refs/heads/$branch") || exit 75
+  pushed=''
+  if [ -n "$standing" ]; then
+    pushed=$(ours "$branch" "$input")
+    if [ -z "$pushed" ]; then
+      taken=$(jq -cn --arg branch "$branch" '{branch: $branch}')
+      said taken "$taken"
+      continue
+    fi
   fi
   # Any other open for this input locks an older rev, since upstream's
   # newest is this one. Its branch is the stem and eight hex digits, so
@@ -240,23 +266,25 @@ for input in "$@"; do
         and .headRefName != $branch)
       | "\(.number) \(.headRefName)"' <<<"$open")
 
-  step='updating the lock'
-  git checkout --quiet --force -B "$branch" origin/main
-  nix flake update "$input"
-  now=$(jq -r --arg node "$node" '.nodes[$node].locked.rev // empty' flake.lock)
-  if [ "$now" != "$upstream" ]; then
-    echo "✕ lock-follows locked $input at ${now:-nothing}, not $upstream: upstream moved" >&2
-    exit 75
-  fi
+  if [ -z "$pushed" ]; then
+    step='updating the lock'
+    git checkout --quiet --force -B "$branch" origin/main
+    nix flake update "$input"
+    now=$(jq -r --arg node "$node" '.nodes[$node].locked.rev // empty' flake.lock)
+    if [ "$now" != "$upstream" ]; then
+      echo "✕ lock-follows locked $input at ${now:-nothing}, not $upstream: upstream moved" >&2
+      exit 75
+    fi
 
-  step='committing'
-  git commit --quiet --message "build($input): lock $input $short" \
-    --message "Moves $input from ${locked:0:8} to $short, its upstream's newest." \
-    -- flake.lock
-  step='pushing'
-  # Only where origin has no such branch: one a pull request was closed
-  # over is declined, above, and is never pushed over.
-  git push --quiet --force-with-lease="refs/heads/$branch:" origin "HEAD:refs/heads/$branch"
+    step='committing'
+    git commit --quiet --message "build($input): lock $input $short" \
+      --message "Moves $input from ${locked:0:8} to $short, its upstream's newest." \
+      -- flake.lock
+    step='pushing'
+    # Only where origin has no such branch, leased so, as one standing is
+    # never pushed over.
+    git push --quiet --force-with-lease="refs/heads/$branch:" origin "HEAD:refs/heads/$branch"
+  fi
 
   step='listing upstream merges'
   git fetch --quiet -- "$source" "+$ref:refs/lock-follows/$input"
@@ -297,12 +325,14 @@ for input in "$@"; do
   while read -r number older_branch; do
     if [ -n "$number" ]; then
       # Only while its branch holds the tool's one commit on main: one
-      # someone pushed work onto stays open, its branch kept.
+      # someone pushed or amended work onto stays open, its branch kept.
+      # It's closed only once its branch is deleted, leased at the head
+      # read, so a delete refused or failed leaves it open, as it was.
       theirs=$(ours "$older_branch" "$input")
-      if [ -n "$theirs" ]; then
-        "$pr" pr close "$number" --comment "Replaced by $opened, which locks $input at $short."
+      if [ -n "$theirs" ] &&
         git push --quiet --force-with-lease="refs/heads/$older_branch:$theirs" \
-          origin --delete "$older_branch"
+          origin --delete "$older_branch"; then
+        "$pr" pr close "$number" --comment "Replaced by $opened, which locks $input at $short."
         closed=$(jq -c --argjson number "$number" '. + [$number]' <<<"$closed")
       fi
     fi
