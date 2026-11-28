@@ -13022,26 +13022,33 @@ Scope {
     // comes between keys rather than inside one, and leaves the room again
     // as collectClosed does (Collector.idleCollectionDue says when, and why
     // then). KeyTimes hears every key, click and scroll however it reaches
-    // the launcher, so nothing here marks them. Never while it opens or
-    // parts, which time their own frames.
+    // the launcher, so nothing here marks them, but not the chord that
+    // opens it nor : in a viewer, so its being shown counts as heard too
+    // (idleShown). Never while it opens or parts, which time their own
+    // frames.
     property real idleChunksFrom: 0
+    property real idleShown: 0
     Timer {
         interval: 100
         repeat: true
         running: root.open && !root.opening && root.parting === ""
+        onRunningChanged: {
+            if (running)
+                root.idleShown = KeyTimes.now();
+        }
         onTriggered: root.collectIdle()
     }
     function collectIdle() {
         const began = KeyTimes.now();
-        const heard = KeyTimes.lastInputHeard();
+        const quietFrom = Collector.idleQuietFrom(KeyTimes.lastInputHeard(), idleShown);
         const before = Heap.standing().chunks;
-        if (!Collector.idleCollectionDue(began, heard, before, idleChunksFrom))
+        if (!Collector.idleCollectionDue(began, quietFrom, before, idleChunksFrom))
             return;
         gc();
         Heap.leaveRoom(openingRoom);
         idleChunksFrom = Heap.standing().chunks;
         console.info(Collector.idleCollectedSaid(KeyTimes.now() - began, before, idleChunksFrom,
-            began - heard));
+            began - quietFrom));
     }
     function collectClosed() {
         // A count or a weighing already due would land within a second of

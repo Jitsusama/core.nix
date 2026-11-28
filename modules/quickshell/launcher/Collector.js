@@ -91,19 +91,31 @@ function standingSaid(inStall, stood) {
 const IDLE_QUIET_MS = 700;
 const IDLE_GROWN_MB = 8;
 
+// Since when an open launcher has been quiet, from when it last heard a
+// key, a click or the wheel and when it was last shown with nothing
+// opening or parting: the later of the two. The chord that opens it
+// reaches niri, not the shell (modules/niri/binds.nix), as : in a viewer
+// reaches the viewer, so by the last input alone an opening is as quiet as
+// the shell has been since its last key, and one whose chunks grew 8 MB
+// would collect within 100 ms of being shown, as the first key typed after
+// the chord comes.
+function idleQuietFrom(inputHeard, shown) {
+    return Math.max(inputHeard, shown);
+}
+
 // Whether an open launcher should collect now, from the monotonic clock
-// now, when it last heard a key, a click or the wheel, its chunks now, and
-// its chunks where the room was last left, at the ask or the last such
+// now, since when it's been quiet (idleQuietFrom), its chunks now, and its
+// chunks where the room was last left, at the ask or the last such
 // collection, all as Heap.standing and KeyTimes say them.
-function idleCollectionDue(now, inputHeard, chunks, chunksFrom) {
-    return now - inputHeard >= IDLE_QUIET_MS && chunks - chunksFrom >= IDLE_GROWN_MB;
+function idleCollectionDue(now, quietFrom, chunks, chunksFrom) {
+    return now - quietFrom >= IDLE_QUIET_MS && chunks - chunksFrom >= IDLE_GROWN_MB;
 }
 
 // The journal's line for a collection while nobody's at it: how long it
-// took, the chunks before and after, and how long after the last input it
-// came.
+// took, the chunks before and after, and how long after the last input, or
+// the launcher's showing if that came later, it came.
 function idleCollectedSaid(took, before, after, quiet) {
     return `launcher: collected idle in an opening in ${Math.round(took)} ms, chunks`
         + ` ${Math.round(before)} MB before it and ${Math.round(after)} after,`
-        + ` ${Math.round(quiet)} ms after the last input`;
+        + ` ${Math.round(quiet)} ms after the last input or its showing`;
 }

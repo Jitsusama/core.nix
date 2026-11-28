@@ -337,10 +337,17 @@ QtObject {
             Collector.idleCollectionDue(60000, 5000, 47.9, 40), false);
         check(failures, "and chunks gone down since the room was left never collect",
             Collector.idleCollectionDue(60000, 5000, 30, 40), false);
+        // The chord that opens it reaches niri, not the shell, so the last
+        // key the shell heard may be minutes before the first typed after it.
+        check(failures, "one shown in the last 700 ms waits, however long since the last key",
+            Collector.idleCollectionDue(60699, Collector.idleQuietFrom(5000, 60000), 90, 40),
+            false);
+        check(failures, "as one heard from since it was shown waits from what it heard",
+            Collector.idleQuietFrom(61000, 60000), 61000);
         check(failures, "a collection while nobody's at it is said with when it came",
             Collector.idleCollectedSaid(30.6, 66.4, 43.5, 776.2),
             "launcher: collected idle in an opening in 31 ms, chunks 66 MB before it and 44"
-            + " after, 776 ms after the last input");
+            + " after, 776 ms after the last input or its showing");
     }
 
     // What the shell's thread did in an opening's longest stall, from its
