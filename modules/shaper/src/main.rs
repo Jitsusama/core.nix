@@ -361,8 +361,8 @@ struct Shaped {
     /// waits inside its tunnel (src/tunnel.rs).
     vpn_share: f64,
     /// The share at or under which the VPN's CAKE on this link stays at its
-    /// floor for what goes ahead of bulk (src/lanes.rs's `vpn_least`), or
-    /// none while no VPN rides it.
+    /// floor for what goes ahead of bulk (src/lanes.rs's `vpn_least`), set
+    /// while the link is the primary uplink, and none while it isn't.
     vpn_least: f64,
     /// The share of their split agents straight on the link are held to,
     /// while the VPN's flow waits beside what they send.

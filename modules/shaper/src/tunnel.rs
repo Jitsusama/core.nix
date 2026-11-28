@@ -147,8 +147,11 @@ impl Hold {
         // drain and would read as a far path: let go, the VPN's whole lane
         // went to bulk for up to `FAR_MOST_S` (model calls ahead round 4's
         // F7). The hold stays at the floor instead, until what goes ahead
-        // of bulk lowers it.
+        // of bulk lowers it. The run ends there, so the waits it rose to
+        // while held aren't judged against those before (model calls ahead
+        // round 5's F14).
         if self.share <= self.least {
+            self.end_run();
             return;
         }
         let height = self
@@ -237,9 +240,10 @@ mod tests {
         run(&mut hold, 0.0, 120.0, |_, share| {
             Some(slow_tunnel(share.max(FLOOR)))
         });
+        // At the floor it neither lets go nor cuts on (round 5's F19).
         assert!(
-            hold.share() <= FLOOR,
-            "a tunnel held at its floor was let go, at {:.3}",
+            (FLOOR * CUT..=FLOOR).contains(&hold.share()),
+            "a tunnel held at its floor left the share at {:.3}",
             hold.share()
         );
         hold.floor(0.0);
@@ -247,6 +251,31 @@ mod tests {
         assert!(
             (LEAST..0.37).contains(&hold.share()),
             "a tunnel paced at 0.29 of the lane left the share at {:.3} once its floor came down",
+            hold.share()
+        );
+    }
+
+    // A run cut down to the floor, draining as it went, ends there: the
+    // wait it rises to while held is no far path's coming back to a height,
+    // so once the floor comes down the hold cuts on rather than letting go
+    // (model calls ahead round 5's F14).
+    #[test]
+    fn a_run_held_at_the_floor_is_not_judged_by_the_heights_before_it() {
+        const FLOOR: f64 = 0.5;
+        let mut hold = Hold::default();
+        hold.floor(FLOOR);
+        judged(&mut hold, 0.0, &[285.0, 225.0, 174.0, 130.0, 94.0]);
+        assert!(
+            hold.share() <= FLOOR,
+            "a draining run left the share at {:.3}, over its floor",
+            hold.share()
+        );
+        judged(&mut hold, 10.0, &[300.0, 300.0, 300.0]);
+        hold.floor(0.0);
+        judged(&mut hold, 16.0, &[300.0]);
+        assert!(
+            hold.share() < FLOOR,
+            "the first judgement after the floor came down let the share go to {:.3}",
             hold.share()
         );
     }
