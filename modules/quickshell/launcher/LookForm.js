@@ -27,28 +27,42 @@ const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const MARKS = /[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
-// The letters an act's are told apart from: ASCII's, and Latin's accented
-// ones. Any other a name holds where an act's letter stands may draw as
-// it, a Cyrillic Es as C, a Lisu letter as a Latin capital, a Roman
-// numeral as I, a fullwidth or a mathematical letter as its plain one, so
-// it's read as able to be any letter (endsOf). A list of the letters
-// that draw alike never ends, as three rounds on #6562 found (F170, then
-// round 13's 177 to 187), so none is kept. And any of them may draw as
-// nothing, as a mark combining with the letter before it does where MARKS
-// doesn't name it, "Ta\u0485lk" drawing as Talk with a mark over its a,
-// whose list never ends either (#6562, 211), so each is tried as a
-// letter and as nothing (endsOf). It refuses more than it must: a choice
-// in another script, as long as an act or longer, may be held back too,
-// which a look written in English never is.
-const LATIN = /[\x21-\x7e\u00c0-\u017f]/u;
-// And Latin's own letters that draw alike in a plain face, each read as
-// the one it draws like: a capital I, a small l, a dotless i, a one and a
-// bar as a stem, a zero as an o, so "Clear lt", "CIear It" and "Explain It"
-// with a dotless i draw as the act and read as it (round 14, 198 and 207).
-// Unlike the letters beyond Latin, these are few, and known.
-const STEMS = { i: "l", 1: "l", "|": "l", "\u0131": "l", 0: "o" };
-// A digit, which goes on a word as a letter does (opensWith).
-const DIGIT = /[0-9]/u;
+// The longest a choice is read at: past four times WHOLE_CHOICE it poses
+// unread, since one in another script was once walked whole against every
+// act, about (m+1)^2 a step on the shell's thread (#6562, 221).
+const LONGEST = WHOLE_CHOICE * 4;
+// The accents a choice's decomposed letters carry, which draw on the letter
+// before them, so "Ta\u013ck" decomposed reads as "Tal\u0327k" and poses alike
+// (#6562, 215).
+const COMBINING = /[\u0300-\u036f]/gu;
+// The only characters a choice is trusted to hold once its accents are
+// gone, each with how wide it draws in small letters: ASCII's letters and
+// digits, the space, the marks a choice in English writes, and typographic
+// quotes and dashes. Any other may draw as an act's letter or as nothing,
+// a Cyrillic Es as C, a kra as k, a times sign as x, a mark no list names
+// over a letter (#6562, F170, 177 to 187, 211, 218 and 224), or draw wider
+// than it's weighed, $ and _ as wide as an m (214). A list of those never
+// ends, as round after round on #6562 found, so the set is closed and a
+// choice holding anything outside it poses as any act. It refuses more
+// than it must: a choice in another script, or with a letter as \u00f8, is
+// held back, which a look written in English rarely is. A capital or a
+// digit draws half as wide again as a small letter, and an m, a w and the
+// marks drawn as wide as one about twice, so "Talk " and 19 #'s, weighed
+// as small letters, drew cut to Talk (212).
+const WIDTHS = widthsOf([
+    ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
+    ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
+    ["mwMW&#+\u2014", 2]]);
+// The set's letters that draw alike in a plain face, each read as the one
+// it draws like: a capital I, a small l, a one and a bar as a stem, a zero
+// as an o, two v's as a w, r and n as an m, and c and l as a d, so
+// "Clear lt", "Ansvver" and "Rnerge" draw as an act and read as it (round
+// 14 on #6562, 198 and 207; 218 and 224). Unlike the letters beyond the
+// set, these are few, and known.
+const ALIKE = [[/[i1|]/gu, "l"], [/0/gu, "o"], [/vv/gu, "w"], [/rn/gu, "m"], [/cl/gu, "d"]];
+// What goes on a word, so what follows an act's words is a break only where
+// it's none of these (opensWith): a letter, or a digit as a letter does.
+const WORDED = /[a-z0-9]/u;
 // Where a verb's one line stops showing what follows: a line break, or two
 // spaces or more, past which the rest may run out of room.
 const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
@@ -60,32 +74,6 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // fits, eliding the last alone: "Talk\u009cX" draws as Talk however it reads
 // here, so a name holding one is never trusted either.
 const VARIANTS = /\u009c/u;
-// What may follow a one-word act in a choice that's still trusted to draw
-// whole: printable ASCII, Latin's accented letters, Greek's and Cyrillic's
-// letters, each weighed as wide as a W, which none draws wider than
-// (round 13 on #6562, 180; round 14, 189, 200 and 205), and
-// typographic quotes and dashes, whose width the row's cut can be judged
-// by (weighed), as "Open Jos\u00e9\u2019s PR" or "Answer \u0414\u0430". A wide
-// glyph, a fullwidth letter among them, or a mark drawn like a stop
-// ("Open \u65e5\u65e5", "Talk\u2024\u2024") may draw as the act and an
-// ellipsis however few its characters.
-const PLAIN =
-    /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
-// What of it draws wider than a small letter, which weighed counts by its
-// width: about twice, "Talk " and 19 capital W's drawing as wide as 43
-// small x's, as their accented and joined kin do, and every Greek or
-// Cyrillic letter PLAIN lets in, since Ш, ш, Ω and Μ draw as wide as W or
-// m, and weighing them all so only ever weighs them too wide; and ASCII's
-// wide marks, # & = + ~ < >, which PLAIN takes after a one-word act and
-// which draw about as wide as an m, so "Talk " and 19 #'s, weighed as
-// small letters, drew cut to Talk and an ellipsis (#6562, 212) (WIDEST).
-// Or half as wide again: every other capital, which weighed tells by its
-// case, and a digit, which has none but draws as wide as a capital (212).
-const WIDEST =
-    /[MWmw@%#&=+~<>\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
-// A space PLAIN can't see, since the read makes every space one: a tab or
-// a wide space draws past its count, "Talk x\t" and 15 y's as Talk.
-const SPACED = /[^\S \u00a0]/u;
 // What a verb's line cut short strips from its end before its ellipsis,
 // as Reading.js's DANGLING, which draws the cut: a stop or a pause, or a
 // dash or a bar after a space, so "Talk - " and a long word draws as Talk.
@@ -142,62 +130,28 @@ function wordsOf(read) {
             .filter(part => part !== "").join("\n\n");
 }
 
-// `text` by code point, as drawnOf walks it, since Qt's engine's
-// Array.from walks a string by halves of a pair.
-function pointsOf(text) {
-    const points = [];
-    for (let at = 0; at < text.length;) {
-        const width = text.codePointAt(at) > 0xffff ? 2 : 1;
-        points.push(text.slice(at, at + width));
-        at += width;
-    }
-    return points;
-}
-
-// The letter `one` is read as, as STEMS gives it.
-function stem(one) {
-    return STEMS[one] ?? one;
-}
-
-// How many of `acts`' letters may be drawn once `one` is read after any of
-// `drawn`, each such count: one more where it draws as the act's next
-// letter, as its own, as one STEMS reads as it, or as one not LATIN where
-// the act has a letter, and as many where it's not LATIN, which may draw
-// as nothing. A space draws only as a space.
-function drawnPast(drawn, one, acts) {
-    const loose = one !== " " && !LATIN.test(one);
-    return drawn.reduce((next, count) => {
-        const act = acts[count];
-        const more = count < acts.length && (stem(one) === stem(act) || (loose && act !== " "))
-            ? [count + 1] : [];
-        return next.concat(more.concat(loose ? [count] : [])
-            .filter(each => !next.includes(each)));
-    }, []);
-}
-
-// Where in `read`, by code point, a drawing of `each` whole may end, in
-// order: its letters read against the act's, each letter not LATIN tried
-// both as one of the act's and as nothing (drawnPast), so "ta\u0485lk"
-// draws as talk where a walk of a letter for each of the act's would set
-// the mark against the l and refuse it.
-function endsOf(read, each) {
-    const ours = pointsOf(read);
-    const acts = pointsOf(each);
-    const ends = [];
-    let drawn = [0];
-    for (let at = 0; drawn.length > 0; at += 1) {
-        if (drawn.includes(acts.length)) {
-            ends.push(at);
+// The table of WIDTHS from its `groups`, each of characters drawn alike
+// wide and that width, so the set is the table's keys.
+function widthsOf(groups) {
+    const table = new Map();
+    for (const [characters, width] of groups) {
+        for (const one of characters.split("")) {
+            table.set(one, width);
         }
-        drawn = at < ours.length ? drawnPast(drawn, ours[at], acts) : [];
     }
-    return ends;
+    return table;
 }
 
-// A name as it reads, to tell two apart: what draws as nothing gone, its
-// spaces one, its closing stops gone, in small letters.
+// `read` as it draws in a plain face, its letters that draw alike as one
+// (ALIKE), to tell an act apart from what draws as it.
+function skeletonOf(read) {
+    return ALIKE.reduce((drawn, [alike, as]) => drawn.replace(alike, as), read.toLowerCase());
+}
+
+// A name as it reads, to tell two apart: decomposed, what draws as nothing
+// gone, its spaces one, its closing stops gone, in small letters.
 function readAs(name) {
-    return drawnOf(String(name)).replace(UNSEEN, "")
+    return drawnOf(String(name).normalize("NFD")).replace(UNSEEN, "")
         .replace(UNMARKED, "").replace(MARKS, "").replace(FILLERS, " ")
         .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
@@ -208,9 +162,9 @@ function readAs(name) {
 // its acts goes by (`taken`), however it's
 // spaced, stopped or hides what draws as nothing, so it can't pass itself
 // off as Clear It or an answer, or turn its letters around, nor hold,
-// where an act's letters stand, a letter from beyond Latin that may draw
-// as one or as nothing (endsOf); the drawer's eyebrow says whose words
-// they are.
+// beside a name it's told apart from, a character outside the closed set
+// (WIDTHS) that may draw as an act's letter or as nothing; the drawer's
+// eyebrow says whose words they are.
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
@@ -229,67 +183,80 @@ function headOf(name) {
 }
 
 // Whether a name reads as one of `taken`, however it's spaced, stopped or
-// hides what draws as nothing, or as one once what follows a line break or
-// a run of spaces is cut from sight, so a choice can't pass for Clear It;
-// one that turns its letters around poses as any, since it can draw as
-// either. One that opens with a taken name's words poses too, whatever
-// follows, since a verb's line cut short where it runs out of room shows
-// only those, as Clear It and one long word draws as Clear It and an
-// ellipsis; the line's room isn't known here, so it's never trusted to
-// show the rest. A one-word act, as Open, Answer or Talk, begins many a
-// choice Joel should press (Open a PR, Answer Later, Talk It Through), so
-// one opening with it poses only once it's long enough to be cut short to
-// it: past ACT_WORDS words or WHOLE_CHOICE characters read, or with the
-// word after it past WHOLE_CHOICE drawn, its stops and capitals weighed
-// (weighed), or once what follows it isn't PLAIN or holds a space wider
-// than one (SPACED), whose width its count can't tell.
+// accented, or as one once what follows a line break or a run of spaces is
+// cut from sight, so a choice can't pass for Clear It. One past LONGEST,
+// or holding, once its accents are gone, a character outside the closed
+// set (WIDTHS), poses as any, since it may draw as either: a turn, a tab,
+// a letter from beyond Latin. One that opens with a taken name's words
+// poses too, whatever follows, since a verb's line cut short where it runs
+// out of room shows only those, as Clear It and one long word draws as
+// Clear It and an ellipsis; the line's room isn't known here, so it's
+// never trusted to show the rest. A one-word act, as Open, Answer or Talk,
+// begins many a choice Joel should press (Open a PR, Answer Later, Talk It
+// Through), so one opening with it poses only once it's long enough to be
+// cut short to it: past ACT_WORDS words or WHOLE_CHOICE characters read,
+// or with the word after it past WHOLE_CHOICE drawn, each character
+// weighed as WIDTHS says.
 function poses(name, taken) {
-    const read = readAs(name);
-    const head = readAs(headOf(name));
+    if (taken.length === 0) {
+        return false;
+    }
+    // Counted by halves of a pair, which only a character past U+FFFF has
+    // two of, and none of those is in the set, so a name it counts too
+    // long poses all the same.
+    if (String(name).length > LONGEST) {
+        return true;
+    }
+    const spelled = String(name).normalize("NFD");
+    const bare = spelled.replace(COMBINING, "");
+    if (!bare.split("").every(one => WIDTHS.has(one))) {
+        return true;
+    }
+    const read = readAs(bare);
+    const head = readAs(headOf(bare));
     const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
     // Only its end trimmed: a row's name is drawn with what opens it, so a
     // choice opening with a space opens with no act's letters and poses,
     // rather than measured a space short (round 11 on #6562, F158).
-    const face = drawnOf(String(name)).replace(TRAILING, "");
+    const face = bare.replace(TRAILING, "");
     // The least of it a verb's line cut short shows, since it's cut at a
     // word (Reading.wordCuts): the act and the word after it and an
     // ellipsis, or the whole of a choice of two words. Only where that
     // won't fit does the act show alone, so "Talk With Mom Tomorrow" is
     // offered and "Talk" and one long word isn't (round 9 on #6562, F130).
     // It's measured on the face as drawn, which the read's offsets match
-    // only where the face opens with the act's own letters (plainly): one
-    // where something that draws as nothing sits before or inside the act
-    // is refused rather than measured at the wrong place (round 10, F132,
-    // F139, F143). Drawn whole where it fits; else the least wordCuts
-    // gives that reads as more than the act, its words split at a space
-    // and what it strips as DANGLING gone, since "Talk, " or "Talk - " and a
+    // only where the name opens with the act's own letters, unaccented
+    // (plainly): one where a stop, a space or an accent sits before or
+    // inside the act, or one of ALIKE stands for its letter, is refused
+    // rather than measured at the wrong place (round 10, F132, F139,
+    // F143). Drawn whole where it fits; else the least wordCuts gives
+    // that reads as more than the act, its words split at a space and
+    // what it strips as DANGLING gone, since "Talk, " or "Talk - " and a
     // long word draws as Talk (F133, F135).
     const drawn = each => {
         const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
         const words = face.split(" ");
         for (let count = 1; uncut > WHOLE_CHOICE && count < words.length; count += 1) {
             const cutTo = words.slice(0, count).join(" ").replace(DANGLING, "");
-            // Read as it's read, so a cut of the act and what draws as
-            // nothing, "Talk\u200b", isn't taken for more than the act.
+            // Read as it's read, so a cut of the act and a stop, "Talk.",
+            // isn't taken for more than the act.
             if (readAs(cutTo).length > each.length) {
                 return actWeighed(face, each.length) + weighed(cutTo.slice(each.length)) + 1;
             }
         }
         return uncut;
     };
-    const plainly = each => face.slice(0, each.length).toLowerCase() === each;
+    const plainly = each => spelled.slice(0, each.length).toLowerCase() === each;
     const opened = each => each.includes(" ") || cut || !plainly(each)
-        || !PLAIN.test(read.slice(each.length)) || SPACED.test(face.slice(each.length))
         || drawn(each) > WHOLE_CHOICE;
-    return taken.length > 0 && (TURNS.test(String(name)) || VARIANTS.test(String(name))
-        || taken.map(readAs).some(each => each !== "" && (reads(read, each)
-            || reads(head, each) || (opensWith(read, each) && opened(each)))));
+    return taken.map(readAs).some(each => each !== "" && (reads(read, each)
+        || reads(head, each) || (opensWith(read, each) && opened(each))));
 }
 
-// Whether `read` may draw as `each` whole: a drawing of it ends where
-// `read` does (endsOf).
+// Whether `read` draws as `each` whole: alike once the letters that draw
+// alike are read as one (skeletonOf).
 function reads(read, each) {
-    return endsOf(read, each).includes(pointsOf(read).length);
+    return skeletonOf(read) === skeletonOf(each);
 }
 
 // How wide the act that opens `face` draws, its first `length` characters,
@@ -301,8 +268,7 @@ function actWeighed(face, length) {
     return weighed(act.charAt(0).toLowerCase() + act.slice(1));
 }
 
-// How wide `text` draws, in small letters: each character one, a capital
-// or a digit half as wide again, and one about twice as wide (WIDEST) two.
+// How wide `text` draws, in small letters, each character as WIDTHS says.
 // It walks by code point, as ask.ts's does, so a character past U+FFFF is
 // one.
 function weighed(text) {
@@ -315,24 +281,24 @@ function weighed(text) {
     return width;
 }
 
-// How wide one character draws, as weighed counts it.
+// How wide one character draws, as weighed counts it: as WIDTHS says, and
+// one outside the set as the widest, which poses never weighs.
 function widthOf(each) {
-    if (WIDEST.test(each)) {
-        return 2;
-    }
-    return each === each.toLowerCase() && !DIGIT.test(each) ? 1 : 1.5;
+    return WIDTHS.get(each) ?? 2;
 }
 
 // Whether `read` opens with the words `each` and then a break between
 // words: a space, a stop or a mark, as "clear it, now" opens with "clear
-// it", where "clearance" doesn't open with "clear". A letter is one with
-// a case, so a letter of a script without one counts as a break, refusing
-// more rather than less. Any drawing of it counts (endsOf), so "talk\u0485
-// now" opens with talk, its mark drawn as nothing.
+// it", where "clearance" doesn't open with "clear". Any drawing of it
+// counts (skeletonOf), so "ansvver later" opens with answer.
 function opensWith(read, each) {
-    const ours = pointsOf(read);
-    return endsOf(read, each).some(end => end < ours.length
-        && ours[end].toLowerCase() === ours[end].toUpperCase() && !DIGIT.test(ours[end]));
+    const act = skeletonOf(each);
+    for (let end = 1; end < read.length; end += 1) {
+        if (!WORDED.test(read.charAt(end)) && skeletonOf(read.slice(0, end)) === act) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // What Explain It is told a look's row offers, by the names the row shows

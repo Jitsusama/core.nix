@@ -64,7 +64,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
-import { endsOf, MARKS, pointsIn } from "./borrowed.ts";
+import { COMBINING, MARKS, opensWith, reads, trusted, widthOf } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -256,8 +256,12 @@ const ACT_WORDS = 4;
  * still taken to draw whole, as LookForm.js's WHOLE_CHOICE.
  */
 const WHOLE_CHOICE = 24;
-/** A digit, which goes on a word as a letter does, as LookForm.js's DIGIT. */
-const DIGIT = /[0-9]/u;
+/**
+ * The longest a choice is read at, as LookForm.js's LONGEST: past it, it
+ * poses unread, since walking one against every act once cost about (m+1)^2
+ * a step (#6562, 221).
+ */
+const LONGEST = WHOLE_CHOICE * 4;
 /**
  * Where a verb's one line stops showing what follows, as LookForm.js's
  * CUTS: a line break, or two spaces or more.
@@ -271,13 +275,9 @@ const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
  * what draws as a space (FILLERS); and what turns the letters after it
  * around (TURNS), so "\u202etI raelC" draws as Clear It; what splits it
  * into variants Qt draws only the first of (VARIANTS), so "Talk\u009cX"
- * draws as Talk; and what may follow a one-word act and still be judged
- * by its count (PLAIN), so "Talk\u2024\u2024" or a wide glyph's run poses;
- * what of it draws wider than a small letter, as LookForm.js weighs it
- * (WIDEST about twice, ASCII's wide marks among them, so "Talk " and 19
- * #'s aren't weighed as small letters and offered, #6562, 212; a capital
- * or a digit half as wide again); and a space the read folds that draws
- * wider than one (SPACED), as a tab.
+ * draws as Talk; and what a verb's line cut short strips from its end
+ * (DANGLING). A choice holding any of them but a space and a stop is
+ * outside the closed set (borrowed.ts) and poses; an act is read past them.
  */
 const SPACES = /\s+/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
@@ -288,11 +288,6 @@ const UNDRAWN =
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
-const PLAIN =
-  /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
-const WIDEST =
-  /[MWmw@%#&=+~<>\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
-const SPACED = /[^\S \u00a0]/u;
 const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
 /**
@@ -307,8 +302,7 @@ function actWeighed(face: string, length: number): number {
 
 /**
  * How wide `text` draws, in small letters, as LookForm.js's weighed: each
- * character one, by code point, a capital or a digit one and a half,
- * WIDEST two.
+ * character, by code point, as the closed set weighs it (widthOf).
  */
 function weighed(text: string): number {
   let width = 0;
@@ -318,20 +312,14 @@ function weighed(text: string): number {
   return width;
 }
 
-/** How wide one character draws, as weighed counts it, as LookForm.js's widthOf. */
-function widthOf(each: string): number {
-  if (WIDEST.test(each)) {
-    return 2;
-  }
-  return each === each.toLowerCase() && !DIGIT.test(each) ? 1 : 1.5;
-}
-
 /**
- * A name as it reads, to tell two apart, as LookForm.js's readAs: what
- * draws as nothing gone, its spaces one, its closing stops gone, small.
+ * A name as it reads, to tell two apart, as LookForm.js's readAs:
+ * decomposed, what draws as nothing gone, its spaces one, its closing stops
+ * gone, small.
  */
 function readAs(name: string): string {
   return name
+    .normalize("NFD")
     .replace(UNDRAWN, "")
     .replace(UNSEEN, "")
     .replace(UNMARKED, "")
@@ -362,45 +350,38 @@ function headOf(name: string): string {
 }
 
 /**
- * Whether `read` opens with the words `each` and then a break between
- * words, as LookForm.js's opensWith: "clear it, now" opens with "clear
- * it", where "clearance" doesn't open with "clear"; by any drawing of it
- * (endsOf), so "talk\u0485 now" opens with talk.
- */
-function opensWith(read: string, each: string): boolean {
-  const ours = Array.from(read);
-  return endsOf(read, each).some((end) => {
-    const next = ours[end];
-    return next !== undefined && next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
-  });
-}
-
-/**
- * Whether `read` may draw as `each` whole, as LookForm.js's reads: a
- * drawing ends where it does.
- */
-function reads(read: string, each: string): boolean {
-  return endsOf(read, each).includes(pointsIn(read));
-}
-
-/**
- * Whether `name` reads as one of `taken`, as LookForm.js's poses: one
- * holding a turn poses as any, since it can draw as either; one reading as
- * one once cut at a line break or a run of spaces poses; and one opening
- * with a taken name's words poses, but with a one-word name only once it's
- * long enough to be cut short to it, past four words or 24 characters
- * read, or with the word after it past 24 drawn, its stops and capitals
- * weighed and an ellipsis after it where more follows, since the line is
- * cut at a word and what DANGLING names goes from the cut's end; or once
- * what follows it isn't PLAIN or holds a SPACED, or the face doesn't open
- * with the act's own letters, since then the read's offsets miss it.
+ * Whether `name` reads as one of `taken`, as LookForm.js's poses: one past
+ * LONGEST, or holding, once its accents are gone, a character outside the
+ * closed set (borrowed.ts), poses as any, since it may draw as either; one
+ * reading as one, its letters that draw alike as one, or as one once cut at
+ * a line break or a run of spaces, poses; and one opening with a taken
+ * name's words poses, but with a one-word name only once it's long enough
+ * to be cut short to it, past four words or 24 characters read, or with the
+ * word after it past 24 drawn, each character weighed as the set says and
+ * an ellipsis after it where more follows, since the line is cut at a word
+ * and what DANGLING names goes from the cut's end; or once the name doesn't
+ * open with the act's own letters, unaccented, since then the read's
+ * offsets miss it.
  */
 function poses(name: string, taken: readonly string[]): boolean {
-  const read = readAs(name);
-  const head = readAs(headOf(name));
+  if (taken.length === 0) {
+    return false;
+  }
+  // Counted by halves of a pair, as LookForm.js's: a character past U+FFFF
+  // has two, and none is in the set, so a name counted too long poses anyway.
+  if (name.length > LONGEST) {
+    return true;
+  }
+  const spelled = name.normalize("NFD");
+  const bare = spelled.replace(COMBINING, "");
+  if (!trusted(bare)) {
+    return true;
+  }
+  const read = readAs(bare);
+  const head = readAs(headOf(bare));
   const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
   // Only its end trimmed, as LookForm.js's: one opening with a space poses.
-  const face = name.replace(UNDRAWN, "").trimEnd();
+  const face = bare.trimEnd();
   const drawn = (each: string): number => {
     const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
     const words = face.split(" ");
@@ -412,26 +393,16 @@ function poses(name: string, taken: readonly string[]): boolean {
     }
     return uncut;
   };
-  const plainly = (each: string): boolean => face.slice(0, each.length).toLowerCase() === each;
+  const plainly = (each: string): boolean => spelled.slice(0, each.length).toLowerCase() === each;
   const opened = (each: string): boolean =>
-    each.includes(" ") ||
-    cut ||
-    !plainly(each) ||
-    !PLAIN.test(read.slice(each.length)) ||
-    SPACED.test(face.slice(each.length)) ||
-    drawn(each) > WHOLE_CHOICE;
-  return (
-    taken.length > 0 &&
-    (TURNS.test(name) ||
-      VARIANTS.test(name) ||
-      taken
-        .map(readAs)
-        .some(
-          (each) =>
-            each !== "" &&
-            (reads(read, each) || reads(head, each) || (opensWith(read, each) && opened(each))),
-        ))
-  );
+    each.includes(" ") || cut || !plainly(each) || drawn(each) > WHOLE_CHOICE;
+  return taken
+    .map(readAs)
+    .some(
+      (each) =>
+        each !== "" &&
+        (reads(read, each) || reads(head, each) || (opensWith(read, each) && opened(each))),
+    );
 }
 
 /**

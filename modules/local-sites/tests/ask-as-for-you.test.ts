@@ -262,7 +262,7 @@ const LOOKS: Record<string, object> = {
     ],
   },
   // Each posing rule either side of what it decides, so either copy's
-  // WHOLE_CHOICE, word count, CUTS, DIGIT, PLAIN or VARIANTS drifting shows.
+  // WHOLE_CHOICE, LONGEST, word count, CUTS, WORDED, WIDTHS or VARIANTS drifting shows.
   "choices opening with a one-word act, either side of its cut": {
     ...LOOK,
     choices: labelled([
@@ -368,6 +368,18 @@ const LOOKS: Record<string, object> = {
       "Talk to \u041c\u0430\u0440\u0438\u044f",
       "Open \u039d\u03b1\u03b9",
     ]),
+  },
+  "choices holding a character outside the closed set, or accented": {
+    ...LOOK,
+    choices: labelled(["Talk $", "Keep_It", "Ta\u013ck", "Open Jos\u00e9\u2019s PR"]),
+  },
+  "choices whose letters draw as an act's within the closed set": {
+    ...LOOK,
+    choices: labelled(["Tal\u0138", "E\u00d7plain It", "Ansvver Later", "Dear It"]),
+  },
+  "choices either side of LONGEST": {
+    ...LOOK,
+    choices: labelled([`Keep ${"x".repeat(92)}`, `Keep ${"x".repeat(91)}`]),
   },
   "choices whose stop after the act the cut strips": {
     ...LOOK,

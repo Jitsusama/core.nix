@@ -1,46 +1,59 @@
-// Whether a name may draw as an act where it holds a letter from beyond
-// Latin, whichever script lends it, as one of the act's letters or as
-// nothing.
+// Whether a name holds only the closed alphabet a choice is trusted in, how
+// wide each of its characters draws, and how its letters that draw alike
+// read as an act.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { endsOf, MARKS, pointsIn } from "../borrowed.ts";
+import { COMBINING, MARKS, opensWith, reads, trusted, widthOf } from "../borrowed.ts";
 
-it("a letter beyond Latin where an act's letter stands may draw as it", () => {
-  assert.deepEqual(endsOf("\u0441lear it", "clear it"), [8]);
-  assert.deepEqual(endsOf("\ua4da\ua4e1\ua4f0\ua4ee\ua4e3 \ua4f2\ua4d4", "clear it"), [8]);
-  assert.deepEqual(endsOf("clear \u2170t", "clear it"), [8]);
-  assert.deepEqual(endsOf("\u{1d5b3}alk", "talk"), [4]);
+/** The closed set by how wide each draws, as LookForm.js weighs them. */
+const WEIGHTS: readonly (readonly [string, number])[] = [
+  ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
+  ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
+  ["mwMW&#+\u2014", 2],
+];
+
+it("every character of the closed set is trusted, weighed as it draws", () => {
+  for (const [characters, width] of WEIGHTS) {
+    for (const one of characters.split("")) {
+      assert.ok(trusted(one), `${one} wasn't trusted`);
+      assert.equal(widthOf(one), width, `${one} was weighed wrong`);
+    }
+  }
 });
 
-it("a Latin letter draws only as itself, and a space only as a space", () => {
-  assert.deepEqual(endsOf("clear at", "clear it"), []);
-  assert.deepEqual(endsOf("clear\u0441it", "clear it"), []);
-  assert.deepEqual(endsOf("\u0441lear", "clear it"), []);
+// A letter beyond Latin may draw as an act's (#6562, F170, 177 to 187), a
+// kra or a times sign as k or x (218 and 224), a mark no list names as
+// nothing (211), and $ or _ wider than a small letter (214).
+it("a character outside the closed set isn't trusted", () => {
+  const outside = ["\u0441", "\ua4da", "\u2170", "\u{1d5b3}", "\u0138", "\u00d7", "\u0485"];
+  for (const one of [...outside, "$", "_", "\t", "\u00a0", "\u200b", "\u00f8", "\u0301"]) {
+    assert.equal(trusted(`clear ${one}t`), false, `${one} was trusted`);
+  }
+  assert.equal(widthOf("$"), 2, "a character outside the set wasn't weighed widest");
 });
 
-it("a stem or a zero draws as the Latin letter it draws like", () => {
-  assert.deepEqual(endsOf("clear lt", "clear it"), [8]);
-  assert.deepEqual(endsOf("ta1k", "talk"), [4]);
-  assert.deepEqual(endsOf("explain \u0131t", "explain it"), [10]);
-  assert.deepEqual(endsOf("g0 t0", "go to"), [5]);
+it("a stem, a zero, two v's, r and n, or c and l read as the letter they draw as", () => {
+  assert.ok(reads("clear lt", "clear it"), "a small l didn't read as an i");
+  assert.ok(reads("ta1k", "talk"), "a one didn't read as an l");
+  assert.ok(reads("ta|k", "talk"), "a bar didn't read as an l");
+  assert.ok(reads("g0 t0", "go to"), "a zero didn't read as an o");
+  assert.ok(reads("ansvver", "answer"), "two v's didn't read as a w");
+  assert.ok(reads("rnerge", "merge"), "r and n didn't read as an m");
+  assert.ok(reads("dear it", "clear it"), "c and l didn't read as a d");
+  assert.equal(reads("clear at", "clear it"), false, "an a read as an i");
 });
 
-// A mark MARKS doesn't name, Cyrillic's, Arabic's, kana's or music's,
-// combines with the letter before it as MARKS' do, so it may draw as
-// nothing between an act's letters, or after them (#6562, 211).
-it("a letter beyond Latin may draw as nothing, between an act's letters or after", () => {
-  assert.deepEqual(endsOf("ta\u0485lk", "talk"), [5]);
-  assert.deepEqual(endsOf("tal\u064bk", "talk"), [4, 5]);
-  assert.deepEqual(endsOf("t\u3099alk", "talk"), [5]);
-  assert.deepEqual(endsOf("talk\u{1d167} now", "talk"), [4, 5]);
-  assert.deepEqual(endsOf("\u0434\u0430", "talk"), []);
+it("a name opens with an act only where a break follows its words", () => {
+  assert.ok(opensWith("clear it, now", "clear it"), "a stop wasn't a break");
+  assert.ok(opensWith("ansvver later", "answer"), "two v's didn't open with answer");
+  assert.ok(opensWith("talk|now", "talk"), "a bar wasn't a break");
+  assert.equal(opensWith("clearance", "clear"), false, "a letter was a break");
+  assert.equal(opensWith("talk2 me", "talk"), false, "a digit was a break");
+  assert.equal(opensWith("talk", "talk"), false, "an act alone opened with itself");
 });
 
-it("a combined mark is one the read takes out", () => {
+it("an accent decomposed is one the read takes out", () => {
+  assert.equal("ta\u013ck".normalize("NFD").replace(COMBINING, ""), "talk");
   assert.equal("tal\u0327k".replace(MARKS, ""), "talk");
-});
-
-it("a letter past U+FFFF counts once", () => {
-  assert.equal(pointsIn("\u{1d5b3}alk"), 4);
 });

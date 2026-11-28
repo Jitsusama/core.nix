@@ -1648,8 +1648,8 @@
     strongest reason at its side, reads the looks folder's files into what waits and what's
     history, newest first, leaving out any it can't read, offers a look's choices, but none
     named as one of the launcher's own acts, even where a line break or a run of spaces hides the
-    rest of its name, answered by a steer to the session that left it or its quest's and then in
-    History, and gathers what other
+    rest of its name, nor any holding a character outside the closed set it trusts, answered by a
+    steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
     done, and has Later's drawer say what each waits for and how long, and History's how many each
     source keeps

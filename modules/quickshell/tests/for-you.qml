@@ -501,7 +501,8 @@ QtObject {
                 true, true, false, false, false]);
         // Nor by borrowing another script's letters that draw as its own, a
         // Cyrillic Es or I, a Greek Tau, or a fullwidth letter (#6562's twelfth
-        // review, F170); a name in that script, drawing as no act, is its own.
+        // review, F170); a name wholly in that script, drawing as no act, is
+        // outside the closed set and held back all the same.
         expect("a choice borrowing letters that draw as an act's poses as it",
             [LookForm.poses("\u0421lear It", ["Clear It"]),
                 LookForm.poses("Clear \u0406t", ["Clear It"]),
@@ -510,7 +511,7 @@ QtObject {
                 LookForm.poses("\uff34alk", ["Talk"]),
                 LookForm.poses("\u0414\u0430", ["Clear It", "Talk"]),
                 LookForm.poses("\u039d\u03b1\u03b9", ["Clear It", "Talk"])],
-            [true, true, true, true, true, false, false]);
+            [true, true, true, true, true, true, true]);
         // Any letter from beyond Latin where an act's letter stands may draw as
         // it, not only the ones a list names: Greek's lunate sigma, Komi's
         // Sje, Lisu's capitals, Armenian's Oh, Cherokee's Tee, Roman numerals,
@@ -530,24 +531,24 @@ QtObject {
                 LookForm.poses("\u0555pen a PR", ["Open"]),
                 LookForm.actOf(second({ act: "\u03f9lear It" }), ["Clear It"])],
             [true, true, true, true, true, true, true, true, true, true, true, ""]);
-        // What follows a one-word act is read as written: a fullwidth letter
-        // stays wide, so it's not plain, while Greek's and Cyrillic's, drawing
-        // about as wide as Latin's, are weighed as its are (round 13, 176, 180).
-        expect("a fullwidth rest poses, a Greek or Cyrillic one is weighed",
+        // What follows a one-word act is held to the closed set too: a
+        // fullwidth letter stays wide (round 13, 176), and Greek's and
+        // Cyrillic's, once weighed as Latin's, are outside it, so each poses.
+        expect("a fullwidth, Greek or Cyrillic rest poses",
             [LookForm.poses(`Talk ${"\uff58".repeat(12)}`, ["Talk"]),
                 LookForm.poses("Answer \u0414\u0430", ["Answer"]),
                 LookForm.poses("Talk to \u041c\u0430\u0440\u0438\u044f", ["Talk"]),
                 LookForm.poses("Open \u039d\u03b1\u03b9", ["Open"])],
-            [true, false, false, false]);
-        // Weighed as wide as a W, a Greek or Cyrillic rest that draws as
-        // wide as Latin's widest poses where W's would (round 14, 189, 200
-        // and 205): ten ш as ten m, twelve Ш or Μ as twelve W.
-        expect("a wide Greek or Cyrillic rest poses as W's and m's do",
+            [true, true, true, true]);
+        // A Greek or Cyrillic rest drawing as wide as Latin's widest poses
+        // where W's would (round 14, 189, 200 and 205), and one narrower too,
+        // since neither is in the closed set.
+        expect("a Greek or Cyrillic rest poses however wide it draws",
             [LookForm.poses(`Talk ${"\u0448".repeat(10)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"\u0428".repeat(12)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"\u039c".repeat(12)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"\u0434".repeat(9)}`, ["Talk"])],
-            [true, true, true, false]);
+            [true, true, true, true]);
         // Latin's own letters that draw alike in a plain face read as one
         // another, and a mark combined onto an act's letter reads as nothing,
         // so one inside an act's face is refused as what draws as nothing
@@ -567,14 +568,15 @@ QtObject {
         // A mark MARKS doesn't name, Cyrillic's, Arabic's or kana's, draws on
         // the letter before it all the same, so it may stand for nothing
         // between an act's letters as well as for one of them (#6562, 211);
-        // a choice wholly in another script, shorter than an act, is its own.
+        // a choice wholly in another script, shorter than an act, is outside
+        // the closed set and held back too.
         expect("a mark no list names, inside an act, can't pass for nothing",
             [LookForm.poses("Ta\u0485lk", ["Talk"]),
                 LookForm.poses("Tal\u064bk", ["Talk"]),
                 LookForm.poses("T\u3099alk", ["Talk"]),
                 LookForm.poses("Ta\u0485lk now", ["Talk"]),
                 LookForm.poses("\u0414\u0430", ["Talk"])],
-            [true, true, true, true, false]);
+            [true, true, true, true, true]);
         // A verb cut short where it runs out of room shows only its first
         // words, so one opening with an act's words poses as it, however
         // short what follows: the line's room isn't known where it's judged
@@ -591,14 +593,15 @@ QtObject {
             [true, true, true, true, true, false, false]);
         // A one-word act begins many a choice Joel should press, so one
         // opening with it poses only once it's long enough to be cut short
-        // to it (#6562's third review).
+        // to it (#6562's third review); a space no wider than one but outside
+        // the closed set, as a no-break space, holds it back all the same.
         expect("a short choice opening with a one-word act is his to press",
             [LookForm.poses("Open a PR", ["Open", "Clear It"]),
                 LookForm.poses("Answer Later", ["Answer"]),
                 LookForm.poses("Talk It Through", ["Talk"]),
                 LookForm.poses("Talk\u00a0to Them", ["Talk"]),
                 LookForm.poses("Open", ["Open"])],
-            [false, false, false, false, true]);
+            [false, false, false, true, true]);
         // Each limit at its edge: 24 characters draw whole and 25 may not, four
         // words and five, and a digit goes on the act's word as a letter does,
         // so Clear It2 and Talk9 open with no act (#6562's seventh review).
@@ -637,6 +640,73 @@ QtObject {
                 LookForm.poses("Open PR 7282", ["Open"]),
                 LookForm.poses("Talk Sam & Kim", ["Talk"])],
             [true, true, true, true, false, false]);
+        // A choice is read decomposed, so Qt's engine must split a precomposed
+        // letter into its letter and its mark, as the closed set's read needs.
+        expect("Qt's engine decomposes a precomposed letter into its letter and its mark",
+            ["\u00e1", "\u013c", "\u00cf"].map(one => one.normalize("NFD")),
+            ["a\u0301", "l\u0327", "I\u0308"]);
+        // Only a closed set of characters is trusted, each weighed as it draws:
+        // any other, as $ or _, which were weighed as small letters so "Talk "
+        // and 19 $'s drew cut to Talk (#6562, 214), holds the choice back.
+        expect("a choice holding a character outside the closed set poses",
+            [LookForm.poses(`Talk ${"$".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"_".repeat(19)}`, ["Talk"]),
+                LookForm.poses("Talk $5", ["Talk"]),
+                LookForm.poses("Keep_It", ["Talk"])],
+            [true, true, true, true]);
+        // A precomposed letter is read as its letter and its mark, so "Ta\u013ck"
+        // poses as "Tal\u0327k" does, where it was offered (#6562, 215), and an
+        // accent after the act is offered in either form.
+        expect("a precomposed letter poses as its letter and its mark do",
+            [LookForm.poses("Ta\u013ck", ["Talk"]), LookForm.poses("Tal\u0327k", ["Talk"]),
+                LookForm.poses("\u00c1nswer", ["Answer"]),
+                LookForm.poses("A\u0301nswer", ["Answer"]),
+                LookForm.poses("Clear \u00cft", ["Clear It"]),
+                LookForm.poses("Clear I\u0308t", ["Clear It"]),
+                LookForm.poses("Open Jos\u00e9\u2019s PR", ["Open"]),
+                LookForm.poses("Open Jose\u0301\u2019s PR", ["Open"])],
+            [true, true, true, true, true, true, false, false]);
+        // A kra draws as a k and a times sign as an x, so neither is in the
+        // set, and two v's draw as a w, r and n as an m, and c and l as a d, so
+        // each is read as the letter it draws as (#6562, 218 and 224).
+        expect("a kra, a times sign or two v's can't pass for k, x or w",
+            [LookForm.poses("Tal\u0138", ["Talk"]),
+                LookForm.poses("E\u00d7plain It", ["Explain It"]),
+                LookForm.poses("Ansvver", ["Answer"]),
+                LookForm.poses("Ansvver Later", ["Answer"]),
+                LookForm.poses("Rnerge It", ["Merge It"]),
+                LookForm.poses("Dear It", ["Clear It"])],
+            [true, true, true, true, true, true]);
+        // A label past four times WHOLE_CHOICE's code points poses at once,
+        // unread: one in another script was walked whole against every act,
+        // about (m+1)^2 a step on the shell's thread (#6562, 221).
+        const longLabel = "\u0436".repeat(20000);
+        const askedLong = Date.now();
+        const posedLong = LookForm.poses(longLabel,
+            ["Open", "Answer", "Clear It", "Go To", "Explain It", "Talk"]);
+        expect("a label past 96 code points poses at once, whatever it holds",
+            [posedLong, Date.now() - askedLong < 250,
+                LookForm.poses(`Keep ${"x".repeat(92)}`, ["Talk"]),
+                LookForm.poses(`Keep ${"x".repeat(91)}`, ["Talk"])],
+            [true, true, true, false]);
+        // Each character of the set is weighed from one table of them all,
+        // and at the edge 217 asked for: ten #'s after "Talk " pose and nine
+        // don't, thirteen 0's pose and twelve don't (#6562, 217).
+        const weights = [
+            ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
+            ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5], ["mwMW&#+\u2014", 2]];
+        expect("each character of the closed set weighs as its table says",
+            weights.reduce((wrong, [characters, width]) => wrong.concat(characters.split("")
+                .filter(one => LookForm.weighed(one) !== width)), []), []);
+        expect("and is trusted after a one-word act",
+            weights.reduce((held, [characters]) => held.concat(characters.split("")
+                .filter(one => LookForm.poses(`Keep ${one}x`, ["Talk"]))), []), []);
+        expect("a one-word act's choice poses at the weights' edge",
+            [LookForm.poses(`Talk ${"#".repeat(10)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"#".repeat(9)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(13)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(12)}`, ["Talk"])],
+            [true, false, true, false]);
         // A one-word act's choice is measured as it's drawn, not as it reads:
         // its closing stops, which reading leaves out, and its wide letters
         // count, so 19 capital W's or 200 stops after it draw as the act and
@@ -657,9 +727,9 @@ QtObject {
         // the word after it and an ellipsis, so a Title Case choice too long
         // to draw whole still shows past its act and is offered. A capital
         // weighs half again (13 X's pose, 12 don't), Ł's as A's, and W's
-        // kin Ŵ twice, as m does (10 pose); a tab or a wide space the read
-        // folds poses, and what draws as nothing weighs nothing, as the
-        // web's copy weighs it (#6562's ninth review).
+        // kin Ŵ twice, as m does (10 pose); a tab, a wide space or what draws
+        // as nothing is outside the closed set, so it poses (#6562's ninth
+        // review).
         expect("a one-word act's choice is weighed as far as its line is cut",
             [LookForm.poses("Talk With Mom Tomorrow", ["Talk"]),
                 LookForm.poses("Answer With A Follow-Up", ["Answer"]),
@@ -672,7 +742,7 @@ QtObject {
                 LookForm.poses(`Talk x\t${"y".repeat(15)}`, ["Talk"]),
                 LookForm.poses(`Talk\u2003${"x".repeat(19)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"x".repeat(18)}\udb40\udc01`, ["Talk"])],
-            [false, false, true, false, true, true, false, true, true, true, false]);
+            [false, false, true, false, true, true, false, true, true, true, true]);
         // Measured where it's drawn, never where it reads: what draws as
         // nothing before or inside the act, or a stop or a dash after it
         // that the cut strips, can't leave the long word after it unweighed;
@@ -705,7 +775,9 @@ QtObject {
             ["", "Review It", "", "Review It", ""]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
-        // shows: a name whose words before either read as an act poses as it.
+        // shows: a name whose words before either read as an act poses as it,
+        // and a line break is outside the closed set, so any name holding one
+        // does.
         expect("a choice whose words before a line break or a run of spaces read as an act"
             + " poses as it",
             [LookForm.poses("Clear It\nfor good", ["Clear It"]),
@@ -718,7 +790,7 @@ QtObject {
                 LookForm.poses("Clear\u200b  It  Away", ["Clear"]),
                 LookForm.poses("Keep It\nClear It", ["Clear It"]),
                 LookForm.poses("Clear  It", ["Clear It"])],
-            [true, true, true, true, true, true, true, true, false, true]);
+            [true, true, true, true, true, true, true, true, true, true]);
         // Explain It is told a terminal look's Open beside its cell's acts, by
         // the name its row shows, as that Open goes to the cell's window; any
         // other look's Open answers the look, so it is told none.
