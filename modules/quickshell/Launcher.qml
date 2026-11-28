@@ -13194,7 +13194,11 @@ Scope {
             }
             // A name from holders() is filtered for the journal, so it's
             // safe to say when freedBy() won't say it, its holder emptied.
+            // What's outside the heap leaves out text shared with a string
+            // no collection has freed yet (Heap.freedBy), which letting go
+            // may free too, so the line says so rather than claiming it all.
             console.info("launcher: " + (freed.held ? freed.said
+                + "; text shared with a string no collection has freed yet isn't counted"
                 : name + " holds nothing now"));
             if (Weighing.countsTurn(root.heapWeighed) === "weigh")
                 freedLater.restart();

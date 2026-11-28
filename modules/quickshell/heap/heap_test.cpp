@@ -2130,10 +2130,12 @@ QString printedMB(double mb) { return QString::number(mb, 'f', mb >= 10 ? 0 : 1)
 // Whether freedBy() counts the text a property's strings alone keep outside
 // the heap: about what weigh() says outside falls by once it's let go and a
 // collection runs, each string made apart so none shares another's text;
-// and of text two heap strings share, each read into script from one
-// QString, none for a property holding one of them, since the other keeps
-// the text, and the text once for a property holding both, since it goes
-// with them; and says each in its line as many megabytes as it answers.
+// of text three heap strings share, each read into script from one
+// QString, none for a property holding one of them or for one holding two,
+// since the third keeps the text, so its count of holders is what's held
+// to rather than any two of them; of text two share, the text once for a
+// property holding both, since it goes with them; and says each in its
+// line as many megabytes as it answers.
 bool freesTheTextItAloneHolds() {
     QTemporaryDir shell;
     QDir files(shell.path());
@@ -2142,12 +2144,12 @@ bool freesTheTextItAloneHolds() {
         written(files, QStringLiteral("Texts.qml"),
                 QStringLiteral("import QtQml\nQtObject {\n    property var texts: []\n"
                                "    property var oneCopy: null\n"
-                               "    property var otherCopy: null\n"
                                "    property var bothCopies: []\n"
+                               "    property var everyCopy: []\n"
                                "    function letTextsGo() { texts = []; }\n"
                                "    function keepOne(text) { oneCopy = text; }\n"
-                               "    function keepOther(text) { otherCopy = text; }\n"
                                "    function keepBoth(text) { bothCopies.push(text); }\n"
+                               "    function keepEvery(text) { everyCopy.push(text); }\n"
                                "    Component.onCompleted: {\n"
                                "        for (let i = 0; i < %1; i++)\n"
                                "            texts.push('x'.repeat(%2) + i);\n"
@@ -2173,47 +2175,49 @@ bool freesTheTextItAloneHolds() {
     // own over the same text, so once the QString is gone those strings are
     // all that hold the text.
     {
-        const QString one(SHARED_LENGTH, QLatin1Char('s'));
-        QMetaObject::invokeMethod(made.get(), "keepOne", Q_ARG(QVariant, QVariant(one)));
-        QMetaObject::invokeMethod(made.get(), "keepOther", Q_ARG(QVariant, QVariant(one)));
-        const QString both(SHARED_LENGTH, QLatin1Char('t'));
-        QMetaObject::invokeMethod(made.get(), "keepBoth", Q_ARG(QVariant, QVariant(both)));
-        QMetaObject::invokeMethod(made.get(), "keepBoth", Q_ARG(QVariant, QVariant(both)));
+        const QString three(SHARED_LENGTH, QLatin1Char('t'));
+        QMetaObject::invokeMethod(made.get(), "keepBoth", Q_ARG(QVariant, QVariant(three)));
+        QMetaObject::invokeMethod(made.get(), "keepBoth", Q_ARG(QVariant, QVariant(three)));
+        QMetaObject::invokeMethod(made.get(), "keepOne", Q_ARG(QVariant, QVariant(three)));
+        const QString two(SHARED_LENGTH, QLatin1Char('s'));
+        QMetaObject::invokeMethod(made.get(), "keepEvery", Q_ARG(QVariant, QVariant(two)));
+        QMetaObject::invokeMethod(made.get(), "keepEvery", Q_ARG(QVariant, QVariant(two)));
     }
     const double before = outsideOnceCollected(engine, heap);
     const QVariantMap texts = heap.freedBy(QStringLiteral("pieces/Texts.qml texts"));
     const QVariantMap oneCopy = heap.freedBy(QStringLiteral("pieces/Texts.qml oneCopy"));
-    const QVariantMap otherCopy = heap.freedBy(QStringLiteral("pieces/Texts.qml otherCopy"));
     const QVariantMap bothCopies = heap.freedBy(QStringLiteral("pieces/Texts.qml bothCopies"));
+    const QVariantMap everyCopy = heap.freedBy(QStringLiteral("pieces/Texts.qml everyCopy"));
     const bool cleared = !anyMarked(engine.handle()->memoryManager);
     QMetaObject::invokeMethod(made.get(), "letTextsGo");
     const double fell = before - outsideOnceCollected(engine, heap);
     const double textsMB = texts.value(QStringLiteral("outside")).toDouble();
     const double oneMB = oneCopy.value(QStringLiteral("outside")).toDouble();
-    const double otherMB = otherCopy.value(QStringLiteral("outside")).toDouble();
     const double bothMB = bothCopies.value(QStringLiteral("outside")).toDouble();
+    const double everyMB = everyCopy.value(QStringLiteral("outside")).toDouble();
     const QString line = texts.value(QStringLiteral("said")).toString();
-    const QString bothLine = bothCopies.value(QStringLiteral("said")).toString();
+    const QString everyLine = everyCopy.value(QStringLiteral("said")).toString();
     const bool frees = texts.value(QStringLiteral("held")).toBool() && fell > TEXT_MB / 2 &&
                        std::abs(textsMB - fell) <= fell / 5;
     const bool shared = oneCopy.value(QStringLiteral("held")).toBool() &&
-                        otherCopy.value(QStringLiteral("held")).toBool() &&
-                        oneMB < SHARED_MB / 50 && otherMB < SHARED_MB / 50;
-    const bool once = bothCopies.value(QStringLiteral("held")).toBool() &&
-                      std::abs(bothMB - SHARED_MB) <= SHARED_MB / 5;
+                        bothCopies.value(QStringLiteral("held")).toBool() &&
+                        oneMB < SHARED_MB / 50 && bothMB < SHARED_MB / 50;
+    const bool once = everyCopy.value(QStringLiteral("held")).toBool() &&
+                      std::abs(everyMB - SHARED_MB) <= SHARED_MB / 5;
     const bool said =
-        saidOutside(line) == printedMB(textsMB) && saidOutside(bothLine) == printedMB(bothMB);
+        saidOutside(line) == printedMB(textsMB) && saidOutside(everyLine) == printedMB(everyMB);
     const bool held = frees && shared && once && said && cleared;
     if (!held)
         std::fprintf(stderr,
                      "FAIL freedBy() counts the text a property's strings alone keep outside "
-                     "the heap, about what falls there once it's let go, none of text one "
-                     "string shares with another a property keeps, and text two strings it "
-                     "holds share once, each said as answered: texts %.2f MB outside against "
-                     "%.2f MB fallen there (%.2f made), one copy %.2f and the other %.2f MB, "
-                     "both %.2f MB against %.2f shared, cleared %s: %s; both: %s\n",
-                     textsMB, fell, TEXT_MB, oneMB, otherMB, bothMB, SHARED_MB,
-                     cleared ? "yes" : "no", qPrintable(line), qPrintable(bothLine));
+                     "the heap, about what falls there once it's let go, none of text three "
+                     "strings share for one or two of them, and text two strings it holds "
+                     "share once, each said as answered: texts %.2f MB outside against %.2f MB "
+                     "fallen there (%.2f made), one of three copies %.2f and two of three "
+                     "%.2f MB, every copy %.2f MB against %.2f shared, cleared %s: %s; every "
+                     "copy: %s\n",
+                     textsMB, fell, TEXT_MB, oneMB, bothMB, everyMB, SHARED_MB,
+                     cleared ? "yes" : "no", qPrintable(line), qPrintable(everyLine));
     return held;
 }
 
