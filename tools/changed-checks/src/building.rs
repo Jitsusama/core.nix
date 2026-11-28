@@ -13,6 +13,13 @@ use crate::quarantine::{self, Held};
 use crate::there::{self, Sent};
 use crate::{offload_dir, run, state};
 
+/// The seconds a check built here may print nothing before Nix fails it,
+/// as nix-offload's `there` gives every build it sends. A build here goes
+/// to the standing builders too, which a hung one would otherwise hold,
+/// with every run waiting on it, for good. An hour is chosen wide, so a
+/// check that's only slow isn't failed.
+const SILENT_LONGEST: &str = "3600";
+
 /// Set on the far side's run to the checks that passed at its commit
 /// already, which it builds none of again (`passed_at` says how).
 const PASSED: &str = "CHANGED_CHECKS_PASSED";
@@ -134,7 +141,8 @@ pub fn build(
     let (built, failed) =
         quarantine::heard(
             Command::new("nix")
-                .args(["build", "--no-link", "--keep-going", "-L"])
+                .args(["build", "--no-link", "--max-silent-time", SILENT_LONGEST])
+                .args(["--keep-going", "-L"])
                 .args(PURE)
                 .args(standing())
                 .args(targets.iter().map(

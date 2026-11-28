@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::{BASE, StandIn, WORKING, evaluated, text};
+use super::{BASE, BUILT, StandIn, WORKING, evaluated, text};
 
 #[test]
 fn it_builds_each_check_from_the_derivation_it_evaluated_rather_than_evaluating_again() {
@@ -32,7 +32,7 @@ fn it_builds_each_check_from_the_derivation_it_evaluated_rather_than_evaluating_
     let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
     assert_eq!(
         stand_in.built(),
-        format!("--no-link --keep-going -L {}^* {flake}.a\n", new.display()),
+        format!("{BUILT} {}^* {flake}.a\n", new.display()),
         "a derivation collected since its evaluation is built from the flake"
     );
 }
@@ -65,10 +65,7 @@ fn a_check_told_it_passed_at_this_commit_isnt_built_again() {
         "{}",
         text(&ran.stderr)
     );
-    assert_eq!(
-        stand_in.built(),
-        format!("--no-link --keep-going -L {flake}.new\n")
-    );
+    assert_eq!(stand_in.built(), format!("{BUILT} {flake}.new\n"));
 
     fs::remove_file(stand_in.path("built")).expect("removed");
     let ran = stand_in.run_told(
@@ -94,7 +91,7 @@ fn a_check_told_it_passed_at_this_commit_isnt_built_again() {
         assert!(ran.status.success(), "{label}: {}", text(&ran.stderr));
         assert_eq!(
             stand_in.built(),
-            format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+            format!("{BUILT} {flake}.new {flake}.a\n"),
             "{label}"
         );
         fs::remove_file(stand_in.path("built")).expect("removed");
@@ -139,7 +136,7 @@ fn a_run_building_no_vm_test_builds_while_it_evaluates_the_vm_tests() {
     let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
     assert_eq!(
         stand_in.built(),
-        format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+        format!("{BUILT} {flake}.new {flake}.a\n"),
         "the ordinary checks alone are built"
     );
 }

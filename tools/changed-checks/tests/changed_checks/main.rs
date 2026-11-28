@@ -359,6 +359,10 @@ const TRACE: &str = r#"openat(AT_FDCWD</tmp>, "SOURCE/flake.nix", O_RDONLY) = 7<
 4243 getdents64(8<SOURCE/listed>, 0x5555 /* 3 entries */, 32768) = 80
 "#;
 
+/// How a check built here is asked for, before its builders and targets:
+/// failed after an hour of silence, as nix-offload's `there` asks too.
+const BUILT: &str = "--no-link --max-silent-time 3600 --keep-going -L";
+
 /// Keeping a base, as keep-main asks for it.
 const KEEPING: [&str; 4] = ["--system", "x86_64-linux", "--keep-base", "--here"];
 

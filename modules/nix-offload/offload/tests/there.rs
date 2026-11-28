@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
 
+/// How `there` asks Nix for a build, wherever it runs: with the hour of
+/// silence after which Nix fails it (`there::SILENT_LONGEST`).
+const BUILD: &str = "nix build --no-link --max-silent-time 3600";
+
 /// Where a run says it wants `dir`'s lender to lend, as `there::wants_of`
 /// says: beside the folder, by its name.
 fn wants_of(dir: &Path) -> PathBuf {
@@ -421,7 +425,7 @@ fn a_check_passed_at_a_commit_isnt_built_again_wherever_it_would_go() {
     assert_eq!(ran.status.code(), Some(1), "{ran:?}");
     assert_eq!(
         sent().as_deref(),
-        Some(format!("nix-offload\nnix build --no-link '{flake}#checks.x.c'\n").as_str())
+        Some(format!("nix-offload\n{BUILD} '{flake}#checks.x.c'\n").as_str())
     );
     let ran = there_asked(folder.path(), &offload, &[&flake, "checks.x.c"]);
     assert_eq!(ran.status.code(), Some(1), "{ran:?}");
@@ -461,7 +465,7 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
     );
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link -L --keep-going 'github:o/r/abc#checks.x.a'\n"
+        format!("nix-offload\n{BUILD} -L --keep-going 'github:o/r/abc#checks.x.a'\n")
     );
     assert!(!folder.path().join("nix-was-given").exists());
     let line = journalled(folder.path());
@@ -485,7 +489,7 @@ fn a_build_asked_to_outlive_its_caller_is_sent_to_go_on_alone() {
         let given = fs::read_to_string(folder.path().join("ssh-was-given")).unwrap();
         assert_eq!(
             given_to(folder.path()),
-            "nix-offload\nnix build --no-link -L --keep-going 'github:o/r/abc#checks.x.a'\n"
+            format!("nix-offload\n{BUILD} -L --keep-going 'github:o/r/abc#checks.x.a'\n")
         );
         given.contains("NIX_OFFLOAD_OUTLIVE") && given.contains("nix-offload-outliving-$$")
     };
@@ -798,7 +802,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     );
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
+        format!("nix-offload\n{BUILD} -L '/nix/store/aaaa-x.drv^*'\n")
     );
     // Each step before the build says what it does, since a fresh
     // builder given 104 derivations on 8 November took 15 minutes over
@@ -920,7 +924,7 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
     // The build is still asked for, there.
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link '/nix/store/aaaa-system.drv^*'\n"
+        format!("nix-offload\n{BUILD} '/nix/store/aaaa-system.drv^*'\n")
     );
 }
 
@@ -1006,7 +1010,7 @@ fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
     assert_eq!(commands.len(), 3, "{commands:?}");
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link '/nix/store/aaaa-system.drv^*'\n"
+        format!("nix-offload\n{BUILD} '/nix/store/aaaa-system.drv^*'\n")
     );
 
     // A builder that can't say what it would build is sent nothing more.
@@ -1220,7 +1224,7 @@ fn a_download_this_machine_holds_that_the_builder_cant_fetch_goes_up() {
     );
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link '/nix/store/aaaa-test.drv^*'\n"
+        format!("nix-offload\n{BUILD} '/nix/store/aaaa-test.drv^*'\n")
     );
 
     // Refused one, only it goes up.
@@ -1316,7 +1320,7 @@ fn what_a_stopped_send_leaves_the_builder_to_build_goes_up_from_what_its_built_f
     );
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link '/nix/store/aaaa-test.drv^*'\n"
+        format!("nix-offload\n{BUILD} '/nix/store/aaaa-test.drv^*'\n")
     );
 }
 
@@ -1333,8 +1337,10 @@ fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
     assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link --print-out-paths -L --keep-going \
-         'github:o/r/abc#checks.x.a'\n"
+        format!(
+            "nix-offload\n{BUILD} --print-out-paths -L --keep-going \
+             'github:o/r/abc#checks.x.a'\n"
+        )
     );
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
@@ -1525,7 +1531,7 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
         "{command}"
     );
     assert!(
-        command.contains("nix build --no-link -L 'path:/tmp/nix-offload-there-"),
+        command.contains(&format!("{BUILD} -L 'path:/tmp/nix-offload-there-")),
         "{command}"
     );
     let listed = Command::new("tar")
@@ -1968,7 +1974,7 @@ fn copied_after_a_loss(said: &str) -> (std::process::Output, Vec<String>) {
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     assert_eq!(
         given_to(folder.path()),
-        "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n",
+        format!("nix-offload\n{BUILD} -L '/nix/store/aaaa-x.drv^*'\n"),
         "the run wasn't asked to build what it was named"
     );
     let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
@@ -2152,8 +2158,9 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
         "{given:?}"
     );
     assert!(
-        within_far(given[3])
-            .contains("nix build --no-link -L 'path:.#checks.aarch64-darwin.a'; ended=$?"),
+        within_far(given[3]).contains(&format!(
+            "{BUILD} -L 'path:.#checks.aarch64-darwin.a'; ended=$?"
+        )),
         "{given:?}"
     );
     let sent = Command::new("tar")
@@ -2172,7 +2179,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
         fs::read_to_string(bin.join("nix-was-given")).unwrap(),
         format!(
             "copy --no-check-sigs --to ssh-ng://mac /nix/store/abc-mint\n\
-             build --no-link -L {flake}#checks.x86_64-linux.b\n"
+             build --no-link --max-silent-time 3600 -L {flake}#checks.x86_64-linux.b\n"
         ),
         "the pinned input goes to it, and the rest builds here"
     );
@@ -2536,7 +2543,7 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     );
     assert_eq!(
         fs::read_to_string(bin.join("nix-was-given")).unwrap(),
-        "build --no-link github:owner/repo/abc#checks.x86_64-linux.b \
+        "build --no-link --max-silent-time 3600 github:owner/repo/abc#checks.x86_64-linux.b \
          github:owner/repo/abc#checks.aarch64-darwin.a\n",
         "what it took goes the other way, with the rest"
     );
@@ -2811,7 +2818,8 @@ fn a_part_for_a_nearby_machine_ssh_cant_reach_goes_with_the_rest() {
     assert_eq!(
         fs::read_to_string(&given).unwrap(),
         format!(
-            "build --no-link -L {flake}#checks.x86_64-linux.b {flake}#checks.aarch64-darwin.a\n"
+            "build --no-link --max-silent-time 3600 -L {flake}#checks.x86_64-linux.b \
+             {flake}#checks.aarch64-darwin.a\n"
         ),
         "asked to, both are built here as one"
     );
@@ -3273,7 +3281,7 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
     git(&["update-ref", "refs/remotes/origin/main", head]);
     assert_eq!(
         within_far(&unpushed.there()),
-        format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
+        format!("{BUILD} -L 'github:o/r/{head}#checks.x.a'"),
         "a clean tree GitHub has goes by its commit"
     );
 }
@@ -3383,7 +3391,7 @@ fn a_tree_is_built_at_the_commit_it_was_at_when_asked_however_long_it_waits() {
     );
     assert_eq!(
         within_far(command),
-        format!("nix build --no-link -L 'github:o/r/{head}#checks.x.a'"),
+        format!("{BUILD} -L 'github:o/r/{head}#checks.x.a'"),
         "{said}"
     );
 }
@@ -5647,7 +5655,7 @@ fn with_no_builder_or_none_reached_it_builds_nothing_unless_asked_to_build_here(
     fs::create_dir(&offload).unwrap();
     stand_ins(folder.path(), 255);
     let given = folder.path().join("nix-was-given");
-    let here = "build --no-link -L --keep-going github:o/r/abc#checks.x.a\n";
+    let here = "build --no-link --max-silent-time 3600 -L --keep-going github:o/r/abc#checks.x.a\n";
 
     let ran = there(folder.path(), &offload);
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
