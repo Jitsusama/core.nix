@@ -72,36 +72,96 @@ fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
     );
 }
 
+/// Each change `cases` names, with the key and owner of the line naming
+/// it.
+fn named_by(cases: &[Case]) -> BTreeMap<String, (String, String)> {
+    let mut named = BTreeMap::new();
+    for line in recurring(cases, NOW).behind {
+        let Some((said, owner)) = line.rsplit_once(" · ") else {
+            continue;
+        };
+        let key = class_of(said);
+        let changes = said.get(key.len() + 1..).unwrap_or_default();
+        for change in changes.split([',', ' ']).filter(|word| word.contains('#')) {
+            named.insert(change.to_owned(), (key.to_owned(), owner.to_owned()));
+        }
+    }
+    named
+}
+
 /// A count crossing the bar used to move a repository's cases between
 /// keys, closing one owner's ask, opening another's, and asking again for
-/// a fix just named. Each line now keeps its key and owner, and the rest's
-/// line is keyed as the whole class's is.
+/// a fix just named. Here the class crosses its bar, then the rest, then
+/// a repository no owner is named in, on its own, then an owned one, and
+/// every change keeps the key and owner of the line naming it whenever
+/// one does; the rest's line is keyed as the whole class's is.
 #[test]
 fn every_line_keeps_its_key_and_owner_as_its_counts_move() {
-    let three = keys(&undone(&[
-        "core.nix#1",
-        "core.nix#2",
-        "core.nix#3",
-        "world#4",
-        "world#5",
-        "world#6",
-    ]));
-    let two = keys(&undone(&[
-        "core.nix#1",
-        "core.nix#2",
-        "world#4",
-        "world#5",
-        "world#6",
-    ]));
-    assert_eq!(
-        three, two,
-        "an owned repository's line changed key or owner as it fell under the bar"
+    let steps: [&[&str]; 7] = [
+        &["core.nix#1", "core.nix#2"],
+        &["core.nix#1", "core.nix#2", "world#4"],
+        &["core.nix#1", "core.nix#2", "world#4", "mycelium#7"],
+        &[
+            "core.nix#1",
+            "core.nix#2",
+            "world#4",
+            "world#5",
+            "mycelium#7",
+        ],
+        &[
+            "core.nix#1",
+            "core.nix#2",
+            "world#4",
+            "world#5",
+            "world#6",
+            "mycelium#7",
+        ],
+        &[
+            "core.nix#1",
+            "core.nix#2",
+            "core.nix#3",
+            "world#4",
+            "world#5",
+            "world#6",
+            "mycelium#7",
+        ],
+        &["world#4", "world#5", "world#6"],
+    ];
+    let named: Vec<_> = steps
+        .iter()
+        .map(|changes| named_by(&undone(changes)))
+        .collect();
+    // Each crossing shows, so the test can't pass on steps that move
+    // nothing: no line under the class's bar, then core.nix's alone while
+    // the rest is under its own, then the rest's once it is on three.
+    assert!(
+        named[0].is_empty()
+            && named[1].contains_key("core.nix#1")
+            && !named[2].contains_key("world#4")
+            && named[3].contains_key("world#4"),
+        "the class's count or the rest's didn't cross the bar as each step meant: {named:?}"
     );
-    let whole = keys(&undone(&["world#4", "world#5", "world#6"]));
+    let mut first: BTreeMap<&str, &(String, String)> = BTreeMap::new();
+    let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+    for (step, lines) in named.iter().enumerate() {
+        for (change, line) in lines {
+            let was = *first.entry(change).or_insert(line);
+            assert_eq!(
+                was, line,
+                "at step {step}, {change} moved to another line's key or owner"
+            );
+            let owner = *owners.entry(&line.0).or_insert(&line.1);
+            assert_eq!(
+                owner, line.1,
+                "at step {step}, the key {} went to another owner",
+                line.0
+            );
+        }
+    }
     assert_eq!(
-        whole,
-        [three[1].clone()],
-        "the rest's line and the class's whole line were keyed apart: {three:?}"
+        first.len(),
+        7,
+        "a change was never named by a line, so its key went unchecked: {first:?}"
     );
 }
 

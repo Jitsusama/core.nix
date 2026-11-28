@@ -6,6 +6,7 @@ use std::fs;
 use super::*;
 
 mod split;
+mod unread;
 mod withdrawals;
 
 const NOW: i64 = 1_795_700_000;
@@ -182,6 +183,41 @@ fn a_line_keeps_only_so_much_of_its_cause_and_so_many_changes() {
         ["core.nix#1", "core.nix#7"],
         "a change named again filled the cap before a later one was read"
     );
+}
+
+/// One message of many lines, each at its own cap, counts only its first
+/// `MESSAGE_CHANGES_AT_MOST` changes, and a change it counted already
+/// still counts on a later line, under another class.
+#[test]
+fn one_message_counts_only_so_many_changes_across_its_lines() {
+    for named in [MESSAGE_CHANGES_AT_MOST, MESSAGE_CHANGES_AT_MOST + 1] {
+        let numbers: Vec<usize> = (1..=named).collect();
+        let mut text: Vec<String> = numbers
+            .chunks(CHANGES_PER_LINE)
+            .map(|chunk| {
+                let changes: Vec<String> = chunk.iter().map(|n| format!("core.nix#{n}")).collect();
+                format!("cause: flaky gate | change: {}", changes.join(", "))
+            })
+            .collect();
+        text.push("cause: stale docs | change: core.nix#1".to_owned());
+        let cases = said(&[heard(sent(&text.join("\n"), 60, "@1JQPPC"))]);
+        let counted: BTreeSet<&str> = cases.iter().map(|c| c.change.as_str()).collect();
+        let expected: BTreeSet<String> = (1..=MESSAGE_CHANGES_AT_MOST)
+            .map(|n| format!("core.nix#{n}"))
+            .collect();
+        assert_eq!(
+            counted,
+            expected.iter().map(String::as_str).collect(),
+            "a message naming {named} changes didn't count just its first \
+             {MESSAGE_CHANGES_AT_MOST}"
+        );
+        assert!(
+            cases
+                .iter()
+                .any(|c| c.said == "stale docs" && c.change == "core.nix#1"),
+            "a change already counted was dropped from a later line past the cap: {named}"
+        );
+    }
 }
 
 #[test]
@@ -522,6 +558,56 @@ fn a_kept_case_is_folded_again_by_its_wording() {
         m.behind.iter().map(|l| class_of(l)).collect::<Vec<_>>(),
         [TIMING],
         "a kept case was counted under the fold it was kept with"
+    );
+}
+
+/// A wording kept under a longer cap is cut as a fresh one is, its space
+/// at the cut trimmed too, so its message reread gives the same case and
+/// the two dedup rather than keeping both.
+#[test]
+fn a_kept_wording_past_the_cap_dedups_with_its_fresh_copy() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    // Cut at the cap, it ends in the space after its first word.
+    let wording = format!("{} {}", "x".repeat(SAID_AT_MOST - 1), "y".repeat(100));
+    assert_eq!(
+        wording.chars().count(),
+        600,
+        "the wording isn't 600 letters long"
+    );
+    let m = sent(
+        &format!("cause: {wording} | change: core.nix#1"),
+        600,
+        "@1JQPPC",
+    );
+    write(&messages, &m, 600);
+    let kept = Kept {
+        v: VERSION,
+        through_ms: (NOW - 600) * 1000,
+        cases: vec![Case {
+            said_in: Some(m.id.clone()),
+            ..case(&wording, "core.nix#1", 600)
+        }],
+        withdrawn: BTreeSet::new(),
+    };
+    let text = serde_json::to_string(&kept).expect("serialised");
+    fs::write(folder.path().join("causes.json"), text).expect("kept");
+    let _ = read(home.path(), folder.path(), NOW, true);
+    let json = fs::read(folder.path().join("causes.json")).expect("a reading kept");
+    let cases = serde_json::from_slice::<Kept>(&json)
+        .expect("a reading that parses")
+        .cases;
+    assert!(
+        cases.len() == 1 && cases[0].said == "x".repeat(SAID_AT_MOST - 1),
+        "a kept wording and its fresh copy weren't cut alike, so both were kept: {:?}",
+        cases
+            .iter()
+            .map(|c| c.said.chars().count())
+            .collect::<Vec<_>>()
     );
 }
 

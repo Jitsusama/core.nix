@@ -306,8 +306,10 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// changes in a week, filed class by class, so each owner fixes the cause
 /// once rather than each change's reviewer fixing it again. It closes once
 /// its owner names the fix, and stays closed for the week its cases count
-/// over, or once the class is found on fewer; a case after that brings the
-/// same line back, counted as reopened. The class is quoted, since an
+/// over, or once its line goes: a repository's own line goes once the
+/// class falls under the bar or is found there on no change, and the
+/// class's own, which counts the rest, once the rest falls under it. A
+/// case after that brings the same line back, counted as reopened. The class is quoted, since an
 /// unfolded one is in a sender's own words, so it never reads as
 /// cadence's. A line saying the mesh couldn't be read, or what was read
 /// couldn't be kept, asks nobody: it names no class.
@@ -329,8 +331,11 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
                      stops it at its root, such as a check that refuses it or a shared piece \
                      every change uses, or why it can't have one. Once it lands, name it with \
                      `cadence owe --done {done} 'FIX'`, and it stays closed for the week its \
-                     cases count over; until then it also closes once the class falls under \
-                     three changes in a week."
+                     cases count over. Until then it also closes once this line goes: a \
+                     repository's own line once the class is on fewer than three changes in \
+                     a week or on none there, and the class's own, which counts the \
+                     repositories with no owner of their own, once those are on fewer than \
+                     three."
                 ),
                 key,
                 owner: owner.to_owned(),
