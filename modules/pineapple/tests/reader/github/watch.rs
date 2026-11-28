@@ -9,7 +9,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pineapple::github::stamp;
 use serde_json::{Value, json};
@@ -167,9 +167,13 @@ fn github_a_list_that_fails_lists_no_more_that_round_and_comes_last_the_next() {
     });
     let (home, _) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while listings(&asked.lock().expect("what was asked")).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never listed three times");
+        assert!(
+            began.within(PATIENCE),
+            "it never listed three times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -213,9 +217,13 @@ fn github_the_watch_rests_while_little_of_joels_rate_limit_is_left() {
     });
     let (home, _) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while listings(&asked.lock().expect("what was asked")).len() < 2 {
-        assert!(began.elapsed() < PATIENCE, "it never listed again");
+        assert!(
+            began.within(PATIENCE),
+            "it never listed again: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
@@ -369,9 +377,13 @@ fn github_a_thread_failing_where_joel_spoke_lately_waits_its_turn_though_listed_
     });
     let (home, _) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     while searches(&asked).len() < 7 {
-        assert!(began.elapsed() < PATIENCE, "it never searched seven times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched seven times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");

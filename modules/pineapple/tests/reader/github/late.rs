@@ -537,11 +537,15 @@ fn github_a_search_cut_short_twice_tells_joel_in_one_row_however_many_rounds_lea
     let (origin, asked) = answering(cut_twice_told);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
+    let began = test_pace::Timed::start();
     // Two searches a round, so the fifth begins the third round, once two
     // have each left the oldest unread.
     while searches(&asked).len() < 5 {
-        assert!(began.elapsed() < PATIENCE, "it never searched five times");
+        assert!(
+            began.within(PATIENCE),
+            "it never searched five times: it {}",
+            began.said(PATIENCE)
+        );
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
