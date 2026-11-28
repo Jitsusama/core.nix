@@ -124,14 +124,26 @@ mod tests {
     fn a_median_and_its_scale_ignore_one_wild_value() {
         let values = [10.0, 11.0, 9.0, 10.0, 1000.0];
         assert_eq!(median(&values), 10.0);
-        assert!((mad(&values) - 1.4826).abs() < 1e-9);
+        let scale = mad(&values);
+        assert!(
+            (scale - 1.4826).abs() < 1e-9,
+            "the scale should be 1.4826, not {scale}"
+        );
     }
 
     #[test]
     fn the_normal_tail_is_right() {
-        assert!((upper_tail(1.959_964) - 0.025).abs() < 1e-6);
-        assert!((upper_tail(0.0) - 0.5).abs() < 1e-7);
-        assert!((upper_tail(-1.0) - 0.841_344_7).abs() < 1e-6);
+        for (z, tail, within) in [
+            (1.959_964, 0.025, 1e-6),
+            (0.0, 0.5, 1e-7),
+            (-1.0, 0.841_344_7, 1e-6),
+        ] {
+            let got = upper_tail(z);
+            assert!(
+                (got - tail).abs() < within,
+                "the tail past {z} should be {tail}, not {got}"
+            );
+        }
     }
 
     #[test]
@@ -141,13 +153,25 @@ mod tests {
         ];
         let found = discoveries(&p, 0.05);
         assert_eq!(found.iter().filter(|&&found| found).count(), 2);
-        assert!(found[0] && found[1]);
+        assert_eq!(
+            (found[0], found[1]),
+            (true, true),
+            "the two smallest should survive: {found:?}"
+        );
     }
 
     #[test]
     fn a_sharp_forecast_on_the_mark_scores_nearly_nothing() {
-        assert!(crps(&[5.0; 100], 5.0).abs() < 1e-12);
+        let on = crps(&[5.0; 100], 5.0);
+        assert!(
+            on.abs() < 1e-12,
+            "a forecast on the mark should score nothing, not {on}"
+        );
         // A point forecast's score is its error.
-        assert!((crps(&[5.0; 100], 7.0) - 2.0).abs() < 1e-12);
+        let off = crps(&[5.0; 100], 7.0);
+        assert!(
+            (off - 2.0).abs() < 1e-12,
+            "a point forecast 2 off should score 2, not {off}"
+        );
     }
 }

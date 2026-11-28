@@ -646,6 +646,13 @@ mod tests {
             "a run whose save failed at 8 builds, passed at 12 and failed at 20 \
              wasn't failed at 8"
         );
+        // A last step that passed doesn't make up for an earlier failure.
+        let recovered = run(vec![step(4, &[]), step(8, &save), step(12, &[])], None);
+        assert_eq!(
+            (recovered.passed(), recovered.first_failed()),
+            (false, Some(8)),
+            "a run whose save failed at 8 builds and passed at 12 wasn't failed at 8"
+        );
         assert!(
             !run(vec![step(4, &[])], Some(8 * GIB)).passed(),
             "a run stopped by memory pressure passed"
