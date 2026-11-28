@@ -555,7 +555,11 @@ mod tests {
                 failed: vec![]
             }
         );
-        assert!(!old.exists());
+        assert!(
+            !old.exists(),
+            "the old password outlived its move: {}",
+            old.display()
+        );
         let network = store.networks().unwrap().saved.remove(0).network;
         assert_eq!(network.secret, Some(store.saved.join("lantern.sealed")));
         let password = secrets.password(&network).await;
@@ -576,7 +580,11 @@ mod tests {
         let moved = secrets.move_into(secrets.vault().unwrap(), &store).await;
 
         assert_eq!(moved.unwrap(), Moved::default());
-        assert!(sealed.exists());
+        assert!(
+            sealed.exists(),
+            "nix's own password was moved away: {}",
+            sealed.display()
+        );
     }
 
     #[tokio::test]
@@ -640,7 +648,9 @@ mod tests {
             call_to(asked).await["method"],
             "io.systemd.Credentials.Encrypt"
         );
-        assert!(secrets.seal("lantern", "glowing in the dark").is_ok());
+        secrets
+            .seal("lantern", "glowing in the dark")
+            .expect("a vault made once wouldn't seal");
     }
 
     #[tokio::test]
@@ -661,7 +671,11 @@ mod tests {
         let asked = tokio::time::timeout(Duration::from_secs(3), asked).await;
         let asked = asked.unwrap().unwrap();
         assert_eq!(asked[1]["method"], "io.systemd.Credentials.Decrypt");
-        assert!(!old.exists());
+        assert!(
+            !old.exists(),
+            "the launcher's old password stayed: {}",
+            old.display()
+        );
         let network = store.networks().unwrap().saved.remove(0).network;
         let password = secrets.password(&network).await;
         assert_eq!(opened(password).as_deref(), Some("glowing in the dark"));

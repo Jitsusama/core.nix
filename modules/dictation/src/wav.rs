@@ -76,11 +76,11 @@ mod tests {
         let mut format = MONO_16K;
         format[4] = 0x44;
         format[5] = 0xac;
-        assert!(samples(&wav(format, &[0, 0])).is_err());
+        samples(&wav(format, &[0, 0])).expect_err("a 44.1 kHz file was read");
     }
 
     #[test]
     fn something_else_is_refused() {
-        assert!(samples(b"not a wav file at all").is_err());
+        samples(b"not a wav file at all").expect_err("text was read as a wav file");
     }
 }

@@ -376,8 +376,12 @@ mod tests {
 
     #[test]
     fn anything_but_an_http_answer_is_none() {
-        assert!(Answer::read(b"SSH-2.0-OpenSSH_9.9\r\n").is_none());
-        assert!(Answer::read(b"HTTP/1.1 204").is_none());
-        assert!(Answer::read(b"").is_none());
+        for said in [&b"SSH-2.0-OpenSSH_9.9\r\n"[..], b"HTTP/1.1 204", b""] {
+            assert!(
+                Answer::read(said).is_none(),
+                "{} was read as an HTTP answer",
+                String::from_utf8_lossy(said)
+            );
+        }
     }
 }
