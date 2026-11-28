@@ -352,10 +352,18 @@ mod tests {
         );
         let records = found["records"].as_array().unwrap();
         assert_eq!(records.len(), 2);
-        assert!(records[0]["key"].as_str().unwrap().ends_with("b.png"));
+        let first = records[0]["key"].as_str().unwrap();
+        assert!(
+            first.ends_with("b.png"),
+            "the best match wasn't b.png: {first}"
+        );
         assert_eq!(records[0]["line"], "Review on Thursday at ten");
         assert_eq!(records[1]["line"], "to Thursday");
-        assert!(records[0].get("lines").is_none());
+        let lines = records[0].get("lines");
+        assert!(
+            lines.is_none(),
+            "a search answer carried every line: {lines:?}"
+        );
     }
 
     #[test]

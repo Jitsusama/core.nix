@@ -184,7 +184,11 @@ mod tests {
         .concat();
         let read = decode(&likely, 4, &characters());
         assert_eq!(read.text, "aab");
-        assert!((read.sure - (0.8 + 0.6 + 0.9) / 3.0).abs() < 1e-6);
+        let sure = read.sure;
+        assert!(
+            (sure - (0.8 + 0.6 + 0.9) / 3.0).abs() < 1e-6,
+            "sureness came to {sure}, not the mean of the three picked"
+        );
     }
 
     #[test]

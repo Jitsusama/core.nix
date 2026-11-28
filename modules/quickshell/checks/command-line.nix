@@ -5,6 +5,7 @@
   account,
   copied,
   graphical,
+  lib,
   noFonts,
   pkgs,
   shellFolderLint,
@@ -203,4 +204,22 @@
     ${timedQml "drawer-search-pace.qml"}
     touch $out
   '';
+
+  # Every Prompt whose linked() its file calls is given keyNow in its own
+  # block, so its link's quiet is timed on KeyTimes' monotonic clock rather
+  # than a wall clock that can step back
+  # (every-linked-prompt-keeps-key-time.py), its cases shown failing first
+  # (tests/every-linked-prompt-keeps-key-time-cases.sh).
+  every-linked-prompt-keeps-key-time =
+    let
+      shells = lib.fileset.toSource {
+        root = ../.;
+        fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../.;
+      };
+    in
+    pkgs.runCommandLocal "every-linked-prompt-keeps-key-time" { } ''
+      ${lib.getExe pkgs.bash} ${../tests/every-linked-prompt-keeps-key-time-cases.sh} \
+        ${lib.getExe pkgs.python3} ${../every-linked-prompt-keeps-key-time.py} ${shells}
+      touch $out
+    '';
 }

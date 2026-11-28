@@ -65,6 +65,7 @@ import "Arming.js" as Arming
 import "Changes.js" as Changes
 import "Hearing.js" as Hearing
 import "QueryKeys.js" as QueryKeys
+import "KeyActs.js" as KeyActs
 import "ModeMarks.js" as ModeMarks
 import "Reading.js" as Reading
 import "SetWords.js" as SetWords
@@ -560,7 +561,7 @@ Scope {
             about: said.about ?? "",
             side: "",
             chord: [],
-            verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),
+            verb: said.verb ?? (KeyActs.answerPut(said) === "" ? "close" : "copy"),
             now: true,
             // One whose doing takes a while keeps the launcher open, as
             // asking a question does, its whole words below the rows.
@@ -569,9 +570,9 @@ Scope {
             changes: said.changes,
             reads: said.reads ?? "",
             note: said.note ?? "",
-            copies: said.run ? "" : said.copy ?? said.headline,
+            copies: said.run ? "" : KeyActs.answerPut(said),
             run: said.run ?? (() => {
-                const copy = said.copy ?? said.headline;
+                const copy = KeyActs.answerPut(said);
                 if (copy !== "")
                     Quickshell.clipboardText = copy;
             }),
@@ -744,7 +745,7 @@ Scope {
         // Counted by its kind when Return picks it (answered's `counted`).
         counted: trials.answerCounted(answer.asker?.answerKind, answer.about),
         // An answer still being asked for has nothing to copy yet.
-        verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
+        verb: answer.verb ?? (KeyActs.answerPut(answer) === "" ? "close" : "copy"),
         now: true,
         stays: answer.stays ?? false,
         thing: answer.thing ?? false,
@@ -755,9 +756,9 @@ Scope {
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
         once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
-        copies: answer.run ? "" : answer.copy ?? answer.headline,
+        copies: answer.run ? "" : KeyActs.answerPut(answer),
         run: answer.run ?? (() => {
-            const copy = answer.copy ?? answer.headline;
+            const copy = KeyActs.answerPut(answer);
             if (copy !== "")
                 Quickshell.clipboardText = copy;
         })
@@ -2721,6 +2722,13 @@ Scope {
     // start, a command's, rather than finishing what's typed.
     function fillsStart(): bool {
         return current !== -1 && selected?.start !== undefined;
+    }
+
+    // What Ctrl+Y's completion does now (KeyActs.completing): the prompt's
+    // onCompleted does it, and fillLeaves says it first, by the one rule.
+    function completingNow(): string {
+        return KeyActs.completing({ completion, fills: fillsStart(), question,
+            selected: current !== -1, answered: !!selected?.answered, answer });
     }
 
     // What a collection says at its right, { side, sideItems }, its items
@@ -7864,8 +7872,15 @@ Scope {
 
     // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
+    // It's put on the clock the prompt times its keys on, read from the
+    // prompt itself (its keyNow, KeyTimes' monotonic clock as given below),
+    // so a wall clock stepped back can't hold every key early, and the ask
+    // and its keys can never be timed on two clocks: were the prompt's
+    // clock lost, both would fall back to the wall's together, rather than
+    // a key on the wall's reading as far past an ask on KeyTimes', which
+    // would let the Return that asked, bounced, answer yes.
     function askOnce(question, yes, no, covering) {
-        asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
+        asked = Confirm.asked(question, yes, no ?? (() => {}), prompt.keyNow());
         askedOver = covering ?? [];
         askTaking = false;
         askReady.restart();
@@ -7874,16 +7889,17 @@ Scope {
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
     // it came. It answers only as the field times it (Confirm.takes). A
-    // key that came with no time, or an ask that can't be timed, is
-    // journalled whether or not reports are on, as neither can answer yes.
+    // key let by as it came with no time, as its ask can't be timed, or as
+    // it was timed before its ask, is journalled, naming it only where it's
+    // Return or Enter, whether or not reports are on, as none can answer
+    // yes (Confirm.letBy); a key that answers is said by the answer alone,
+    // and a modifier alone, early to every ask, isn't journalled.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
-        const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
-        if (ask !== null && !Number.isFinite(at))
-            console.info("launcher: a key came to the ask with no time, so it was let by");
-        else if (untimed !== null)
-            console.info(`launcher: the ask can't be timed, as ${untimed}, so Return is let by`);
+        const why = ask === null ? null : Confirm.letBy(ask, key, at, askReady.interval);
+        if (why !== null)
+            console.info(`launcher: ${why}`);
         if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
@@ -7894,12 +7910,13 @@ Scope {
             ask.no();
     }
 
-    // What the ask standing makes of `key` come `at` (Confirm.answer), or ""
+    // What the ask standing makes of `key` come `at` (Confirm.said), or ""
     // with none standing: answerAsk answers by it, and the prompt times a
-    // key as acting by it (answerTaken), each told the one time the prompt
-    // read as the key came, so the two can't disagree.
+    // key as acting by it too (answerTaken, Confirm.takes of it), each told
+    // the one time the prompt read as the key came. The ask and its guard
+    // are picked here alone, so the two can't disagree.
     function askSaid(key, at) {
-        return asked === null ? "" : Confirm.answer(asked, key, at, askReady.interval);
+        return Confirm.said(asked, key, at, askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -14720,21 +14737,36 @@ Scope {
                             // his Neovim's completion menu does; stepping in
                             // is normal's right arrow's (Joel, 2026-10-26).
                             // At home there's none, since nothing is typed.
-                            if (root.completion === "")
+                            // A command puts its start in the field, and a
+                            // question only started is finished first.
+                            // Nothing to put returns at once: the search
+                            // above left nothing due, so another finds
+                            // nothing.
+                            const does = root.completingNow();
+                            switch (does) {
+                            case "":
                                 return;
-                            // A command puts its start in the field.
-                            if (root.fillsStart())
+                            case "start":
                                 root.fill(root.selected.start);
-                            // A question only started is finished first.
-                            else if (root.question !== ""
-                                && (root.current === -1 || root.selected?.answered))
+                                break;
+                            case "question":
                                 text = root.question;
-                            else if (root.current !== -1 || !root.answer)
+                                break;
+                            case "rest":
                                 text = text + root.completion;
-                            // An answer that does something has nothing to
-                            // put in the question's place.
-                            else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
-                                text = root.answer.copy ?? root.answer.headline;
+                                break;
+                            case "answer":
+                                text = KeyActs.answerPut(root.answer);
+                                break;
+                            default:
+                                // KeyActs.completing said what no case
+                                // here does, so Ctrl+Y would quietly do
+                                // nothing; said, so it's seen. Each of
+                                // KeyActs.completions has its case above.
+                                console.warn(`launcher: Ctrl+Y's completion said "${does}", `
+                                    + "which the field doesn't do");
+                                return;
+                            }
                             root.searchNow();
                         }
                         // Normal's Escape at rest: the key list let go, or
@@ -14815,12 +14847,13 @@ Scope {
                         // asked of the row it will find, as intoHere is.
                         fillLeaves: () => {
                             root.searchNow();
-                            return root.held.length > 0 && root.completion !== ""
-                                && root.fillsStart();
+                            return root.held.length > 0 && root.completingNow() === "start";
                         }
                         upHere: root.canGoUp
-                        // The ask takes a key as answerAsk does.
+                        // The ask takes a key as answerAsk does, through
+                        // askSaid, timed on the clock askOnce puts it on.
                         answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
+                        keyNow: () => KeyTimes.now()
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {

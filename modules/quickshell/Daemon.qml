@@ -632,8 +632,11 @@ Scope {
             waiting[id](null);
     }
 
-    // How many times it has backed off to try again since it last answered, whether its socket
-    // refused, dropped it or wasn't there, so one short of its tries when nothing answered.
+    // How many times it has backed off to try again since its link last connected, its socket's
+    // file appeared or it answered hello, whether its socket refused, dropped it or wasn't there,
+    // or the daemon the shell runs ended. Each failed try backs off once, so while a back-off
+    // waits it equals the failed tries; a socket still missing after its last try isn't backed
+    // off again, so then it's one short.
     property int refusals: 0
 
     // The QLocalSocket error its link's last try failed with, null since it last connected, so a

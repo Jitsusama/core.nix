@@ -12,6 +12,11 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-camera-watch-refuses-a-unit-holding-everyone = ''
+    a machine whose loopback camera's watch leaves out a person's manager, a session's scope,
+    init.scope, a slice or a path never builds, while one leaving out a relay's own service or
+    scope, or a system service named like a person's manager, does
+  '';
   a-card-says-how-it-stands-in-one-row = ''
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
@@ -955,12 +960,14 @@
     skill's page checks and its homes check passing at a phone's width and a desk's in both looks, a
     repository's weight and due upkeep said in its row and drawer, its ages told again each minute
     in place with the focused tree kept, today's growth yesterday's once the day turns, no row
-    moving as the cursor steps, a reload not shifting as the feeds arrive, a second's burst of
-    records drawing the list a few times, a first visit within its budget of files, bytes and
-    elements, both visits reaching only the sites' server and the second answered unchanged, the
-    map at the page's foot drawing a thread for each cell joining two repositories, walked by its
-    keys, opening one as the list does, and handing the keys to the list once its last tie goes,
-    and nothing logged
+    moving as the cursor steps, a reload not shifting as the feeds arrive, the headline and lede
+    it opens with holding two lines, those of its live ones and of those it writes for counts up
+    to 999 repositories and for one thing worth a look of each kind but a gone folder, at 390,
+    1440 and 1920 wide, a second's burst of records drawing the list a few times, a first visit
+    within its budget of files, bytes and elements, both visits reaching only the sites' server
+    and the second answered unchanged, the map at the page's foot drawing a thread for each cell
+    joining two repositories, walked by its keys, opening one as the list does, and handing the
+    keys to the list once its last tie goes, and nothing logged
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
@@ -1340,6 +1347,11 @@
   '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
+  '';
+  every-linked-prompt-keeps-key-time = ''
+    every Prompt of the shell whose linked() its file calls is given keyNow in its own block, so
+    its link's quiet is timed on the launcher's monotonic clock rather than a wall clock that can
+    step back
   '';
   every-lock-agrees-with-its-manifests = ''
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
@@ -1931,6 +1943,11 @@
     ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
     and refuses a short frame or a format it can't use
   '';
+  iris-tiles-memory-objects-as-anv-does = ''
+    the patched source of the XPS 14's Mesa has iris prefer 4K tiles for every memory object, in a
+    branch no earlier one can shadow, and anv still prefers them for an image it exports with no
+    modifier
+  '';
   jobs-broker-passes-clippy = ''
     clippy finds nothing in the jobs broker or its tests
   '';
@@ -2003,7 +2020,7 @@
   kernel-source-files-are-taken-as-built = ''
     a few files of a kernel's source are taken from a folder or its tarball, one missing that a
     patch creates let be, one missing that none creates refused, and one the source has that a
-    patch would create refused, naming that patch
+    patch would create refused, naming that patch, unless a patch before it deletes the file
   '';
   kernel-trouble-is-named = ''
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,
@@ -2116,15 +2133,15 @@
     item or a session's want, and History says how each went, newest first
   '';
   launcher-completes-in-zsh = ''
-    launcher completes in zsh, typed in a real line editor against a stand-in shell: its command,
-    each row as its step is typed, the rows inside the steps typed so far, its flags anywhere, and
-    nothing after a step that names nothing
+    launcher completes in zsh, typed in a real line editor against a stand-in desktop: its
+    command, each row as its step is typed, the rows inside the steps typed so far, its flags
+    anywhere, and nothing after a step that names nothing
   '';
   launcher-fits-what-it-shows-to-the-terminal = ''
-    `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
-    way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
-    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when
-    asked, and says a miss and the nearest names in the launcher's words
+    `launcher` lays what the desktop shows out to the terminal's width, a count and then a side
+    giving way by whole items and a name cut only at a word, inks it only where the terminal takes
+    colour, in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows
+    when asked, and says a miss and the nearest names in the launcher's words
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests
@@ -2288,6 +2305,24 @@
     stranger's host name and a stranger's page, has two pages share one watch on a daemon with
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
     daemon, and says a missing daemon broken with why
+  '';
+  lock-follows-opens-one-change-per-rev = ''
+    lock-follows does nothing while main locks upstream's newest; opens one draft change locking
+    that input alone at a newer, listing upstream's merges between, each subject in a code span so
+    a closing word closes nothing; opens nothing while it's open; once main moves on and upstream
+    with it, replaces that draft, naming it in the new one, commenting, closing, then deleting its
+    branch; replaces none whose lock commit someone amended, in its lock or its message, nor one
+    marked ready, another input's or a fork's; opens a declined rev's again neither while its
+    branch stands nor once deleted; leaves as taken a branch of its name holding the tool's commit
+    with someone's file amended in; ends non-zero when opening fails and opens on the pushed branch
+    next run, a fork's closed draft of that name declining nothing; leaves the older open when its
+    close fails, and closed with its branch kept when its delete is refused, saying so; and ends
+    with 75 when listing changes or fetching fails, writing a line for each run
+  '';
+  lock-follows-runs-every-quarter-hour = ''
+    lock-follows runs every 15 minutes in the background, catching up on a quarter slept
+    through, stopped after 10 minutes, following mycelium alone unless the account names more,
+    and an account naming no input is refused
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
@@ -4674,9 +4709,11 @@
     kept and live once it's back, stale once the server goes with them kept, a murmur's words
     drawn as words and never as markup, j, k, g, G and ? answering, a tap on a key its head shows
     doing what typing it does, the web-design skill's page checks passing at a phone's width and a
-    desk's in both looks, a first visit within its budget of files, bytes and elements, both visits
-    reaching only the sites' server and the second answered unchanged, a tab whose renderer dies
-    before its first reading opened once more and said, and nothing logged
+    desk's in both looks, every headline it writes taking the lines the one it opens on takes and
+    every lede fitting whole in the four lines its box opens on, at 390 and 1440 wide, a first
+    visit within its budget of files, bytes and elements, both visits reaching only the sites'
+    server and the second answered unchanged, a tab whose renderer dies before its first reading
+    opened once more and said, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
@@ -5847,9 +5884,9 @@
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
-    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
-    folder, never beside it, and the seat's give-back is dropped
+    loopback's holders file is named as the Brio is, its name claimed from boot, and removed
+    when the Brio goes, the shell lists the Brio only while that file is there, the Brio's own
+    watch writes in the hidden folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
@@ -6508,8 +6545,9 @@
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple, among them every command core runs against it and the flags its followers pass, in a
-    folder of its own whose daemon alone it stops; its editors' script refuses to run with a
-    runtime or data folder outside that folder
+    folder of its own whose daemon alone it stops; its editors' script refuses before any tuple runs
+    a home, runtime or data folder but that folder's own, a person's home holding its own runtime
+    and data folders among them
   '';
   tuple-ends-its-flags = ''
     The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
@@ -6547,11 +6585,13 @@
     Started line from health is refused, each refusal proven first on a table of settings
   '';
   tuple-shares-through-the-portal = ''
-    Tuple reads the portal setting where the switch writes it, and the script refuses an empty data
-    folder to find; first, the folder of its own that the checks running the real tuple share
-    sends tuple's stop only to its own home, runtime and data folders, the runtime folder made
-    first, ends before any tuple runs when it can't be made, keeps a script's status, and is
-    removed as a script ends but for a stop cut off, which keeps it and says how to stop it
+    Tuple reads the portal setting where the switch writes it, and the script refuses before any
+    tuple runs a data folder to find that's empty, isn't a whole path or ends in a slash; first,
+    the folder of its own that the checks running the real tuple share is made under the TMPDIR
+    given, sends tuple's stop only to its own home and every folder XDG names, the runtime folder
+    made first, ends before any tuple runs when it can't be made, keeps a script's status, even
+    with no stderr, and is removed as a script ends but for a stop cut off, which keeps it and says
+    how to stop it
   '';
   tuple-takes-no-real-time-priority = ''
     Tuple's daemon may take no real-time priority, and goes first by a nice below 0 and a CPU weight

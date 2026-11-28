@@ -719,35 +719,33 @@ mod tests {
             v6: vec![],
             marks: vec!["0xca6c".into(), "0x80000".into()],
         };
-        let text = transaction("shaper", &sets, &local);
-        assert!(
-            text.contains(
-                "flush set inet shaper bulk1\nadd element inet shaper bulk1 { \"build.slice\" }\n"
-            ),
-            "bulk1 is emptied, then filled with build.slice:\n{text}"
-        );
-        assert!(
-            text.contains(
-                "flush set inet shaper awaited5\nflush set inet shaper models5\n\
-                 flush set inet shaper bulk5\n\
-                 flush set inet shaper typed5\nflush set inet shaper typed_video5\n\
-                 flush set inet shaper calling\nflush set inet shaper vpns\n\
-                 add element inet shaper vpns { 0xca6c, 0x80000 }\n\
-                 flush set inet shaper local4\n"
-            ),
-            "the empty sets are flushed, then vpns filled with both marks:\n{text}"
-        );
-        assert!(
-            text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"),
-            "local4 is filled with the v4 range:\n{text}"
-        );
-        assert!(
-            text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"),
-            "local6, having no v6 range, is only flushed:\n{text}"
-        );
-        assert!(
-            text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"),
-            "the transaction ends by filling uplinks with enp1:\n{text}"
+        assert_eq!(
+            transaction("shaper", &sets, &local),
+            "flush set inet shaper bulk1\n\
+             add element inet shaper bulk1 { \"build.slice\" }\n\
+             flush set inet shaper bulk2\n\
+             flush set inet shaper bulk4\n\
+             flush set inet shaper voice2\n\
+             flush set inet shaper app4\n\
+             flush set inet shaper video5\n\
+             flush set inet shaper first5\n\
+             flush set inet shaper first6\n\
+             flush set inet shaper first7\n\
+             flush set inet shaper first8\n\
+             flush set inet shaper awaited5\n\
+             flush set inet shaper models5\n\
+             flush set inet shaper bulk5\n\
+             flush set inet shaper typed5\n\
+             flush set inet shaper typed_video5\n\
+             flush set inet shaper calling\n\
+             flush set inet shaper vpns\n\
+             add element inet shaper vpns { 0xca6c, 0x80000 }\n\
+             flush set inet shaper local4\n\
+             add element inet shaper local4 { 192.168.4.0/22 }\n\
+             flush set inet shaper local6\n\
+             flush set inet shaper uplinks\n\
+             add element inet shaper uplinks { \"enp1\" }\n",
+            "the transaction left a set unflushed, filled an empty one, or named a member wrong"
         );
     }
 

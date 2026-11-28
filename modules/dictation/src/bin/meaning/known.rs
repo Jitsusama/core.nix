@@ -466,7 +466,10 @@ mod tests {
         shot(&shots, "a recording.mp4", 3);
         known.look_through(&[shots.clone(), folder.path().join("Camera")]);
         assert_eq!(looked_at(&mut known), [new.clone(), old.clone()]);
-        assert!(known.next().is_none());
+        assert!(
+            known.next().is_none(),
+            "a job waited after each picture was looked at once"
+        );
         shot(&shots, "old.png", 4);
         known.came(&old);
         assert_eq!(looked_at(&mut known), std::slice::from_ref(&old));
@@ -487,7 +490,10 @@ mod tests {
             &mut known,
             &json!({"id": 5, "ask": "search", "kind": "picture", "words": "a chart"}),
         );
-        assert!(answer.is_null());
+        assert!(
+            answer.is_null(),
+            "a picture search was answered before its query ran: {answer}"
+        );
         let Some(Job::Query(query)) = known.next() else {
             panic!("no query waited");
         };
@@ -542,7 +548,9 @@ mod tests {
         assert_eq!(line["error"]["code"], json!("passed-over"));
         let waiting: Vec<String> = known.queries.iter().map(|q| q.words.clone()).collect();
         assert_eq!(waiting, ["dim", "too bright"]);
-        assert!(beside.try_recv().is_err());
+        beside
+            .try_recv()
+            .expect_err("another connection's search was let go with this one's");
     }
 
     #[test]
@@ -562,8 +570,13 @@ mod tests {
         ]});
         let (answer, _) = ask(&mut known, &said);
         assert_eq!(answer, json!({"id": 1, "known": 3, "waiting": 2}));
-        assert!(woken.try_recv().is_ok());
-        assert!(matches!(known.next(), Some(Job::Embed(text)) if text == "Brightness"));
+        woken
+            .try_recv()
+            .expect("the worker wasn't woken for things waiting");
+        assert!(
+            matches!(known.next(), Some(Job::Embed(text)) if text == "Brightness"),
+            "the first job wasn't Brightness's embedding"
+        );
     }
 
     #[test]
@@ -577,9 +590,18 @@ mod tests {
             &mut known,
             &json!({"id": 2, "ask": "search", "words": "dim"}),
         );
-        assert!(answer.is_null());
-        assert!(matches!(known.next(), Some(Job::Query(query)) if query.words == "dim"));
-        assert!(matches!(known.next(), Some(Job::Embed(_))));
+        assert!(
+            answer.is_null(),
+            "a search was answered before its query ran: {answer}"
+        );
+        assert!(
+            matches!(known.next(), Some(Job::Query(query)) if query.words == "dim"),
+            "the search's query didn't go first"
+        );
+        assert!(
+            matches!(known.next(), Some(Job::Embed(_))),
+            "the thing waiting wasn't embedded after the query"
+        );
     }
 
     #[test]

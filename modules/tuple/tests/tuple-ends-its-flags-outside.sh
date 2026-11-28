@@ -88,9 +88,13 @@ refused "a dev shell in a home holding its runtime and data folders" "$here/home
 refused "a dev shell whose build folder holds the home it's in" "$here/home" \
   NIX_BUILD_TOP="$here" IN_NIX_SHELL=impure HOME="$here/home" \
   XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/home/.local/share"
-# No dev shell's sign either, so only the build folder's own check refuses.
+# No dev shell's sign either, so only the build folder's own check refuses,
+# whether it's set above the folder it's in or below.
 refused "a build whose build folder is elsewhere" "$build" \
   NIX_BUILD_TOP="$here" HOME="$build" XDG_RUNTIME_DIR="$build/run" \
+  XDG_DATA_HOME="$build/data"
+refused "a build whose build folder is below it" "$build" \
+  NIX_BUILD_TOP="$build/sub" HOME="$build" XDG_RUNTIME_DIR="$build/run" \
   XDG_DATA_HOME="$build/data"
 refused "a build whose home is elsewhere" "$build" \
   NIX_BUILD_TOP="$build" HOME="$here/home" XDG_RUNTIME_DIR="$build/run" \

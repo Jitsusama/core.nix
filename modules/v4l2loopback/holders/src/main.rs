@@ -24,7 +24,9 @@
 //!
 //! With --usb, NODE is a USB camera's, and the file is FOLDER/<the camera's
 //! name>, made and removed with the camera: it's written while the camera
-//! is there and removed when its node goes or this is stopped. A program
+//! is there and removed when its node goes or this is stopped. A name a
+//! loopback claims in FOLDER/.claimed is its, so the camera's file is then
+//! FOLDER/<the name> (<its node>), said once in the log. A program
 //! holding the camera is listed only while the camera streams, since
 //! programs that only look at a camera, such as `PipeWire`'s, open it for a
 //! moment as it comes; while anyone holds it, it looks once a second, as
@@ -66,13 +68,13 @@
 //! until it's right, whoever holds the camera: each second, or every two
 //! while a loopback's camera is watched, and while nobody holds it, twice
 //! as long each try, up to sixteen seconds. A read that failed keeps what
-//! its file said, as it says nothing of who holds the camera now. What
-//! went wrong is said once as it begins and once as it clears, for each
-//! file. The first time its files say who holds the camera as a read that
-//! worked found, and which node it is, or nobody and no `.devices/` file
-//! where there's no camera, its log says `ready in N ms`, once a run
-//! (src/ready.rs says why). Its help, its failures and its exits take the
-//! terminal kit's shape (`help()`).
+//! its file said, even as a run before left it, as it says nothing of who
+//! holds the camera now. What went wrong is said once as it begins and
+//! once as it clears, for each file. The first time its files say who
+//! holds the camera as a read that worked found, and which node it is,
+//! or nobody and no `.devices/` file where there's no camera, its log
+//! says `ready in N ms`, once a run (src/ready.rs says why). Its help,
+//! its failures and its exits take the terminal kit's shape (`help()`).
 //!
 //! Long because a quarter of it is the tests beside it, of how it's asked
 //! and of what its watches say, which reach its private parts.
@@ -577,15 +579,17 @@ fn watch(
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
     let mut retry = Retry::new(every);
     // What the file holds, as last written, and what it was last meant to
-    // say, written or not, which a read that fails keeps.
+    // say, written or not, which a read that fails keeps. It begins meaning
+    // what the file already says, as a run before left it, so a run started
+    // again whose first read fails never says a camera held off.
     let mut said = None;
-    let mut meant = None;
+    let mut meant = said_in(output);
     let mut pids = HashSet::new();
     loop {
         let mut troubles = Vec::new();
-        // A read that fails keeps what was said, or with nothing said yet,
-        // says nobody, which is a guess, so only a read that worked counts
-        // toward the watch being ready.
+        // A read that fails keeps what was said, or with nothing said yet
+        // and no file, says nobody, which is a guess, so only a read that
+        // worked counts toward the watch being ready.
         let read = match holders::holders(node, units, &pids) {
             Ok((names, now)) => {
                 pids = now;
@@ -652,19 +656,39 @@ fn to_say(listed: Option<BTreeSet<String>>, meant: Option<&BTreeSet<String>>) ->
     listed.or_else(|| meant.cloned()).unwrap_or_default()
 }
 
+/// Who a holders file already says, one a line, as a run before may have
+/// left it; none when there's no file that can be read.
+fn said_in(output: &Path) -> Option<BTreeSet<String>> {
+    // A file missing or unreadable says nothing a run before meant, so the
+    // watch begins meaning nothing, as it did before it read one.
+    fs::read_to_string(output)
+        .ok()
+        .map(|said| said.lines().map(str::to_owned).collect())
+}
+
 /// Says who streams from a USB camera while it's there, in a file of its
 /// own that goes with it.
 fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Failure> {
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
-    let output = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
+    let named = camera::camera_file(&options.sysfs, &node, &options.output).map_err(|error| {
         Failure::new(
             Exit::Failed,
             "loopback-holders can't name the camera's file",
         )
         .because(format!("{}: {error}", node.display()))
     })?;
+    let output = named.path;
+    // Quoted, as the record quotes a holder, since a USB camera names
+    // itself.
+    if let Some(claimed) = named.gave_way_to {
+        say(&format!(
+            "a loopback's file is called {:?}, so this camera's is {:?}",
+            claimed.to_string_lossy(),
+            output.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);
@@ -992,9 +1016,42 @@ mod tests {
     }
 
     #[test]
+    fn a_watch_begins_meaning_what_its_file_already_says() {
+        let root = scratch("said-in");
+        let output = root.join("Stand-in");
+        assert_eq!(
+            said_in(&output),
+            None,
+            "a file that isn't there said who holds the camera"
+        );
+        fs::write(&output, "").unwrap();
+        assert_eq!(
+            said_in(&output),
+            Some(BTreeSet::new()),
+            "an empty file didn't say nobody"
+        );
+        fs::write(&output, "firefox\nzoom\n").unwrap();
+        let kept = said_in(&output);
+        assert_eq!(
+            kept,
+            Some(named(&["firefox", "zoom"])),
+            "a file a run before left wasn't read as it said"
+        );
+        assert_eq!(
+            to_say(None, kept.as_ref()),
+            named(&["firefox", "zoom"]),
+            "a first read that failed said off a camera its file said held"
+        );
+    }
+
+    #[test]
     fn an_idle_usb_camera_names_nobody() {
         let camera = Camera::new("listed-idle", "MX Brio 705 for Business");
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "an idle USB camera was said held"
+        );
     }
 
     #[test]
@@ -1006,7 +1063,11 @@ mod tests {
             named(&["firefox"])
         );
         camera.alternate("2-1:1.1", 0);
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "a USB camera that stopped streaming was still said held"
+        );
     }
 
     #[test]
@@ -1132,14 +1193,20 @@ mod tests {
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
         assert_eq!(read.units, ["a.service", "b.scope"]);
-        assert!(!read.usb);
+        assert!(
+            !read.usb,
+            "a start without --usb was read as a USB camera's"
+        );
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
         assert_eq!(
             (read.source.as_path(), read.output.as_path()),
             (Path::new("/run/d"), Path::new("/run/o"))
         );
-        assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
+        assert!(
+            given("--usb /dev/video0 /run/camera-holders").unwrap().usb,
+            "--usb wasn't read as a USB camera's"
+        );
         let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
         assert!(
             forgetting.usb && forgetting.forget,

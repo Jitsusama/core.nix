@@ -194,6 +194,19 @@ impl Carrier {
             .collect();
         let answers = give(here.plan, runs, &lacking, &script(name, record, here.host));
         let mut carried = Vec::new();
+        let mut waiting = false;
+        for target in one_each(&targets) {
+            let unheld = !held
+                .iter()
+                .any(|(reached, _)| reached.machine == target.machine);
+            if unheld && self.waits(&target.machine, here.at) {
+                // A machine waiting out its minute after another stop is
+                // noted as lacking this one too, so Joel's row names it
+                // until it takes it.
+                held.push((target.clone(), Value::Null));
+                waiting = true;
+            }
+        }
         for (target, answer) in lacking.into_iter().zip(answers) {
             let failed = answer.err();
             self.took(&target.machine, here.at, failed.is_some());
@@ -214,7 +227,7 @@ impl Carrier {
                 failed,
             });
         }
-        if !carried.is_empty()
+        if (waiting || !carried.is_empty())
             && let Err(error) = keep_given(here.state, name, &held)
         {
             carried.push(unnoted(name, gift, &error));
@@ -428,6 +441,21 @@ fn given(state: &Path, name: &str) -> Vec<(Reached, Value)> {
         .flatten()
         .filter_map(|one| Some((Reached::from_kept(one)?, one.get("holds")?.clone())))
         .collect()
+}
+
+/// Each machine that couldn't take the stop kept here under `name` when
+/// last given it, by name, so Joel's row can say his agents there may not
+/// have stopped; none once each has taken it.
+#[must_use]
+pub fn unreached(state: &Path, name: &str) -> Vec<String> {
+    let mut machines: Vec<String> = given(state, name)
+        .into_iter()
+        .filter(|(_, holds)| holds.is_null())
+        .map(|(reached, _)| reached.machine)
+        .collect();
+    machines.sort();
+    machines.dedup();
+    machines
 }
 
 /// Notes what each machine was given of the stop `name`, written whole

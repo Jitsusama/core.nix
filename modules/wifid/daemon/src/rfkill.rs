@@ -88,7 +88,7 @@ mod tests {
         switches.take_in(event(0, WLAN, ADD, false, false));
         switches.take_in(event(1, WLAN, ADD, false, false));
 
-        assert!(switches.on());
+        assert!(switches.on(), "two radios switched on left Wi-Fi off");
     }
 
     #[test]
@@ -99,7 +99,7 @@ mod tests {
 
         switches.take_in(event(1, WLAN, CHANGE, true, false));
 
-        assert!(!switches.on());
+        assert!(!switches.on(), "one radio switched off left Wi-Fi on");
     }
 
     #[test]
@@ -108,7 +108,7 @@ mod tests {
 
         switches.take_in(event(0, WLAN, ADD, false, true));
 
-        assert!(!switches.on());
+        assert!(!switches.on(), "the hardware switch off left Wi-Fi on");
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
 
         switches.take_in(event(1, WLAN, DELETE, true, false));
 
-        assert!(switches.on());
+        assert!(switches.on(), "a radio taken away still held Wi-Fi off");
     }
 
     #[test]
@@ -129,7 +129,7 @@ mod tests {
 
         switches.take_in(event(1, 2, ADD, true, false));
 
-        assert!(switches.on());
+        assert!(switches.on(), "Bluetooth's switch turned Wi-Fi off");
     }
 
     #[test]

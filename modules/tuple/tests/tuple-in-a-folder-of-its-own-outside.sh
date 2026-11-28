@@ -5,24 +5,27 @@
 # person's daemon is, so they can't show it; here it's sourced by scripts
 # run as a person's shell would, with a stand-in tuple first on PATH that
 # writes down where its stop was sent. It must see only the folder's own
-# home, runtime and data folders, the runtime folder already made, and no
-# session bus or display of the person's. The folder must go once a script
-# ends, passing or failing, its status kept, and stay, saying how to stop
-# its daemon, only when the stop is cut off; and a runtime folder that
-# can't be made must end the script before any tuple runs.
+# home and every folder XDG names, the runtime folder already made, and no
+# session bus or display of the person's, the folder made under the TMPDIR
+# the script is given. The folder must go once a script ends, passing or
+# failing, its status kept, and stay, saying how to stop its daemon, only
+# when the stop is cut off, its status kept even when there's no stderr to
+# say it to; and a runtime folder that can't be made must end the script
+# before any tuple runs.
 set -euo pipefail
 
 library=$1
 here=$(mktemp -d)
 trap 'rm -rf "$here"' EXIT
-mkdir -p "$here/bin" "$here/home" "$here/run-user"
+mkdir -p "$here/bin" "$here/home" "$here/run-user" "$here/tmp"
 # The stand-in does what the file `does` says as it's stopped: nothing,
 # fail, or hang until it's cut off.
 {
   printf '#!%s\n' "$BASH"
   printf 'seen=%q does=%q\n' "$here/seen" "$here/does"
   cat << 'EOF'
-printf '%s\n' "$*" "$HOME" "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$PWD" > "$seen"
+printf '%s\n' "$*" "$HOME" "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" \
+  "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$PWD" > "$seen"
 if [[ -d $XDG_RUNTIME_DIR ]]; then echo made >> "$seen"; fi
 echo "desktop:${DBUS_SESSION_BUS_ADDRESS-}${DISPLAY-}${WAYLAND_DISPLAY-}" >> "$seen"
 case $(< "$does") in
@@ -68,19 +71,26 @@ EOF
 chmod +x "$here/no-runtime/mkdir"
 
 # Sources the library as a script would, from the person's home with their
-# runtime folder, its stand-in stop doing what's given, the script ending
-# with the status given, and any folder given third first on PATH; it
-# writes down the folder it was moved into, once it's moved.
+# own folders, its stand-in stop doing what's given, the script ending with
+# the status given, any folder given third first on PATH, and its stderr
+# closed when the fourth says so; it writes down the folder it was moved
+# into, once it's moved.
 run() {
-  local does=$1 ends=$2 first=${3:+$3:}
+  local does=$1 ends=$2 first=${3:+$3:} stderr=${4:-}
   echo "$does" > "$here/does"
   rm -f "$here/seen" "$here/folder"
+  local -a sourcing=(env -i PATH="$first$here/bin:$PATH" TMPDIR="$here/tmp"
+    HOME="$here/home" XDG_RUNTIME_DIR="$here/run-user"
+    XDG_DATA_HOME="$here/home/.local/share" XDG_CONFIG_HOME="$here/home/.config"
+    XDG_CACHE_HOME="$here/home/.cache" XDG_STATE_HOME="$here/home/.local/state"
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/nowhere DISPLAY=:9 WAYLAND_DISPLAY=wayland-9
+    "$BASH" "$here/script" "$library" "$here/folder" "$ends")
   status=0
-  (cd "$here/home" && env -i PATH="$first$here/bin:$PATH" HOME="$here/home" \
-    XDG_RUNTIME_DIR="$here/run-user" XDG_DATA_HOME="$here/home/.local/share" \
-    DBUS_SESSION_BUS_ADDRESS=unix:path=/nowhere DISPLAY=:9 WAYLAND_DISPLAY=wayland-9 \
-    "$BASH" "$here/script" "$library" "$here/folder" "$ends") > "$here/said" 2>&1 ||
-    status=$?
+  if [[ $stderr == closed ]]; then
+    (cd "$here/home" && "${sourcing[@]}") > "$here/said" 2>&- || status=$?
+  else
+    (cd "$here/home" && "${sourcing[@]}") > "$here/said" 2>&1 || status=$?
+  fi
   folder=
   if [[ -e $here/folder ]]; then folder=$(< "$here/folder"); fi
 }
@@ -90,9 +100,14 @@ run() {
 stopped_within() {
   local what=$1 ended=$2
   local -a seen
+  if [[ ! -e $here/seen ]]; then
+    echo "a script that $what never sent tuple its stop; it said \"$(< "$here/said")\"" >&2
+    exit 1
+  fi
   mapfile -t seen < "$here/seen"
-  local wanted=("stop" "$folder" "$folder/run" "$folder/data" "$folder" "made" "desktop:")
-  if [[ ${seen[*]} != "${wanted[*]}" || $folder == "$here/home"* ]]; then
+  local wanted=("stop" "$folder" "$folder/run" "$folder/data" "$folder/.config"
+    "$folder/.cache" "$folder/.local/state" "$folder" "made" "desktop:")
+  if [[ ${seen[*]} != "${wanted[*]}" || $folder != "$here/tmp/"* ]]; then
     echo "a script that $what sent tuple ${seen[*]}, not ${wanted[*]}" >&2
     exit 1
   fi
@@ -125,6 +140,11 @@ fi
 # A runtime folder that can't be made ends the script before any tuple
 # runs, the stop among them, which might otherwise fall back to another.
 run "" 0 "$here/no-runtime"
+if [[ ! -e $here/asked ]]; then
+  echo "a script whose runtime folder couldn't be made never asked for one;" \
+    "it ended $status, saying \"$(< "$here/said")\"" >&2
+  exit 1
+fi
 asked=$(< "$here/asked")
 if [[ $status -ne 1 || -e $here/seen || -e ${asked%/run} ]]; then
   sent="not sent" kept=removed
@@ -140,6 +160,15 @@ stopped_within "passed with a stop that hung" 0
 if [[ ! -d $folder || $(< "$here/said") != *"HOME=$(printf %q "$folder") "* ]]; then
   echo "a script whose stop hung didn't keep $folder and say how to stop it;" \
     "it said \"$(< "$here/said")\"" >&2
+  exit 1
+fi
+rm -rf "$folder"
+# Saying so to a closed stderr fails, which mustn't end a passing script
+# as failed.
+run hang 0 "" closed
+stopped_within "passed with a stop that hung and no stderr" 0
+if [[ ! -d $folder ]]; then
+  echo "a script whose stop hung with no stderr didn't keep $folder" >&2
   exit 1
 fi
 rm -rf "$folder"

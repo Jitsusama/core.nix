@@ -652,17 +652,21 @@ mod tests {
         );
         assert!(
             vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#),
-            "a CAKE at the root with handle 2: is the shaper's"
+            "a CAKE at the root with handle 2: wasn't taken as ours though it's the shaper's"
         );
         assert!(
             !vpn_ours(
                 r#"[{"kind":"mq","handle":"0:","root":true},{"kind":"fq_codel","parent":":1"}]"#
             ),
-            "the kernel's own mq at the root isn't the shaper's"
+            "the kernel's own mq at the root was taken as ours though it has no CAKE"
         );
         assert!(
             !vpn_ours(r#"[{"kind":"cake","handle":"2:","parent":"1:2"}]"#),
-            "a CAKE under 1:2 rather than at the root isn't a VPN's"
+            "a CAKE under 1:2 was taken as a VPN's though a VPN's sits at the root"
+        );
+        assert!(
+            !vpn_ours(r#"[{"kind":"cake","handle":"8001:","root":true}]"#),
+            "a root CAKE of handle 8001: was taken as ours though the shaper's has handle 2:"
         );
     }
 
@@ -670,11 +674,11 @@ mod tests {
     fn the_kernels_own_queue_isnt_ours() {
         assert!(
             !ours(r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#),
-            "the kernel's fq_codel at the root isn't the shaper's"
+            "the kernel's fq_codel at the root was taken as ours though it has no HTB"
         );
         assert!(
             !ours(r#"[{"kind":"noqueue","handle":"0:","root":true}]"#),
-            "the kernel's noqueue at the root isn't the shaper's"
+            "the kernel's noqueue at the root was taken as ours though it has no HTB"
         );
     }
 
@@ -686,11 +690,22 @@ mod tests {
                       {"kind":"ingress","handle":"ffff:","parent":"ffff:fff1"}]"#;
         assert!(
             ours(json),
-            "an HTB at the root with CAKE under 1:2 is the shaper's"
+            "an HTB at the root with CAKE under 1:2 wasn't taken as ours though it's the shaper's"
         );
         assert!(
             turned(json),
-            "an ingress queue turns the link's traffic to the IFB"
+            "a link with an ingress queue wasn't taken as turned to the IFB"
+        );
+    }
+
+    #[test]
+    fn an_htb_without_cake_beneath_isnt_ours() {
+        let json = r#"[{"kind":"htb","handle":"1:","root":true},
+                      {"kind":"fq_codel","handle":"10:","parent":"1:1"},
+                      {"kind":"fq_codel","handle":"20:","parent":"1:2"}]"#;
+        assert!(
+            !ours(json),
+            "an HTB at the root was taken as ours though no CAKE sits under 1:2"
         );
     }
 

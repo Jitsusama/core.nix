@@ -120,8 +120,9 @@ let
   # Applications.qml holds it, for the reader's, mpv's and Inkscape's
   # checks. imports.nix sees only a file's import lines, so a type taken
   # from its own folder or through `import qs` is named here by hand, as
-  # Applications.qml takes Provider and ReadyRows, and a program's own file
-  # takes Listed and Words. What each imports comes with it, guarded.
+  # Applications.qml takes Provider, ReadyRows and its three parts beside it
+  # (ApplicationsPlaying, ApplicationsRecents and ApplicationsWindows), and
+  # a program's own file takes Listed and Words. What each imports comes with it, guarded.
   programRoots = [
     "Copied.qml"
     "Daemon.qml"
@@ -129,6 +130,9 @@ let
     "Options.qml"
     "Words.qml"
     "launcher/Applications.qml"
+    "launcher/ApplicationsPlaying.qml"
+    "launcher/ApplicationsRecents.qml"
+    "launcher/ApplicationsWindows.qml"
     "launcher/Listed.qml"
     "launcher/Provider.qml"
     "launcher/ReadyRows.qml"

@@ -53,13 +53,15 @@ const YES = ["Return", "Enter"];
 // the one key. An ask put at no time or with no guard can never be timed,
 // so its Return is early for as long as it stands, and every other key
 // still lets it go: a slip there costs the yes, never an unasked one, and
-// never the way out. Each is asked whole, as a comparison with a missing
-// one comes out false either way round.
+// never the way out. A key timed before its ask was put, as a clock gone
+// back or another clock would give, is timed no better, so it's held the
+// same way. Each is asked whole, as a comparison with a missing one comes
+// out false either way round.
 function answer(ask, key, now, guard) {
     if (key === "" || !Number.isFinite(now)) {
         return "early";
     }
-    if (![ask.at, guard].every(Number.isFinite)) {
+    if (![ask.at, guard].every(Number.isFinite) || now < ask.at) {
         return YES.includes(key) ? "early" : "no";
     }
     if (now - ask.at < guard) {
@@ -77,11 +79,44 @@ function untimed(ask, guard) {
     return Number.isFinite(guard) ? null : "it has no guard";
 }
 
+// Why the ask let `key` by come `now`, as the launcher journals it, or
+// null where it needn't say: for a key that came with no time, an ask
+// that can't be timed (untimed), or a key timed before its ask, as a
+// clock gone back or another clock would give. Each holds the Return for
+// as long as it lasts, while the foot says the ask is ready, so each is
+// said whether or not reports are on. A key early in the guard as it
+// should be, a modifier alone, or a key that answers says nothing here.
+// Only a yes key is named: with no time, every key is early, and naming
+// each would put what Joel typed in the journal.
+function letBy(ask, key, now, guard) {
+    if (key === "" || answer(ask, key, now, guard) !== "early") {
+        return null;
+    }
+    if (!Number.isFinite(now)) {
+        return `${YES.includes(key) ? key : "a key"} came to the ask with no time, so it `
+            + "was let by";
+    }
+    const cannot = untimed(ask, guard);
+    if (cannot !== null) {
+        return `the ask can't be timed, as ${cannot}, so ${key} was let by`;
+    }
+    return now < ask.at ? `${key} was timed before its ask, so it was let by` : null;
+}
+
 // Whether an ask takes a key, by what `answer` said of it, or "" where no
-// ask stands: a yes or a no, never an early key. The launcher's field and
-// its test both ask this, so they can't read an answer otherwise.
-function takes(said) {
-    return said === "yes" || said === "no";
+// ask stands: a yes or a no, never an early key. Launcher.qml's answerAsk
+// and its field's answerTaken both ask this of askSaid, so they can't read
+// an answer otherwise.
+function takes(answered) {
+    return answered === "yes" || answered === "no";
+}
+
+// What the ask standing (`ask`, or null with none) makes of `key` come
+// `now`: its answer, or "" with none standing. The launcher answers by it.
+// A test with no launcher to ask times a key by takes of this, the shape
+// Launcher.qml's askSaid gives its field's answerTaken.
+function said(ask, key, now, guard) {
+    return ask === null ? "" : answer(ask, key, now, guard);
 }
 
 // What d asks over the rows it would end, each { ends, name, kind }: the
@@ -184,9 +219,9 @@ function plural(kind, words) {
 }
 
 // Parts said as a list: commas between, and before the last.
-function listed(said, words) {
-    if (said.length < 2) {
-        return said.join("");
+function listed(items, words) {
+    if (items.length < 2) {
+        return items.join("");
     }
-    return `${said.slice(0, -1).join(", ")} ${words.and ?? ""} ${said[said.length - 1]}`;
+    return `${items.slice(0, -1).join(", ")} ${words.and ?? ""} ${items[items.length - 1]}`;
 }
