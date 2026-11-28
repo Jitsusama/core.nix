@@ -1678,20 +1678,6 @@ fn follow_vpns(
             },
         },
     );
-    // What the tins ahead of bulk carried: Joel's, and agents' model calls,
-    // which the split counts only up to the floor's most (model calls ahead
-    // round 6's F46) and the floor never under what the relay sent.
-    let ahead = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
-    let relay = relay.map_or(0.0, float);
-    let joel = lanes::joel_inside(ahead, relay);
-    let base = primary.map(|s| {
-        let vpn = s.share_lanes((joel, agents), t);
-        // Held under its tunnel's pace while it waits inside it, so the
-        // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = lanes::vpn_held(vpn, s.vpn_share, ahead, relay);
-        s.vpn_least = lanes::vpn_least(vpn, ahead, relay);
-        (rate::whole(held), s.applied.1, s.download.straight())
-    });
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
         cost::COUNTER
@@ -1703,6 +1689,23 @@ fn follow_vpns(
         (Some(carried), Some(counted)) => spent.sample(carried, counted, t),
         _ => 0,
     };
+    // What the tins ahead of bulk carried: Joel's, and agents' model calls,
+    // which the split counts only up to the floor's most (model calls ahead
+    // round 6's F46). The floor keeps the relay's part, never over what the
+    // CAKE was given last (model calls ahead round 3's F2).
+    let ahead = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
+    let relay = relay.map_or(0.0, float);
+    let joel = lanes::joel_inside(ahead, relay);
+    let given = applied.values().map(|v| float(v.up)).reduce(f64::max);
+    let (kept, cost) = (lanes::relay_kept(relay, given), float(extra));
+    let base = primary.map(|s| {
+        let vpn = s.share_lanes((joel, agents), t);
+        // Held under its tunnel's pace while it waits inside it, so the
+        // queue stands in this CAKE; agents' direct lane borrows the rest.
+        let held = lanes::vpn_held(vpn, s.vpn_share, ahead, kept, cost);
+        s.vpn_least = lanes::vpn_least(vpn, ahead, kept, cost);
+        (rate::whole(held), s.applied.1, s.download.straight())
+    });
     for name in names {
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
@@ -1712,7 +1715,7 @@ fn follow_vpns(
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = up.saturating_sub(extra).max(FLOOR.up);
+        let up = up.max(FLOOR.up);
         let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.

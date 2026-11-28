@@ -35,11 +35,6 @@ use crate::rate::{float, whole};
 /// The counter shaper.nft keeps of what the connection carries for VPNs.
 pub const COUNTER: &str = "vpnout";
 
-/// How much of the gap a second closes when what the VPN costs past its
-/// count falls: it gives the rate back over about ten seconds, since a
-/// download starting again would cost it from its second second.
-const FALL: f64 = 0.9;
-
 /// The seconds over which what the VPN costs past its count is read: long
 /// enough that a burst WARP sends and the lull after it fall in the same
 /// read, short enough that a download's cost is given up within a few
@@ -56,7 +51,7 @@ pub struct Cost {
     seen: VecDeque<(u64, u64, f64)>,
     /// What they carried past it between the last two reads, in kbit/s.
     last: Option<f64>,
-    /// What they carry past it, smoothed.
+    /// What they carry past it, as last read.
     extra: f64,
 }
 
@@ -81,13 +76,13 @@ impl Cost {
             let kbit = |bytes: u64| float(bytes) * 8.0 / 1_000.0 / (t - at);
             (kbit(carried - was_carried) - kbit(counted - was_counted)).max(0.0)
         };
-        let previous = self.seen.back().map(|read| (past(read), read.2));
+        let previous = self.seen.back().map(past);
         self.seen.push_back((carried, counted, t));
         let gone = |&(_, _, at): &(u64, u64, f64)| at <= t - WINDOW_S;
         while self.seen.get(1).is_some_and(gone) {
             self.seen.pop_front();
         }
-        let Some((now, at)) = previous else {
+        let Some(now) = previous else {
             self.last = None;
             return whole(self.extra);
         };
@@ -102,11 +97,7 @@ impl Cost {
         let Some(read) = held.into_iter().chain(windowed).reduce(f64::max) else {
             return whole(self.extra);
         };
-        self.extra = if read >= self.extra {
-            read
-        } else {
-            read + (self.extra - read) * FALL.powf(t - at)
-        };
+        self.extra = read;
         whole(self.extra)
     }
 }
@@ -206,24 +197,35 @@ mod tests {
     }
 
     #[test]
-    fn a_cost_two_seconds_show_is_given_up_at_once_and_one_that_falls_slowly() {
+    fn a_cost_two_seconds_show_is_given_up_at_once_and_goes_as_the_window_shows() {
         let mut cost = Cost::default();
         cost.sample(0, 0, 0.0);
         cost.sample(bytes(12_000), bytes(10_000), 1.0);
         assert_eq!(cost.sample(bytes(24_000), bytes(20_000), 2.0), 2000);
         // The download ends: the connection carries what was counted.
-        let after = cost.sample(bytes(34_000), bytes(30_000), 3.0);
-        assert_eq!(after, 1800, "a tenth of the gap closes in a second");
-        let mut last = after;
+        assert_eq!(
+            cost.sample(bytes(34_000), bytes(30_000), 3.0),
+            0,
+            "one second without it, and no full window, keeps none of it"
+        );
+        let mut costs = Vec::new();
         for second in 4..30 {
             let n = u64::try_from(second).expect("a small count");
-            last = cost.sample(
+            costs.push(cost.sample(
                 bytes(4000 + 10_000 * n),
                 bytes(10_000 * n),
                 f64::from(second),
-            );
+            ));
         }
-        assert!(last < 200, "given back within half a minute: {last}");
+        assert!(
+            costs.iter().all(|&kbit| kbit <= 700),
+            "the window keeps no more than its share of the download: {costs:?}"
+        );
+        assert_eq!(
+            costs.last(),
+            Some(&0),
+            "given back within half a minute: {costs:?}"
+        );
         // A download starting again costs 3 Mbit/s past the count.
         let mut costs = Vec::new();
         for second in 30..32 {
@@ -238,6 +240,29 @@ mod tests {
             costs.last(),
             Some(&3000),
             "a download starting again costs it whole from its second second: {costs:?}"
+        );
+    }
+
+    // A burst that spans two reads is taken up for the second of them, and
+    // given back at the next read the window doesn't show it in.
+    #[test]
+    fn a_burst_two_reads_show_costs_one_step() {
+        let mut cost = Cost::default();
+        cost.sample(0, 0, 0.0);
+        let (mut carried, mut counted) = (0, 0);
+        let mut costs = Vec::new();
+        let sends = [
+            4000, 7000, 7000, 4000, 4000, 4000, 4000, 4000, 4000, 4000, 4000,
+        ];
+        for (second, kbit) in (1..12).zip(sends) {
+            carried += bytes(kbit);
+            counted += bytes(4000);
+            costs.push(cost.sample(carried, counted, f64::from(second)));
+        }
+        assert_eq!(costs[2], 3000, "two reads of it are taken up: {costs:?}");
+        assert!(
+            costs[3..].iter().all(|&kbit| kbit <= 1000),
+            "the burst was kept past its step: {costs:?}"
         );
     }
 

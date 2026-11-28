@@ -6,11 +6,11 @@
 //! first. The link's own rate is left alone, so agents' direct lane
 //! borrows what the VPN no longer takes. It is never held under what
 //! goes ahead of bulk inside it, with Joel's headroom past that, up to a
-//! most, nor under what the model relay sends there (src/lanes.rs's
-//! `vpn_held`): Joel's own and agents' model calls, so only bulk is taken
-//! back. A hold that misread the
-//! air's round trip as the tunnel's would otherwise starve model calls,
-//! as on 27 November. At that floor a cut lowers nothing, so a wait
+//! most, nor under what the model relay sends there, up to a most of its
+//! own (src/lanes.rs's `vpn_held`): Joel's own and agents' model calls, so
+//! only bulk is taken back. A hold that misread the air's round trip as
+//! the tunnel's would otherwise starve model calls, as on 27 November.
+//! At that floor a cut lowers nothing, so a wait
 //! standing there is neither cut for nor let go as a far path's: the hold
 //! keeps to the floor until what goes ahead of bulk lowers it.
 //!
