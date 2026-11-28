@@ -467,7 +467,7 @@ fn hand_over(control: &str, args: &[String]) -> Result<(), Failure> {
     }
 }
 
-/// Tells systemd `state` as sd_notify does, when it was started to listen
+/// Tells systemd `state` as `sd_notify` does, when it was started to listen
 /// for that, or says why it couldn't.
 fn notify(state: &str) -> Result<(), String> {
     let Some(path) = std::env::var_os("NOTIFY_SOCKET") else {
