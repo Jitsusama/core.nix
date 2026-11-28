@@ -880,7 +880,7 @@ mod tests {
         on_the_desk(&mut learned, (9, now), &carried(Some(35), 0.0), 60);
 
         assert_eq!(
-            just_left_p95(&learned, now + Duration::from_secs(20 * 60)),
+            just_left_p95(&learned, now + Duration::from_mins(20)),
             Some(35),
             "three slow minutes of hour 10 from another day, read back from the disk, \
              outweighed sixty of hour 9 at 35 ms measured just now"
@@ -896,7 +896,7 @@ mod tests {
         on_the_desk(&mut learned, (10, now), &carried(Some(35), 0.0), 2);
 
         assert_eq!(
-            just_left_p95(&learned, now + Duration::from_secs(5 * 60)),
+            just_left_p95(&learned, now + Duration::from_mins(5)),
             Some(250),
             "two quick minutes this hour stood for a point that carried 250 ms all of \
              the hour just gone"
@@ -912,7 +912,7 @@ mod tests {
         on_the_desk(&mut learned, (10, now), &carried(Some(35), 0.5), 2);
 
         let left = learned
-            .just_left(DESK, 10, -44, now + Duration::from_secs(5 * 60))
+            .just_left(DESK, 10, -44, now + Duration::from_mins(5))
             .expect("left five minutes before");
         assert!(
             (left.lost - 6.0).abs() < 0.01,
