@@ -330,6 +330,12 @@ fn what_is_owed_is_let_go_when_the_fair_count_goes_back() {
     );
 }
 
+/// A stand-in `sched` file for thread `pid` of `comm`: the header, the
+/// kernel's rule of dashes under it, then `stats`.
+pub fn sched_of(comm: &str, pid: &str, stats: &str) -> String {
+    format!("{comm} ({pid}, #threads: 9)\n{}\n{stats}", "-".repeat(67))
+}
+
 /// Writes `text` to a stand-in kernel file, making its folders.
 pub fn write(path: &Path, text: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
