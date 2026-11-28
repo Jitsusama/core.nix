@@ -1458,8 +1458,8 @@ fn stored_size(listing: &mut Command) -> u64 {
 /// many copies of derivations and held outputs at once: on Linux a copy
 /// ends with its run ([`dies_with_run`]), while on a Mac one whose run was
 /// killed alone goes on outside the count. Sends that take no turn, a
-/// run's inputs ([`inputs_up`]), `--copy` paths ([`paths_up`]) and every
-/// copy of a run sent first, aren't counted. With none free it keeps its
+/// run's inputs ([`inputs_up`]) and `--copy` paths ([`paths_up`]), aren't
+/// counted; a run sent first takes one too ([`uplink_turn`]). With none free it keeps its
 /// own until one is, saying so once and naming who holds them; with some
 /// of their files unopenable it waits on the rest, and with none it keeps
 /// it to the end, saying why each time. `about` says which copy, for the lines it `say`s.
@@ -1742,8 +1742,15 @@ const UPLOADS: u32 = 3;
 /// file is never read, only kept open, since its lock is the turn.
 struct Turn {
     _held: fs::File,
+    /// The net's own turn, held beside it by a run sent first.
+    _net: Option<fs::File>,
     folder: PathBuf,
 }
+
+/// The file of the net's one turn at sending, in the uplink's turns
+/// folder: a run sent first holds it as well as one of the [`UPLOADS`]
+/// shared turns, so the net's copies go up one at a time.
+const NET_TURN: &str = "uplink-net";
 
 /// The seconds the variable `name` gives, if it's set to a whole number
 /// of them; one set to anything else is said to be ignored, once a run,
@@ -1782,20 +1789,66 @@ fn seconds_in(set: &str) -> Option<u64> {
 }
 
 /// A turn at sending up from this machine, for the copy `about` names.
-/// A run sent first takes none, as the net's go ahead of sessions'. When
-/// none can be had, the copy goes on without one.
+/// When none can be had, the copy goes on without one.
+///
+/// A run sent first, the net's, takes one too, once it holds the net's own
+/// turn ([`net_turn`]). It once took none, so it went ahead of sessions'
+/// copies, but the watch sends a dozen runs at once: on 27 November its
+/// copies went up beside every turn's, the uplink's resets stopped only
+/// once the watch was, and it stayed stopped until they could be paced. Holding the
+/// net's turn first keeps the net to one shared turn of the three.
 fn uplink_turn(rank: Rank, about: &str) -> Option<Turn> {
-    if rank == Rank::First {
-        return None;
-    }
     let folder = turns_folder()?;
-    let held = turn_in(&folder, about, TURN_SAID_EVERY, &mut |line| {
-        eprintln!("{line}");
-    })?;
+    let mut say = |line: String| eprintln!("{line}");
+    let net = if rank == Rank::First {
+        net_turn(&folder, about, &mut say)
+    } else {
+        None
+    };
+    let held = turn_in(&folder, about, TURN_SAID_EVERY, &mut say)?;
     Some(Turn {
         _held: held,
+        _net: net,
         folder,
     })
+}
+
+/// The net's one turn in `folder` ([`NET_TURN`]), for the copy `about`
+/// names, waited for while another of the net's copies holds it, which is
+/// said once. None when its file can't be opened or locked, also said, so
+/// the copy waits on the shared turns alone rather than for good.
+fn net_turn(folder: &Path, about: &str, say: &mut dyn FnMut(String)) -> Option<fs::File> {
+    let unheld = |why: &dyn std::fmt::Display| {
+        format!(
+            "nix-offload: the net's turn at sending can't be had ({why}), so this copy waits \
+             only on the shared turns"
+        )
+    };
+    let turn = match open_turn(&folder.join(NET_TURN), true) {
+        Ok(turn) => turn,
+        Err(why) => {
+            say(unheld(&why));
+            return None;
+        }
+    };
+    let locked = match turn.try_lock() {
+        Ok(()) => Ok(()),
+        Err(fs::TryLockError::WouldBlock) => {
+            say(
+                "nix-offload: another of the net's copies goes up, so this one waits for the \
+                 net's turn to send"
+                    .to_owned(),
+            );
+            turn.lock()
+        }
+        Err(fs::TryLockError::Error(error)) => Err(error),
+    };
+    if let Err(error) = locked {
+        say(unheld(&error));
+        return None;
+    }
+    holding(&turn, about);
+    Some(turn)
 }
 
 /// The folder the uplink's turns are kept in: the account's runtime
@@ -6663,6 +6716,7 @@ mod tests {
         turn.try_lock().expect("the turn, free");
         let turn = Turn {
             _held: turn,
+            _net: None,
             folder: folder.to_owned(),
         };
         (turn, fs::File::open(&at).expect("the turn, again"))
@@ -7215,6 +7269,41 @@ mod tests {
             "a waiter with no usable turn didn't say it takes none: {said:?}"
         );
         assert!(!elsewhere.exists(), "a turn's link was followed");
+    }
+
+    // The net's copies go up one at a time: one waits on the net's turn
+    // while another holds it, saying so once, and takes it once it's free.
+    #[test]
+    fn the_nets_copies_wait_on_the_nets_one_turn() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let at = folder.path().to_owned();
+        let held = net_turn(&at, "to b1", &mut |_| {}).expect("the net's turn, free");
+        let waiting = std::thread::spawn(move || {
+            let mut said = Vec::new();
+            let had = net_turn(&at, "to b2", &mut |line| said.push(line));
+            (had.is_some(), said)
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            !waiting.is_finished(),
+            "a second of the net's copies didn't wait on the first"
+        );
+        drop(held);
+        let (had, said) = waiting.join().expect("the waiter");
+        assert!(
+            had && said.len() == 1 && said[0].contains("waits for the net's turn"),
+            "the wait on the net's turn wasn't said once: {said:?}"
+        );
+        let elsewhere = folder.path().join("elsewhere");
+        let linked = tempfile::tempdir().expect("a folder");
+        std::os::unix::fs::symlink(&elsewhere, linked.path().join(NET_TURN)).expect("a link");
+        let mut said = Vec::new();
+        let had = net_turn(linked.path(), "to b", &mut |line| said.push(line));
+        assert!(
+            had.is_none() && said.len() == 1 && said[0].contains("only on the shared turns"),
+            "a net's turn that can't be had didn't say it waits on the shared alone: {said:?}"
+        );
+        assert!(!elsewhere.exists(), "the net's turn's link was followed");
     }
 
     // A waiter says again, every while it's given and no oftener, how
