@@ -243,6 +243,7 @@
     "launcher/Ago.js"
     "launcher/ForYou.js"
     "launcher/ForYouCells.js"
+    "launcher/ForYouDrawers.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Keeping.js"
