@@ -213,7 +213,15 @@ mod tests {
         assert!(!closed(entry), "an entry with no closedAt should be open");
         assert!(
             closed(r#"{"openedAt":"2026-10-07T05:14:13Z","closedAt":"2026-10-10T18:39:44Z"}"#),
-            "an entry with a closedAt should be closed"
+            "an entry closed after it opened should be closed"
+        );
+        assert!(
+            !closed(r#"{"openedAt":"2026-10-11T08:00:00Z","closedAt":"2026-10-10T18:39:44Z"}"#),
+            "an entry reopened after it closed should be open"
+        );
+        assert!(
+            closed(r#"{"closedAt":"2026-10-10T18:39:44Z"}"#),
+            "an entry with only a closedAt should be closed"
         );
     }
 
