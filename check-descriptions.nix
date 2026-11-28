@@ -5305,6 +5305,10 @@
     so an opening right after a closing stays open as the closing's late focus arrives; held, a
     click on a window closes it, and a notice held over it leaves it open
   '';
+  the-launcher-collects-while-idle-in-an-opening-on-niri = ''
+    an open launcher whose drawers are walked collects once nobody's pressed a key for 700 ms
+    and its chunks have grown 8 MB, saying so, and the key after it gives the collector no share
+  '';
   the-launcher-holds-a-key-for-its-answers = ''
     a key whose search awaits a daemon's answer is held for it, a key typed over it drops its
     search, and Return or anything else that reads what was found searches it at once; the next
@@ -5400,7 +5404,8 @@
     and a chord into a kept place draws the rows it kept only once niri has said nothing casts
     the screen, unless its source, a mark or what it's led to lists them afresh, and a share
     begun before a kept opening is filled in, or before home is found after it, is judged to
-    do it at once
+    do it at once; and an open launcher collects only once nobody's been at it 700 ms and its
+    chunks have grown 8 MB since the room was left, saying how long after the last input
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed

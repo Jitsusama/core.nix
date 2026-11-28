@@ -1,6 +1,7 @@
 // What KeyTimes says a key was pressed at, for a press the compositor
 // timed and for a repeat Qt made of a held key, which carries the first
-// press's time (keytimes.cpp). Each event is sent as Qt delivers one, so
+// press's time (keytimes.cpp), and that a key, a button and the wheel are
+// each kept as the last input heard. Each event is sent as Qt delivers one, so
 // it passes the application's filters, and read while it's handled, as
 // the launcher reads it. And how long the thread ran and waited for a
 // CPU, read while it spins alone and then beside another thread held to
@@ -14,6 +15,8 @@
 #include <QEventLoop>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QWheelEvent>
 #include <QTimer>
 #include <atomic>
 #include <cstdint>
@@ -58,6 +61,43 @@ bool expect(const char *what, bool holds, double ago) {
     if (!holds)
         std::fprintf(stderr, "FAIL %s: read as pressed %.0f ms ago\n", what, ago);
     return holds;
+}
+
+// Whether an event sent as Qt delivers one is kept as the last input heard:
+// read after it's sent, it's no earlier than the clock just before and no
+// later than the clock just after, whatever the event said its time was.
+bool heardAsSent(const KeyTimes &times, QObject &target, QEvent &event, const char *what) {
+    const double before = monotonicNow();
+    QCoreApplication::sendEvent(&target, &event);
+    const double heard = times.lastInputHeard();
+    const double after = monotonicNow();
+    const bool holds = heard >= before && heard <= after;
+    if (!holds)
+        std::fprintf(stderr, "FAIL %s is kept as the last input heard: heard at %.1f, sent"
+                     " between %.1f and %.1f\n", what, heard, before, after);
+    return holds;
+}
+
+// A key, a button's press and the wheel are each the last input heard as
+// it comes, a key a program typed with no time among them, and a key's
+// release isn't one.
+bool inputsHeard(const KeyTimes &times, QObject &target) {
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
+    const bool keyed = heardAsSent(times, target, key, "a key typed with no time");
+    const QPointF at(4, 4);
+    QMouseEvent press(QEvent::MouseButtonPress, at, at, Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    const bool pressed = heardAsSent(times, target, press, "a button's press");
+    QWheelEvent wheel(at, at, QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    const bool wheeled = heardAsSent(times, target, wheel, "the wheel");
+    const double heard = times.lastInputHeard();
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_J, Qt::NoModifier, QStringLiteral("j"));
+    QCoreApplication::sendEvent(&target, &release);
+    const bool released = times.lastInputHeard() == heard;
+    if (!released)
+        std::fprintf(stderr, "FAIL a key's release isn't kept as the last input heard\n");
+    return keyed && pressed && wheeled && released;
 }
 
 // How long the thread spins, by the monotonic clock, for each reading.
@@ -533,9 +573,10 @@ int main(int argc, char **argv) {
     const bool fromRepeat =
         expect("a held key's repeat is timed from when Qt made it, not its first press",
                repeated >= 0 && repeated < SLACK_MS, repeated);
+    const bool heard = inputsHeard(times, target);
     // Before the thread's clocks, which hold it to one CPU.
     const bool walled = wallTimed();
     const bool timed = threadTimed(times);
     const bool faults = faultsCounted(times);
-    return fromPress && fromRepeat && timed && walled && faults ? 0 : 1;
+    return fromPress && fromRepeat && heard && timed && walled && faults ? 0 : 1;
 }

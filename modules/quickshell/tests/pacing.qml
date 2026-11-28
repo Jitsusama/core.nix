@@ -20,7 +20,9 @@
 // things whose stamp moved (launcher/Spots.js). y's flash starts its
 // time a turn after the frame that draws it, only for the newest yank
 // (launcher/Flash.js). An opening the collector stalled says where the
-// heap stood at the ask its felt record began with (launcher/Collector.js).
+// heap stood at the ask its felt record began with, and an open launcher
+// collects once nobody's been at it a while and its chunks have grown
+// (launcher/Collector.js).
 // Long because its cases
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
@@ -222,6 +224,7 @@ QtObject {
         check(failures, "once usable, a later stall changes nothing",
             tick(freed, [5000]).usable, 1500);
         collector(failures, pace);
+        idling(failures);
         threaded(failures, pace);
         stalled(failures);
         framed(failures);
@@ -318,6 +321,33 @@ QtObject {
             + Collector.limitSaid(null), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, { collected: 5 }), 16, pace).collected, 5);
+    }
+
+    // An open launcher collects once nobody's pressed, clicked or scrolled
+    // for 700 ms and its chunks have grown 8 MB since the room was left, so
+    // a collection lands between keys rather than inside one: Qt's own came
+    // inside keys, 107 ms of them over 20 openings walking drawers, and
+    // none did once these came (2026-11-28).
+    function idling(failures) {
+        check(failures, "a launcher quiet 700 ms with chunks grown 8 MB collects",
+            Collector.idleCollectionDue(5700, 5000, 48, 40), true);
+        check(failures, "one heard from in the last 700 ms waits, however far they've grown",
+            Collector.idleCollectionDue(5699, 5000, 90, 40), false);
+        check(failures, "one quiet long since waits until its chunks have grown 8 MB",
+            Collector.idleCollectionDue(60000, 5000, 47.9, 40), false);
+        check(failures, "and chunks gone down since the room was left never collect",
+            Collector.idleCollectionDue(60000, 5000, 30, 40), false);
+        // The chord that opens it reaches niri, not the shell, so the last
+        // key the shell heard may be minutes before the first typed after it.
+        check(failures, "one shown in the last 700 ms waits, however long since the last key",
+            Collector.idleCollectionDue(60699, Collector.idleQuietFrom(5000, 60000), 90, 40),
+            false);
+        check(failures, "as one heard from since it was shown waits from what it heard",
+            Collector.idleQuietFrom(61000, 60000), 61000);
+        check(failures, "a collection while nobody's at it is said with when it came",
+            Collector.idleCollectedSaid(30.6, 66.4, 43.5, 776.2),
+            "launcher: collected idle in an opening in 31 ms, chunks 66 MB before it and 44"
+            + " after, 776 ms after the last input or its showing");
     }
 
     // What the shell's thread did in an opening's longest stall, from its

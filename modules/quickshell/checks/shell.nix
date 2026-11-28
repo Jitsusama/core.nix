@@ -702,6 +702,14 @@
     given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
   };
 
+  # An open launcher collects once nobody's been at it 700 ms and its chunks
+  # have grown 8 MB, so the key after it has no collection in it
+  # (modules/quickshell/tests/idle-collection-on-niri-test.py).
+  the-launcher-collects-while-idle-in-an-opening-on-niri = launcherOnNiri {
+    name = "the-launcher-collects-while-idle-in-an-opening-on-niri";
+    tests = ../tests/idle-collection-on-niri-test.py;
+  };
+
   # What the-shell-stays-light-on-niri lets the heap's resident climb by for
   # pages the kernel took, worked out apart from any niri, since that check
   # works it out only on one
