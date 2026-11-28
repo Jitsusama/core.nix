@@ -161,11 +161,14 @@ pub fn unread_with_mirrors(why: String, mirrored: &Mirrored) -> String {
 /// A commit a round read, and where it read from when the round was over
 /// a range of commits rather than a change: such a round read only what
 /// lies between, so its commit counts as read in full only where that
-/// base is on main.
+/// base is on main. `stack` says a stack round read it: one round over a
+/// stack of changes records only its tip, which holds every change below
+/// (`folded.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Read {
     pub commit: String,
     pub from: Option<String>,
+    pub stack: bool,
 }
 
 /// How many of the newest round files the record shape is judged by: the
@@ -274,6 +277,7 @@ fn read_in(text: &str) -> Vec<Read> {
             // included, is no base, rather than the range's name, which may
             // be another commit than the round read. Only a round that
             // records none, from before rounds did, falls back to the name.
+            let stack = round["round"].as_str() == Some("stack");
             let from = named.as_ref().map(|named| match round.get("from") {
                 None => named.clone(),
                 Some(from) => from
@@ -295,6 +299,7 @@ fn read_in(text: &str) -> Vec<Read> {
                 .map(|witness| Read {
                     commit: witness.to_owned(),
                     from: from.clone(),
+                    stack,
                 })
                 .collect::<Vec<_>>()
         })
