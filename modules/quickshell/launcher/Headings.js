@@ -179,7 +179,21 @@ function footed(place, to, view) {
 // whole at the top, the rest moved up by less than a row (VKCF3Z,
 // 2026-11-15 [c09d8222]). No row's top is past the row `showing` brought
 // into view, so that row stays whole. Past the last row's top it stays.
-function rested(to, view) {
+// The wheel or a flick says where its movement began, `from`, and one that
+// went up rests on the top of the row at or above `to` instead, the cut row
+// drawn whole and never above the first row: resting below undid a turn up
+// of less than a row, so Joel turned the wheel and nothing moved (XY9H5C
+// [3ac04a1c]). A step gives no `from` and rests below as it always has,
+// keeping the row it brought into view whole; one function with `from` left
+// out, rather than two, keeps the rule for both in one place.
+function rested(to, view, from = to) {
+    if (to < from - LEEWAY && view.count > 0) {
+        let rest = view.top(0);
+        for (let each = 1; each < view.count && view.top(each) <= to + LEEWAY; each += 1) {
+            rest = view.top(each);
+        }
+        return rest;
+    }
     for (let each = 0; each < view.count; each += 1) {
         const top = view.top(each);
         if (top >= to - LEEWAY) {
