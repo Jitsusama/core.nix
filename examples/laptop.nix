@@ -86,6 +86,13 @@ nixpkgs.lib.nixosSystem {
         # The origin its agents' model requests are relayed to, as a machine
         # names its own.
         jitsusama.model-relay.origin = "https://models.example";
+        # The origin its sessions reach and the node's site, sampled every
+        # ten minutes, as a machine names its own; named here so the
+        # cadence checks read the units that sample them.
+        jitsusama.cadence = {
+          origins = [ "models.example" ];
+          site = "ws://sites.localhost:8484/feed/node";
+        };
       };
 
       system.stateVersion = "26.05";

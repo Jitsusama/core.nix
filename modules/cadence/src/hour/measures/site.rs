@@ -33,7 +33,7 @@ pub const LIVE_AT_MOST: f64 = 2.0;
 pub const PROBE_WAIT: f64 = 20.0;
 
 /// The watches the site's page waits on before it lays its map
-/// (modules/mycelium/site/site.ts's `heard`); those it watches apart fill
+/// (modules/mycelium/site/site.ts's `KINDS`); those it watches apart fill
 /// in once they come, so they're sampled but hold no page. site.sh's
 /// `WAITED` names them too, to watch them first under its cap.
 const WAITED_ON: [&str; 4] = ["network", "cell", "machine", "message"];
@@ -44,14 +44,18 @@ const SAMPLES_AT_LEAST: usize = 3;
 /// The folder under the state home site.sh writes its days in.
 pub const FOLDER: &str = "cadence/site";
 
-/// The feed home.nix names to the hour when cadence-site samples it; with
-/// none, the site isn't sampled and the hour has no measure of it.
+/// The feed home.nix names to the hour, empty where cadence-site samples
+/// none, so the hour has no measure of the site. An hour with no name at
+/// all is one run by hand, which measures what was sampled instead, so it
+/// doesn't settle the site's ask as no longer sampled.
 const FEED: &str = "CADENCE_SITE";
 
 /// One sample: each watch's seconds, an unanswered one counted as the
-/// whole wait, or the sample's failure.
+/// whole wait, why each unanswered one went unanswered where the feed
+/// said, or the sample's failure.
 struct Sample {
     watches: Vec<(String, f64)>,
+    why: Vec<(String, String)>,
     error: Option<String>,
 }
 
@@ -81,7 +85,17 @@ impl Sample {
 /// none where home.nix names no feed.
 #[must_use]
 pub fn hour(state_home: &Path, now: i64) -> Option<Measure> {
-    std::env::var(FEED).ok().filter(|feed| !feed.is_empty())?;
+    measured_for(std::env::var(FEED).ok().as_deref(), state_home, now)
+}
+
+/// The hour's measure where `feed` is what home.nix named: none for an
+/// empty name, and for no name at all, as a run by hand has, a measure
+/// only where the hour holds enough samples to judge, so a run by hand
+/// never reads a quiet sampler as the site's ask settled.
+fn measured_for(feed: Option<&str>, state_home: &Path, now: i64) -> Option<Measure> {
+    if feed == Some("") {
+        return None;
+    }
     let folder = state_home.join(FOLDER);
     let day = |at| fs::read_to_string(folder.join(format!("{}.jsonl", today(at))));
     let lines = [day(now - DAY), day(now)]
@@ -89,7 +103,11 @@ pub fn hour(state_home: &Path, now: i64) -> Option<Measure> {
         .flatten()
         .collect::<Vec<_>>()
         .join("\n");
-    Some(site(&lines, now))
+    let measure = site(&lines, now);
+    if feed.is_none() && measure.target.is_none() {
+        return None;
+    }
+    Some(measure)
 }
 
 /// The measure over the hour to `now` from site.sh's lines, unjudged where
@@ -112,6 +130,13 @@ pub fn site(lines: &str, now: i64) -> Measure {
                 .into_iter()
                 .flatten()
                 .map(|(kind, s)| (kind.clone(), s.as_f64().unwrap_or(PROBE_WAIT)))
+                .collect(),
+            why: v
+                .get("why")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter_map(|(kind, why)| Some((kind.clone(), why.as_str()?.to_owned())))
                 .collect(),
             error: v.get("error").and_then(Value::as_str).map(str::to_owned),
         })
@@ -163,6 +188,27 @@ fn measured(samples: &[Sample]) -> Measure {
         behind.push(format!("slowest watch {kind}, median {seconds:.2} s"));
     }
     behind.push(format!("worst {worst:.2} s"));
+    // Why the feed left a watch the page waits on unanswered, where it
+    // said, so a node the page shows broken reads as that, not as slow.
+    // Counted by sample, as the page waits on each sample's watches once,
+    // and the feed's words quoted, since they're the feed's, not ours.
+    let unanswered: Vec<&str> = samples
+        .iter()
+        .filter_map(|s| {
+            s.why
+                .iter()
+                .find(|(kind, _)| WAITED_ON.contains(&kind.as_str()))
+                .map(|(_, why)| why.as_str())
+        })
+        .collect();
+    if let Some(first) = unanswered.first() {
+        let first: String = first.chars().take(120).collect();
+        behind.push(format!(
+            "{} of {} samples left a watch it waits on unanswered, the first as {first:?}",
+            unanswered.len(),
+            samples.len()
+        ));
+    }
     let failed: Vec<&Sample> = samples.iter().filter(|s| s.watches.is_empty()).collect();
     if let Some(first) = failed.first() {
         let error: String = first
@@ -340,6 +386,106 @@ mod tests {
         assert_eq!(
             m.behind[0], "slowest watch machine, median 20.00 s",
             "the watch left out wasn't named as the slowest"
+        );
+    }
+
+    #[test]
+    fn why_a_watch_went_unanswered_is_said_behind_the_hour_once_a_sample() {
+        let long = format!("broken: its daemon didn't answer{}", " again".repeat(30));
+        // Each sample leaves two waited-on watches unanswered, and a watch
+        // apart says its own why, which no page waits on.
+        let broken = |ago| {
+            let mut v: Value = serde_json::from_str(&sampled(
+                ago,
+                &[
+                    ("network", Some(0.1)),
+                    ("cell", None),
+                    ("machine", Some(0.2)),
+                    ("message", None),
+                    ("tie", None),
+                ],
+            ))
+            .expect("a sample");
+            v["why"] = serde_json::json!({
+                "cell": long,
+                "message": long,
+                "tie": "error: a watch apart",
+            });
+            v.to_string()
+        };
+        let apart_only = |ago| {
+            let mut v: Value = serde_json::from_str(&quick(ago)).expect("a sample");
+            v["why"] = serde_json::json!({"tie": "error: a watch apart"});
+            v.to_string()
+        };
+        let m = site(&[apart_only(60), broken(660), broken(1260)].join("\n"), NOW);
+        let cut: String = long.chars().take(120).collect();
+        assert!(
+            m.behind.contains(&format!(
+                "2 of 3 samples left a watch it waits on unanswered, the first as {cut:?}"
+            )),
+            "why the watches went unanswered wasn't said once a sample, cut to 120: {:?}",
+            m.behind
+        );
+    }
+
+    /// A state home holding today's file of `lines`.
+    fn state_holding(lines: &[String]) -> tempfile::TempDir {
+        let home = tempfile::tempdir().expect("a state home");
+        let folder = home.path().join(FOLDER);
+        fs::create_dir_all(&folder).expect("the site folder");
+        fs::write(
+            folder.join(format!("{}.jsonl", today(NOW))),
+            lines.join("\n"),
+        )
+        .expect("today's file");
+        home
+    }
+
+    #[test]
+    fn an_hour_named_no_feed_measures_no_site() {
+        let home = state_holding(&[quick(60), quick(660), quick(1260)]);
+        assert!(
+            measured_for(Some(""), home.path(), NOW).is_none(),
+            "an hour named no feed measured the site"
+        );
+    }
+
+    #[test]
+    fn an_hour_named_a_feed_measures_it_samples_come_or_not() {
+        let home = tempfile::tempdir().expect("a state home");
+        let m = measured_for(
+            Some("ws://sites.localhost:8484/feed/node"),
+            home.path(),
+            NOW,
+        );
+        assert_eq!(
+            m.map(|m| m.target),
+            Some(None),
+            "a named feed with no samples wasn't measured as unjudged"
+        );
+    }
+
+    #[test]
+    fn an_hour_run_by_hand_measures_what_was_sampled() {
+        let home = state_holding(&[quick(60), quick(660), quick(1260)]);
+        let m = measured_for(None, home.path(), NOW);
+        assert_eq!(
+            m.and_then(|m| m.target),
+            Some(LIVE_AT_MOST),
+            "an hour by hand didn't judge the samples there"
+        );
+        let empty = tempfile::tempdir().expect("a state home");
+        assert!(
+            measured_for(None, empty.path(), NOW).is_none(),
+            "an hour by hand with no samples measured the site"
+        );
+        // Yesterday's samples alone, with the sampler quiet since, judge
+        // nothing, so a run by hand can't settle the site's ask.
+        let quiet = state_holding(&[quick(3 * 3600), quick(4 * 3600), quick(5 * 3600)]);
+        assert!(
+            measured_for(None, quiet.path(), NOW).is_none(),
+            "an hour by hand with no samples of its own measured the site"
         );
     }
 

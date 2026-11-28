@@ -48,6 +48,15 @@ pub const QUIET: &str = ": no line from the relay this hour, so it carried nothi
 const THEN_DIRECT: &str = "pi goes directly";
 const THEN_502: &str = "pi is answered 502";
 
+/// How the relay says it answered the lend 502, the lend being the node's
+/// borrowing for cloud rooms, which can't go direct: as pi's, where a
+/// request failed or was reset, and in a line of its own where it went
+/// alone and failed, had no connection to go alone on, or met the cap on
+/// how many go alone. Counted with pi's, since a room's call answered 502
+/// is a failed call as much as pi's is.
+const THEN_LEND_502: &str = "the lend's request is answered 502";
+const LEND_502: [&str; 2] = ["so it's answered 502", "so one more is answered 502"];
+
 /// The most of a cause the card and the keeper's ask carry. A cause is
 /// the error text another machine sent, so it is cut short rather than
 /// carried whole into a request an agent reads.
@@ -232,7 +241,8 @@ fn causes(why: &BTreeMap<String, usize>) -> Vec<String> {
 /// - any line ending `pi goes directly` or saying `so pi goes directly:`
 ///   is a request given back to pi;
 /// - `a request couldn't be carried, so pi is answered 502: <error>` is a
-///   502;
+///   502, and so is the lend's, saying `the lend's request is answered
+///   502` or, of the lend's request, `so it's answered 502`;
 /// - `172694 asked, 0 refused, 745 failed, ...` is the relay's tally of
 ///   what it was asked since it started, written each ten minutes and as
 ///   it stops. The share weighs the resets between the hour's first and
@@ -257,7 +267,10 @@ fn tallied(journal: &str) -> Tally {
             tally.direct += 1;
             *tally.direct_why.entry(cause.to_owned()).or_default() += 1;
         }
-        if let Some(cause) = given(line, THEN_502) {
+        if let Some(cause) = given(line, THEN_502)
+            .or_else(|| given(line, THEN_LEND_502))
+            .or_else(|| lent_502(line))
+        {
             tally.answered_502 += 1;
             *tally.answered_why.entry(cause.to_owned()).or_default() += 1;
         }
@@ -293,6 +306,19 @@ fn given<'a>(line: &'a str, then: &str) -> Option<&'a str> {
         || before.rsplit_once(", ").map_or(before, |(_, cause)| cause),
         |(_, cause)| cause,
     ))
+}
+
+/// Why the lend's request was answered 502 in a line of its own: the
+/// error after the 502 where it says one, else what it says before
+/// `, so`, as `4 of the lend's requests already go alone`.
+fn lent_502(line: &str) -> Option<&str> {
+    if !line.contains("the lend's request") {
+        return None;
+    }
+    let (before, after) = LEND_502
+        .iter()
+        .find_map(|then| line.split_once(&format!(", {then}")))?;
+    Some(after.strip_prefix(": ").unwrap_or(before))
 }
 
 /// The requests asked of the relay since it started, from its tally line

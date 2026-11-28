@@ -118,12 +118,12 @@ onLinux {
   # can't read is refused as such: systemd drops it, so a readable other
   # one then bounds the start, and when both are readable TimeoutStartSec
   # does. A timer's runs and each one's timeout are read by timed.nix, as
-  # the base module reads them, so the two never disagree. The four known
+  # the base module reads them, so the two never disagree. The six known
   # runs must each be among those found, and no cadence run may be named
-  # unwritten, which would leave it unchecked. Stand-in units, each wrong one way, must each be
-  # refused, so a check that stopped refusing fails too, and stand-ins
-  # right in each way allowed must each pass, so one that refused too
-  # much fails as well. It reads the units as declared; that sd-switch
+  # unwritten, which would leave it unchecked. Stand-in units, each wrong
+  # one way, must each be refused, so a check that stopped refusing fails
+  # too, and stand-ins right in each way allowed must each pass, so one
+  # that refused too much fails as well. It reads the units as declared; that sd-switch
   # keeps an old run it is told to rests on sd-switch.
   cadence-outlasts-a-switch =
     let
@@ -132,6 +132,8 @@ onLinux {
         "cadence-day"
         "cadence-review"
         "cadence-hour"
+        "cadence-path"
+        "cadence-site"
       ];
       cadence = name: name == "cadence" || lib.hasPrefix "cadence-" name;
       problemsOf =
@@ -548,8 +550,8 @@ onLinux {
         "a cadence timer starting what isn't a service" = {
           inherit services;
           timers = timers // {
-            cadence-path = timer // {
-              Timer.Unit = "cadence-path.path";
+            cadence-watch = timer // {
+              Timer.Unit = "cadence-watch.path";
             };
           };
         };
@@ -618,6 +620,16 @@ onLinux {
   # copies renamed as each guard means, and each must be refused by its
   # own guard. It reads the files alone, so neither package rebuilds for
   # the other.
+  # site.sh reads each order the sites' server can send a watch's lines in
+  # as the page would, through a stand-in websocat, as
+  # site-reads-each-order.sh says; a reader that read records then broken
+  # as answered, or stopped at a quick restart, fails it.
+  cadence-site-reads-each-order =
+    pkgs.runCommand "cadence-site-reads-each-order" { nativeBuildInputs = [ pkgs.jq ]; }
+      ''
+        bash ${./site-reads-each-order.sh} ${./site.sh}
+        touch "$out"
+      '';
   cadence-reads-the-keys-spend-watch-writes =
     pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
       ''

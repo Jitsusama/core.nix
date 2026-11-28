@@ -259,7 +259,10 @@ in
       '';
     };
     site = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
+      # The sites' door admits only a page of http with its port, so a
+      # wss feed, or one without its port, is refused here rather than
+      # sampled as failing every run.
+      type = lib.types.nullOr (lib.types.strMatching "ws://[^/@[]+:[0-9]+(/.*)?");
       default = null;
       example = "ws://sites.localhost:8484/feed/node";
       description = ''
@@ -537,7 +540,8 @@ in
         ++ [ "CADENCE_ORIGINS=${lib.concatStringsSep "," cfg.origins}" ]
         # The feed cadence-site samples, so the hour measures the site only
         # where it's sampled, and every hour it is, a sample come or not.
-        ++ lib.optional (cfg.site != null) "CADENCE_SITE=${cfg.site}";
+        # Named even when empty, for the same reason as the origins.
+        ++ [ "CADENCE_SITE=${if cfg.site == null then "" else cfg.site}" ];
         Slice = "background.slice";
         # The hour's ten days of journals and World's history pass through
         # this unit as file pages: at 23:10 on 19 November it peaked at
@@ -555,6 +559,8 @@ in
     };
     systemd.user.services.cadence-path = lib.mkIf (cfg.origins != [ ]) {
       Unit.Description = "Samples the path to each origin the sessions reach";
+      # A switch leaves a running sample be, as it does the tick.
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs ([ (lib.getExe probe) ] ++ cfg.origins);
@@ -574,6 +580,8 @@ in
     };
     systemd.user.services.cadence-site = lib.mkIf (cfg.site != null) {
       Unit.Description = "Samples how long the node's site takes to come live";
+      # A switch leaves a running sample be, as it does the tick.
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs [
@@ -589,9 +597,12 @@ in
     systemd.user.timers.cadence-site = lib.mkIf (cfg.site != null) {
       Unit.Description = "Samples the node's site every ten minutes";
       Timer = {
-        # At five past each ten minutes, off the hour's run at ten past,
-        # so no sample is timed under the hour's own load.
-        OnCalendar = "*:05/10";
+        # At eight past each ten minutes: off the tick every five minutes,
+        # which asks the node about each realm's machines, the path's
+        # samples on the tens and the hour's run at ten past, so a sample
+        # rarely times the node under cadence's own load; a tick slow
+        # under load past three minutes still meets one.
+        OnCalendar = "*:08/10";
         AccuracySec = "30s";
       };
       Install.WantedBy = [ "timers.target" ];
