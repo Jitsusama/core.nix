@@ -54,7 +54,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     let stands = stands(commit, main, behind);
     let files = fates::changed(Path::new("."), &branched, commit)?;
     let renamed = fates::gone(Path::new("."), &branched, commit)?;
-    let at = |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
+    let show = |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]);
+    let at = |rev: &str, file: &str| show(rev, file).unwrap_or_default();
     let at_head = |file: &str| at(commit, file);
     let at_main = |file: &str| at(main, file);
     let change = patch_id(Path::new("."), &branched, commit);
@@ -72,7 +73,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     let crates = Crates::at(Path::new("."), commit);
     // What main moved in a folder one check measures with the change's
     // (`fates.txt`), which the change's own files never show.
-    let fates = fates_at(&at, &branched, main)?;
+    let fates = fates_at(&show, &branched, main)?;
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
@@ -139,15 +140,28 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
 }
 
 /// The fates a head branched from `branched` is judged by on `main`, each
-/// list read as `at` reads a file at a commit: those its merge base names,
-/// so it can't judge itself by fewer, and those main names, so a base
-/// lacking main's newest needs no rebase.
+/// list read as `show` reads a file at a commit: those its merge base
+/// names, so it can't judge itself by fewer, and those main names, so a
+/// base lacking main's newest needs no rebase. A base from before the list
+/// names none; main has kept it since #7024, so a list of main's that
+/// doesn't read refuses, rather than judge the head by fewer fates than
+/// main's.
 fn fates_at(
-    at: &dyn Fn(&str, &str) -> String,
+    show: &dyn Fn(&str, &str) -> Result<String, String>,
     branched: &str,
     main: &str,
 ) -> Result<Vec<Fate>, String> {
-    fates::judging(&at(branched, fates::FATES_TXT), &at(main, fates::FATES_TXT))
+    let newest = show(main, fates::FATES_TXT).map_err(|why| {
+        format!(
+            "main's {} doesn't read ({why}), though main has listed it since #7024; put \
+             it back on main if a change took it away, and merge again",
+            fates::FATES_TXT
+        )
+    })?;
+    fates::judging(
+        &show(branched, fates::FATES_TXT).unwrap_or_default(),
+        &newest,
+    )
 }
 
 /// A change and what main moved since the base it's judged from: the
@@ -391,9 +405,9 @@ mod tests {
     #[test]
     fn a_head_is_judged_by_the_fates_its_merge_base_and_main_each_list() {
         let at = |rev: &str, file: &str| match (rev, file) {
-            ("branched", fates::FATES_TXT) => "based: modules/based/".to_owned(),
-            ("main", fates::FATES_TXT) => "newest: modules/newest/".to_owned(),
-            _ => String::new(),
+            ("branched", fates::FATES_TXT) => Ok("based: modules/based/".to_owned()),
+            ("main", fates::FATES_TXT) => Ok("newest: modules/newest/".to_owned()),
+            _ => Ok(String::new()),
         };
         let judged = fates_at(&at, "branched", "main").expect("both lists read");
         let named = |name: &str, folder: &str| {
@@ -408,6 +422,32 @@ mod tests {
         assert!(
             named("newest", "modules/newest/"),
             "the fate main lists wasn't judged"
+        );
+    }
+
+    #[test]
+    fn a_list_of_main_s_that_doesn_t_read_refuses_the_head() {
+        // Read as none, it would judge the head by fewer fates than main's.
+        let only = |listed: &'static str| {
+            move |rev: &str, _: &str| {
+                (rev == listed)
+                    .then(|| "newest: modules/newest/".to_owned())
+                    .ok_or_else(|| format!("no list at {rev}"))
+            }
+        };
+        let refused = fates_at(&only("branched"), "branched", "main");
+        assert!(
+            refused.as_ref().is_err_and(|why| why.starts_with("main's ")
+                && why.contains("no list at main")
+                && why.contains("put it back on main")),
+            "main's list that doesn't read was read as none, or named no remedy: {refused:?}"
+        );
+        let older = fates_at(&only("main"), "branched", "main");
+        assert!(
+            older
+                .as_ref()
+                .is_ok_and(|fates| fates.iter().any(|fate| fate.name == "newest")),
+            "a merge base from before the list refused the head: {older:?}"
         );
     }
 
