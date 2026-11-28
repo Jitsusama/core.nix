@@ -98,6 +98,16 @@
 //! seconds waits on the socket for the relay systemd starts next. A second
 //! SIGTERM cuts everything at once.
 //!
+//! A second socket, `--lend-socket`, answers a client that has no way to
+//! the origin but the relay: the node's lend, carrying a cloud room's
+//! requests, which can't follow a 421 direct and on 27 November failed
+//! each one it was sent. There, wherever pi would be sent direct, the
+//! request goes once more alone instead, on a connection opened for it and
+//! closed with its answer, and failing that too it's a 502, for the lend's
+//! own retry. A request taken there while the relay leaves goes alone the
+//! same way, and its answer is waited on as one taken before it began to
+//! leave is.
+//!
 //! A switch leaves a running relay be, since a restart would send every
 //! request direct until each answer still streaming ended, and cut those
 //! that outlast the drain. So it leaves on its own once nothing has been
@@ -1311,6 +1321,15 @@ pub struct Relay {
     late: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
+    /// How many connections it has opened for one of the lend's requests
+    /// alone, each said as one past the slots.
+    alone: AtomicU64,
+}
+
+/// The sockets a relay answers: pi's, and the lend's when it's given one.
+struct Ears {
+    agents: UnixListener,
+    lend: Option<UnixListener>,
 }
 
 /// A connection just opened: what to send requests down, and the TCP
@@ -1379,6 +1398,7 @@ impl Relay {
                 now: AtomicUsize::new(0),
                 quiet_since: Held::new(Instant::now()),
             }),
+            alone: AtomicU64::new(0),
         })
     }
 
@@ -1395,11 +1415,20 @@ impl Relay {
     /// it's stopped as it leaves idle. It says its counts as it begins to
     /// leave; what it hands back says them last, for the answers it cut,
     /// which end only as its runtime drops them.
+    ///
+    /// `lend`, when given, is answered alike, except that a request taken
+    /// there goes alone where one of `listener`'s would go direct, as the
+    /// module's documentation says.
     pub async fn serve_until(
         self,
         listener: UnixListener,
+        lend: Option<UnixListener>,
         mut stops: mpsc::Receiver<()>,
     ) -> LastWord {
+        let listener = Ears {
+            agents: listener,
+            lend,
+        };
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
             self.origin.authority,
@@ -1483,7 +1512,7 @@ impl Relay {
     /// to the word `serve_until` hands back.
     async fn leave_as_stopped(
         self: &Arc<Relay>,
-        listener: &UnixListener,
+        listener: &Ears,
         leave: &watch::Sender<Leave>,
         leaving: &watch::Receiver<Leave>,
         stops: &mut mpsc::Receiver<()>,
@@ -1557,13 +1586,30 @@ impl Relay {
         }
     }
 
-    /// Answers each connection `listener` takes, for as long as it's asked
-    /// to. One taken before `leaving` says so is closed as its answer ends
-    /// once it does, or cut when it says to; one taken after answers a
-    /// request and closes.
+    /// Answers each connection either of `ears` takes, for as long as it's
+    /// asked to, as `accept_on` says.
     async fn accept(
         self: &Arc<Relay>,
+        ears: &Ears,
+        leaving: &watch::Receiver<Leave>,
+    ) -> Infallible {
+        let Some(lend) = &ears.lend else {
+            return self.accept_on(&ears.agents, false, leaving).await;
+        };
+        tokio::select! {
+            never = self.accept_on(&ears.agents, false, leaving) => never,
+            never = self.accept_on(lend, true, leaving) => never,
+        }
+    }
+
+    /// Answers each connection `listener` takes, for as long as it's asked
+    /// to, as the lend's when it `lends`. One taken before `leaving` says
+    /// so is closed as its answer ends once it does, or cut when it says
+    /// to; one taken after answers a request and closes.
+    async fn accept_on(
+        self: &Arc<Relay>,
         listener: &UnixListener,
+        lends: bool,
         leaving: &watch::Receiver<Leave>,
     ) -> Infallible {
         loop {
@@ -1575,13 +1621,19 @@ impl Relay {
                     // connection taken before it as kept, on any runtime.
                     let holding = self.connections.one();
                     let late = *leaving.borrow_and_update() != Leave::Not;
-                    let which = if late { &self.late } else { &self.kept };
+                    // The lend's request, going alone rather than direct,
+                    // streams an answer a stopped relay waits on.
+                    let which = if late && !lends {
+                        &self.late
+                    } else {
+                        &self.kept
+                    };
                     let which = which.one();
                     tokio::spawn(async move {
                         let (_holding, _which) = (holding, which);
                         let service = hyper::service::service_fn(move |request| {
                             let relay = Arc::clone(&relay);
-                            async move { Ok::<_, Infallible>(relay.forward(request).await) }
+                            async move { Ok::<_, Infallible>(relay.forward(request, lends).await) }
                         });
                         let connection = hyper::server::conn::http1::Builder::new()
                             .timer(TokioTimer::new())
@@ -1639,8 +1691,9 @@ impl Relay {
         })
     }
 
-    /// Carries one request to the origin and its answer back.
-    async fn forward(self: &Arc<Relay>, request: Request<Incoming>) -> Response<Body> {
+    /// Carries one request to the origin and its answer back, as the
+    /// lend's when it `lends`.
+    async fn forward(self: &Arc<Relay>, request: Request<Incoming>, lends: bool) -> Response<Body> {
         self.counts.asked.fetch_add(1, Ordering::Relaxed);
         let (mut parts, body) = request.into_parts();
         let host = parts
@@ -1677,14 +1730,17 @@ impl Relay {
                 "this relay forwards to its own origin alone\n",
             );
         }
-        if self.leaving.load(Ordering::SeqCst) {
+        let leaving = self.leaving.load(Ordering::SeqCst);
+        if leaving && !lends {
             self.counts.refused.fetch_add(1, Ordering::Relaxed);
             return said(
                 StatusCode::MISDIRECTED_REQUEST,
                 "this relay is leaving, so go directly\n",
             );
         }
-        self.retire_after_a_sleep();
+        if !leaving {
+            self.retire_after_a_sleep();
+        }
         let whole = match read {
             Ok(whole) => whole,
             Err(unread) => return self.unread(unread),
@@ -1692,22 +1748,87 @@ impl Relay {
         if let Err(refused) = self.pointed(&mut parts) {
             return *refused;
         }
-        let (answer, on_the_way) = match self.carry(&parts, &whole).await {
+        if leaving {
+            eprintln!("model-relay: the lend asked as it leaves, so its request goes alone");
+            return self.alone(&parts, &whole, in_hand).await;
+        }
+        let (answer, on_the_way) = match self.carry(&parts, &whole, lends).await {
             Ok(answered) => answered,
+            Err(not_carried)
+                if lends && not_carried.status() == StatusCode::MISDIRECTED_REQUEST =>
+            {
+                return self.alone(&parts, &whole, in_hand).await;
+            }
             Err(not_carried) => return *not_carried,
         };
-        let (mut parts, body) = answer.into_parts();
-        parts.version = Version::HTTP_11;
-        without_connection_headers(&mut parts.headers);
-        // The request stays in hand until its answer is sent or given up on,
-        // so the relay never leaves mid-answer.
-        let body = Answering::new(body, on_the_way).map_err(move |why| {
-            let _ = &in_hand;
-            why
-        });
-        Response::from_parts(parts, body.boxed())
+        answered(answer, on_the_way, in_hand)
     }
 
+    /// Sends the lend's request once on a connection opened for it alone,
+    /// where pi's would go direct, and answers what the origin says, or a
+    /// 502 when that fails too. The connection isn't one of the slots', so
+    /// it's asked nothing more, and closes once its answer has streamed.
+    async fn alone(
+        self: &Arc<Relay>,
+        parts: &hyper::http::request::Parts,
+        whole: &Bytes,
+        in_hand: Option<InHand>,
+    ) -> Response<Body> {
+        let named = Named {
+            at: self.slots.len(),
+            number: self.alone.fetch_add(1, Ordering::Relaxed) + 1,
+        };
+        let Ok((mut sender, _)) = self.connect(named).await else {
+            // `connect` has said why.
+            self.counts.failed.fetch_add(1, Ordering::Relaxed);
+            eprintln!(
+                "model-relay: the lend's request had no connection to go alone on, so it's answered 502"
+            );
+            return not_answered();
+        };
+        let tally = Arc::new(Tally::of(named.at, named.number));
+        let on_the_way = OnTheWay::sent(&tally, &self.counts);
+        let sent = match sender.ready().await {
+            Ok(()) => sender.send_request(sendable(parts, whole)).await,
+            Err(why) => Err(why),
+        };
+        match sent {
+            Ok(answer) => {
+                eprintln!("model-relay: the lend's request went alone on {named}");
+                answered(answer, on_the_way, in_hand)
+            }
+            Err(why) => {
+                on_the_way.end();
+                self.counts.failed.fetch_add(1, Ordering::Relaxed);
+                eprintln!(
+                    "model-relay: the lend's request went alone on {named} and couldn't be \
+                     carried, so it's answered 502: {}",
+                    with_causes(&why)
+                );
+                not_answered()
+            }
+        }
+    }
+}
+
+/// The origin's `answer` as pi is handed it, its request in hand until the
+/// answer is sent or given up on, so the relay never leaves mid-answer.
+fn answered(
+    answer: Response<Incoming>,
+    on_the_way: OnTheWay,
+    in_hand: Option<InHand>,
+) -> Response<Body> {
+    let (mut parts, body) = answer.into_parts();
+    parts.version = Version::HTTP_11;
+    without_connection_headers(&mut parts.headers);
+    let body = Answering::new(body, on_the_way).map_err(move |why| {
+        let _ = &in_hand;
+        why
+    });
+    Response::from_parts(parts, body.boxed())
+}
+
+impl Relay {
     /// Points a request pi asked of the origin at the origin itself, or
     /// says why pi is refused.
     fn pointed(&self, parts: &mut hyper::http::request::Parts) -> Result<(), Box<Response<Body>>> {
@@ -1773,12 +1894,19 @@ impl Relay {
     }
 
     /// Sends a request to the origin until its answer begins, or says what
-    /// pi is answered when it never does.
+    /// pi is answered when it never does, which for the lend's, when it
+    /// `lends`, a 421 says goes alone.
     async fn carry(
         self: &Arc<Relay>,
         parts: &hyper::http::request::Parts,
         whole: &Bytes,
+        lends: bool,
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
+        let direct = if lends {
+            "the lend's request goes alone"
+        } else {
+            "pi goes directly"
+        };
         let mut request = sendable(parts, whole);
         let mut sent = 0;
         let mut taken = self.sender_waited_on().await;
@@ -1804,7 +1932,7 @@ impl Relay {
                     let Some(was) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
-                    return Err(Box::new(self.not_sent_again(was, left_out)));
+                    return Err(Box::new(self.not_sent_again(was, left_out, direct)));
                 }
             };
             // Dropped while it waits for the answer, as when pi hangs up, it's
@@ -1881,20 +2009,26 @@ impl Relay {
                 }
             }
         };
-        answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
+        answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on, direct)))
     }
 
     /// What pi is answered for a request first failed on slot `was_at`'s
     /// connection `was` that no other connection would take again: the 421
     /// that sends pi direct.
-    fn not_sent_again(&self, (was_at, was): (usize, u64), left_out: bool) -> Response<Body> {
+    /// `direct` says what follows the 421.
+    fn not_sent_again(
+        &self,
+        (was_at, was): (usize, u64),
+        left_out: bool,
+        direct: &str,
+    ) -> Response<Body> {
         // Reset or left out, and then not sent again, so it's counted with
         // the requests reset or left out that failed, and sent direct.
         self.counts.reset.fetch_add(1, Ordering::Relaxed);
         let how = if left_out { "left out" } else { "reset" };
         eprintln!(
             "model-relay: a request {how} on connection {was_at}.{was} couldn't be sent \
-             again, as no other connection would take it; pi goes directly"
+             again, as no other connection would take it; {direct}"
         );
         goes_directly()
     }
@@ -1920,12 +2054,14 @@ impl Relay {
 
     /// What pi is answered for a request that went `down` a connection and
     /// came back with no answer, and won't be sent again; `reset_on` is the
-    /// connection that reset it before, if one did and it was sent again.
+    /// connection that reset it before, if one did and it was sent again,
+    /// and `direct` what follows a 421.
     fn not_carried(
         &self,
         why: &hyper::Error,
         down: &Down,
         reset_on: Option<(usize, u64)>,
+        direct: &str,
     ) -> Response<Body> {
         // hyper's error says what failed, never what was sent, which a
         // test holds it to.
@@ -1941,7 +2077,7 @@ impl Relay {
         // than the path's, so it's a 502, for pi's retry to wait out, as
         // `fails_the_path` tells them apart.
         let (answer, then) = if goes_direct(why, reset_on.is_some()) {
-            (goes_directly(), "pi goes directly")
+            (goes_directly(), direct)
         } else {
             (not_answered(), "pi is answered 502")
         };

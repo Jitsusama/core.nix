@@ -60,7 +60,9 @@ onLinux {
   # one that names an origin listens where only the account may ask, in the
   # agents' lane, forwards to that origin alone, stops before systemd
   # would kill it, keeps more connections than its default and no more
-  # than it takes, and tells every pi the folder its sockets are in.
+  # than it takes, and tells every pi the folder its sockets are in. The
+  # lend's socket beside pi's is the account's alone too, handed the same
+  # relay under the name its source tells it apart by.
   model-relay-runs-in-background-slice =
     let
       named = account (bareNixos [
@@ -71,6 +73,19 @@ onLinux {
       ]);
       bare = account workstation;
       listens = named.systemd.user.sockets.model-relay-agents.Socket;
+      lends = named.systemd.user.sockets.model-relay-lend.Socket;
+      # The name the relay finds the lend's socket by, read from its
+      # source so neither side moves alone.
+      lendName = lib.pipe ./src/main.rs [
+        builtins.readFile
+        (lib.splitString "\n")
+        (lib.findFirst (lib.hasPrefix "const LEND:") "")
+        (lib.match ".*= \"([a-z]+)\";")
+      ];
+      sockets = [
+        "model-relay-agents.socket"
+        "model-relay-lend.socket"
+      ];
       unit = named.systemd.user.services.model-relay-agents.Unit;
       service = named.systemd.user.services.model-relay-agents.Service;
       drain = lib.match ".* --drain-within ([0-9]+) --origin https://models\\.example" (
@@ -108,15 +123,25 @@ onLinux {
       needs = lib.toInt (lib.head drain) + lib.toInt (lib.head goodbyes) + spare;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, keeps no more connections than its source's default or more than it takes, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, hands the relay no lend's socket by its source's name, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, keeps no more connections than its source's default or more than it takes, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
+        && !(bare.systemd.user.sockets ? model-relay-lend)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
         && listens.ListenStream == "%t/model-relay/agents.sock"
         && listens.SocketMode == "0600"
         && listens.DirectoryMode == "0700"
         && listens.RemoveOnStop
-        && unit.Requires == [ "model-relay-agents.socket" ]
+        && listens.FileDescriptorName == "agents"
+        && lends.ListenStream == "%t/model-relay/lend.sock"
+        && lends.SocketMode == "0600"
+        && lends.DirectoryMode == "0700"
+        && lends.RemoveOnStop
+        && lendName != null
+        && lends.FileDescriptorName == lib.head lendName
+        && lends.Service == "model-relay-agents.service"
+        && unit.Requires == sockets
+        && service.Sockets == sockets
         && unit.X-SwitchMethod == "keep-old"
         && service.Slice == "background.slice"
         # Its drain, then its goodbyes, end inside the stop timeout, so it

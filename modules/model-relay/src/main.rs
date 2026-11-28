@@ -2,8 +2,9 @@
 //! to their one origin over a few long-lived HTTP/2 connections
 //! (src/lib.rs says why).
 //!
-//! systemd hands it its listening socket (`LISTEN_FDS`); `--socket` binds
-//! one itself, as the tests do. It takes the shape every command of ours
+//! systemd hands it its listening socket (`LISTEN_FDS`), and the lend's
+//! beside it when there's one, named `lend`; `--socket` and
+//! `--lend-socket` bind them itself, as the tests do. It takes the shape every command of ours
 //! does (docs/commands.md): its help, usage that says what to try, and
 //! failures with named exits.
 
@@ -18,7 +19,7 @@ use terminal_kit::{Exit, Failure, Help, flags};
 use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 7] = [
+const FLAGS: [&str; 8] = [
     "--origin",
     "--socket",
     "--connections",
@@ -26,7 +27,11 @@ const FLAGS: [&str; 7] = [
     "--connect-within",
     "--idle-exit",
     "--drain-within",
+    "--lend-socket",
 ];
+
+/// The name systemd gives the lend's socket (`FileDescriptorName`).
+const LEND: &str = "lend";
 
 /// How many connections it keeps to the origin unless told.
 const CONNECTIONS: usize = 4;
@@ -71,6 +76,10 @@ fn help() -> Help {
         ),
     )
     .option(
+        "--lend-socket PATH",
+        "a socket for a client that can't go direct, if systemd hands it none",
+    )
+    .option(
         "--roots FILE",
         "trust only the roots in this PEM file, not the public ones",
     )
@@ -109,14 +118,49 @@ fn named(args: &[String]) -> Result<Vec<Option<String>>, Failure> {
     Ok(given)
 }
 
-/// The socket systemd handed it, when it was started for one.
-fn handed() -> Option<std::os::unix::net::UnixListener> {
+/// The sockets systemd handed it, when it was started for them: pi's, and
+/// the lend's when a second is named `lend`.
+struct Handed {
+    agents: std::os::unix::net::UnixListener,
+    lend: Option<std::os::unix::net::UnixListener>,
+}
+
+/// The sockets systemd handed it, when it was started for one or two.
+fn handed() -> Option<Handed> {
     let ours = std::env::var("LISTEN_PID").ok()? == std::process::id().to_string();
-    let one = std::env::var("LISTEN_FDS").ok()? == "1";
-    // SAFETY: systemd passed this descriptor, open and listening, for this
-    // process alone (LISTEN_PID), and nothing else here takes it.
-    (ours && one)
-        .then(|| unsafe { std::os::unix::net::UnixListener::from_raw_fd(LISTEN_FDS_START) })
+    let count = std::env::var("LISTEN_FDS").ok()?;
+    let names = std::env::var("LISTEN_FDNAMES").unwrap_or_default();
+    let lend_at = match count.as_str() {
+        "1" => None,
+        // Two, one named the lend's, in whichever order systemd hands them.
+        "2" => Some(
+            names
+                .split(':')
+                .position(|name| name == LEND)
+                .filter(|&at| at < 2)?,
+        ),
+        _ => return None,
+    };
+    if !ours {
+        return None;
+    }
+    let at = |offset: usize| {
+        let fd = LISTEN_FDS_START + i32::from(offset == 1);
+        // SAFETY: systemd passed these descriptors, open and listening,
+        // for this process alone (LISTEN_PID), and nothing else here
+        // takes them.
+        unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) }
+    };
+    Some(match lend_at {
+        None => Handed {
+            agents: at(0),
+            lend: None,
+        },
+        Some(lend) => Handed {
+            agents: at(1 - lend),
+            lend: Some(at(lend)),
+        },
+    })
 }
 
 /// Binds `path` itself, answering only the account that runs it. The
@@ -249,9 +293,18 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
-    let listener = match (handed(), given[1].as_deref()) {
-        (Some(listener), _) => listener,
-        (None, Some(path)) => bound(Path::new(path))?,
+    let Handed {
+        agents: listener,
+        lend,
+    } = match (handed(), given[1].as_deref()) {
+        (Some(handed), _) => handed,
+        (None, Some(path)) => Handed {
+            agents: bound(Path::new(path))?,
+            lend: given[7]
+                .as_deref()
+                .map(|lend| bound(Path::new(lend)))
+                .transpose()?,
+        },
         (None, None) => {
             return Err(Failure::new(
                 Exit::Usage,
@@ -260,17 +313,23 @@ fn serve(args: &[String]) -> Result<(), Failure> {
             .try_this("model-relay --origin URL --socket PATH"));
         }
     };
-    listener
-        .set_nonblocking(true)
-        .map_err(|why| Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string()))?;
+    let cannot_listen = |why: std::io::Error| {
+        Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
+    };
+    listener.set_nonblocking(true).map_err(cannot_listen)?;
+    if let Some(lend) = &lend {
+        lend.set_nonblocking(true).map_err(cannot_listen)?;
+    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
     let served = runtime.block_on(async move {
-        let listener = tokio::net::UnixListener::from_std(listener).map_err(|why| {
-            Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
-        })?;
+        let listener = tokio::net::UnixListener::from_std(listener).map_err(cannot_listen)?;
+        let lend = lend
+            .map(tokio::net::UnixListener::from_std)
+            .transpose()
+            .map_err(cannot_listen)?;
         // systemd stops it with SIGTERM, which it takes as its word to
         // leave once its answers end rather than at once, and a second as
         // its word to leave now. Each is heard for as long as it runs,
@@ -289,7 +348,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
                 let _ = stop.try_send(());
             }
         });
-        Ok(relay.serve_until(listener, stops).await)
+        Ok(relay.serve_until(listener, lend, stops).await)
     });
     // Dropped, the runtime would wait on a lookup for as long as it took.
     runtime.shutdown_timeout(LOOKUPS_GIVEN);
