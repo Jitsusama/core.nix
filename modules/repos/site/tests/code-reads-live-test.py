@@ -92,8 +92,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads. One is what holds a first visit unseen until it draws.
-BUDGET = Budget(files=37, kilobytes=537, elements=276)
+# every page reads. One is what holds a first visit unseen until it draws, and one more shows
+# it at a reader's first act, lets the cap be site.css's alone and waits for a part kept no room.
+BUDGET = Budget(files=37, kilobytes=538, elements=276)
 CELLS_SITE = "cells/"
 
 
