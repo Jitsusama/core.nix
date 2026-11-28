@@ -168,10 +168,12 @@
   # (tests/repository/every-hardware-address-is-made-up.sh). Those below
   # are kept on purpose: each has a real maker's prefix, as a vendor is
   # named from or a card is read like, under a device part plainly made up.
-  # A made-up tree shows a copied address is refused and these aren't.
+  # A made-up tree shows a copied address is refused and these aren't
+  # (tests/repository/every-hardware-address-is-made-up-test.sh).
   every-hardware-address-is-made-up =
     let
       script = "${lib.getExe pkgs.bash} ${./every-hardware-address-is-made-up.sh}";
+      test = "${lib.getExe pkgs.bash} ${./every-hardware-address-is-made-up-test.sh}";
       kept = pkgs.writeText "kept" (
         lib.concatLines [
           # Headphones in Bluetooth's links, by their maker's prefix.
@@ -208,17 +210,7 @@
     pkgs.runCommandLocal "every-hardware-address-is-made-up" { nativeBuildInputs = [ pkgs.ripgrep ]; }
       ''
         ${script} ${../..} ${kept}
-        mkdir made-up
-        # A maker's address, then made-up ones of each kind, seven octets, and
-        # a kept one in upper case.
-        echo '00:00:00:00:00:01' >made-up/copied.txt
-        echo '02:00:00:00:a0:00 52:54:00:12:34:56 ff:ff:ff:ff:ff:ff 01:00:5e:00:00:fb' \
-          '00:00:5E:00:53:01 00:00:00:00:00:00 00:00:00:00:00:01:01 00:1B:66:AA:BB:CC' \
-          >made-up/made-up.txt
-        if ${script} made-up ${kept} 2>said; then
-          echo "It passed a maker's address no one kept." >&2; exit 1
-        fi
-        diff ${madeUp.said} said
+        ${test} ${./every-hardware-address-is-made-up.sh} ${kept} ${madeUp.said}
         touch $out
       '';
 

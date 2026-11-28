@@ -24,7 +24,7 @@ cd "$1"
 maker='(?<![0-9A-Fa-f:])[0-9A-Fa-f][048Cc](:[0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:])'
 status=0
 found=$(rg --pcre2 --hidden --only-matching --line-number --no-heading --with-filename \
-  --glob '!.git' --glob '!flake.lock' --glob '!tests/repository/checks.nix' \
+  --glob '!flake.lock' --glob '!tests/repository/checks.nix' \
   "$maker" .) || status=$?
 if [ "$status" -eq 1 ]; then
   exit 0
