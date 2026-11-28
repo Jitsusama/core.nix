@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 use daemon_serve::serve::{self, Shared};
 use repos::model::Record;
 use repos::read::{self, Found, Reading};
-use repos::using::{self, Sample, Use};
+use repos::using::{self, Read, Sample, Use};
 use repos::{github, upstreams};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure};
@@ -244,14 +244,17 @@ struct Working {
     /// Where what the journal is told goes, from the loop and the thread
     /// alike.
     say: Arc<dyn Fn(String) + Send + Sync>,
-    /// The process a walk is held up reading the memory of, where one is:
+    /// The read of a process's memory a walk is in, where it's in one:
     /// `using::reading`, which only the real walk sets, so a case stands
     /// one in to make a holder appear.
-    reading: Box<dyn Fn() -> Option<u32> + Send + Sync>,
-    /// Whether the journal has named what holds the reading up since one
-    /// last answered, so a holder found only after the late line is named,
-    /// and named once.
-    named: bool,
+    reading: Box<dyn Fn() -> Option<Read> + Send + Sync>,
+    /// The read the last late take found the walk in, so a later take
+    /// tells a read that hasn't moved from one the walk passes through.
+    seen: Option<Read>,
+    /// The process the journal last named as holding the reading up in
+    /// this spell, so each holder is named once, and a walk that moves on
+    /// to another is named again rather than left blamed on the first.
+    named: Option<u32>,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
     placed: BTreeSet<PathBuf>,
@@ -319,7 +322,7 @@ impl Working {
         old: Duration,
         folders: Vec<PathBuf>,
         mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
-        reading: impl Fn() -> Option<u32> + Send + Sync + 'static,
+        reading: impl Fn() -> Option<Read> + Send + Sync + 'static,
         say: impl Fn(String) + Send + Sync + 'static,
     ) -> Self {
         let say: Arc<dyn Fn(String) + Send + Sync> = Arc::new(say);
@@ -383,7 +386,8 @@ impl Working {
             standing: Standing::Unwaited,
             say,
             reading: Box::new(reading),
-            named: false,
+            seen: None,
+            named: None,
             used: BTreeMap::new(),
             measured: false,
             placed: BTreeSet::new(),
@@ -398,8 +402,8 @@ impl Working {
     /// that waited in the slot past that is never said as now. Where none
     /// has answered by then, the journal says so, as a restart reaching a
     /// process still holding its memory map would leave it: what it says,
-    /// once as the reading grows stale, once as what holds it up is found
-    /// where the stale line couldn't name it, and once as it answers, is
+    /// once as the reading grows stale, once for each process found
+    /// holding it up after the stale line, and once as it answers, is
     /// returned.
     #[must_use = "its line is the only word that /proc is held up"]
     fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
@@ -424,8 +428,6 @@ impl Working {
         let age = self.at.unwrap_or(self.since).elapsed();
         let was = self.standing.late();
         if age < self.old {
-            // A reading that answers ends the spell its holder was named in.
-            self.named = false;
             let again = self.standing.ever_fresh();
             self.standing = if self.at.is_some() {
                 Standing::Fresh
@@ -453,22 +455,39 @@ impl Working {
         // so the line names it rather than offering one. A reading that
         // just landed was held up by nothing, and the process the next
         // walk reads is only passing through, so none is named then.
-        let holder = if landed { None } else { (self.reading)() };
+        let read = if landed { None } else { (self.reading)() };
+        let seen = std::mem::replace(&mut self.seen, read);
         if was {
+            // A reading that landed ended the walk the name was about, so
+            // a later walk stuck on the same process is named again: a
+            // landing old says nothing, and without its own line the
+            // journal couldn't tell the second hold from the first.
+            if landed {
+                self.named = None;
+            }
             // A restart, or a slow reading of the disk, can leave a walk
-            // stuck on one process after the late line was said without
-            // it, and that process is what the operator acts on, so it's
-            // named once found, and once in a spell.
-            if self.named {
+            // stuck on a process after the late line was said without it,
+            // or move it on to another, and the process holding it is what
+            // the operator acts on. A healthy walk is inside some read at
+            // most takes, so only one found twice in a row unmoved is
+            // named, and each once, so the last word names what holds it.
+            let pid = read.filter(|read| seen == Some(*read))?.pid;
+            if self.named == Some(pid) {
                 return None;
             }
-            let pid = holder?;
-            self.named = true;
+            self.named = Some(pid);
             return Some(format!(
                 "the reading of /proc is held up reading the memory of process {pid}"
             ));
         }
-        self.named = holder.is_some();
+        // A spell begins with this line, so what it names, or that it
+        // names none, replaces whatever a spell before named: nothing
+        // need clear the name as a reading answers. It names a process
+        // found once, unlike the takes after it, as it comes only once no
+        // walk has landed for `old`, paces past what a healthy walk takes,
+        // so the read the walk is in then is good evidence of the hold.
+        let holder = read.map(|read| read.pid);
+        self.named = holder;
         let held = holder.map_or(String::new(), |pid| {
             format!(", held up reading the memory of process {pid}")
         });

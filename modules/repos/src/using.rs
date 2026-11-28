@@ -54,7 +54,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -158,9 +158,31 @@ pub fn placed<'a>(folders: &'a [PathBuf], folder: &Path) -> Option<&'a Path> {
 /// faulting on a mount that hung may for good, and this names it.
 static READING: AtomicU32 = AtomicU32::new(0);
 
-/// The process whose memory a reading is held on, where one is.
-pub fn reading() -> Option<u32> {
-    Some(READING.load(Ordering::Relaxed)).filter(|pid| *pid != 0)
+/// How many reads of a process's memory have begun since the daemon
+/// started. A healthy walk spends much of its time inside those reads, so
+/// a process found being read once may only be passed through; one found
+/// twice with this unmoved between is where the walk is stuck.
+static READS: AtomicU64 = AtomicU64::new(0);
+
+/// A read of one process's memory under way, as [`reading`] finds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Read {
+    /// The process whose memory is being read.
+    pub pid: u32,
+    /// How many reads had begun when this one was found, so two finds of
+    /// the same `Read` are of one read that hasn't moved between them.
+    pub begun: u64,
+}
+
+/// The read of a process's memory a reading is in, where it's in one.
+/// The process is loaded before the count, and the walk counts a read
+/// before naming its process, so a count unmoved between two finds means
+/// the process named at the second was being read since before the first:
+/// the pair can lag a read just begun, but never says one read for two.
+pub fn reading() -> Option<Read> {
+    let pid = READING.load(Ordering::SeqCst);
+    let begun = READS.load(Ordering::SeqCst);
+    (pid != 0).then_some(Read { pid, begun })
 }
 
 /// A reading of `proc`, Linux's `/proc`, of every process, placing each
@@ -198,9 +220,10 @@ fn sample_by(proc: &Path, folders: &[PathBuf], mut clock: impl FnMut() -> u64) -
                 .filter(|working| !working.to_string_lossy().ends_with(" (deleted)"))
                 .and_then(|working| placed(folders, &working).map(Path::to_path_buf));
             let memory = folder.as_ref().and_then(|_| {
-                READING.store(pid, Ordering::Relaxed);
+                READS.fetch_add(1, Ordering::SeqCst);
+                READING.store(pid, Ordering::SeqCst);
                 let said = fs::read_to_string(path.join("smaps_rollup"));
-                READING.store(0, Ordering::Relaxed);
+                READING.store(0, Ordering::SeqCst);
                 said.ok().and_then(|said| shared(&said))
             });
             Some(Process {
