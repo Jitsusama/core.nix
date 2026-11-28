@@ -271,8 +271,10 @@ for input in "$@"; do
       # main, so work someone pushed onto it stays.
       if git fetch --quiet origin "refs/heads/$older_branch" &&
         theirs=$(git rev-parse FETCH_HEAD) &&
-        [ "$(git rev-list --count origin/main.."$theirs")" = 1 ] &&
-        [[ "$(git log -1 --format=%s "$theirs")" == "build($input): lock $input "* ]]; then
+        ahead=$(git rev-list --count "origin/main..$theirs") &&
+        subject=$(git log -1 --format=%s "$theirs") &&
+        [ "$ahead" = 1 ] &&
+        [[ $subject == "build($input): lock $input "* ]]; then
         git push --quiet --force-with-lease="refs/heads/$older_branch:$theirs" \
           origin --delete "$older_branch"
       fi
