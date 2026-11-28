@@ -603,6 +603,24 @@ pub fn vpn_least(lane: f64, carried: f64, relay: f64, extra: f64) -> f64 {
     }
 }
 
+/// What the VPN's CAKE is given, in kbit/s, and the share of its lane at or
+/// under which its own hold lowers nothing, as each second takes them:
+/// `vpn_held` and `vpn_least`, with the relay's part of the floor from
+/// what it sent inside the VPN, `relay`, and what the CAKE was given the
+/// step before, `was` (`relay_kept`).
+pub fn vpn_given(
+    lane: f64,
+    share: f64,
+    carried: f64,
+    relay: f64,
+    was: Option<f64>,
+    extra: f64,
+) -> (f64, f64) {
+    let kept = relay_kept(relay, was);
+    let held = vpn_held(lane, share, carried, kept, extra);
+    (held, vpn_least(lane, carried, kept, extra))
+}
+
 /// The most the model relay's own rate lifts the VPN's floor, in kbit/s:
 /// past the 4.6 Mbit/s it sent on 28 November, with some room, and under
 /// most of a home uplink, so a relay filling what it's given can pin the
@@ -894,6 +912,95 @@ mod tests {
             near(least * 9_800.0 * VPN_HELD, 4_600.0 + 3_866.0),
             "the hold's least, {least:.3}, isn't where the relay's 4,600 and the cost stand"
         );
+    }
+
+    /// The VPN's CAKE followed a second at a time, as each second takes it:
+    /// the relay asks to send `demand` inside it and sends again what the
+    /// tunnel loses, `loss`, never past what the CAKE was given, and
+    /// shaper.nft counts it before the CAKE's drops, a little over that.
+    /// WARP's own packets run `over` past the count on the whole, in a
+    /// burst every other second (src/cost.rs).
+    struct Loop {
+        cost: crate::cost::Cost,
+        given: Option<f64>,
+        bytes: (u64, u64),
+        second: u32,
+    }
+
+    impl Loop {
+        fn new() -> Self {
+            let mut cost = crate::cost::Cost::default();
+            cost.sample(0, 0, 0.0);
+            let (given, bytes, second) = (None, (0, 0), 0);
+            Self {
+                cost,
+                given,
+                bytes,
+                second,
+            }
+        }
+
+        /// One second: the rate the CAKE is given, and the cost read.
+        fn step(&mut self, lane: f64, share: f64, demand: f64, path: (f64, f64)) -> (f64, f64) {
+            let (loss, over) = path;
+            let was = self.given.unwrap_or(lane * VPN_HELD);
+            let sent = demand * (1.0 + loss);
+            let (relay, passed) = (sent.min(was * 1.01), sent.min(was));
+            self.second += 1;
+            let burst = if self.second % 2 == 0 {
+                2.0 * over
+            } else {
+                0.0
+            };
+            self.bytes.0 += whole((passed + burst) * 125.0);
+            self.bytes.1 += whole(passed * 125.0);
+            let at = f64::from(self.second);
+            let extra = crate::rate::float(self.cost.sample(self.bytes.0, self.bytes.1, at));
+            let (held, _) = vpn_given(lane, share, relay, relay, self.given, extra);
+            self.given = Some(held);
+            (held, extra)
+        }
+    }
+
+    // The relay's demand rises, rises past its most, falls and stops,
+    // inside lanes of 20 and 6 Mbit/s, with and without the tunnel's loss
+    // and WARP's bursts, the hold at its floor and at its ceiling. From 8
+    // seconds after the demand moves, the CAKE is never held under what
+    // the relay asks, up to its most and the lane less its cost, so it
+    // neither pins nor slides; it is never sent past its lane with its
+    // cost; and when the relay asks less, the hold takes back all but the
+    // relay's demand with a tenth's room (model calls ahead round 4's F17,
+    // F13, F20 and F1).
+    #[test]
+    fn the_vpn_s_cake_follows_the_relay_at_its_floor_and_its_ceiling() {
+        let paths = [(0.0, 0.0), (0.05, 0.0), (0.0, 500.0), (0.05, 500.0)];
+        for (lane, share, path) in [20_000.0, 6_000.0]
+            .into_iter()
+            .flat_map(|lane| [0.25, 1.0].map(|share| (lane, share)))
+            .flat_map(|(lane, share)| paths.map(|path| (lane, share, path)))
+        {
+            let whole = lane * VPN_HELD;
+            let mut at = Loop::new();
+            for demand in [3_000.0, 5_500.0, 9_000.0, 2_000.0, 0.0] {
+                let sent = demand * (1.0 + path.0);
+                for second in 0..20 {
+                    let (given, extra) = at.step(lane, share, demand, path);
+                    let case = format!(
+                        "lane {lane}, share {share}, loss and bursts {path:?}, demand {demand}, \
+                         second {second}: given {given:.0}, cost {extra:.0}"
+                    );
+                    assert!(given + extra <= whole + 1.0, "past its lane: {case}");
+                    if second < 8 {
+                        continue;
+                    }
+                    let asked = sent.min(RELAY_MOST).min(whole - extra);
+                    assert!(given >= asked - 1.0, "held under the relay: {case}");
+                    let room = (sent * 1.1).min(RELAY_MOST);
+                    let most = (whole * share).max(need(sent).min(AHEAD_MOST)).max(room);
+                    assert!(given <= most + 1.0, "not taken back: {case}");
+                }
+            }
+        }
     }
 
     #[test]

@@ -1697,13 +1697,13 @@ fn follow_vpns(
     let relay = relay.map_or(0.0, float);
     let joel = lanes::joel_inside(ahead, relay);
     let given = applied.values().map(|v| float(v.up)).reduce(f64::max);
-    let (kept, cost) = (lanes::relay_kept(relay, given), float(extra));
+    let cost = float(extra);
     let base = primary.map(|s| {
         let vpn = s.share_lanes((joel, agents), t);
         // Held under its tunnel's pace while it waits inside it, so the
         // queue stands in this CAKE; agents' direct lane borrows the rest.
-        let held = lanes::vpn_held(vpn, s.vpn_share, ahead, kept, cost);
-        s.vpn_least = lanes::vpn_least(vpn, ahead, kept, cost);
+        let (held, least) = lanes::vpn_given(vpn, s.vpn_share, ahead, relay, given, cost);
+        s.vpn_least = least;
         (rate::whole(held), s.applied.1, s.download.straight())
     });
     for name in names {
