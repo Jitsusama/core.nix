@@ -71,6 +71,12 @@
 //! rest, and its failure is said and blocks nothing, unless its entry
 //! names subtests and its log names a failure outside them, or none.
 //!
+//! Once they pass, each check built whose tests a committed change adds or
+//! edits is built with those tests over the base's code, and the run says,
+//! and notes in its line, when every one passes there, since its tests
+//! would pass without the change; for now that refuses nothing
+//! (`red_first.rs`).
+//!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
@@ -88,6 +94,7 @@ mod keep;
 mod pressure;
 mod quarantine;
 mod reads;
+mod red_first;
 mod runs;
 #[cfg(test)]
 mod scratch;
@@ -100,7 +107,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
 
-use building::{built, clean_commit, passed_at, unpassed};
+use building::{built, clean_commit, passed_at, say_vm_tests, unpassed};
 use checks::Derivations;
 use evaluating::{derivations, evaluated, names, pure};
 use quarantine::Held;
@@ -197,25 +204,6 @@ impl Options {
         options.vm = whole && !no_vm;
         options.given = given;
         Ok(options)
-    }
-}
-
-/// Says how many VM tests a run builds, before it builds them. On 6
-/// November one `--build` for a change of the shell's alone sent 27 of
-/// them, which held every VM builder for 66 minutes while other changes'
-/// runs waited up to 53; the gate before merging needed none of them.
-fn say_vm_tests(targets: &[String]) {
-    let vm = targets
-        .iter()
-        .filter(|name| checks::is_vm_test(name))
-        .count();
-    if vm > 0 {
-        let tests = if vm == 1 { "test" } else { "tests" };
-        eprintln!(
-            "changed-checks: building {vm} VM {tests} whole, as --build asks. Before merging, \
-             a change needs only those `merge-net needs` names and `run-subtests --there` \
-             on the subtests its files reach; the net runs the rest after the merge."
-        );
     }
 }
 
@@ -619,13 +607,26 @@ fn compare(
             noted.lent(build.sent.bytes);
         }
     }
-    Ok(if !whole {
-        Compared::Broken
-    } else if build.as_ref().is_none_or(|build| build.sent.passed) {
-        Compared::Passed
-    } else {
-        Compared::Failed
-    })
+    if !whole {
+        return Ok(Compared::Broken);
+    }
+    if build.as_ref().is_some_and(|build| !build.sent.passed) {
+        return Ok(Compared::Failed);
+    }
+    let lent = env::var_os(HERE).is_none() && build.as_ref().is_some_and(|b| b.sent.there);
+    let at = red_first::At::of(root, base, commit.as_deref(), system).built_elsewhere(lent);
+    let asked = options.build.then(|| unheld(&comparison, options.vm, held));
+    red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted);
+    Ok(Compared::Passed)
+}
+
+/// The checks a run built that main's quarantine doesn't hold, the ones
+/// red first asks to fail over the base: a check the quarantine holds fails
+/// there for its own reasons, which would read as the change's tests failing.
+fn unheld<'a>(comparison: &'a checks::Comparison, vm: bool, held: &[Held]) -> Vec<&'a str> {
+    let mut built = comparison.to_build(vm);
+    built.retain(|name| quarantine::find(held, name).is_none());
+    built
 }
 
 /// Evaluate the tree's ordinary checks, giving the base's derivation to

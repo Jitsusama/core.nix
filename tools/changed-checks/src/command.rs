@@ -63,7 +63,7 @@ pub fn help() -> Help {
         .fold(help, |help, (name, words)| help.option(name, words))
         .exit(
             Exit::Failed,
-            "a check it touched failed, or no longer evaluates",
+            "a check it touched failed or no longer evaluates",
         )
         .exit(Exit::Usage, "asked wrongly, or the base shares no history")
         .exit(

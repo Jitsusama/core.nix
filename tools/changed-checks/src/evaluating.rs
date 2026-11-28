@@ -2,6 +2,7 @@
 //! always pure and past nix's evaluation cache.
 
 use std::env;
+use std::process::Command;
 use std::time::Instant;
 
 use crate::checks::{self, Derivations};
@@ -76,6 +77,33 @@ pub fn evaluated(
     evaluated_by(flake, system, names, evaluation, at_once)
 }
 
+/// Evaluate as `evaluated` does, nix's words kept out of the run's log:
+/// red first's evaluation over the base fails for what the change's tests
+/// read there, which merge-net would read in that log as the change's
+/// failing. When it fails, the error is `said` of nix's words.
+pub fn evaluated_aside(
+    flake: &str,
+    system: &str,
+    names: &[String],
+    evaluation: &mut Evaluation,
+    said: fn(&str) -> String,
+) -> Result<Derivations, String> {
+    let at_once = checks::at_once_here(env::var_os(HERE).is_some());
+    let nix = |asked: &[&str]| -> Result<String, String> {
+        let ran = Command::new("nix")
+            .args(asked)
+            .output()
+            .map_err(|error| format!("running nix: {error}"))?;
+        if !ran.status.success() {
+            return Err(said(&String::from_utf8_lossy(&ran.stderr)));
+        }
+        String::from_utf8(ran.stdout)
+            .map(|printed| printed.trim().to_owned())
+            .map_err(|_| "nix printed what isn't text".to_owned())
+    };
+    evaluated_with(flake, system, names, evaluation, at_once, &nix)
+}
+
 /// Evaluate as `evaluated` does, `at_once` chunks at a time.
 pub fn evaluated_by(
     flake: &str,
@@ -83,6 +111,20 @@ pub fn evaluated_by(
     names: &[String],
     evaluation: &mut Evaluation,
     at_once: usize,
+) -> Result<Derivations, String> {
+    let nix = |asked: &[&str]| run("nix", asked);
+    evaluated_with(flake, system, names, evaluation, at_once, &nix)
+}
+
+/// Evaluate as `evaluated` does, `at_once` chunks at a time, each asked of
+/// nix through `nix`.
+fn evaluated_with(
+    flake: &str,
+    system: &str,
+    names: &[String],
+    evaluation: &mut Evaluation,
+    at_once: usize,
+    nix: &(dyn Fn(&[&str]) -> Result<String, String> + Sync),
 ) -> Result<Derivations, String> {
     let checks = format!("{flake}#checks.{system}");
     let chunks = checks::chunks(names);
@@ -99,7 +141,7 @@ pub fn evaluated_by(
             let selecting = checks::selecting(chunk)?;
             let began = Instant::now();
             let asked: [&str; 6] = ["eval", "--json", &checks, "--apply", &selecting, UNCACHED];
-            let evaluated = run("nix", &pure(&asked))?;
+            let evaluated = nix(&pure(&asked))?;
             let took = began.elapsed();
             let derivations: Derivations = serde_json::from_str(&evaluated)
                 .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;

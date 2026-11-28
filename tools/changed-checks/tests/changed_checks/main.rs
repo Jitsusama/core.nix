@@ -11,6 +11,7 @@ mod building;
 mod command;
 mod evaluating;
 mod keeping;
+mod red_first;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -37,6 +38,21 @@ fn starting() -> MutexGuard<'static, ()> {
 /// commit; origin has that commit once a test writes `pushed`. A
 /// commit's tree is `tree`'s, or `basetree`, the change from the base
 /// is `diff`, and the base holds the paths `based` lists.
+///
+/// Asked of the change as red first asks it, each commit's body among
+/// what it asks (a log asked without one fails), its commits, their
+/// Red-first trailers and their bodies are `log` (one commit of its own
+/// with neither, without it), asked of its own commits alone, and
+/// otherwise a rider's, as the train's candidate holds, its files with
+/// renames found are `diff.whole`,
+/// a file of its head's is `show/` and its path (or main's quarantine
+/// list, as any other `show` is), the
+/// lines each adds and takes are `diff.counted` (one added to each file
+/// asked, without it), and its added lines are `diff.lines`. Laying its tests
+/// over the base, each file it lists, only as its literal path, is a blob
+/// of the head's, what it indexes
+/// is added to `indexed`, and each commit it makes is added to `commits`
+/// and is `a1a1` for the tests alone and `b0b0` with files nothing names.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
   rev-parse)
@@ -58,17 +74,61 @@ case "$1" in
       ls-files) ;;
       rev-parse) cat "$STAND_IN/tree" 2>/dev/null || echo basetree ;;
       diff)
-        if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
-        else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
-      cat-file) grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null ;;
-      show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
+        case "$4" in
+          --find-renames) cat "$STAND_IN/diff.whole" 2>/dev/null || : ;;
+          --numstat)
+            if [ -e "$STAND_IN/diff.counted" ]; then cat "$STAND_IN/diff.counted"
+            else shift 9; for file in "$@"; do printf '1\t0\t%s\n' "$file"; done; fi ;;
+          -U0) cat "$STAND_IN/diff.lines" 2>/dev/null || : ;;
+          *)
+            if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
+            else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
+        esac ;;
+      cat-file)
+        if [ "$4" = commit ]; then
+          printf 'tree basetree\nauthor someone <a@b> 7 +0000\n'
+          printf 'committer someone <a@b> 7 +0000\n\nbase\n'
+        else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
+      log)
+        case " $* " in
+          *'%x1f%b%x1e'*) ;;
+          *) echo "log asked without each commit's body" >&2; exit 128 ;;
+        esac
+        case " $* " in
+          *" --first-parent --no-merges "*)
+            cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\037\036' ;;
+          *) printf 'feat(b): a rider\037\037\036' ;;
+        esac ;;
+      read-tree|write-tree)
+        if [ -e "$STAND_IN/unwritable" ]; then exit 1; fi
+        echo laidtree ;;
+      ls-tree)
+        [ "$GIT_LITERAL_PATHSPECS" = 1 ] || exit 1
+        shift 6; for file in "$@"; do printf '100644 blob 1111\t%s\0' "$file"; done ;;
+      update-index) tr '\0' '\n' >> "$STAND_IN/indexed" ;;
+      hash-object)
+        if [ "$4" = -t ]; then
+          commit=$(cat)
+          printf '%s\n' "$commit" >> "$STAND_IN/commits"
+          case "$commit" in
+            *'nothing names'*) echo b0b0b0b0b0b0b0b0b0b0 ;;
+            *) echo a1a1a1a1a1a1a1a1a1a1 ;;
+          esac
+        else cat > /dev/null; echo e69de29bb2d1d6434b8b29ae775ad8c2e48c5391; fi ;;
+      show)
+        if [ "${4%%:*}" = fedcba9876543210fedc ] && [ -e "$STAND_IN/show/${4#*:}" ]; then
+          cat "$STAND_IN/show/${4#*:}"
+        else cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128; fi ;;
     esac ;;
 esac
 "#;
 
 /// nix as changed-checks asks it: a side's checks by name, then their
-/// derivations, the base's being any flake at a revision; and a build,
+/// derivations, the base's being any flake at a revision but red first's
+/// commits, `a1a1`'s being `over` and `b0b0`'s `probed`; and a build,
 /// which it records, and which fails when it names a check `failing` lists,
+/// or, of a flake at a revision, one `failing-over` lists, or never ends
+/// once a test writes `hangs-over`,
 /// saying `failing.said` as its log. It refuses an evaluation through its evaluation
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
@@ -80,7 +140,8 @@ esac
 /// alone. Every evaluation and build must be pure and take no flake's
 /// config, since a fenced session's flake is evaluated on a lent builder.
 /// The flake's source is `source`, and evaluated from it as a plain path
-/// it gives the base's checks.
+/// it gives the base's checks. A side with no derivations written fails to
+/// evaluate, saying `SIDE.said` as nix's words, once a test writes it.
 const NIX: &str = r#"#!/bin/sh
 case " $* " in
   *" --impure "*) echo "evaluated impurely" >&2; exit 1 ;;
@@ -96,10 +157,15 @@ case "$1" in
     echo "$@" | sed 's/ --option pure-eval true --option accept-flake-config false//' \
       >> "$STAND_IN/built"
     exec 3>&2
+    case "$*" in
+      *'?rev='*) while [ -e "$STAND_IN/hangs-over" ]; do sleep 1; done ;;
+    esac
     for word in "$@"; do
+      list="$STAND_IN/failing"
+      case "$word" in *'?rev='*) list="$STAND_IN/failing-over" ;; esac
       while read -r check; do
         case "$word" in *".$check") cat "$STAND_IN/failing.said" >&3 2>/dev/null; exit 1 ;; esac
-      done < "$STAND_IN/failing"
+      done < "$list"
     done 2>/dev/null
     exit 0 ;;
 esac
@@ -115,7 +181,11 @@ esac
 [ "$5" = builtins.currentSystem ] && { echo "asked Nix for this machine's system" >&2; exit 1; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
-case "$3" in *'?rev='*|path:*) side=base ;; esac
+case "$3" in
+  *'?rev=a1a1'*) side=over ;;
+  *'?rev=b0b0'*) side=probed ;;
+  *'?rev='*|path:*) side=base ;;
+esac
 under_way() { find "$STAND_IN" -maxdepth 1 -name 'evaluating.*' | wc -l; }
 case "$5" in
   builtins.attrNames) cat "$STAND_IN/$side-names.json" ;;
@@ -144,7 +214,7 @@ case "$5" in
           done ;;
       esac
     fi
-    cat "$STAND_IN/$side.json" ;;
+    cat "$STAND_IN/$side.json" 2>/dev/null || { cat "$STAND_IN/$side.said" >&2; exit 1; } ;;
 esac
 "#;
 
@@ -312,6 +382,12 @@ impl StandIn {
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
             .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))
+            // A run is the train's candidate only where a case says so.
+            .env_remove("CHANGED_CHECKS_CANDIDATE")
+            // Red first's budget is its own, where a case doesn't set one.
+            .env_remove("CHANGED_CHECKS_RED_FIRST_SECONDS")
+            // Red first is on, where a case doesn't turn it off.
+            .env_remove("CHANGED_CHECKS_RED_FIRST")
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
