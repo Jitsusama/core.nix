@@ -11,7 +11,11 @@ saying which, unless at every line:
 - its ink's box stands where the upright one's does, every edge within a
   device pixel, so up and down share one middle line (VKCF3Z, 2026-11-14).
   A device pixel, since the upright triangle's own box moves by one as its
-  line moves between pixels.
+  line moves between pixels;
+- each triangle's ink starts and ends down its cell where its mark says
+  (Mark.qml's inkFrom and inkTo, in its cell's terms, which its half turn
+  doesn't move), within a device pixel, since the launcher's reader judges
+  a mark cut by those (Launcher.qml's drawnTexts).
 
 Usage: turned-mark.py FOLDER LOG
 """
@@ -44,6 +48,7 @@ class Ink:
         if not inked:
             blank = f"no ink in {path.name}"
             raise SystemExit(blank)
+        self.wide = wide
         self.top = inked[0]
         self.foot = inked[-1]
         self.left = min(row[0] for row in rows if row)
@@ -79,6 +84,16 @@ def main() -> None:
             faults.append(
                 f"at {by}, the turned ink's box {turned.box()} stands off the "
                 f"upright's {upright.box()}"
+            )
+    for mark in said["inks"]:
+        ink = Ink(folder / f"{mark['name']}.png")
+        scale = ink.wide / said["cell"]
+        # Its foot row is the last it inks, so its ink ends a row past it.
+        top, foot = mark["from"] * scale, mark["to"] * scale
+        if abs(ink.top - top) > WITHIN or abs(ink.foot + 1 - foot) > WITHIN:
+            faults.append(
+                f"{mark['name']}'s ink runs from row {ink.top} to {ink.foot + 1}, "
+                f"where its mark says {top:.2f} to {foot:.2f}"
             )
     if faults:
         raise SystemExit("\n".join(faults))

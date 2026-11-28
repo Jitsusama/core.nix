@@ -9340,14 +9340,20 @@ Scope {
             // taller than the name's, leaves empty above and below; judged
             // by that box, a whole mark at a list's foot read as cut.
             const marked = typeof item.inkFrom === "number" && typeof item.inkTo === "number"
-                && item.inkTo > item.inkFrom;
+                && item.inkTo > item.inkFrom && item.parent !== null;
+            // Its ink is placed from its parent, whose terms those are and
+            // which its own transform doesn't move: a turned mark's half turn
+            // (Mark.qml) maps its own top left to about twice its turn's
+            // origin, which put its ink that far low.
+            const inkTop = marked ? item.parent.mapToItem(into, 0, item.inkFrom) : null;
+            const inkFoot = marked ? item.parent.mapToItem(into, 0, item.inkTo) : null;
             const inked = {
                 x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
                     : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
-                y: marked ? at.y + item.inkFrom - item.y
+                y: marked ? inkTop.y
                     : at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
                 width: item.contentWidth,
-                height: marked ? item.inkTo - item.inkFrom : lines.height
+                height: marked ? inkFoot.y - inkTop.y : lines.height
             };
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
