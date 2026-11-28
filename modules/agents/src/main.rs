@@ -269,9 +269,13 @@ fn own(told: mpsc::Sender<Heard>, wants: Wants) -> Own {
                 return Some(json!({"error": {"code": "not-an-ask",
                     "message": "a heard names no `address`"}}));
             };
-            let now = i64::try_from(now).unwrap_or(0);
-            let seen = said["seen"].as_i64().unwrap_or(now);
-            let _ = told.send(Heard::Opened(address.to_owned(), now, seen));
+            let at = i64::try_from(now).unwrap_or(0);
+            let seen = said["seen"].as_i64().unwrap_or(at);
+            let _ = told.send(Heard::Opened {
+                address: address.to_owned(),
+                at,
+                seen,
+            });
             return Some(json!({"heard": address}));
         }
         // Joel's Not Now on the ask a session's row showed him, refused

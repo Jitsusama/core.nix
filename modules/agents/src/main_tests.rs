@@ -585,3 +585,21 @@ fn each_act_as_joel_is_held_to_the_shell_but_a_shares_start() {
         "nor an ask that isn't Joel's act"
     );
 }
+
+/// The shell's heard says when Joel opened a drawer apart from when the
+/// daemon heard it, so a late retry's moment is never taken for his.
+#[test]
+fn a_heard_keeps_when_joel_opened_a_drawer_apart_from_when_it_was_heard() {
+    let (told, heard) = mpsc::channel();
+    let says = own(told, Wants::default());
+    let answer = says(&json!({"ask": "heard", "address": "P", "seen": 5}));
+    assert_eq!(answer, Some(json!({"heard": "P"})), "the heard is answered");
+    let Ok(Heard::Opened { address, at, seen }) = heard.try_recv() else {
+        panic!("the loop was told no opening");
+    };
+    assert_eq!(
+        (address.as_str(), seen, at > seen),
+        ("P", 5, true),
+        "opened at 5 by the shell's word, heard now"
+    );
+}
