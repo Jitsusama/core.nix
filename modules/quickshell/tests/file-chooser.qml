@@ -52,7 +52,9 @@
 // check reads it). A save here keeps the folder it went to, one
 // asked from inside the shell too, never an open nor a save staged
 // elsewhere, and the chooser made again reads it. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// case holds, and otherwise 1, saying which didn't. Long because every
+// case is the one chooser's, run in one Quickshell over the folders and
+// stand-ins checks/files.nix makes once, which pieces would each make again.
 pragma ComponentBehavior: Bound
 
 import qs
