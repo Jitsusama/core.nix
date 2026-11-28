@@ -287,26 +287,51 @@ def test_sign_as_picks_the_key_outright(joel: Joel, keys: Keys) -> None:
     assert joel.signer_of_last_commit() == ["G", keys.agent]
 
 
-@pytest.mark.usefixtures("keys")
-def test_a_stopped_agents_socket_listens_again_until_its_path_unit_stops(joel: Joel) -> None:
+def test_a_stopped_agents_socket_listens_again_until_its_path_unit_stops(
+    joel: Joel, keys: Keys
+) -> None:
     """The agents' socket, stopped by hand while their key is there, listens again.
 
-    agent-signing-key.path starts it again once it stops, so a stop that should hold stops the
-    path unit first, and then the socket stays off. Starting the path unit is the way back on:
-    the key is there, so it starts the socket, as docs/installing.md says. The test ends with
-    the socket listening, as the tests after it need.
+    agent-signing-key.path starts it again once it stops, and their agent lists their key
+    through it, so it serves as well as listens. A stop that should hold stops the path unit
+    first and the socket after it, as docs/installing.md says; once the manager has no job left
+    to run, the socket is still off for five seconds, polled, so nothing queued was about to
+    start it. Starting the path unit is the way back on, and it's started however the case
+    ends, so the tests after it get the socket.
     """
     socket = f"XDG_RUNTIME_DIR={joel.runtime} systemctl --user is-active -q agent-signing.socket"
     listening = f"su - joel -c {shlex.quote(socket)}"
+    jobs = f'XDG_RUNTIME_DIR={joel.runtime} test -z "$(systemctl --user list-jobs --no-legend)"'
+    settled = f"su - joel -c {shlex.quote(jobs)}"
+    units = "agent-signing-key.path agent-signing.socket"
+
+    def state(unit: str) -> str:
+        return joel.run(f"systemctl --user is-active {unit} || true").strip()
+
+    def serves_again() -> None:
+        try:
+            joel.machine.wait_until_succeeds(listening, timeout=WAITING)
+        except Exception:
+            print(joel.run(f"systemctl --user status --no-pager {units} || true"))
+            raise
+        listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/agent-signing.sock ssh-add -l")
+        assert keys.agent in listed, listed
+
     joel.run("systemctl --user stop agent-signing.socket")
-    joel.machine.wait_until_succeeds(listening, timeout=WAITING)
-    joel.run("systemctl --user stop agent-signing-key.path agent-signing.socket")
-    path = joel.run("systemctl --user is-active agent-signing-key.path || true").strip()
-    assert path == "inactive", path
-    state = joel.run("systemctl --user is-active agent-signing.socket || true").strip()
-    assert state == "inactive", state
-    joel.run("systemctl --user start agent-signing-key.path")
-    joel.machine.wait_until_succeeds(listening, timeout=WAITING)
+    serves_again()
+    try:
+        joel.run("systemctl --user stop agent-signing-key.path")
+        joel.run("systemctl --user stop agent-signing.socket")
+        assert state("agent-signing-key.path") == "inactive"
+        joel.machine.wait_until_succeeds(settled, timeout=WAITING)
+        joel.run(
+            "for _ in $(seq 10); do"
+            " systemctl --user is-active -q agent-signing.socket && exit 1; sleep 0.5; done"
+        )
+        assert state("agent-signing.socket") == "inactive"
+    finally:
+        joel.run("systemctl --user start agent-signing-key.path")
+    serves_again()
 
 
 @pytest.mark.usefixtures("keys", "refusing")

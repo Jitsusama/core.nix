@@ -221,5 +221,33 @@
       "test_the_house_holds_the_upload_under_what_it_leaves"
     ],
     "test": "vm-the-house-holds-the-upload"
+  },
+  {
+    "at": 1795789654,
+    "commit": "c06280ba548e891ff671079094e1dd38b6a74a6a",
+    "due": "2026-11-29",
+    "owner_pr": 7119,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c06280ba548e",
+    "subtests": [
+      "test_each_track_is_full_once_the_image_is_read",
+      "test_the_kernel_fills_each_track_as_it_reads"
+    ],
+    "test": "vm-boot-says-it-wakes-from-hibernation"
+  },
+  {
+    "at": 1795807227,
+    "commit": "6b5965d226c94714ce829f96c8cbbb888352072d",
+    "due": "2026-11-29",
+    "owner_pr": 7133,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 6b5965d226c9",
+    "subtests": [
+      "test_a_held_port_yields_the_other",
+      "test_a_pin_is_kept_through_a_restart_and_a_stop",
+      "test_a_pin_no_flow_gets_through_lets_go",
+      "test_the_vpns_next_socket_goes_the_quick_way"
+    ],
+    "test": "vm-the-vpn-takes-the-quick-way"
   }
 ]

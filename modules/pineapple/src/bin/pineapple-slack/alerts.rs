@@ -182,7 +182,8 @@ fn give_up(state: &Path, im: Option<&str>, from: u64) {
 /// sent once and its sends that may have gone are counted by round. Its
 /// first line stands for both: the daemon writes each from the row its
 /// saying names, shadow and all, so lines of one key and saying differ
-/// at most in a title whose words were changed between them.
+/// at most in when each was written and in a title whose words were
+/// changed between them.
 fn tell_each(
     shadow: bool,
     state: &Path,

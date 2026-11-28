@@ -107,7 +107,10 @@ in
                   such as the relay's that fills the camera. By unit rather
                   than by name, since a program can take any name but can't
                   join a system unit; a person's own unit of the same name
-                  doesn't count, nor does a slice.
+                  doesn't count, nor does a slice. A person's manager
+                  (user@UID.service), a session's scope and init.scope hold
+                  everything their people run, so the watch refuses them
+                  and doesn't start.
                 '';
               };
             };

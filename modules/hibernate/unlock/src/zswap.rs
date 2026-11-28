@@ -19,12 +19,16 @@
 //! (modules/slices says why they do), and what it writes out of theirs comes
 //! back from the disk after a resume. Without modules/memory, the pool
 //! leaves memory only as it's read back or freed: with zswap off nothing is
-//! stored, so nothing queues the worker that trims a full pool.
+//! stored, so nothing queues the worker that trims a full pool. A trim
+//! queued just before zswap went off may still run, though, since 7.3's
+//! `shrink_worker` doesn't ask whether zswap is on, and it too reaches the
+//! slices' pages.
 //!
 //! `fits` counts the whole pool as in use. Writing an entry out doesn't make
 //! the image smaller by itself: `zswap_writeback_entry` first takes a whole
-//! page in the swap cache, decompresses the entry into it and starts its
-//! write, and only then frees the entry. Once the write is done, the page is
+//! page in the swap cache and decompresses the entry into it, then frees the
+//! entry and starts the page's write, so for a while the page holds more
+//! than the entry gave back. Once the write is done, the page is
 //! clean and already holds its swap slot, so the image's reclaim can drop it
 //! without more room in swap; once reclaim takes it, what the shrinker wrote
 //! out can only make the image smaller than `fits` reckons. That is read

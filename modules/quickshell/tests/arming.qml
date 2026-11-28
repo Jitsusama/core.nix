@@ -68,6 +68,14 @@ QtObject {
             presses([{ id: "reboot", keys: 5, at: 0 }, { id: "reboot", keys: 6, at: 100 },
                 { id: "reboot", keys: 7, at: 2000 }]),
             "armed  ends | not");
+        // A second press whose time can't be told from the arming's, as one
+        // not a number, or an arming at none, is held as doubled, so a slip
+        // there never ends the session.
+        expect("a second press timed at no number, or after an arming at none, does nothing",
+            [[0, NaN], [NaN, 2000], [0, undefined]].map(([first, second]) =>
+                presses([{ id: "reboot", keys: 5, at: first },
+                    { id: "reboot", keys: 6, at: second }])).join(", "),
+            "armed  | armed, armed  | armed, armed  | armed");
         // A click counts no key, so a click on the row a Return armed does
         // it, and a second click does what a second Return does.
         expect("a click after a Return does it",

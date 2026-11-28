@@ -573,7 +573,10 @@ mod tests {
             listed: vec![(0, headphones())],
             ..StandIn::default()
         };
-        assert!(watch.tick(&mut controller, 10, seconds(0)).is_some());
+        assert!(
+            watch.tick(&mut controller, 10, seconds(0)).is_some(),
+            "a link seen the first time is written"
+        );
         assert!(
             watch.tick(&mut controller, 15, seconds(5)).is_some(),
             "a link is written every tick"

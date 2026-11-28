@@ -34,7 +34,10 @@
 // keeps and what it had no time to name apart, and leaves no mark behind:
 // asked twice it says the same, and what was counted and then let go is
 // collected; and it counts nothing during a collection or over a mark it
-// didn't set. And what it says of jemalloc, which
+// didn't set. What it says letting go of a holder frees outside the heap,
+// the text of the strings that holder alone keeps, is about what a
+// collection takes from there once it's let go, and next to none of what
+// two holders share. And what it says of jemalloc, which
 // the test is linked with as Quickshell is: what's in use grows by a block
 // kept, and what's freed and kept by one let go, and neither is more than
 // what's resident. And where it stands, read without a
@@ -446,8 +449,9 @@ qint64 sweepsOf(const QJSEngine &engine) {
 
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
-// each room it grows by, with `litter` objects made and dropped after a
-// collection and before the first ask since it, on a heap holding over
+// each room it grows by and once besides, with `litter` objects made
+// and dropped after a collection and before the first ask since it, on
+// a heap holding over
 // twice what's live in runs too small for it, as Joel's shell held 201
 // to 209 MB for 63 to 68 live. With none, its ask stands for the
 // closing's, straight after the closing's collection. With some, it
@@ -517,7 +521,8 @@ bool pacesABurstPastTheRoom(int litter) {
     if (!made || !unswept || !holedThrough || grown.chunks < upTo || !paced)
         std::fprintf(stderr,
                      "FAIL a burst kept past twice the room collects at least once and no more "
-                     "than once for each room it grows by, with %d dropped before the ask: "
+                     "than once for each room it grows by and once besides, with %d dropped "
+                     "before the ask: "
                      "%lld collections over %.2f to %.2f MB of chunks, up to %.2f, swept %.2f "
                      "then %.2f MB, collecting at %.2f then %.2f MB, %.2f MB unswept at the "
                      "ask; made %s, unswept %s, holed throughout %s\n",
@@ -535,7 +540,7 @@ bool pacesABurstPastTheRoom(int litter) {
 // did; sweeps that keep less cap it there too rather than wrapping past
 // it; and each slot kept beyond moves it by two, as Qt lets what's used
 // grow.
-bool roomCapsWhatsKept() {
+bool ceilingFollowsWhatsKept() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = keepScattered(engine);
@@ -561,6 +566,9 @@ bool roomCapsWhatsKept() {
     const double slotMb = static_cast<double>(QV4::Chunk::SlotSize) / mb;
     const double cap =
         static_cast<double>(manager->slotsHeldWhenRoomLeft) * slotMb + 2 * SMALL_ROOM_MB;
+    // Where standing() says the rooms alone cap the chunks, which a
+    // closing's line puts beside where the collector starts.
+    const double roomsAt = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
     QStringList values;
     for (int each = 0; each < BURST_VALUES; each++)
         values << QStringLiteral("v%1: i").arg(each);
@@ -591,7 +599,8 @@ bool roomCapsWhatsKept() {
     engine.collectGarbage();
     const double moved = 2 * static_cast<double>(beyond) * slotMb;
     const bool holds = made && fromTheSweep && grown >= upTo && std::abs(same - cap) < SAME_MB &&
-                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB;
+                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB &&
+                       std::abs(roomsAt - cap) < SAME_MB;
     if (!holds)
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
@@ -599,11 +608,11 @@ bool roomCapsWhatsKept() {
                      "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
                      "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
-                     "and %.2f MB more, against %.2f, %.2f and %.2f; made %s, from the sweep "
-                     "%s\n",
+                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f; "
+                     "made %s, from the sweep %s\n",
                      asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
-                     cap,
-                     cap + moved, made ? "yes" : "no", fromTheSweep ? "yes" : "no");
+                     cap, cap + moved, roomsAt, made ? "yes" : "no",
+                     fromTheSweep ? "yes" : "no");
     return holds;
 }
 
@@ -2007,6 +2016,88 @@ bool freesWhatItAloneHolds() {
     return held;
 }
 
+// How many strings the test of what's freed outside the heap keeps under
+// one property, and under the one array two properties hold, and how many
+// characters each is past its number, so that each keeps about 8 KB of text
+// outside the heap, and all of one property's together about 16 MB.
+constexpr int TEXTS = 2000;
+constexpr int TEXT_LENGTH = 4096;
+constexpr double TEXT_MB =
+    static_cast<double>(TEXTS) * TEXT_LENGTH * sizeof(char16_t) / (1024.0 * 1024.0);
+
+// What the heap holds outside it once a collection has run, in megabytes.
+double outsideOnceCollected(QJSEngine &engine, const Heap &heap) {
+    engine.collectGarbage();
+    return heap.weigh().value(QStringLiteral("outside")).toDouble();
+}
+
+// Whether freedBy() counts the text a property's strings alone keep outside
+// the heap: about what weigh() says outside falls by once it's let go and a
+// collection runs, each string made apart so none shares another's text;
+// and next to none for either of two properties holding one array of such
+// strings, since the other keeps it; and says it in its line.
+bool freesTheTextItAloneHolds() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Texts.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    property var texts: []\n"
+                               "    property var aShares: []\n    property var bShares: null\n"
+                               "    function letTextsGo() { texts = []; }\n"
+                               "    Component.onCompleted: {\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            texts.push('x'.repeat(%2) + i);\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            aShares.push('y'.repeat(%2) + i);\n"
+                               "        bShares = aShares;\n"
+                               "    }\n}\n")
+                    .arg(TEXTS)
+                    .arg(TEXT_LENGTH));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the text test's file wasn't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Texts.qml"))));
+    const std::unique_ptr<QObject> made(component.create());
+    if (!made) {
+        std::fprintf(stderr, "FAIL the text test's object wasn't made: %s\n",
+                     qPrintable(component.errorString()));
+        return false;
+    }
+    const double before = outsideOnceCollected(engine, heap);
+    const QVariantMap texts = heap.freedBy(QStringLiteral("pieces/Texts.qml texts"));
+    const QVariantMap first = heap.freedBy(QStringLiteral("pieces/Texts.qml aShares"));
+    const QVariantMap second = heap.freedBy(QStringLiteral("pieces/Texts.qml bShares"));
+    const bool cleared = !anyMarked(engine.handle()->memoryManager);
+    QMetaObject::invokeMethod(made.get(), "letTextsGo");
+    const double fell = before - outsideOnceCollected(engine, heap);
+    const double textsMB = texts.value(QStringLiteral("outside")).toDouble();
+    const double firstMB = first.value(QStringLiteral("outside")).toDouble();
+    const double secondMB = second.value(QStringLiteral("outside")).toDouble();
+    const QString line = texts.value(QStringLiteral("said")).toString();
+    const bool frees = texts.value(QStringLiteral("held")).toBool() && fell > TEXT_MB / 2 &&
+                       std::abs(textsMB - fell) <= fell / 5;
+    const bool shared = first.value(QStringLiteral("held")).toBool() &&
+                        second.value(QStringLiteral("held")).toBool() &&
+                        firstMB < TEXT_MB / 50 && secondMB < TEXT_MB / 50;
+    const bool said = line.contains(QStringLiteral("MB outside it"));
+    const bool held = frees && shared && said && cleared;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL freedBy() counts the text a property's strings alone keep outside "
+                     "the heap, about what falls there once it's let go, and next to none for "
+                     "two sharing one array of them: texts %.2f MB outside against %.2f MB "
+                     "fallen there (%.2f made), shared %.2f and %.2f MB, cleared %s: %s\n",
+                     textsMB, fell, TEXT_MB, firstMB, secondMB, cleared ? "yes" : "no",
+                     qPrintable(line));
+    return held;
+}
+
 // How many objects each object made in script holds in the test of what
 // the sweep takes anyway.
 constexpr int DROPPED = 20000;
@@ -2334,7 +2425,7 @@ int main(int argc, char **argv) {
     const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool burstPaced = pacesABurstPastTheRoom(0);
     const bool litterPaced = pacesABurstPastTheRoom(LITTER);
-    const bool capped = roomCapsWhatsKept();
+    const bool capped = ceilingFollowsWhatsKept();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool lent = lendsBack();
@@ -2351,6 +2442,7 @@ int main(int argc, char **argv) {
     const bool waitsItOut = waitsOutACollection();
     const bool stray = leavesAStrayMark();
     const bool alone = freesWhatItAloneHolds();
+    const bool aloneOutside = freesTheTextItAloneHolds();
     const bool swept = leavesTheSweepsAlone();
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
@@ -2358,7 +2450,7 @@ int main(int argc, char **argv) {
                    reckoned && ownLimits && burstPaced && litterPaced && capped && follows &&
                    given && lent && fits && whole && fullest && inOrder && census && covered &&
                    placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept && chained
+                   aloneOutside && swept && chained
                ? 0
                : 1;
 }

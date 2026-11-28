@@ -7,9 +7,10 @@
 # Then it's run as the build is, which it must let through, and as the build
 # with each of its four signs alone moved, which it must refuse, so each half
 # of its guard is shown to refuse on its own, each by being unset as well
-# as moved, and the build folder's by being set above or below. Each has a stand-in tuple
-# first on PATH that marks being reached, so a guard that lets any of them
-# through fails here rather than on the person's Tuple.
+# as moved, and the build folder's by being set above or below, in a dev
+# shell or none. Each has a stand-in tuple first on PATH that marks being
+# reached, so a guard that lets any of them through fails here rather than
+# on the person's Tuple.
 set -euo pipefail
 
 probe=$1
@@ -87,6 +88,10 @@ refused "a dev shell in a home holding its runtime and data folders" "$here/home
 refused "a dev shell whose build folder holds the home it's in" "$here/home" \
   NIX_BUILD_TOP="$here" IN_NIX_SHELL=impure HOME="$here/home" \
   XDG_RUNTIME_DIR="$here/home/run" XDG_DATA_HOME="$here/home/.local/share"
+# No dev shell's sign either, so only the build folder's own check refuses.
+refused "a build whose build folder is elsewhere" "$build" \
+  NIX_BUILD_TOP="$here" HOME="$build" XDG_RUNTIME_DIR="$build/run" \
+  XDG_DATA_HOME="$build/data"
 refused "a build whose home is elsewhere" "$build" \
   NIX_BUILD_TOP="$build" HOME="$here/home" XDG_RUNTIME_DIR="$build/run" \
   XDG_DATA_HOME="$build/data"

@@ -401,7 +401,7 @@ def opened(shell: Shell) -> None:
 
 
 # How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
-LINK_QUIET = 0.8
+LINK_QUIET = launcher_on_niri.LINK_QUIET + 0.1
 # What a case types into what a link opened, and how often it tries to type inside the link's
 # quiet.
 LINK_KEYS = "hi"
@@ -2290,6 +2290,12 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
                 break
         else:
             pytest.fail(f"no key landed inside the link's quiet in {LINK_TRIES} tries")
+        # A close inside the quiet still closes, sending again the Escape the quiet dropped,
+        # as a Go To's why it couldn't go opens one (5GLTPH's finding on #7038's gate).
+        followed(shell, "talkTo", "LISTEN", quiet=False)
+        shell.launcher_until(talking)
+        shell.close_launcher()
+        assert not shell.showing()["open"], "a close inside a link's quiet left it open"
         # Typed past the quiet, every key is taken, and closing keeps them as the talk's words.
         late = typed_after_a_link(shell, "LISTEN", late=True, field=lambda shown: shown, up=talking)
         assert late == (0, LINK_KEYS), late

@@ -16,8 +16,11 @@ as the node's whole answer is once one went in a gap. A watch of what lapses is 
 same way with an ask's row and an entry, and with neither after, as the passwords child answers
 once it starts again, its asks' rows whole and its entries not yet listed. One of verdicts is
 answered with none, and one of what's inherited with records keyed "__proto__" and "constructor",
-names every object inherits, and "toString" said gone, never held, so the test can tell a client
-holds them as any other and says no such key let go. An ask of steps
+names every object inherits, and "toString" said gone, never held, then told a change to
+"__proto__", of a kind named "constructor", with "constructor" gone, so the test can tell a
+client holds, mends and lets go of them as any other and says no key let go it never held,
+and one keyed by a number, which it never holds.
+An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
@@ -47,16 +50,20 @@ LAPSING = {
 }
 
 
-# What each kind answered the same every time holds: verdicts none, and what's inherited the
-# records keyed by names every object inherits, with one such name said gone though never held.
+# What each kind answered the same every time holds: verdicts none.
 FIXED: dict[str, list[dict[str, object]]] = {
     "verdict": [],
-    "inherited": [
-        {"key": "__proto__", "kind": "inherited", "heard": 1},
-        {"key": "constructor", "kind": "inherited", "heard": 1},
-        {"key": "toString", "kind": "inherited", "gone": True},
-    ],
 }
+
+# What's inherited: the records keyed by names every object inherits, with one such name said
+# gone though never held, and one keyed by a number, which a client holds nothing of, since
+# what reads its rows takes every key held as a string (launcher/Runs.qml).
+INHERITED: list[dict[str, object]] = [
+    {"key": "__proto__", "kind": "inherited", "heard": 1},
+    {"key": "constructor", "kind": "inherited", "heard": 1},
+    {"key": "toString", "kind": "inherited", "gone": True},
+    {"key": 7, "kind": "inherited", "heard": 1},
+]
 
 
 def kinds_of(asked: dict[str, object]) -> list[str]:
@@ -87,6 +94,17 @@ def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None
                 "changed": [
                     {"key": "session:a", "state": "busy", "step": None, "presence": presence}
                 ],
+            },
+        ]
+    if asked.get("kind") == "inherited":
+        # The change names "constructor" as its record's kind too, so the client looks what's deep
+        # up by a name its map of kinds would inherit.
+        return [
+            {"id": asked.get("id"), "records": INHERITED},
+            {
+                "id": asked.get("id"),
+                "changed": [{"key": "__proto__", "kind": "constructor", "heard": 2}],
+                "gone": ["constructor"],
             },
         ]
     if asked.get("kind") == "mark":

@@ -254,6 +254,15 @@ ShellRoot {
             const judged = runs.everything();
             expect("its kind as the harness wrote it", names(judged) === "judge on core.nix#381",
                 names(judged));
+
+            // A round named as what every object inherits is a review, not a
+            // function said in its row.
+            runs.records = [{ key: "run:review.constructor-1", kind: "run",
+                id: "review.constructor-1", about: "core.nix#382", parent: "s-gone",
+                state: "done" }];
+            const inherited = runs.everything();
+            expect("a round named constructor is a review",
+                names(inherited) === "review on core.nix#382", names(inherited));
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

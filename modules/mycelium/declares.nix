@@ -109,8 +109,10 @@ rec {
                 description = ''
                   The memory pressure it stays at or under, in percent of
                   the last minute all work at once waited on memory,
-                  machine-wide; null where it holds to none. A mycelium that
-                  predates it ignores it.
+                  machine-wide; null where it holds to none. A node that
+                  measures no memory stall, a Mac's or one whose kernel
+                  keeps no pressure files, is never past it, and a mycelium
+                  that predates it ignores it.
                 '';
               };
             };

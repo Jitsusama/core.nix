@@ -6,19 +6,21 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use serde_json::Value;
+
 use super::{an_alert_waits, home, live_for_rounds, phoned, said, sent_to_self, serving, tools};
 
 /// Where in what the reader asked of the gateway each send to Joel's
 /// phone was, with all it asked.
 fn sends(called: &super::super::Called) -> (Vec<String>, Vec<usize>) {
     let asked = tools(called);
-    let sends = asked
+    let at = asked
         .iter()
         .enumerate()
         .filter(|(_, tool)| *tool == "slack_send_message_to_self")
         .map(|(at, _)| at)
         .collect();
-    (asked, sends)
+    (asked, at)
 }
 
 /// Whether a round's search was asked between two of `asked`.
@@ -28,12 +30,18 @@ fn a_round_between(asked: &[String], from: usize, to: usize) -> bool {
         .any(|tool| tool == "slack_search_public_and_private")
 }
 
+/// The title the alert's second line shows, its words changed between.
+const SECOND_TITLE: &str = "Someone stopped your agents again";
+
 /// Writes the alert waiting in `home` down a second time, as the
-/// launcher's daemon may.
+/// launcher's daemon may: a second later, its title's words changed.
 fn written_down_twice(home: &Path) {
     let waiting = home.join("state/pineapple/would-tell.jsonl");
     let line = std::fs::read_to_string(&waiting).expect("the alert waiting");
-    std::fs::write(&waiting, line.repeat(2)).expect("the alert, written down twice");
+    let mut second: Value = serde_json::from_str(&line).expect("the alert, in JSON");
+    second["at"] = (second["at"].as_u64().expect("when it was written") + 1_000).into();
+    second["title"] = SECOND_TITLE.into();
+    std::fs::write(&waiting, format!("{line}{second}\n")).expect("the alert, written down twice");
 }
 
 #[test]
@@ -45,6 +53,10 @@ fn an_alert_written_down_twice_is_sent_once() {
     live_for_rounds(&home, &url, &called, 12);
     let sent = sent_to_self(&called);
     assert_eq!(sent.len(), 1, "its two lines send it once: {sent:?}");
+    assert!(
+        !sent[0].contains(SECOND_TITLE),
+        "as its first line says, which stands for both: {sent:?}"
+    );
     let phoned = phoned(&home);
     assert!(
         phoned.len() == 1 && phoned[0]["sent"] == true,
@@ -96,11 +108,13 @@ fn an_alert_written_down_twice_whose_send_met_a_spent_rate_goes_the_next_round()
     written_down_twice(&home);
     live_for_rounds(&home, &url, &called, 12);
     let (asked, sends) = sends(&called);
-    // Its first round's two tries met the spent rate, so its second
-    // line waits for the next round rather than spending it again.
+    // Its first round's two tries, with its words and without, met the
+    // spent rate, so it waits for the next round; its second line, of the
+    // same alert, isn't tried in that round at all.
     assert!(
         sends.len() == 3 && a_round_between(&asked, sends[1], sends[2]),
-        "tried twice in one round, then once the next, a search between: {asked:?}"
+        "tried with its words and without in one round, then once the next, a search \
+         between, never again in the first: {asked:?}"
     );
     let phoned = phoned(&home);
     assert!(

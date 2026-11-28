@@ -131,9 +131,17 @@ impl Running {
             std::process::id(),
             STARTED.fetch_add(1, Ordering::Relaxed)
         ));
-        let _ = std::fs::remove_dir_all(&folder);
-        // Made afresh, so a folder the removal couldn't take fails here
-        // rather than feeding this run what an earlier one wrote.
+        // A removal that fails says why, which the folder left behind can't.
+        if let Err(error) = std::fs::remove_dir_all(&folder) {
+            assert_eq!(
+                error.kind(),
+                std::io::ErrorKind::NotFound,
+                "{} should be cleared: {error}",
+                folder.display()
+            );
+        }
+        // Made afresh, so a folder made again since, or a link planted
+        // there, fails here rather than feeding this run what it holds.
         std::fs::create_dir(&folder)
             .unwrap_or_else(|error| panic!("{} should be made afresh: {error}", folder.display()));
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {

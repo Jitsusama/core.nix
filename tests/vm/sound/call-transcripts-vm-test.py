@@ -232,6 +232,8 @@ def interrupted(joel: Joel, call: dict[str, Any]) -> dict[str, bool]:
 @pytest.fixture(scope="module")
 def written(joel: Joel, call: dict[str, Any], interrupted: dict[str, bool]) -> dict[str, Any]:
     """Let the summary started again after the other call go on, giving the record once done."""
+    # Asked for only so the other call has stopped the first summary before the gate opens.
+    del interrupted
     try:
         joel.wait_for(f"test $(grep -cx started {SUMMARIZER_LOG}) -ge {STARTS}", ANSWERS_WITHIN)
         joel.run(f"echo open > {GATE}")
@@ -239,7 +241,6 @@ def written(joel: Joel, call: dict[str, Any], interrupted: dict[str, bool]) -> d
     except Exception:
         joel.explain()
         raise
-    assert interrupted, "the summary was let go on before another call stopped it"
     record = joel.record(call["key"])
     assert record["key"] == "call:e1"
     return record
@@ -300,7 +301,10 @@ def test_a_call_ended_is_no_longer_served_as_recorded(call: dict[str, Any]) -> N
 def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[str, Any]) -> None:
     """Joel asks, the others answer, Joel thanks them: three turns, each its speaker's."""
     turns = [line for line in transcript(joel, call).splitlines() if line.startswith("**")]
-    asked, answered, thanked = turns
+    try:
+        asked, answered, thanked = turns
+    except ValueError:
+        pytest.fail(f"the transcript holds {len(turns)} turns, not three: {turns}")
     assert not asked.startswith("**Others**"), f"Joel's question is written as the others': {asked}"
     # A speech model on the VM's processor can hear a word wrong (Whisper heard "review" as
     # "renew"), so each turn is known by a word it hears every time; dictation's checks hold

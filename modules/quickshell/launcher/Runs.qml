@@ -84,8 +84,9 @@ Provider {
     })
 
     // Each kind by Agents' own word for it: a fleet or a council is several
-    // subagents at once.
-    readonly property var kinds: ({
+    // subagents at once. With no prototype, so a round the node names
+    // "constructor" is a review, never a function written into its row.
+    readonly property var kinds: Object.assign(Object.create(null), {
         fleet: "fleet",
         council: "council",
         judge: "judge",

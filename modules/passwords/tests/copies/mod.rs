@@ -314,13 +314,19 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
     );
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
-    let (first, first_clears) = held(&running, &mut client, 2);
+    let (_, first_clears) = held(&running, &mut client, 2);
     // Two of the first copy's 5 s pass, so the second's time falls 2 s past it.
     std::thread::sleep(std::time::Duration::from_secs(2));
+    // held waits until a new copier is the only one, so the first is gone.
     let (second, second_clears) = held(&running, &mut client, 3);
+    // The daemon took the second copy at its time less the 5 s, which must
+    // come well before the first's own clear, or a slow machine had the
+    // first clear by itself and nothing was copied over.
+    let taken = second_clears - 5_000;
     assert!(
-        !copier_pids(&running.copied()).contains(&first),
-        "the copy copied over still runs"
+        taken + 1_000 <= first_clears,
+        "the second copy was taken only {} ms before the first's time, so none was copied over",
+        i128::from(first_clears) - i128::from(taken)
     );
     while since_the_epoch() < first_clears + 500 {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -335,9 +341,15 @@ fn a_copy_copied_over_stays_past_the_time_the_one_before_it_clears() {
         copier_pids(&running.copied()).contains(&second),
         "the copy before it cleared the copy copied over it"
     );
-    until("the second copy clears in its own time", || {
-        !copier_runs(&running.copied())
-    });
+    until("the second copy clears", || !copier_runs(&running.copied()));
+    // Seen cleared within a poll of it going, so no earlier than its time
+    // less a poll's slack, and no later than its time and a loaded
+    // machine's oversleep, as a sleep only ever runs long.
+    let cleared = i128::from(since_the_epoch()) - i128::from(second_clears);
+    assert!(
+        (-100..=5_000).contains(&cleared),
+        "the second copy cleared {cleared} ms from its own time"
+    );
 }
 
 #[test]
@@ -348,13 +360,24 @@ fn a_copy_copied_over_stops_waiting_to_clear() {
     // what they were with one copy held.
     let running = held_copy("copy-stops-waiting");
     let mut client = running.client();
-    // The thread that gave the copier its copy ends once it's given.
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    let holding_one = threads_of(running.pid());
+    // The thread that gave the copier its copy ends once it's given, so
+    // the count is taken once it holds still, never with that one in it,
+    // which would hide a wait left running.
+    let holding_one = settled_threads(running.pid());
     held(&running, &mut client, 3);
-    until("the copy copied over stops waiting to clear", || {
-        threads_of(running.pid()) <= holding_one
-    });
+    let started = std::time::Instant::now();
+    loop {
+        let running_now = threads_of(running.pid());
+        if running_now <= holding_one {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the copy copied over never stopped waiting to clear: {running_now} threads, \
+             {holding_one} with one copy held"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 /// A daemon holding a copy far longer than a test takes, so only its
@@ -382,14 +405,41 @@ fn held(running: &Running, client: &mut crate::common::Client, id: u64) -> (u32,
     let before = copier_pids(&running.copied());
     let copied = client.ask(&json!({"id": id, "ask": "copy", "key": "entry:keeping:gh"}));
     assert_eq!(copied["copied"], true, "{copied}");
+    holds_no_secret(&copied);
     let clears = copied["clears"]
         .as_u64()
         .expect("the copy's answer says when it clears");
+    // The copier the wait saw, rather than a second look's, which could
+    // find it already gone.
+    let seen = std::cell::Cell::new(None);
     until("one new copier holds the password", || {
         let holding = copier_pids(&running.copied());
-        holding.len() == 1 && !before.contains(&holding[0])
+        let new = holding.len() == 1 && !before.contains(&holding[0]);
+        if new {
+            seen.set(Some(holding[0]));
+        }
+        new
     });
-    (copier_pids(&running.copied())[0], clears)
+    (seen.get().expect("the wait saw the copier"), clears)
+}
+
+/// How many threads a process runs once two looks half a second apart
+/// agree, so a thread on its way out isn't counted.
+fn settled_threads(pid: u32) -> usize {
+    let started = std::time::Instant::now();
+    let mut last = threads_of(pid);
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let now = threads_of(pid);
+        if now == last {
+            return now;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the daemon's threads never held still: {last} then {now}"
+        );
+        last = now;
+    }
 }
 
 /// How many threads a process runs.
