@@ -24,6 +24,15 @@ public:
     // never timed from an old one.
     Q_INVOKABLE double pressed() const;
 
+    // When the shell last heard a key, a button or the wheel, in
+    // milliseconds of the monotonic clock, as it heard it rather than as
+    // the compositor stamped it, or 0 before any: an open launcher
+    // collects only once it's been quiet a while (Collector.js's
+    // idleCollectionDue), since a collection in the middle of a key, a
+    // scroll or a click stalls its frames. The filter sees every one, so
+    // no path an input takes to the launcher can miss it.
+    Q_INVOKABLE double lastInputHeard() const;
+
     // The monotonic clock now, in milliseconds.
     Q_INVOKABLE double now() const;
 
@@ -52,6 +61,7 @@ protected:
 
 private:
     double handling = 0;
+    double inputHeard = 0;
     // Which press is being handled, so the one after it isn't let go of
     // when the one before is.
     quint64 presses = 0;

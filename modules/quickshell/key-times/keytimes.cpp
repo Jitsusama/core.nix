@@ -21,7 +21,11 @@
 // twentieth step read 790 ms from its key though it was drawn in 13, and
 // put Joel's median at 375 ms (2026-11-11, 09:38).
 //
-// keytimes_test.cpp holds it to both.
+// Every key, button and wheel event it sees is also kept as the last input
+// heard, by the clock as it's seen, since a key a program typed may carry
+// no time at all.
+//
+// keytimes_test.cpp holds it to each.
 
 #include "keytimes.h"
 
@@ -50,6 +54,8 @@ KeyTimes::KeyTimes(QObject *parent) : QObject(parent) {
 }
 
 double KeyTimes::pressed() const { return handling; }
+
+double KeyTimes::lastInputHeard() const { return inputHeard; }
 
 double KeyTimes::now() const { return monotonicNow(); }
 
@@ -91,6 +97,8 @@ double KeyTimes::faulted() const {
 
 bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
     const auto type = event->type();
+    if (type == QEvent::KeyPress || type == QEvent::MouseButtonPress || type == QEvent::Wheel)
+        inputHeard = monotonicNow();
     if (type == QEvent::KeyPress || type == QEvent::MouseButtonPress) {
         const auto stamp = static_cast<std::uint32_t>(static_cast<QInputEvent *>(event)->timestamp());
         const double now = monotonicNow();

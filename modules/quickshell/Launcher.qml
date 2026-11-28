@@ -7687,6 +7687,7 @@ Scope {
                 Awaited.framesTimed(surface.FramePresentation.framesBegun,
                     frame => surface.FramePresentation.timesOf(frame)), answersWaitedFor);
         Report.say(`key framed ${newest.text}`);
+        keyCollecting = Heap.collected() - newest.collected;
         // Its time after its own work said apart, as a drawer's is: waiting
         // for the frame that drew it, then drawing it, so a key whose frame
         // came 80 ms after a 30 ms search says which held it (Joel's "ag",
@@ -7695,7 +7696,7 @@ Scope {
             Object.assign({
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
-                collecting: Math.round(Heap.collected() - newest.collected),
+                collecting: Math.round(keyCollecting),
                 thread: newest.thread,
                 // The frames before its own, which a slow key's line counts
                 // (Trials.js's framesBefore), read only for a key said.
@@ -7779,6 +7780,12 @@ Scope {
     property var keysHeard: []
     property var keysDone: []
     property int keysTimed: 0
+    // What the collector ran of the newest key framed, from its being
+    // heard to its frame, as a slow key's line says it, kept for a key too
+    // quick to be said too, so the check that an idle opening collects
+    // between keys reads the key after it whatever it took
+    // (tests/idle-collection-on-niri-test.py).
+    property real keyCollecting: 0
 
     // The last f or F, which ; and , go again (Finding.js).
     property var lastLetter: null
@@ -9219,15 +9226,15 @@ Scope {
         // the frame it's drawn in began, when that frame's swap began and
         // when it reached the screen, in milliseconds of the monotonic
         // clock, oldest first, a key at each place in all six, its press
-        // null if no press made it; and how many keys have reached a frame
-        // since the shell started.
+        // null if no press made it; how many keys have reached a frame
+        // since the shell started; and what the collector ran of the newest.
         function framed(): string {
             const drawn = root.keysFramed.length;
             return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
                 pressed: root.keysPressed.slice(0, drawn),
                 heard: root.keysHeard.slice(0, drawn), done: root.keysDone.slice(0, drawn),
                 begun: root.keysBegun, rendered: root.keysRendered,
-                frames: root.keysFramed });
+                frames: root.keysFramed, collecting: root.keyCollecting });
         }
 
         // How many rows each source has made since the shell started, by
@@ -11787,6 +11794,7 @@ Scope {
         if (!open && !opening) {
             Heap.leaveRoom(openingRoom);
             openAskedHeap = Heap.standing();
+            idleChunksFrom = openAskedHeap.chunks;
             openAsked = KeyTimes.now();
             openAskedClocks = feltClocks();
             openWorkedClocks = null;
@@ -13008,6 +13016,33 @@ Scope {
     // against where the collector would start, weighed before it collects,
     // so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
+    // While the launcher is open and nobody's at it, it collects once its
+    // chunks have grown far enough past where the room was last left, at
+    // the ask or its last such collection, so a long opening's collection
+    // comes between keys rather than inside one, and leaves the room again
+    // as collectClosed does (Collector.idleCollectionDue says when, and why
+    // then). KeyTimes hears every key, click and scroll however it reaches
+    // the launcher, so nothing here marks them. Never while it opens or
+    // parts, which time their own frames.
+    property real idleChunksFrom: 0
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.open && !root.opening && root.parting === ""
+        onTriggered: root.collectIdle()
+    }
+    function collectIdle() {
+        const began = KeyTimes.now();
+        const heard = KeyTimes.lastInputHeard();
+        const before = Heap.standing().chunks;
+        if (!Collector.idleCollectionDue(began, heard, before, idleChunksFrom))
+            return;
+        gc();
+        Heap.leaveRoom(openingRoom);
+        idleChunksFrom = Heap.standing().chunks;
+        console.info(Collector.idleCollectedSaid(KeyTimes.now() - began, before, idleChunksFrom,
+            began - heard));
+    }
     function collectClosed() {
         // A count or a weighing already due would land within a second of
         // this closing, so it waits for the resume below instead; what it

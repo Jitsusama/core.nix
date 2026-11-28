@@ -867,7 +867,8 @@ in
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
-  # as it was asked, as modules/quickshell/tests/pacing.qml holds in Qt's own
+  # as it was asked, and an open launcher collects only once it's been quiet
+  # and grown, as modules/quickshell/tests/pacing.qml holds in Qt's own
   # engine. The copy lines below are the list of launcher files its cases
   # read, kept nowhere else: one left out fails the run, in the folder's lint
   # or in qml, while a list in a comment would drift unseen. Only that way is

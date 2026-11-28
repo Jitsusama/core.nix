@@ -73,3 +73,37 @@ function standingSaid(inStall, stood) {
         + ` ${Math.round(stood.collectsAt)} MB${limitSaid(stood)} and outside`
         + ` ${Math.round(stood.outside)} of ${Math.round(stood.collectsOutsideAt)} MB${under}`;
 }
+
+// How long an open launcher goes without a key, a click or the wheel, and
+// how far its chunks grow past where the room was last left, before it
+// collects while nobody's at it. Left to Qt, a long opening grows until
+// the collector starts at the room's edge, wherever the next key is, and
+// collections inside openings took 47 to 377 ms (Launcher.qml's
+// openingRoom). The nested shell's walks through drawers never left 700 ms
+// between keys, so a collection never comes between keys typed together;
+// 45 drawers made 25 to 30 MB there, so 8 MB comes a few times in a long
+// opening, not at every rest. Resting after every fifth drawer, in 20
+// openings of 45 and one of 120, it came 72 times, 31 ms at the median and
+// 91 at most, 703 to 796 ms after a key. In the 20 openings no key had the
+// collector in it, against 6 keys and 107 ms without it, and the chunks
+// before each closing's collection stayed at 50 MB, against 69 to 79
+// (2026-11-28).
+const IDLE_QUIET_MS = 700;
+const IDLE_GROWN_MB = 8;
+
+// Whether an open launcher should collect now, from the monotonic clock
+// now, when it last heard a key, a click or the wheel, its chunks now, and
+// its chunks where the room was last left, at the ask or the last such
+// collection, all as Heap.standing and KeyTimes say them.
+function idleCollectionDue(now, inputHeard, chunks, chunksFrom) {
+    return now - inputHeard >= IDLE_QUIET_MS && chunks - chunksFrom >= IDLE_GROWN_MB;
+}
+
+// The journal's line for a collection while nobody's at it: how long it
+// took, the chunks before and after, and how long after the last input it
+// came.
+function idleCollectedSaid(took, before, after, quiet) {
+    return `launcher: collected idle in an opening in ${Math.round(took)} ms, chunks`
+        + ` ${Math.round(before)} MB before it and ${Math.round(after)} after,`
+        + ` ${Math.round(quiet)} ms after the last input`;
+}
