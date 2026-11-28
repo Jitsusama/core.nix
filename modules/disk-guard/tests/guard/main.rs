@@ -71,6 +71,7 @@ mod sandbox;
 mod scratch;
 #[cfg(target_os = "linux")]
 mod serve;
+mod sizes;
 mod snapshots;
 mod socket;
 mod state;

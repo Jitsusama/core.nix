@@ -27,6 +27,7 @@ use crate::config::{Config, Source};
 use crate::discover::Kind;
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
+use crate::sizes::Sizes;
 use crate::snapshots::Boot;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -166,7 +167,7 @@ pub struct World<'a> {
     /// share, as trees cloned with their builds inside do, count once:
     /// deleting them all frees those once.
     pub counted: RefCell<Counted>,
-    /// What earlier surveys sized of quest workspaces, kept between them.
+    /// What earlier surveys sized, kept between them.
     pub sizes: RefCell<Sizes>,
     /// How many times the survey walked a root for targets and installs.
     pub walked: usize,
@@ -174,58 +175,6 @@ pub struct World<'a> {
     /// so a stop never waits on a walk. A stopped survey offers nothing
     /// more, and what it offered is acted on by nobody.
     pub stop: &'a dyn Fn() -> bool,
-}
-
-/// The sizes of quest workspaces and the entries they hold, each by the
-/// last write it was sized at, kept by a daemon from one survey to the
-/// next. On 16 November 215 workspaces held 70,882 entries, 68,202 of them
-/// unwritten for six hours, and every pass of a filling disk walked each
-/// old one whole to size it again, reading 178 GB in four hours.
-///
-/// A size only says what taking an entry would free: whether it may be
-/// taken is dated afresh each survey, so a size kept from an earlier one
-/// never makes anything look idle. A write deeper than the dating reads
-/// leaves a size behind until a shallower one, and a size known this way
-/// adds nothing to the survey's shared blocks, so a block two entries
-/// share may count in both; either only misstates what a pass frees.
-#[derive(Debug, Default)]
-pub struct Sizes {
-    /// Each entry's size, by the bits of the write it was sized at.
-    known: BTreeMap<PathBuf, (u64, u64)>,
-    /// The entries asked for since the last survey began.
-    asked: BTreeSet<PathBuf>,
-    /// How many were walked to be sized, rather than known.
-    pub walked: usize,
-}
-
-impl Sizes {
-    /// What `path`, last written at `written`, holds: known when an earlier
-    /// survey sized it at that write, `measure`d otherwise. A write too
-    /// deep to date is never known, as it may be under way.
-    fn of(&mut self, path: &Path, written: f64, measure: impl FnOnce() -> u64) -> u64 {
-        self.asked.insert(path.to_owned());
-        let at = written.to_bits();
-        if let Some(&(was, size)) = self.known.get(path)
-            && was == at
-        {
-            return size;
-        }
-        self.walked += 1;
-        let size = measure();
-        if written.is_finite() {
-            self.known.insert(path.to_owned(), (at, size));
-        } else {
-            self.known.remove(path);
-        }
-        size
-    }
-
-    /// Forgets every entry the survey just ended never asked for, gone or
-    /// no longer old, so what's kept is only what the next may ask.
-    pub fn ended(&mut self) {
-        let asked = std::mem::take(&mut self.asked);
-        self.known.retain(|path, _| asked.contains(path));
-    }
 }
 
 /// The config with only the sources that could offer something inside
@@ -460,18 +409,20 @@ fn resolved(root: &Path) -> PathBuf {
     fs::canonicalize(root).unwrap_or_else(|_| root.to_owned())
 }
 
-/// What an entry holds, less what the survey has counted already.
+/// What an entry holds, less what the survey has counted already, unless
+/// an earlier survey sized it at the stamp it has now.
 fn size(path: &Path, world: &World) -> u64 {
-    measured(path, &mut world.counted.borrow_mut(), world.stop)
+    sized(path, crate::sizes::stamp(path), world)
 }
 
-/// What an entry last written at `written` holds, as `size` says, unless
-/// an earlier survey sized it at that write.
-fn sized(path: &Path, written: f64, world: &World) -> u64 {
-    world
-        .sizes
-        .borrow_mut()
-        .of(path, written, || size(path, world))
+/// What an entry stamped `stamp` holds, less what the survey has counted
+/// already, unless an earlier survey sized it at that stamp. A walk a stop
+/// cut short counted only part of it, so it gives no size to keep.
+fn sized(path: &Path, stamp: f64, world: &World) -> u64 {
+    world.sizes.borrow_mut().of(path, stamp, || {
+        let size = measured(path, &mut world.counted.borrow_mut(), world.stop);
+        (!(world.stop)()).then_some(size)
+    })
 }
 
 /// What an entry holds: a directory's allocated size beneath it, a file's

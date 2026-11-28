@@ -139,7 +139,7 @@ impl Guard {
             damaged,
             kept: Vec::new(),
             offered: None,
-            sizes: crate::survey::Sizes::default(),
+            sizes: crate::sizes::Sizes::default(),
             remeasure: false,
             measured: Arc::new(Mutex::new(measured)),
             measuring: None,

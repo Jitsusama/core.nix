@@ -86,6 +86,7 @@ pub mod replaced;
 pub mod scratch;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod serve;
+pub mod sizes;
 pub mod snapshots;
 pub mod store_roots;
 /// What the machine says about itself, through whichever platform this is.
