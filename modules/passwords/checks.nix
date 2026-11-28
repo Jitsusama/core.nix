@@ -149,18 +149,22 @@ onLinux {
   # The copier check's reads of a copier are bounded, each answering
   # within its patience: a copier still running hasn't refused, one that
   # ended is said with its code and what it said, even with a child
-  # holding its standard error open, one that never ends is killed, a
-  # reader that never reads is given up on without spinning, and a copier
-  # saying nothing says nothing. A line is read whole and exactly, as the
-  # daemon reads it: one said in pieces is joined, two said at once are
-  # answered in turn, 'ready ' is never 'ready', one with no end is cut off
-  # at a cap, and a half line is answered as said only once the copier
-  # closed its standard output, the next read finishing one held open.
-  # What was read past a line comes first in how the copier ended, and a
-  # refusal keeps none of it. A copier with no pipe to read is refused by
-  # name, and a read that raised fails by what it raised, not as a hang.
-  # Its copiers are bash scripts, so it needs no display
-  # (tests/copier-check-reads-bounded-test.py).
+  # holding its standard error open, one that never ends is killed with
+  # its group, a child it left outside the group holding its pipes waited
+  # on no longer than the patience again, a reader that never reads is
+  # given up on without spinning, and a copier saying nothing says
+  # nothing. A line is read whole and exactly, as the daemon reads it: one
+  # said in pieces is joined, two said at once are answered in turn,
+  # 'ready ' is never 'ready', nor is 'ready' and a carriage return said
+  # last, one with no end is cut off at a cap, never answered past it, the
+  # next read reading on and never answering its rest as a word, and a
+  # half line is answered as said only once the copier closed its standard
+  # output, the next read finishing one held open. What was read past a
+  # line comes first in how the copier ended, and a refusal keeps none of
+  # it. A copier with no pipe to read raises as the check's own wiring
+  # fault, and a read or a case that raised fails by what it raised, not
+  # as a hang, the cases after it still run. Its copiers are bash scripts,
+  # so it needs no display (tests/copier-check-reads-bounded-test.py).
   passwords-copier-check-reads-are-bounded =
     pkgs.runCommandLocal "passwords-copier-check-reads-are-bounded"
       { nativeBuildInputs = [ pkgs.python3 ]; }

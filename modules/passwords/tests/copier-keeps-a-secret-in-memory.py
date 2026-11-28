@@ -53,6 +53,7 @@ import resource
 import secrets
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -88,12 +89,17 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 # What each copier said past the line said_next last answered of it, kept for its next call.
 UNANSWERED: dict[subprocess.Popen[bytes], bytes] = {}
-# What said_next adds to a line a copier began and held on after without ending it, so it's
-# never answered as the word the daemon waits for: the daemon reads whole lines, and hears a
-# half one only once the copier closes its standard output.
-UNFINISHED = "(said with no newline, which the daemon waits on)"
-# How much of a line said_next reads, in bytes, before it answers what it has as unfinished,
+# The copiers whose line said_next cut at SAID_CAP, so what it reads on of that line is
+# never answered as a whole one.
+CUT: set[subprocess.Popen[bytes]] = set()
+# What said_next adds to what it can't answer as a whole line, so it's never answered as the
+# word the daemon waits for: a line a copier began and held on after without ending it, as
+# the daemon reads whole lines and hears a half one only once the copier closes its standard
+# output, or any part of one past SAID_CAP, as all of that line is past the daemon's words.
+UNFINISHED = "(not heard as a whole line, which the daemon waits on)"
+# The most of a line said_next answers, in bytes, what it kept of an earlier read included,
 # so a copier pouring out bytes with no newline can't grow its read for the whole PATIENCE.
+# What it cut there is answered as unfinished, and the next call reads on from the cut.
 SAID_CAP = 4096
 
 
@@ -134,7 +140,8 @@ class Cases:
     def copier_started(self, stdin: int, *, typed: bool = True) -> subprocess.Popen[bytes]:
         """Start the copier as the daemon does, reading from `stdin`, keeping what it says.
 
-        Untyped, it's given no type, which the daemon always gives.
+        Untyped, it's given no type, which the daemon always gives. It leads a process group
+        of its own, so what it started is killed with it.
         """
         typing = ["--type", TEXT] if typed else []
         return subprocess.Popen(
@@ -143,6 +150,7 @@ class Cases:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environment,
+            process_group=0,
         )
 
     def anything_made(self) -> str | None:
@@ -196,7 +204,11 @@ class Cases:
             locked = ended(copier) or unlocked(copier.pid, len(held))
             self.check("its secret is locked in memory", locked)
         finally:
-            # Anything it said past held could be the secret, so none of it is kept.
+            # What said_next read past held, which could be the secret, is let go of rather
+            # than kept for a later read. That narrows where the secret goes, no more: a line
+            # said_next answered is said in this case's outcomes, whatever it holds. This
+            # cleanup is the part no test sees: the bounded test never runs copied(), and the
+            # run on niri passes the same whether or not it lets go and kills.
             unanswered(copier)
             copier.kill()
             copier.wait()
@@ -272,6 +284,7 @@ class Cases:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environment,
+            process_group=0,
         )
         ended, said, told = ended_within(copier)
         made = self.anything_made()
@@ -378,6 +391,11 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
     kept for the next call on the same copier, as two lines said at once come in one read,
     and for ended_within.
 
+    No answer is past SAID_CAP, what was kept included, as each read takes at most what the
+    cap leaves. A line cut there is answered with UNFINISHED after it and let go of, and the
+    next call reads on from the cut, answering the rest of that line with UNFINISHED too,
+    even once it ends, as no part of a line past the cap is a word the daemon waits for.
+
     It reads the pipe itself, never the file object's buffer, so nothing it read sits
     where select can't see it, and communicate later reads on from where it stopped.
     """
@@ -385,30 +403,47 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
     if stdout is None:
         why = "the copier was started with no pipe for its standard output"
         raise ValueError(why)
-    heard = unanswered(copier)
+    cut = copier in CUT
+    heard, ended = read_on(stdout.fileno(), unanswered(copier))
+    line, newline, rest = heard.partition(b"\n")
+    if rest:
+        UNANSWERED[copier] = rest
+    held_on = not newline and not ended
+    if cut or len(line) == SAID_CAP:
+        if held_on:
+            CUT.add(copier)
+        return f"{line.decode(errors='replace')} {UNFINISHED}" if line or newline else ""
+    if held_on and line:
+        UNANSWERED[copier] = line
+        return f"{line.decode(errors='replace')} {UNFINISHED}"
+    whole = line.removesuffix(b"\r") if newline else line
+    return whole.decode(errors="replace")
+
+
+def read_on(said: int, heard: bytes) -> tuple[bytes, bool]:
+    """Read on from `heard` through `said` for a line, answering it and whether `said` ended.
+
+    It reads for PATIENCE at most, only once select says there's something to read, and
+    stops at a newline or once SAID_CAP is heard, never reading past it.
+    """
     until = time.monotonic() + PATIENCE
-    ended = False
     while b"\n" not in heard and len(heard) < SAID_CAP:
         waiting = until - time.monotonic()
-        if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
-            break
-        more = os.read(stdout.fileno(), SAID_CAP)
+        if waiting <= 0 or not select.select([said], [], [], waiting)[0]:
+            return heard, False
+        more = os.read(said, SAID_CAP - len(heard))
         if not more:
-            ended = True
-            break
+            return heard, True
         heard += more
-    line, newline, rest = heard.partition(b"\n")
-    if newline or ended or not line:
-        if rest:
-            UNANSWERED[copier] = rest
-        whole = line.removesuffix(b"\r") if newline else line
-        return whole.decode(errors="replace")
-    UNANSWERED[copier] = line
-    return f"{line.decode(errors='replace')} {UNFINISHED}"
+    return heard, False
 
 
 def unanswered(copier: subprocess.Popen[bytes]) -> bytes:
-    """Give what said_next read of the copier past the line it answered, and keep it no more."""
+    """Give what said_next read of the copier past the line it answered, and keep it no more.
+
+    A line it cut at SAID_CAP is let go of too, so nothing of the copier is kept.
+    """
+    CUT.discard(copier)
     return UNANSWERED.pop(copier, b"")
 
 
@@ -436,7 +471,7 @@ def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
     try:
         _, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired as held_open:
-        copier.kill()
+        killed(copier)
         heard = (held_open.stderr or b"").decode(errors="replace").strip()
         return (
             f"it ended with {code}, its standard error still open after {PATIENCE:g} s, "
@@ -469,17 +504,35 @@ def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str, str]
     """Answer how the copier ended, or None, ended here, if it held on, and what it said.
 
     What it said is on its standard error, then its standard output, which begins with
-    anything said_next read of it but didn't answer.
+    anything said_next read of it but didn't answer. One that held on is killed with its
+    group, and what it said is read for PATIENCE once more, as a child it left outside its
+    group could hold its pipes open past it.
     """
     before = unanswered(copier)
     try:
         told, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
-        copier.kill()
-        told, said = copier.communicate()
+        killed(copier)
+        try:
+            told, said = copier.communicate(timeout=PATIENCE)
+        except subprocess.TimeoutExpired as held_open:
+            told, said = held_open.output or b"", held_open.stderr or b""
+            copier.wait()
         return None, said.decode(errors="replace"), (before + told).decode(errors="replace")
     told = before + told
     return copier.returncode, said.decode(errors="replace"), told.decode(errors="replace")
+
+
+def killed(copier: subprocess.Popen[bytes]) -> None:
+    """Kill the copier's group, it and whatever it started that's left in it.
+
+    It leads a group of its own, as the check starts it, so the group holds only it and what
+    it started that hasn't left. A group with nothing left running is gone: Linux says so
+    with ESRCH once none of it is left, Darwin with EPERM while its ended leader is still
+    unwaited, so both are taken as gone.
+    """
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(copier.pid, signal.SIGKILL)
 
 
 def refusal(ended: int | None, said: str, why: str) -> str | None:

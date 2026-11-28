@@ -64,13 +64,15 @@ CHECK = loaded(sys.argv[2])
 
 
 @contextlib.contextmanager
-def copier(script: str) -> Iterator[subprocess.Popen[bytes]]:
+def copier(script: str, stdin: int | None = None) -> Iterator[subprocess.Popen[bytes]]:
     """Start a fake copier running `script`, and kill it and whatever it left once done.
 
     It starts in a session of its own, so a child it left behind is killed with its group.
+    Its standard input is `stdin` where given, so the test says what it reads and when.
     """
     started = subprocess.Popen(
         [BASH, "-c", script],
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
@@ -167,6 +169,40 @@ def a_copier_never_ending_is_ended_after_patience() -> None:
         assert code is None, f"a copier that never ends was said to end with {code}"
         assert took < PATIENCE + SLACK, f"a copier that never ends held it {took:.1f} s"
         assert holding.poll() is not None, "a copier that never ends was left running"
+
+
+def a_copier_never_ending_is_ended_with_its_children_after_patience() -> None:
+    """ended_within kills a copier that never ends with its group, and answers within PATIENCE.
+
+    Its child holds its pipes open, so a read waiting for them to close once the copier
+    alone was killed would wait for the child.
+    """
+    with copier("sleep 30 & exec sleep 30") as holding:
+        answer = answered_in_time(lambda: CHECK.ended_within(holding))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a copier whose child holds its pipes held it past {waited:g} s"
+    (code, _, _), took = answer
+    assert code is None, f"a copier that never ends was said to end with {code}"
+    assert took < PATIENCE + SLACK, f"a copier whose child holds its pipes held it {took:.1f} s"
+
+
+def a_child_left_outside_the_copiers_group_is_waited_on_no_longer_than_patience() -> None:
+    """ended_within gives up on pipes held past the copier's group after PATIENCE once more.
+
+    The child is a job of its own, outside the group killed, so it holds the pipes open past
+    it; ended_within still says what the copier said by then.
+    """
+    script = "set -m; sleep 20 & set +m; echo $!; echo gone >&2; exec sleep 30"
+    with copier(script) as holding:
+        answer = answered_in_time(lambda: CHECK.ended_within(holding))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a child outside the copier's group held it past {waited:g} s"
+    (code, said, told), took = answer
+    with contextlib.suppress(ValueError, ProcessLookupError):
+        os.kill(int(told), signal.SIGKILL)
+    assert code is None, f"a copier that never ends was said to end with {code}"
+    assert took < 2 * PATIENCE + SLACK, f"a child outside its group held it {took:.1f} s"
+    assert said == "gone\n", f"a copier saying 'gone' was said to say {said!r}"
 
 
 def each_refusal_names_what_was_wrong() -> None:
@@ -267,9 +303,17 @@ def a_copier_saying_a_line_in_pieces_is_answered_what_came_in_patience() -> None
 
 
 def a_half_line_held_at_the_patience_is_finished_by_the_next_read() -> None:
-    """said_next keeps a half line it answered as unfinished, and the next read finishes it."""
-    with copier("printf rea; sleep 3; printf 'dy\\n'; exec sleep 30") as slow:
+    """said_next keeps a half line it answered as unfinished, and the next read finishes it.
+
+    The copier says the rest only once the test tells it to, after the first read has
+    answered, so how long anything takes decides nothing.
+    """
+    reading, writing = os.pipe()
+    with copier("printf rea; read -r _; printf 'dy\\n'; exec sleep 30", stdin=reading) as slow:
+        os.close(reading)
         first = CHECK.said_next(slow)
+        os.write(writing, b"\n")
+        os.close(writing)
         second = CHECK.said_next(slow)
     unfinished = f"rea {CHECK.UNFINISHED}"
     assert first == unfinished, f"'rea' held past the patience was said {first!r}"
@@ -288,14 +332,84 @@ def a_line_is_answered_as_the_daemon_hears_it_exactly() -> None:
     assert returned == "ready", f"'ready' ended by a carriage return was said {returned!r}"
 
 
+def a_carriage_return_ending_a_copier_with_no_newline_is_kept() -> None:
+    """said_next keeps a final carriage return that no newline follows, as the daemon does.
+
+    lines() takes one off only before a newline, so a copier ending on 'ready' and a carriage
+    return is never heard as 'ready'.
+    """
+    with copier("printf 'ready\\r'") as ending:
+        ending.wait()
+        said = CHECK.said_next(ending)
+    assert said == "ready\r", f"'ready\\r' said with no newline and ending was said {said!r}"
+
+
 def a_copier_pouring_out_one_line_is_answered_at_the_cap() -> None:
-    """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come."""
-    with copier("yes x | tr -d '\\n'") as pouring:
-        said, took = timed(lambda: CHECK.said_next(pouring))
+    """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come.
+
+    It pours a MiB, far past the cap, and holds on without ending, so a read that ignored
+    the cap would hold no more than that, and fail on how long its answer is and took, and
+    on its thread, so one that never answered fails too, rather than reading on for PATIENCE
+    at whatever pace the machine pours.
+    """
+    pour = f"head -c {len(DATA)} /dev/zero | tr '\\0' x; exec sleep 30"
+    with copier(pour) as pouring:
+        answer = answered_in_time(lambda: CHECK.said_next(pouring))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a copier pouring out a line held it past {waited:g} s"
+    said, took = answer
     assert said.endswith(CHECK.UNFINISHED), f"a line with no end was said {said[:80]!r}"
-    most = 2 * CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
-    assert len(said) < most, f"a line with no end was answered {len(said)} characters long"
+    most = CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
+    assert len(said) <= most, f"a line with no end was answered {len(said)} characters long"
     assert took < SLACK, f"a copier pouring out a line held it {took:.1f} s"
+
+
+def said_at_once(said: bytes) -> int:
+    """Answer a pipe's reading end with `said` written to it whole and closed, for cat to say.
+
+    A fake copier running cat on it says it in one write, so a read of the copier gets all of
+    it or none of it, however fast bash starts.
+    """
+    reading, writing = os.pipe()
+    os.write(writing, said)
+    os.close(writing)
+    return reading
+
+
+def a_line_is_cut_at_the_cap_never_past_it() -> None:
+    """said_next answers no more of a line than SAID_CAP, even after what it kept of a read.
+
+    The copier says 'ready' and twice the cap with no newline at once, so the first read
+    keeps what came past 'ready', and the second may read only what the cap leaves.
+    """
+    told = said_at_once(b"ready\n" + b"x" * (2 * CHECK.SAID_CAP))
+    with copier("cat; exec sleep 30", stdin=told) as pouring:
+        os.close(told)
+        first = CHECK.said_next(pouring)
+        second = CHECK.said_next(pouring)
+    assert first == "ready", f"a copier saying 'ready' then more was first said {first!r}"
+    cut = f"{'x' * CHECK.SAID_CAP} {CHECK.UNFINISHED}"
+    assert second == cut, (
+        f"a line past the cap was answered {len(second)} characters long, "
+        f"not {len(cut)}: the cap's worth and {CHECK.UNFINISHED!r}"
+    )
+
+
+def a_line_cut_at_the_cap_is_read_on_and_never_ready() -> None:
+    """said_next reads on past a line it cut at SAID_CAP, and answers its end unfinished.
+
+    The daemon hears the whole line, the cap's worth and 'ready', so its end is never 'ready'.
+    """
+    told = said_at_once(b"x" * CHECK.SAID_CAP + b"ready\n")
+    with copier("cat; exec sleep 30", stdin=told) as pouring:
+        os.close(told)
+        first = CHECK.said_next(pouring)
+        second, took = timed(lambda: CHECK.said_next(pouring))
+    cut = f"{'x' * CHECK.SAID_CAP} {CHECK.UNFINISHED}"
+    assert first == cut, f"a line past the cap was first said {first[-80:]!r}, not cut at it"
+    ended = f"ready {CHECK.UNFINISHED}"
+    assert second == ended, f"the end of a line past the cap was said {second[-80:]!r}"
+    assert took < SLACK, f"the end of a line past the cap took {took:.1f} s to answer"
 
 
 def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
@@ -313,8 +427,12 @@ def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
     assert took < SLACK, f"the second line, said with the first, took {took:.1f} s to answer"
 
 
-def a_copier_with_no_pipe_to_read_is_refused_by_name() -> None:
-    """said_next raises for a copier whose standard output it has no pipe to, not answer ""."""
+def a_copier_with_no_pipe_to_read_raises_as_the_checks_own_fault() -> None:
+    """said_next raises for a copier whose standard output it has no pipe to, not answer "".
+
+    No pipe is the check's own wiring, not anything the copier did, so it isn't answered as
+    a copier that said nothing, nor failed as one that refused.
+    """
     unpiped = subprocess.Popen([BASH, "-c", "echo ready"], stdout=subprocess.DEVNULL)
     try:
         said = CHECK.said_next(unpiped)
@@ -322,7 +440,7 @@ def a_copier_with_no_pipe_to_read_is_refused_by_name() -> None:
         return
     finally:
         unpiped.wait()
-    why = f"a copier with no pipe for its standard output was said {said!r}, not refused"
+    why = f"a copier with no pipe for its standard output was said {said!r}, not raised"
     raise AssertionError(why)
 
 
@@ -342,6 +460,21 @@ def a_read_that_raised_fails_saying_so() -> None:
         why = f"a read that raised was answered {answer!r}, as if it hung or answered"
         raise AssertionError(why)
     assert "ValueError('no pipe')" in failed, f"a read that raised failed as {failed!r}"
+
+
+def a_case_that_raised_fails_by_what_it_raised_and_the_run_goes_on() -> None:
+    """Check failure fails a case that raised, as one calling said_next may, by what it raised.
+
+    Its failure is answered rather than raised, so the cases after it still run.
+    """
+
+    def raising() -> None:
+        why = "no pipe"
+        raise ValueError(why)
+
+    failed = failure(raising)
+    wanted = "it raised ValueError('no pipe')"
+    assert failed == wanted, f"a case that raised failed as {failed!r}, not {wanted!r}"
 
 
 def what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended() -> None:
@@ -379,6 +512,8 @@ CASES = [
     a_copier_ending_well_is_said_to_have_copied,
     a_child_holding_standard_error_open_is_waited_on_no_longer_than_patience,
     a_copier_never_ending_is_ended_after_patience,
+    a_copier_never_ending_is_ended_with_its_children_after_patience,
+    a_child_left_outside_the_copiers_group_is_waited_on_no_longer_than_patience,
     each_refusal_names_what_was_wrong,
     a_reader_never_reading_is_fed_no_longer_than_patience,
     a_reader_that_closed_is_fed_without_fault,
@@ -389,25 +524,43 @@ CASES = [
     a_copier_saying_two_lines_at_once_is_answered_each_in_turn,
     a_half_line_held_at_the_patience_is_finished_by_the_next_read,
     a_line_is_answered_as_the_daemon_hears_it_exactly,
+    a_carriage_return_ending_a_copier_with_no_newline_is_kept,
     a_copier_pouring_out_one_line_is_answered_at_the_cap,
-    a_copier_with_no_pipe_to_read_is_refused_by_name,
+    a_line_is_cut_at_the_cap_never_past_it,
+    a_line_cut_at_the_cap_is_read_on_and_never_ready,
+    a_copier_with_no_pipe_to_read_raises_as_the_checks_own_fault,
     a_read_that_raised_fails_saying_so,
+    a_case_that_raised_fails_by_what_it_raised_and_the_run_goes_on,
     what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,
     what_said_next_read_past_its_line_is_dropped_for_a_refusal,
 ]
+
+
+def failure(case: Callable[[], None]) -> str | None:
+    """Run `case`, answering how it failed, or None if it held.
+
+    A case that raised fails saying what it raised, as answered_in_time fails a read, so one
+    calling said_next itself fails by its name and the cases after it still run.
+    """
+    try:
+        case()
+    except AssertionError as wrong:
+        return str(wrong)
+    except Exception as wrong:  # noqa: BLE001 - whatever it raised is its case's failure
+        return f"it raised {wrong!r}"
+    return None
 
 
 def main() -> None:
     """Run every case, and fail naming each that didn't hold."""
     failed: list[str] = []
     for case in CASES:
-        try:
-            case()
-        except AssertionError as wrong:
+        wrong = failure(case)
+        if wrong is None:
+            print(f"{case.__name__}: held")
+        else:
             failed.append(case.__name__)
             print(f"{case.__name__}: {wrong}", file=sys.stderr)
-        else:
-            print(f"{case.__name__}: held")
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)
         sys.exit(1)
