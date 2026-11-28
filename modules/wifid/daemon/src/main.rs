@@ -1653,6 +1653,18 @@ fn forgot(name: &str, reply: &zbus::Message) -> bool {
             .is_ok_and(|(_, wrong)| wrong == BSS_FORGOTTEN)
 }
 
+/// The point a card whose move was refused is held to again: the one it's
+/// on, where it was held when the move was asked, as `Wifid::ready` holds
+/// it before every move. None where it wasn't held, no point is known, or
+/// its point warned it drops the card (`holds`), so it's let go as before.
+fn kept_on(
+    held_before: bool,
+    on: Option<String>,
+    holds: impl FnOnce(&str) -> bool,
+) -> Option<String> {
+    on.filter(|on| held_before && holds(on))
+}
+
 /// How often a card on a network reads its link while someone asks for a
 /// network in detail.
 const POLLING: Duration = Duration::from_secs(2);
@@ -3037,6 +3049,7 @@ impl Wifid<'_> {
         // back, other networks off, should it reach neither point.
         let before = self.arrivals.borrow().saved(&card);
         let moving = before.is_some();
+        let held_before = self.held.borrow().contains_key(&card);
         let roamed = async {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
@@ -3134,7 +3147,7 @@ impl Wifid<'_> {
                 }
             } else {
                 self.together(&card, joining != Some(card.as_str())).await;
-                self.let_go(&card, false).await;
+                self.kept_where_it_is(&card, held_before).await;
             }
             return Err(refused_move(&card, bssid, &error));
         }
@@ -3688,6 +3701,27 @@ impl Wifid<'_> {
         !dropping
     }
 
+    /// Holds a card whose move was refused, with none under way before it,
+    /// to the point it's on again, where it was held there when the move
+    /// was asked (`kept_on`). Let go, a look asked next for a point
+    /// wpa_supplicant forgot runs with the card free, and what it hears
+    /// may take the card to any point of its network (`acts::roam`).
+    async fn kept_where_it_is(&self, card: &str, held_before: bool) {
+        let on = self.state.borrow().point_of(card);
+        let network = self.held.borrow().get(card).cloned();
+        let kept = kept_on(held_before, on, |on| self.holds_to(card, on));
+        if let (Some(on), Some(network)) = (kept, network) {
+            match self.hold(&network, &on).await {
+                Ok(()) => {
+                    println!("<7>{card} keeps to {on}, as its move was refused");
+                    return;
+                }
+                Err(error) => println!("<4>{card} couldn't be held to {on} again: {error}"),
+            }
+        }
+        self.let_go(card, false).await;
+    }
+
     /// Has wpa_supplicant join the network only at that access point, or at
     /// any, given `any`.
     async fn hold(&self, network: &OwnedObjectPath, bssid: &str) -> zbus::Result<()> {
@@ -4045,6 +4079,35 @@ mod tests {
             .and_then(|error| error.build(said))
             .expect("a refusal of the roam couldn't be built");
         zbus::Error::from(reply)
+    }
+
+    #[test]
+    fn a_refused_move_keeps_a_held_card_to_its_point_unless_that_point_warned() {
+        let on = || Some("02:00:00:00:01:00".to_owned());
+        let holds = |_: &str| true;
+        let warned = |_: &str| false;
+
+        assert_eq!(
+            kept_on(true, on(), holds),
+            on(),
+            "a card held where it was before a refused move was let go, so a look \
+             asked next could take it anywhere"
+        );
+        assert_eq!(
+            kept_on(false, on(), holds),
+            None,
+            "a card that was free before the refused move was held all the same"
+        );
+        assert_eq!(
+            kept_on(true, on(), warned),
+            None,
+            "a card was held back to a point that warned it drops the card"
+        );
+        assert_eq!(
+            kept_on(true, None, holds),
+            None,
+            "a card on no known point was held to one"
+        );
     }
 
     #[test]
