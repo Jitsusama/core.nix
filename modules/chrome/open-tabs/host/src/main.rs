@@ -526,7 +526,10 @@ mod tests {
     #[test]
     fn a_length_past_what_chrome_sends_is_refused() {
         let mut input: &[u8] = &(LONGEST + 1).to_ne_bytes();
-        read_message(&mut input).expect_err("a length past what Chrome sends was read");
+        let refused =
+            read_message(&mut input).expect_err("a length past what Chrome sends was read");
+        // Refused for its length, not for the body that never came.
+        assert_eq!(refused.kind(), io::ErrorKind::InvalidData, "{refused}");
     }
 
     #[test]
