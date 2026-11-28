@@ -71,10 +71,8 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // read by, no run of an earlier base speaks for.
     let crates = Crates::at(Path::new("."), commit);
     // What main moved in a folder one check measures with the change's
-    // (`fates.txt`), which the change's own files never show, with those
-    // its merge base names, so it can't judge itself by fewer, and those
-    // main names, so a base lacking main's newest needs no rebase.
-    let fates = fates::judging(&at(&branched, fates::FATES_TXT), &at_main(fates::FATES_TXT))?;
+    // (`fates.txt`), which the change's own files never show.
+    let fates = fates_at(&at, &branched, main)?;
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
@@ -138,6 +136,18 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         files,
         before,
     })
+}
+
+/// The fates a head branched from `branched` is judged by on `main`, each
+/// list read as `at` reads a file at a commit: those its merge base names,
+/// so it can't judge itself by fewer, and those main names, so a base
+/// lacking main's newest needs no rebase.
+fn fates_at(
+    at: &dyn Fn(&str, &str) -> String,
+    branched: &str,
+    main: &str,
+) -> Result<Vec<Fate>, String> {
+    fates::judging(&at(branched, fates::FATES_TXT), &at(main, fates::FATES_TXT))
 }
 
 /// A change and what main moved since the base it's judged from: the
@@ -447,6 +457,29 @@ mod tests {
             ),
             vec!["modules/theme/type.nix".to_owned()],
             "main's move in the map's fate wasn't what a map change shares"
+        );
+    }
+
+    #[test]
+    fn a_head_is_judged_by_the_fates_its_merge_base_and_main_each_list() {
+        let at = |rev: &str, file: &str| match (rev, file) {
+            ("branched", fates::FATES_TXT) => "based: modules/based/".to_owned(),
+            ("main", fates::FATES_TXT) => "newest: modules/newest/".to_owned(),
+            _ => String::new(),
+        };
+        let judged = fates_at(&at, "branched", "main").expect("both lists read");
+        let named = |name: &str, folder: &str| {
+            judged
+                .iter()
+                .any(|fate| fate.name == name && fate.folders == [folder])
+        };
+        assert!(
+            named("based", "modules/based/"),
+            "the fate the merge base lists wasn't judged"
+        );
+        assert!(
+            named("newest", "modules/newest/"),
+            "the fate main lists wasn't judged"
         );
     }
 
