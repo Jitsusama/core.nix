@@ -186,6 +186,14 @@
       "glyph": "agent"
     },
     {
+      "id": "agents:asked-for",
+      "in": "agents",
+      "name": "Asked For",
+      "term": "Agents/Asked For",
+      "glyph": "agent",
+      "answers": ["asked", "asked for", "promised"]
+    },
+    {
       "id": "verb:agents:landed:change",
       "command": "open",
       "in": "agents:landed",

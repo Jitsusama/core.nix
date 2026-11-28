@@ -132,6 +132,13 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     """Say what names an unknown thing or glyph, and what has no place."""
     things = {entry["id"]: entry for entry in vocabulary["things"]}
     out: list[str] = []
+    # Two things by one id leave the shell the later alone (Words.qml), so
+    # the first answers nothing: Asked For's words went unheard behind the
+    # Agents drawer's You Asked (#6875's fifth review, F95).
+    ids = [entry["id"] for entry in vocabulary["things"]]
+    out.extend(
+        f"{twice} names two things." for twice in sorted({one for one in ids if ids.count(one) > 1})
+    )
     # What home lists itself is placed there, and a home row naming
     # neither a category nor a thing is a slip.
     categories = {category["id"] for category in vocabulary["categories"]}

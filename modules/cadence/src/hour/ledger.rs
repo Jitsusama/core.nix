@@ -64,7 +64,7 @@ const FROM_ASKS: [&str; 6] = [
 /// one cut short, the last included, is a tear its keeper must mend. No
 /// hour the list is unread counts toward pruning it, as none saw it short,
 /// and each says why in the journal.
-pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
+pub(crate) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
     let why = match fs::read(path).map(|bytes| text_lines(&bytes)) {
         Ok((text, None)) => match torn(&text) {
             None => return short(text, seen, now),
