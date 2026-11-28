@@ -4686,12 +4686,12 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
     # Turns that aren't a whole number of rows, so the view can stop inside one: small ones
-    # past the list's end and back to its top, then larger ones down and up. A turn may come to
-    # rest where it set off (one from 156 did, 2026-11-27): it stopped inside the row above,
-    # taller than the turn, and rested back on the top it left. So a turn up that didn't move
-    # is followed by one twice as far, until one passes that row. The case's turns up by 70
-    # always moved the view before, so one by 140 passes any row it draws today: no row takes
-    # more than three turns up, and the way back up at most three times the turns down.
+    # down to the list's foot and back to its top, then larger ones down and up. A turn may
+    # come to rest where it set off (one from 156 did, 2026-11-27): it stopped inside the row
+    # above, taller than the turn, and rested back on the top it left. So a turn up that didn't
+    # move is followed by one twice as far, until one passes that row. The case's turns up by
+    # 70 always moved the view before, so one by 140 passes any row it draws today: no row
+    # takes more than three turns up, and the way back up at most three times the turns down.
     places: list[int] = []
 
     # Where each turn sent came to rest, and whether it was sent: one toward the bound the view
@@ -4729,11 +4729,18 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         places.append(shown["scrolled"])
         return int(shown["scrolled"]), True
 
-    down = 7
-    for _ in range(down):
-        turn(35)
-    # The small turns reached past the top row, so the places between were each rested at.
-    assert max(places) > 0, places
+    # Small turns down until the list says it stands at its foot, which turn() reads before it
+    # sends one, so every place between is rested at. A turn down rests on the top of the first
+    # row at or below where it stopped, so each passes a row's top, and the foot comes within
+    # as many turns as the list has rows.
+    rows = shell.showing()["count"]
+    down = 0
+    while turn(35)[1]:
+        down += 1
+        assert down <= rows, (
+            f"{down} turns by 35 passed the {rows} rows' tops short of the foot, at {places[-1]}: "
+            f"{places}"
+        )
     # Twice the turns up by 70 that always moved the view, so it passes any row drawn today.
     passes_any_row = -140
     up = 0
