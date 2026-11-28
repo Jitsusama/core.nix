@@ -322,9 +322,10 @@ or launchd, and [`home.nix`][2] the account's.
   pulled from the disk past the cache, so walks running at once split
   one cost by which came first. The two walks no pass takes, measuring
   what holds the disks and marking the builds, each journal a `walk`
-  line saying which, its seconds and what it read; the machine guard's
-  listing of the store's garbage and its dedupe of the store read too,
-  and journal no read yet. On 25 November the account's guard read
+  line saying which, its seconds and what it read, though marks that
+  walked no root journal none; the machine guard's listing of the
+  store's garbage and its dedupe of the store read too, and journal no
+  read yet. On 25 November the account's guard read
   15.4 GB of the disk in 24 minutes, and no line said which walk it was.
   Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
@@ -386,7 +387,16 @@ or launchd, and [`home.nix`][2] the account's.
   shell or editor that only sits there keeps nothing, since nothing builds
   from an older build. A `deps` never watched dates nothing. Each pass that
   took any journals a `replaced` line per target, saying how many went and
-  their bytes.
+  their bytes. The marks come hourly, but walk a cargo root for its
+  targets only once its stamp, read as a size's is, moved since the last
+  walk of it, a survey's or their own, or that walk is six hours old;
+  otherwise they mark again every target that walk found. A walk a stop
+  cut short is kept by neither, and what's kept lives only in memory. A
+  target made deeper than the stamp reads, as a crate's own target three
+  levels into a work tree is, waits for the next survey or the six-hour
+  walk, its builds keeping the hour meanwhile. On 27 November three
+  hourly marking walks read about 12.7 GB each, the roots a survey had
+  just walked. `src/marks.rs` holds it.
 - **Freezing.** Once critically full with nothing left to take, the account's guard
   freezes the process that wrote more than half of the last minute's writes,
   at a mebibyte a second or more, with a file open on that disk: it and its
@@ -662,6 +672,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/sizes.rs`            | what surveys sized, by each entry's stamp, kept on disk  |
+| `src/marks.rs`            | the targets each walk of a root found, kept for the marks |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |

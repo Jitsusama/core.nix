@@ -145,6 +145,18 @@ impl Guard {
     /// the walk can take minutes in which an unmarked folder hears nothing.
     /// A guard that no longer hears marks nothing, as nothing would come of
     /// it.
+    ///
+    /// A root is walked only when its stamp moved since the last walk of
+    /// it, by a survey or by this, or that walk is six hours old
+    /// ([`crate::marks::WALK_AGAIN_AFTER`]); otherwise the targets that
+    /// walk found are marked again without one. Only the walk is spared:
+    /// every target is marked, so a mark lost with a folder made anew is
+    /// put back hourly, as before. A target made deeper than the stamp
+    /// reads, as a crate's own target three levels below a work tree is,
+    /// goes unmarked until the next survey or the six-hour walk, which
+    /// fails safe: its builds keep the hour, as those in a folder that
+    /// couldn't be marked do. A mark that walked no root journals no
+    /// walk, so the journal's walk lines count only what read the disk.
     pub(super) fn mark(&mut self, tick: &Tick) {
         let Some(watch) = self.opens.clone() else {
             return;
@@ -152,11 +164,12 @@ impl Guard {
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
-        if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
+        if self.marks.at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
             return;
         }
-        self.marked_at = Some(tick.wall);
+        self.marks.at = Some(tick.wall);
         let walk = Walk::start();
+        let mut walked = false;
         let mut marked = Vec::new();
         let mut unmarked = 0_usize;
         let mut why = None;
@@ -165,19 +178,40 @@ impl Guard {
                 continue;
             };
             for root in roots {
-                // A stop ends the walk, as it ends a survey's: a walk of
-                // every cargo root under a loaded disk can take minutes.
-                let found = discover::walk_until(
-                    root,
-                    depth.map(|depth| depth as usize),
-                    self.home.as_deref(),
-                    &crate::commands::stop_waiting,
-                );
-                for tree in found.unwrap_or_default() {
-                    if tree.kind != discover::Kind::Target {
-                        continue;
+                // Keyed as a survey keys its walks, so the two meet.
+                let root = crate::survey::resolved(root);
+                // Read before the walk, so a root written while it walks
+                // is stamped otherwise by the next mark, which walks it.
+                let stamp = crate::sizes::stamp(&root);
+                let targets = if let Some(targets) =
+                    self.marks.targets.fresh((&root, *depth), stamp, tick.wall)
+                {
+                    targets.to_vec()
+                } else {
+                    walked = true;
+                    // A stop ends the walk, as it ends a survey's: a walk
+                    // of every cargo root under a loaded disk can take
+                    // minutes. One it cut short is kept nowhere.
+                    let found = discover::walk_until(
+                        &root,
+                        depth.map(|depth| depth as usize),
+                        self.home.as_deref(),
+                        &crate::commands::stop_waiting,
+                    );
+                    if let Ok(found) = &found {
+                        self.marks
+                            .targets
+                            .keep((&root, *depth), (stamp, tick.wall), found);
                     }
-                    for dir in crate::replaced::watched_dirs(&tree.path) {
+                    found
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|tree| tree.kind == discover::Kind::Target)
+                        .map(|tree| tree.path)
+                        .collect()
+                };
+                for target in targets {
+                    for dir in crate::replaced::watched_dirs(&target) {
                         match watch.watch(&dir) {
                             Ok(handle) => {
                                 let at = SystemTime::now()
@@ -199,7 +233,9 @@ impl Guard {
         // After the walk, so a folder forgotten as it marked is forgotten
         // below before what it marked again is dated.
         let forgot = watch.tidy();
-        self.journal_walk(tick.wall, "marks", walk.end());
+        if walked {
+            self.journal_walk(tick.wall, "marks", walk.end());
+        }
         if let Some(why) = why {
             say!(
                 "disk-guard: {unmarked} build folders couldn't be marked ({why}, the first), \
