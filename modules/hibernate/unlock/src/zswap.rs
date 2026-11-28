@@ -3,13 +3,42 @@
 //!
 //! zswap keeps what's swapped out in a pool in memory, up to a fifth of it,
 //! before the swap file, and pages that don't compress go in as they are.
-//! Its shrinker writes the pool out to the disk only as it gets round to it,
+//! The pool goes out to the disk only as zswap gets round to writing it,
 //! so what the kernel swaps out to make room for the image can stay in
 //! memory and go into the image anyway: a test machine with 300 MiB of
 //! random bytes rolled back 28,090 pages short in one run of three.
 //! Switched off, zswap stores nothing more, and what the kernel swaps out for
-//! the image goes to the disk. What the pool already holds stays in memory,
-//! which `fits` counts as in use.
+//! the image goes to the disk. What the pool already holds stays in memory
+//! until it's read back or written out.
+//!
+//! Switching zswap off doesn't stop the pool being written out, in two
+//! ways. Under reclaim, which the image's own allocation may start, its
+//! shrinker writes back while `zswap.shrinker_enabled` is on, which
+//! modules/memory sets and the kernel's default leaves off, until
+//! `memory-zswap-shrinker@n` turns it off or the machine boots. And a trim of a full pool
+//! queued just before zswap went off may still run after. Both reach even the
+//! slices that set `MemoryZSwapWriteback = false` (modules/slices says why
+//! they do): 7.3's mm/zswap.c asks mm/memcontrol.c whether a group may write
+//! back, in the shrinker's count and in `shrink_memcg`, which the trim calls,
+//! and with zswap off it answers yes for every group. What either writes out
+//! of theirs comes back from the disk after a resume. Otherwise the pool
+//! leaves memory only as it's read back or freed: with zswap off nothing is
+//! stored, so nothing queues another trim.
+//!
+//! `fits` counts the whole pool as in use, at what it takes compressed.
+//! Writing an entry out doesn't make the image smaller by itself:
+//! `zswap_writeback_entry` first takes a whole page in the swap cache and
+//! decompresses the entry into it, then frees the entry and starts the
+//! page's write, so for a while a compressed entry's page holds more than the
+//! entry gave back; one stored as it is gives back the page it took. Once the
+//! write is done, the page is clean and already holds its swap slot, so the
+//! image's reclaim can drop it without more room in swap. What's written out
+//! before that reclaim runs can only make the image smaller than `fits`
+//! reckons. A page written after it stays in the image whole, where `fits`
+//! counted its entry compressed, so such writing could make the image larger
+//! than `fits` reckons, by at most what the pool holds uncompressed less what
+//! it takes. That is read from the source; no hibernation has been watched
+//! with either writing back.
 
 use std::fs;
 use std::io::{self, ErrorKind};

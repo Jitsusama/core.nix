@@ -255,6 +255,297 @@ fn an_outage_then_one_search_answered_narrows_its_row_to_the_other_rather_than_b
 }
 
 #[test]
+fn an_outage_then_its_searches_answered_by_turns_takes_its_row_away() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    let first = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, first),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, first, first)),
+        "unreached, told"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 3)),
+        Change::Keep,
+        "one round answering only the phrase leaves the row standing"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Phrase)), round(UNREACHED + 4)),
+        Change::Untell,
+        "the next answering only the tag shows each heard, so the row goes"
+    );
+    for n in UNREACHED + 5..UNREACHED + 9 {
+        let alone = if (n - UNREACHED) % 2 == 1 {
+            Search::Tag
+        } else {
+            Search::Phrase
+        };
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(alone)), round(n)),
+            Change::Keep,
+            "round {n}: searches answered by turns tell nothing"
+        );
+    }
+}
+
+#[test]
+fn a_search_answered_before_a_silence_is_no_turn_after_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 2 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 3)),
+        Change::Keep,
+        "the phrase answered alone leaves the unreached row standing"
+    );
+    for n in UNREACHED + 4..UNREACHED + 7 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n}: the gateway silent again"
+        );
+    }
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Phrase)), round(UNREACHED + 7)),
+        Change::Keep,
+        "the tag answered alone after a silence leaves the row: the phrase is unheard now"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 8)),
+        Change::Untell,
+        "the phrase answered the very next round shows each heard"
+    );
+}
+
+#[test]
+fn a_row_left_from_before_goes_once_its_searches_answer_by_turns() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    // A reader started anew, as after a restart in an outage, whose row
+    // may still stand.
+    let mut restarted = Deaf::through_gateway();
+    assert_eq!(
+        restarted.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "one search answered alone may leave the row's other unheard"
+    );
+    assert_eq!(
+        restarted.heard(Round::Partly(Some(Search::Phrase)), round(2)),
+        Change::Untell,
+        "the other answered the very next round shows each heard"
+    );
+    assert_eq!(
+        restarted.heard(Round::Partly(Some(Search::Tag)), round(3)),
+        Change::Keep,
+        "taken away once"
+    );
+    // A reader whose untelling wasn't written, its row still standing.
+    let mut unwritten = Deaf::through_gateway();
+    let _ = unwritten.heard(Round::Heard, round(1));
+    unwritten.failed(&Change::Untell);
+    assert_eq!(
+        unwritten.heard(Round::Partly(Some(Search::Phrase)), round(2)),
+        Change::Keep,
+        "one search answered alone isn't enough"
+    );
+    assert_eq!(
+        unwritten.heard(Round::Unasked, round(3)),
+        Change::Keep,
+        "a silence between forgets it"
+    );
+    assert_eq!(
+        unwritten.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Keep,
+        "the other after a silence isn't each heard in a row"
+    );
+    assert_eq!(
+        unwritten.heard(Round::Partly(Some(Search::Phrase)), round(5)),
+        Change::Untell,
+        "the next round's other is"
+    );
+}
+
+#[test]
+fn a_row_left_from_before_waits_on_the_round_just_before_whatever_reads_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut waiting = Deaf::through_gateway();
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "one search answered alone"
+    );
+    assert_eq!(
+        waiting.heard(Round::Partly(None), round(2)),
+        Change::Keep,
+        "a search waiting on a later page answers neither alone"
+    );
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Phrase)), round(3)),
+        Change::Keep,
+        "so the other after it isn't each heard in a row"
+    );
+    assert_eq!(
+        waiting.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Untell,
+        "and the other again the round after it is, so the row still goes"
+    );
+    let mut unread = Deaf::through_gateway();
+    let _ = unread.heard(Round::Partly(Some(Search::Tag)), round(1));
+    assert_eq!(
+        unread.heard(Round::Deaf(Deafness::Unreadable), round(2)),
+        Change::Keep,
+        "one round unreadable isn't yet told"
+    );
+    assert_eq!(
+        unread.heard(Round::Partly(Some(Search::Phrase)), round(3)),
+        Change::Keep,
+        "an unreadable round between forgets the round before"
+    );
+    assert_eq!(
+        unread.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Untell,
+        "and the other again the round after it is, so the row still goes"
+    );
+    // A reader through the keyring, its searches failing by turns.
+    let mut keyring = Deaf::new();
+    assert_eq!(
+        keyring.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "the keyring reader's one search answered alone"
+    );
+    assert_eq!(
+        keyring.heard(Round::Partly(Some(Search::Phrase)), round(2)),
+        Change::Untell,
+        "the keyring reader read Slack whole across the two as well"
+    );
+}
+
+#[test]
+fn a_search_read_only_to_a_later_page_is_never_heard_whole() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    // A reader started anew, whose row may still stand.
+    let mut then_paged = Deaf::through_gateway();
+    assert_eq!(
+        then_paged.heard(Round::Partly(Some(Search::Tag)), round(1)),
+        Change::Keep,
+        "the phrase read whole alone"
+    );
+    assert_eq!(
+        then_paged.heard(Round::Waiting(Search::Phrase), round(2)),
+        Change::Keep,
+        "the tag read only to a later page may hold what can't be read past it, so the row \
+         left stands"
+    );
+    let mut paged_first = Deaf::through_gateway();
+    assert_eq!(
+        paged_first.heard(Round::Waiting(Search::Tag), round(1)),
+        Change::Keep,
+        "the phrase read only to a later page"
+    );
+    assert_eq!(
+        paged_first.heard(Round::Partly(Some(Search::Phrase)), round(2)),
+        Change::Keep,
+        "so the tag read whole after it isn't each read whole in a row"
+    );
+    assert_eq!(
+        paged_first.heard(Round::Partly(Some(Search::Tag)), round(3)),
+        Change::Untell,
+        "the phrase read whole the very next round is"
+    );
+    // A row told this run that only the phrase's search can't be read.
+    let mut told = Deaf::through_gateway();
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let _ = told.heard(Round::Heard, round(0));
+    let _ = told.heard(phrase, round(1));
+    assert!(
+        matches!(told.heard(phrase, round(2)), Change::Tell(_)),
+        "the phrase's search unread two rounds is told"
+    );
+    assert_eq!(
+        told.heard(Round::Waiting(Search::Tag), round(3)),
+        Change::Keep,
+        "the phrase read only to a later page leaves its row standing"
+    );
+    assert_eq!(
+        told.heard(Round::Partly(Some(Search::Tag)), round(4)),
+        Change::Untell,
+        "the phrase read whole takes it away"
+    );
+    // A gateway that answers only to a later page is still answering.
+    let mut unreached = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        let _ = unreached.heard(Round::Unasked, round(n));
+    }
+    assert!(
+        matches!(
+            unreached.heard(Round::Unasked, round(UNREACHED + 2)),
+            Change::Tell(_)
+        ),
+        "unreached, told"
+    );
+    assert_eq!(
+        unreached.heard(Round::Waiting(Search::Tag), round(UNREACHED + 3)),
+        Change::Keep,
+        "the phrase answered only to a later page leaves the row standing a round"
+    );
+    let at = round(UNREACHED + 4);
+    assert_eq!(
+        unreached.heard(Round::Waiting(Search::Tag), at),
+        Change::Tell(waits_on_gateway(Deafness::Unread(Search::Tag), at, at)),
+        "then narrows it to the tag's, as a round read in part does"
+    );
+}
+
+#[test]
+fn a_round_read_in_part_takes_away_a_row_its_answers_show_wrong() {
+    // What starts a reader of each kind.
+    type Starts = fn() -> Deaf;
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let readers: [(&str, Starts); 2] = [
+        ("the keyring reader", Deaf::new),
+        ("the gateway reader", Deaf::through_gateway),
+    ];
+    let tag = Search::Tag;
+    let told = |new: Starts, why: Deafness| {
+        let mut deaf = new();
+        let _ = deaf.heard(Round::Heard, round(0));
+        let _ = deaf.heard(Round::Deaf(why), round(1));
+        let tell = deaf.heard(Round::Deaf(why), round(2));
+        (deaf, tell)
+    };
+    for (reader, new) in readers {
+        for why in [Deafness::Refused, Deafness::NoSignIn] {
+            for part in [Round::Partly(Some(tag)), Round::Waiting(tag)] {
+                let (mut deaf, tell) = told(new, why);
+                assert!(matches!(tell, Change::Tell(_)), "{reader}: {why:?} told");
+                assert_eq!(
+                    deaf.heard(part, round(3)),
+                    Change::Untell,
+                    "{reader}: {part:?} answered with the sign-in, so the {why:?} row goes \
+                     though a search was left unasked"
+                );
+            }
+        }
+        let (mut deaf, tell) = told(new, Deafness::Unreadable);
+        assert!(matches!(tell, Change::Tell(_)), "{reader}: unreadable told");
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(tag)), round(3)),
+            Change::Keep,
+            "{reader}: the phrase read whole says nothing of the tag's, so the row stands"
+        );
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(Search::Phrase)), round(4)),
+            Change::Untell,
+            "{reader}: the tag read whole the very next round reads Slack whole across the two"
+        );
+    }
+}
+
+#[test]
 fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();

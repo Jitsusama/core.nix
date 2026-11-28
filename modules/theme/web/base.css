@@ -246,11 +246,15 @@ pre,
 }
 
 /* Code sits a little under the words round it, but never under the sites'
-   12 px floor: a keycap in a small line came out at 10 px. */
+   12 px floor: a keycap in a small line came out at 10 px. It is literal,
+   so it stands upright in an italic line, a lede's or a quiet day's, rather
+   than sending the italic Monaspace face, 66 KB, for the few characters of
+   a command it names. */
 code,
 kbd,
 samp {
   font-size: max(0.85em, 12px);
+  font-style: normal;
 }
 
 pre {
@@ -429,6 +433,16 @@ select {
   background: var(--sunken);
 }
 
+/* A field's placeholder is words to read, said in muted, which the theme
+   holds legible on the sunken shade a field sits in. The browser's own
+   fades it below that: the network's find read at 4.03:1, and Code's at
+   4.48:1. */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+  font-style: var(--placeholder-slant);
+}
+
 @supports (resize: none) {
   textarea {
     resize: none;
@@ -507,11 +521,14 @@ select {
   }
 }
 
+/* Thrice the root, above a picked look's :root[data-theme]; a raised placeholder slants.
+   Unset, the slant is invalid where it is read, so a placeholder keeps its field's. */
 @media (prefers-contrast: more) {
-  :root {
+  :root:root:root {
     --muted: var(--text);
     --rule: var(--muted);
     --field: var(--text);
+    --placeholder-slant: italic;
   }
 }
 

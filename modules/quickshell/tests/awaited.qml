@@ -46,6 +46,14 @@ QtObject {
             Awaited.next(at([key("f")], null, true, false), waitingOn([])),
             { due: [key("f")], waited: null });
 
+        // A held key's bound runs out after the launcher closes only when a
+        // closing lands inside its few milliseconds, which niri can't time.
+        const ran = { text: "fo", sources: notices, began: 5, due: [key("f")] };
+        Expect.same("a wait run out while open leaves its key late for its sources",
+            Awaited.lateOf(ran, true), { text: "fo", sources: notices, began: 5 });
+        Expect.same("a wait run out after a closing leaves nothing late",
+            Awaited.lateOf(ran, false), null);
+
         // Typed over a held key, the held one's search is dropped, and its
         // key timed by the search of the one typed over it.
         Expect.same("a key typed while one is held holds both, searching neither",

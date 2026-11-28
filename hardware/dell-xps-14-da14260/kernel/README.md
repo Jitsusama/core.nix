@@ -25,6 +25,11 @@ reaches the release that holds its patches, which is the sign to
 move or drop them. None is carried now: 7.3 holds every fix that
 was taken onto 7.2.
 
+A point release that takes a fix also moves the patches around it, so
+they're regenerated onto it with the fix dropped. Holding the kernel
+back a release after that is no longer one revert: the patches made
+since have to be regenerated onto the older one too.
+
 Nothing else goes here: a patch to a program rather than the kernel
 lives beside the module that builds that program.
 

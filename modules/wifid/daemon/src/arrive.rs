@@ -757,9 +757,9 @@ impl Arrival {
 mod tests {
     use super::*;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
-    const FAR: &str = "6c:ae:f6:ba:85:87";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
+    const FAR: &str = "02:00:00:00:a2:00";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -790,12 +790,12 @@ mod tests {
         ];
         let steps = [steps.as_slice(), &[(99, "4way_handshake")]].concat();
 
-        let said = played(&steps, (113, Some("6C:AE:F6:BA:85:87")));
+        let said = played(&steps, (113, Some("02:00:00:00:A2:00")));
 
         assert_eq!(
             said,
             [
-                "<6>wlan0 reached 6c:ae:f6:ba:85:87 113 ms after it was asked, \
+                "<6>wlan0 reached 02:00:00:00:a2:00 113 ms after it was asked, \
                  off the air 41 ms of them"
             ],
             "timed from the ask, and from the first step away"
@@ -816,7 +816,7 @@ mod tests {
         assert_eq!(
             said,
             [
-                "<6>wlan0 reached 6c:ae:f6:ba:85:87 166 ms after it was asked, \
+                "<6>wlan0 reached 02:00:00:00:a2:00 166 ms after it was asked, \
                  off the air 40 ms of them"
             ]
         );
@@ -838,9 +838,9 @@ mod tests {
         assert_eq!(
             said,
             [
-                "<4>wlan0 didn't reach 6c:ae:f6:ba:85:87: it was scanning 201 ms after it was \
+                "<4>wlan0 didn't reach 02:00:00:00:a2:00: it was scanning 201 ms after it was \
                  asked",
-                "<4>wlan0 joined 6c:ae:f6:c1:84:26 rather than 6c:ae:f6:ba:85:87, \
+                "<4>wlan0 joined 02:00:00:00:a4:00 rather than 02:00:00:00:a2:00, \
                  18373 ms after it was asked",
             ],
             "lost as it scans, once, and where it ended up"
@@ -855,7 +855,7 @@ mod tests {
             said,
             [
                 "<4>wlan0 joined an access point wifid can't name, 90 ms after it was asked \
-                 to move to 6c:ae:f6:ba:85:87"
+                 to move to 02:00:00:00:a2:00"
             ],
             "closed, not left open for a later step to close"
         );
@@ -870,7 +870,7 @@ mod tests {
 
         assert_eq!(
             said,
-            ["<4>wlan0's move to 6c:ae:f6:ba:85:87 wasn't seen to end within 30 s"]
+            ["<4>wlan0's move to 02:00:00:00:a2:00 wasn't seen to end within 30 s"]
         );
     }
 
@@ -880,7 +880,7 @@ mod tests {
 
         assert_eq!(
             said,
-            ["<4>wlan0 didn't reach 6c:ae:f6:ba:85:87: it was scanning 201 ms after it was asked"],
+            ["<4>wlan0 didn't reach 02:00:00:00:a2:00: it was scanning 201 ms after it was asked"],
             "its loss was said already"
         );
     }
@@ -899,7 +899,7 @@ mod tests {
         assert_eq!(
             said,
             [
-                "<6>wlan0 reached 6c:ae:f6:ba:85:87 100 ms after it was asked, \
+                "<6>wlan0 reached 02:00:00:00:a2:00 100 ms after it was asked, \
                  off the air 40 ms of them"
             ],
             "off the air from authenticating, not the rekey before it"
@@ -1738,7 +1738,7 @@ mod tests {
             ("completed", Some(FAR), true),
             ("4way_handshake", Some(DESK), false),
             ("completed", Some(DESK), false),
-            ("completed", Some("6C:AE:F6:C1:84:26"), false),
+            ("completed", Some("02:00:00:00:A4:00"), false),
             ("4way_handshake", None, true),
             ("group_handshake", None, true),
             ("completed", None, false),
@@ -1779,7 +1779,7 @@ mod tests {
     fn a_card_done_reaches_its_point_or_one_unnamed_only_once_left_on_its_network() {
         for (on, left, on_its_network, reached_it) in [
             (Some(FAR), false, false, true),
-            (Some("6C:AE:F6:BA:85:87"), false, false, true),
+            (Some("02:00:00:00:A2:00"), false, false, true),
             (Some(DESK), true, true, false),
             (None, true, true, true),
             (None, false, true, false),

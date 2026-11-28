@@ -269,7 +269,10 @@ pub mod tests {
         else {
             panic!("no state read");
         };
-        assert!(signed_in);
+        assert!(
+            signed_in,
+            "a state saying signed_in should read as signed in"
+        );
         assert_eq!(call, None);
         assert_eq!(room, None);
         assert_eq!(contacts["7"].name, "Ada Brightwater");
@@ -297,7 +300,10 @@ pub mod tests {
         else {
             panic!("no state read");
         };
-        assert!(!signed_in);
+        assert!(
+            !signed_in,
+            "a state saying signed_out should read as signed out"
+        );
     }
 
     #[test]

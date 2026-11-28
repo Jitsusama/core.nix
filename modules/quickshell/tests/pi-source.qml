@@ -167,6 +167,12 @@ QtObject {
             record(againRecords, "s-busy").step.name === "edit"
                 && record(againRecords, "s-new") !== undefined
                 && !("s-done" in made), JSON.stringify(Object.keys(made)));
+        // Parsed, since a literal's `__proto__` sets what it inherits rather than a key.
+        const bare = Pi.sorted(JSON.parse('{"__proto__": {"id": "s-bare", "state": "idle", '
+            + '"standing": "running", "here": true, '
+            + '"presence": {"session": "s-bare", "addresses": ["A011"]}}}'));
+        expect("a session keyed as what every object inherits is placed as any other",
+            ids(bare.live) === "s-bare", JSON.stringify(bare));
 
         // What Sessions.qml makes of each entry is kept while the entry is
         // the same object, so a change makes copies only of what it named:

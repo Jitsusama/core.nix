@@ -23,6 +23,8 @@
 //! - `follows`: the flake's inputs that follow their own signed main.
 //! - `follow`: the asker that asks whenever main moves.
 //! - `system`: building, switching, the health checks and going back.
+//! - `boot_default`: the boot default update-to-main last left, which
+//!   going back from a switch that moved it puts back.
 //! - `batches`: a system built here a batch of pieces at a time, each
 //!   once there's the memory for it.
 //! - `power`: whether the machine is on a battery too low to start.
@@ -37,6 +39,7 @@
 
 pub mod ask;
 pub mod batches;
+pub mod boot_default;
 pub mod busy;
 pub mod config;
 pub mod fetch_log;

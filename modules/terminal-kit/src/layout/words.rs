@@ -338,7 +338,13 @@ pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
 
 /// Words wrapped as `wrapped` says, the first line to `first` cells and
 /// each after it to `rest`, which is never more than `first`, so an item
-/// too wide for the first line is too wide for the next too.
+/// too wide for the first line is too wide for the next too. Where the
+/// first is wider, a word too wide for the rest's measure and left under
+/// `SHARES` cells beside the words before it is shortened to that
+/// measure, as a line of its own would cut it, and still stays on the
+/// first line where it fits there, since moving it down would cut it no
+/// less. One the rest's measure holds is never shortened, and goes down
+/// whole where it doesn't fit beside them.
 fn measured(words: &str, first: usize, rest: usize) -> Vec<String> {
     let flat = one_line(words);
     let words = &*flat;

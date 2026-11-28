@@ -44,6 +44,7 @@ import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
+import "ActsSaid.js" as ActsSaid
 import "CarryBack.js" as CarryBack
 import "Cloud.js" as Cloud
 import "Landed.js" as Landed
@@ -51,7 +52,6 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
-import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -120,7 +120,7 @@ Provider {
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
-            ?? provider.topCarryBack(one, row)
+            ?? provider.topCarryBack(key, one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -195,8 +195,15 @@ Provider {
     function topTalk(key, one, row) {
         if (one.key !== "verb:agent:talk" || !one.ask)
             return null;
-        if (provider.isVoid(one.ask.address))
+        // One asking Joel something he can answer here gets the tree's own Talk, which shows
+        // what it asks and answers it, as its inbox goes unread until its ask ends.
+        const asking = provider.sessionAt(one.ask.address);
+        const act = TalkAnswers.topTalkAct(provider.isVoid(one.ask.address),
+            !!asking && provider.answerable(asking));
+        if (act === "line")
             return provider.lineOpened(one.key);
+        if (act === "answer")
+            return provider.sessionAct(asking, "talk");
         const talk = provider.talking(one.ask.address, row.name ?? "");
         return thing({
             key: one.key,
@@ -268,8 +275,9 @@ Provider {
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
-    // is said in place in the node's own words. Null for any other act.
-    function topCarryBack(one, row) {
+    // is said in place in the node's own words, both on the row keyed as
+    // ReadyRows keyed it from its record's key. Null for any other act.
+    function topCarryBack(key, one, row) {
         const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
         if (ask === null)
             return null;
@@ -280,24 +288,16 @@ Provider {
             glyph: Words.glyph(one.key),
             hue: "action",
             stays: true,
-            run: () => provider.carryBack(row, ask)
+            run: () => provider.carryBack(key, row, ask)
         });
     }
 
-    function carryBack(row, ask) {
-        const said = Words.of("verb:carry:back").said ?? {};
-        const shown = row.thing ?? row.key;
-        let answered = false;
-        provider.becomes(shown, {
-            side: said.carrying ?? "",
-            sideItems: [{ said: said.carrying ?? "", keep: 4 }]
-        }, row.name ?? "", "carry back", { done: () => answered });
-        node.find(ask, answer => {
-            const ended = CarryBack.ended(answer, said);
-            if (ended.done)
-                answered = true;
-            else
-                provider.refused(shown, ended.why);
+    function carryBack(key, row, ask) {
+        CarryBack.carry({ row, key, ask }, Words.of("verb:carry:back").said ?? {}, {
+            becomes: (shown, side, name, doing, until) =>
+                provider.becomes(shown, side, name, doing, until),
+            refused: (shown, why) => provider.refused(shown, why),
+            find: (asked, answered) => node.find(asked, answered)
         });
     }
 
@@ -844,6 +844,45 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
+    // Says why a Go To, a reopen or a start Joel pressed opened nothing, by
+    // the session's name and `why` in the alert colour: in the foot at once
+    // while the launcher's open, else by opening it on Agents to say so
+    // (Launcher.qml's toldHere), since every act shuts the launcher before
+    // it runs, and a why held for its next opening was told to nobody
+    // (KP0L6A, 2026-11-24 [00902e94]): a press that did nothing, unsaid.
+    // Only a Go To asked for this session moments ago opens it; any other
+    // waits in the foot, and one a wake reopens is unsaid
+    // (SessionRow.refusalTold). Not Provider's refused, which takes back a
+    // row by its key.
+    function refusedGoing(session, why) {
+        const told = provider.refusalTold(session);
+        if (told === "unsaid")
+            return;
+        const name = provider.footName(session);
+        const said = provider.elsewhere(why, session);
+        provider.refusedWhy = `${name}: ${said}`;
+        provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        provider.openedForPress(told);
+    }
+    // How a refusal of `session` is told (SessionRow.refusalTold).
+    function refusalTold(session) {
+        return SessionRow.refusalTold(session.address, { waking: Sessions.waking,
+            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
+    }
+    // Opens the launcher on what the foot was just told, where `told` says a
+    // Go To Joel pressed moments ago asked for it, once for that press.
+    function openedForPress(told) {
+        if (told === "opens" && provider.launcher?.toldHere?.())
+            provider.refusalOpened = Sessions.goneTo.at;
+    }
+    // The Go To press a refusal last opened the launcher for, by when it
+    // was pressed, so that press opens it once (SessionRow.refusalTold).
+    property real refusalOpened: 0
+    // The last refusal said, as refusedGoing says it, so a Go To asked from
+    // outside answers with the why it was given (goToFor), never one read
+    // back from the launcher's foot, which its opening has taken.
+    property string refusedWhy: ""
+
     // What the foot names a session by (SessionRow.footNameOf): its row's
     // name, else its quest's title, its address only when neither is known.
     function footName(session) {
@@ -866,23 +905,27 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
-                Theme.alert]]);
+            provider.refusedGoing(session, session.reachable ? "unheld" : "unreached");
         }
 
         // Said by why it held, in words of its own (Sessions' unhosted),
         // plainly where it tells of a viewer opening or viewed, the alert
-        // kept for a press that didn't view (SessionRow.viewedWhy).
+        // kept for a press that didn't view (SessionRow.viewedWhy). A
+        // viewer opening or viewed, or opened beside a stray window holding
+        // its name ("unowned"), went, so it's told without opening the
+        // launcher over the window Joel went to.
         function onUnhosted(session, why) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session),
-                SessionRow.viewedWhy(why) ? Theme.text : Theme.alert]]);
+            const viewed = SessionRow.viewedWhy(why);
+            if (viewed || why === "unowned")
+                provider.launcher?.tellOnOpen([[provider.footName(session),
+                    provider.elsewhere(why, session),
+                    viewed ? Theme.text : Theme.alert]]);
+            else
+                provider.refusedGoing(session, why);
         }
 
         function onUnopened(session) {
-            provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere("unopened", session), Theme.alert]]);
+            provider.refusedGoing(session, "unopened");
         }
 
         // A Wake refused or never answered whose row was becoming woken is
@@ -893,11 +936,29 @@ Provider {
         // SessionRow.unsteered).
         function onUnsteered(session, why, act) {
             const called = provider.footName(session);
-            SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
+            const told = SessionRow.unsteered(provider.launcher,
+                Words.of("agents:machine").said ?? {}, {
                 act, actName: SessionRow.actName(act, Words.name), why,
                 address: session.address, name: called === session.address ? "" : called,
                 called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
             }, Theme.alert);
+            // A Wake a Go To asked for is refused only once goTo has gone
+            // back, so Sessions' waking no longer holds it: the press that
+            // woke it is answered as any Go To's refusal is, rather than
+            // reading done with the launcher shut (#6519's third review).
+            // Its words are kept as refusedWhy too, so a link's Go To whose
+            // wake was refused at once answers why, not "" (#6519's F147).
+            if (act === "wake") {
+                if (told !== null)
+                    provider.refusedWhy = `${told[0]}: ${told[1]}`;
+                provider.openedForPress(provider.refusalTold(session));
+            }
+        }
+
+        // A Go To's wake refused while its press decided, held then, is
+        // answered once that press didn't go (Sessions' wakeRefusedAtOnce).
+        function onWakeRefusedAtOnce(session) {
+            provider.openedForPress(provider.refusalTold(session));
         }
 
         // A parked session Wake would reopen with no fence it can say,
@@ -914,6 +975,7 @@ Provider {
             }
             provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unfenced", session), Theme.alert]]);
+            provider.openedForPress(provider.refusalTold(session));
         }
     }
 
@@ -1196,6 +1258,12 @@ Provider {
         return { want: wantOf(session.address), asking };
     }
 
+    // Whether `session` asks Joel something his words in a Talk answer (TalkAnswers.asked).
+    function answerable(session) {
+        const now = answersOf(session);
+        return TalkAnswers.asked(now.want, now.asking) !== null;
+    }
+
     // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
     // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
     // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
@@ -1215,10 +1283,26 @@ Provider {
         const now = answersOf(session);
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
         const answers = TalkAnswers.asked(now.want, now.asking);
+        // His Return answers what the Talk drew (TalkAnswers.answering), which question draws
+        // whenever it asks him something he can answer here, if only what it takes.
         answersShown[to] = answers;
-        // While it asks, only answers to what it asks show; asking what he can't answer here,
-        // none do.
-        const want = now.asking ? answers?.want ?? null : "";
+        // While it asks, only answers to what it asks show, and those not delivered in the last
+        // quarter hour.
+        const want = TalkAnswers.shownWant(now, answers);
+        // Words given back for an ask it no longer asks go, as the refusal may have come before
+        // the want that replaced it; later, since this runs as the Talk draws. While it asks
+        // and its want isn't held, as for a moment after the daemon restarts, which want it
+        // asks isn't known, so none go.
+        const standsFor = answers?.want ?? "";
+        const stale = now.asking === true && answers === null ? []
+            : TalkAnswers.stale(answeredTo[to], standsFor);
+        if (stale.length > 0)
+            Qt.callLater(() => {
+                launcher?.drafts?.settle({ [to]: stale
+                    .map(typed => ({ words: typed, stage: "answered" })) });
+                answeredTo = Object.assign({}, answeredTo,
+                    { [to]: TalkAnswers.letGo(answeredTo[to], standsFor) });
+            });
         return (asked === null ? [] : [asked]).concat(TalkAnswers
             .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
@@ -1244,25 +1328,30 @@ Provider {
             launcher?.walkRefused?.(told);
             return;
         }
-        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
-        const keep = changed => {
-            answeredTo = Object.assign({}, answeredTo,
-                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
-        };
-        keep(one);
         told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
             { name: session.title });
         const fields = Object.assign({ want: answers.want }, answer.value !== undefined
             ? { value: answer.value } : { other: answer.other });
-        answerWant(session.address, fields, (put, why) => {
-            keep(TalkAnswers.put(one, put, why));
+        const chose = { label: answer.label, typed: text, answers };
+        answerKept(session.address, fields, chose, (put, why, unheard, refused) => {
+            // A second Return to an ask he answered goes nowhere, as it takes his first
+            // (answerKept), so his words go and the foot says why rather than sent.
+            if (refused === true) {
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+                told = why;
+                return;
+            }
             // His words stay only for the ask they were meant for: once it asks something else,
             // given back they'd answer the new ask with words for the old one, so they show
-            // only as not delivered, and the foot says why.
+            // only as not delivered, and the foot says why. Words not known to have arrived
+            // go too, as they may have, so a second Return isn't laid out for him.
             const now = answersOf(sessionAt(session.address) ?? session);
-            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
+            if (!TalkAnswers.keepsWords(put || unheard === true,
+                TalkAnswers.asked(now.want, now.asking), answers))
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
-            if (!put && (why ?? "") !== "")
+            if (unheard)
+                told = TalkAnswers.filled(said.unheardWhy ?? "", { name: session.title });
+            else if (!put && (why ?? "") !== "")
                 told = why;
         });
     }
@@ -1375,7 +1464,8 @@ Provider {
     // (Launcher.qml's goToCell), as its row's Switch does: raises its window, or opens one on it
     // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
     // first where it's parked, as a look's Go To does. Only the first word said names one
-    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session gone to, or null for
+    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session and whether it went
+    // (Sessions.wakeToGo), with the why it was told where it didn't (refusedGoing), or null for
     // nobody here: the void and a network have no window to go to.
     function goToFor(said) {
         const address = TalkTo.goesTo(said, {
@@ -1387,9 +1477,10 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+        provider.refusedWhy = "";
+        const went = Sessions.wakeToGo(Sessions.parkedAs(session.address),
             sessionAt(session.address) ?? session);
-        return session;
+        return { session, went, why: went ? "" : provider.refusedWhy };
     }
 
     // The key the daemon serves a network's row by, among the rows the Networks row holds
@@ -1595,21 +1686,20 @@ Provider {
                     if (text === "")
                         return;
                     // What the Talk showed it asking when he pressed Return, while that Talk is
-                    // the one held; a walk from a terminal, which draws none, answers what it
-                    // asks now.
-                    const held = provider.launcher?.asking?.draft === draft
-                        && draft in provider.answersShown;
-                    const answers = held ? provider.answersShown[draft] : asks();
-                    // An answer goes as Joel's, so only his own Return gives one: a walk from
-                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
-                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                    // the one held, else what it asks now. An answer goes as Joel's, so only
+                    // his own Return gives one: a walk from outside, which any program of his
+                    // may ask, is refused (TalkAnswers.onReturn).
+                    const ret = TalkAnswers.onReturn(TalkAnswers.answering(
+                        provider.launcher?.asking?.draft, draft, provider.answersShown, asks()),
+                        Sprouting.fromJoel(provider.launcher));
+                    if (ret.act === "refused") {
                         provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
                             { name: session.title });
                         provider.launcher?.walkRefused?.(provider.told);
                         return;
                     }
-                    if (answers !== null) {
-                        provider.answerIn(current(), text, answers);
+                    if (ret.act === "answer") {
+                        provider.answerIn(current(), text, ret.answers);
                         return;
                     }
                     provider.actOn(session, "talk", { text });
@@ -2262,7 +2352,7 @@ Provider {
             // The daemon's words can name a session, so they're said as errorShown
             // says a daemon's error.
             const why = answer?.error === undefined ? "no daemon answered"
-                : Presented.errorShown(answer.error, Options.reports);
+                : ActsSaid.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";
@@ -2947,14 +3037,59 @@ Provider {
     // steers it there, and `then(put)` hears whether the node put it in
     // the session's inbox, which Sessions says as it does any act's. Not
     // `answer`, which the launcher asks of every source for what's typed.
+    // Only answerKept sends one, having refused a walk or a second answer first.
     function answerWant(address, fields, then) {
         const said = Object.assign({ ask: "answer", address: String(address) }, fields);
         if (!rowsKind) {
             then(Sessions.steered(address, null));
             return;
         }
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
-            String(reply?.error?.message ?? "")));
+        // No reply where it was sent is the daemon gone while asked (Daemon.qml's gone), the
+        // answer put or not, so it's said unheard rather than not delivered; none where the
+        // daemon wasn't there to send to is not delivered. An unheard one isn't Sessions'
+        // steered, whose refusal would put "not told" on the foot beside "may not have it".
+        const sent = rowsKind.wire !== null;
+        rowsKind.ask(said, reply => {
+            const why = String(reply?.error?.message ?? "");
+            if (!TalkAnswers.unheard(sent, reply)) {
+                then(Sessions.steered(address, reply), why, false);
+                return;
+            }
+            Report.say(`unheard answer to ${String(address).toUpperCase()}: ${why}`);
+            then(false, why, true);
+        });
+    }
+
+    // Joel's answer to what the session at `address` asks (`chose.answers`, asked's), shown as
+    // `chose.label` and typed as `chose.typed`, sent with `fields` (answerWant's) and kept
+    // among its answers (answeredTo) until the node says of it, whichever row gave it, For
+    // You's choices too, so its Talk shows it and a second Return there knows it went.
+    // `then(put, why, unheard, refused)` hears the node, after it's kept, or `refused` true
+    // where it never went, with why.
+    function answerKept(address, fields, chose, then) {
+        const to = String(address).toUpperCase();
+        // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
+        // (Sprouting.fromJoel), and only his first to an ask, For You's choices too. Refused,
+        // nothing is kept, so its Talk shows no words he didn't send; a walk is told why
+        // (Launcher.qml's walkedRun), and `then` hears it refused, its row saying why.
+        const asked = { list: answeredTo[to], want: chose.answers.want, nowMs: Date.now() };
+        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), asked,
+            Words.of("verb:agent:talk").said ?? {}, sessionAt(address)?.title ?? to);
+        if (refused !== null) {
+            launcher?.walkRefused?.(refused);
+            then(false, refused, false, true);
+            return;
+        }
+        const one = TalkAnswers.said(chose.label, Date.now(), chose.answers.want, chose.typed);
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
+        };
+        keep(one);
+        answerWant(address, fields, (put, why, unheard) => {
+            keep(TalkAnswers.put(one, put, why, unheard));
+            then(put, why, unheard);
+        });
     }
 
     property string fedBack: ""

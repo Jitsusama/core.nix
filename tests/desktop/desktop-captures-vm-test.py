@@ -18,10 +18,13 @@ import json
 import re
 import shlex
 from datetime import timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 from desktop_session import NOTICES, retry
+from heard import diagnosed
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -32,6 +35,8 @@ if TYPE_CHECKING:
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
 # The keys that close the viewfinder, as they close Joel's other programs.
 ZZ = ("shift-z", "shift-z")
+# Where the viewfinder logs what became of each Z (camera.sh), written over each time it opens.
+VIEWFINDER_LOG = "/run/user/1000/camera-viewfinder.log"
 # Where the shell keeps the notices it holds.
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
@@ -606,10 +611,21 @@ class Camera:
         self.machine.wait_until_succeeds(self.desktop.in_session(CAMERA), timeout=WAKING)
 
     def gone(self) -> None:
-        """Wait until the viewfinder has gone."""
-        self.machine.wait_until_fails(
-            self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
-        )
+        """Wait until the viewfinder has gone.
+
+        Twice on the 26th of November a ZZ pressed as the viewfinder appeared left it open
+        (the net, b084c578 and 3155eae4), each time the step where Escape and q come first,
+        so what mpv was doing then is printed (said): its state, to say whether it was stuck
+        quitting, and the viewfinder's own lines on each Z, to say whether the Zs were heard
+        as a pair, as two lone ones too far apart, or not at all.
+        """
+        try:
+            self.machine.wait_until_fails(
+                self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
+            )
+        except Exception:
+            self.said()
+            raise
 
     def probe(self, entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
@@ -656,12 +672,27 @@ class Camera:
             raise
 
     def said(self) -> None:
-        """Print what the recording and its programs were doing, for a wait that ran out."""
-        print(self.machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'")[1])
-        print(self.machine.execute(f"ls -la /run/user/1000 {self.videos}")[1])
-        print(self.machine.execute("cat /run/user/1000/camera-recording.log")[1])
-        print(self.desktop.as_account("pw-top -b -n 2 || true"))
-        print(self.desktop.as_account("journalctl --user --no-pager -n 60 -o cat"))
+        """Print what the recording and its programs were doing, for a wait that ran out.
+
+        Each read never raises and is bounded, since a session gone bad is when these fail
+        too, and their error would be reported in place of the failure they explain. Those
+        needing no session run as root, since every read in the session waits first on its
+        user manager, which may be what's wedged (round 2 on #6975, F15). The viewfinder's
+        log (camera.sh) is read for its lines on every key it heard (camera.lua), counted
+        first so a log never written reads apart from one with none, and the journal for
+        its last lines.
+        """
+        quick = timedelta(seconds=20)
+        allowed = quick * vm_helpers.pace(vm_helpers.busyness())
+        for command in (
+            "ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'",
+            f"ls -la /run/user/1000 {self.videos}",
+            "cat /run/user/1000/camera-recording.log",
+            f"wc -l {VIEWFINDER_LOG}; grep -a 'viewfinder:' {VIEWFINDER_LOG} | tail -n 40",
+        ):
+            print(diagnosed(partial(self.machine.execute, command, timeout=allowed)))
+        for command in ("timeout 10 pw-top -b -n 2", "journalctl --user --no-pager -n 60 -o cat"):
+            print(self.desktop.diagnosis(command, quick))
 
     def likeness(self, picture: str, turn: str) -> float:
         """Give how alike a picture kept and the camera's own are, the camera's turned so."""
@@ -727,6 +758,9 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
         machine.send_key(key)
     camera.gone()
     assert machine.succeed(f"ls {camera.pictures} {camera.videos}") == kept
+    # And said so where a miss's print reads it (Camera.said), so a miss says what its Zs did.
+    closed = machine.succeed(f"grep -a 'viewfinder: ZZ closes' {VIEWFINDER_LOG} || true")
+    assert closed.strip(), "the viewfinder's ZZ wasn't said in its log"
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.

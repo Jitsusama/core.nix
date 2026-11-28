@@ -1,0 +1,40 @@
+From: Wei Yang <albinwyang@tencent.com>
+Subject: [PATCH v4] sched/stats: Fix run_delay over-count for migrated sched_delayed tasks
+
+With DELAY_DEQUEUE, a blocked task stays on the runqueue with
+se.sched_delayed set and its sched_info.last_queued is cleared, so the sleep
+is not counted into run_delay.
+
+When such a delayed (sleeping) task is migrated across CPUs via the plain
+migration paths (move_queued_task / move_queued_task_locked, the latter used
+by __migrate_swap_task), activate_task(dst, 0) calls enqueue_task() without
+ENQUEUE_RESTORE, re-arming last_queued to the migration timestamp while the
+task is still sleeping. The later real wakeup (ENQUEUE_DELAYED) tries to
+re-arm last_queued at wakeup time but is suppressed because last_queued is
+already non-zero, so sched_info_arrive() folds the whole sleep duration
+between migration and wakeup into run_delay.
+
+Fix by not re-arming last_queued for a sched_delayed task in
+sched_info_enqueue(). The wakeup path clears sched_delayed before reaching
+sched_info_enqueue(), so it still re-arms at the real wakeup time. Plain
+runnable tasks are unaffected.
+
+Fixes: 152e11f6df29 ("sched/fair: Implement delayed dequeue")
+Signed-off-by: Wei Yang <albinwyang@tencent.com>
+Link: https://lore.kernel.org/all/20261024042753.2276779-1-albin_yang@163.com/
+---
+ kernel/sched/stats.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/sched/stats.h b/kernel/sched/stats.h
+--- a/kernel/sched/stats.h
++++ b/kernel/sched/stats.h
+@@ -290,7 +290,7 @@ static void sched_info_arrive(struct rq *rq, struct task_struct *t)
+  */
+ static inline void sched_info_enqueue(struct rq *rq, struct task_struct *t)
+ {
+-	if (!t->sched_info.last_queued)
++	if (!t->sched_info.last_queued && !t->se.sched_delayed)
+ 		t->sched_info.last_queued = rq_clock(rq);
+ }
+ 

@@ -97,7 +97,16 @@ fn standing_in_a_version_or_holding_its_file_is_use_whatever_was_said() {
         holds: true,
         ..Seen::default()
     };
-    assert!(inuse::uses(stands, Some(false)));
-    assert!(inuse::uses(holds, Some(false)));
-    assert!(!inuse::uses(Seen::default(), None));
+    assert!(
+        inuse::uses(stands, Some(false)),
+        "standing in the folder is use, though it said it runs another: {stands:?}"
+    );
+    assert!(
+        inuse::uses(holds, Some(false)),
+        "holding a file open is use, though it said it runs another: {holds:?}"
+    );
+    assert!(
+        !inuse::uses(Seen::default(), None),
+        "seen doing nothing and saying nothing is no use"
+    );
 }
