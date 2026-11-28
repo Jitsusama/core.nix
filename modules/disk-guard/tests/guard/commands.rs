@@ -189,7 +189,10 @@ fn a_child_holding_the_output_open_cant_hold_the_guard() {
     // It leaves its group, so killing the group misses it, and it keeps
     // the output pipe open.
     let mut job = job(&["sh", "-c", "setsid sleep 3 & exit 0"]);
-    job.timeout = Duration::from_millis(500);
+    // Long enough for a busy host to run the shell's exit, which a short
+    // timeout would call timed out, yet short of the three held seconds,
+    // so a guard reading the output to its end still times out.
+    job.timeout = Duration::from_millis(2500);
     // Held short of the three seconds the left child holds the output, which
     // a guard reading it to its end waits out.
     let started = test_pace::Timed::start().short_of(Duration::from_secs(3));
