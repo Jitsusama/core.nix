@@ -3306,7 +3306,11 @@ mod tests {
             "with no call on, a typed turn didn't go as video"
         );
         let sets = placed(&mut call, Some(true), start + CALL_EVERY);
-        assert_eq!(sets.calling, classes::calling(true), "the call wasn't heard");
+        assert_eq!(
+            sets.calling,
+            classes::calling(true),
+            "the call wasn't heard"
+        );
         assert!(
             sets.typed_video5.is_empty(),
             "a typed turn went as video in the step a call was heard: {sets:?}"

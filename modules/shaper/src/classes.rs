@@ -5,6 +5,9 @@
 //! its slice or unit is made again, so the sets are refilled from the
 //! cgroup tree as it stands. nft takes a cgroup by its path and looks the ID
 //! up itself, so the sets are written as paths.
+//!
+//! Long because its tests, over half of it, walk each set a cgroup can land
+//! in and the one transaction that refills them all.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
