@@ -207,15 +207,19 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
     let first = holds.first()?;
     // Each input is judged at the commit the build reads, its followed one
     // or its lock's pin, so one the lock dropped is neither asked nor
-    // fetched: its repository may have gone with it.
+    // fetched: its repository may have gone with it. A lock that can't be
+    // read stops every update until it can, so the stop says how to let
+    // the hold through, as an untold one does.
     let built = match follows::built(config, head, followed) {
         Ok(built) => built,
         Err(failure) => {
             return Some(format!(
-                "{} is held, and what main at {} builds couldn't be read: {}",
+                "{} is held, and what main at {} builds couldn't be read: {}; \
+                 `update-to-main {LIFT} {}` lets it through",
                 git::short(&first.commit),
                 git::short(head),
-                failure.why
+                failure.why,
+                first.commit
             ));
         }
     };
