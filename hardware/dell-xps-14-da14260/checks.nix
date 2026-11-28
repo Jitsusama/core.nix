@@ -472,9 +472,11 @@ in
   # Read from the source of the Mesa the XPS 14's graphics drivers are,
   # with its patches, that preference no longer hangs off the branch every
   # memory object takes first, and anv still prefers those tiles
-  # (tests/iris-tiles-memory-objects-as-anv-does.sh). In Mesa's own source
-  # anv must pass and iris must fail at that shadowing, so the check is seen
-  # to catch the bug each time it runs, not only once by hand.
+  # (tests/iris-tiles-memory-objects-as-anv-does.sh). Mesa's own iris must
+  # fail at that shadowing, so the check is seen to catch the bug each time
+  # it runs, and its cases edit the patched files as a later Mesa might, so
+  # a check that stops seeing any of its failures fails here
+  # (tests/iris-tiles-memory-objects-as-anv-does-cases.py).
   iris-tiles-memory-objects-as-anv-does =
     let
       mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
@@ -484,12 +486,18 @@ in
         resource
         image
       ];
+      own = patched mesa.src [ ] [ resource ];
+      bash = lib.getExe pkgs.bash;
+      check = ./tests/iris-tiles-memory-objects-as-anv-does.sh;
+      read = "${source}/${resource} ${source}/${image} ${own}/${resource}";
     in
-    pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/iris-tiles-memory-objects-as-anv-does.sh} \
-        ${source}/${resource} ${source}/${image} ${mesa.src}/${resource} ${mesa.src}/${image}
-      touch $out
-    '';
+    pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        ${bash} ${check} ${read}
+        python3 ${./tests/iris-tiles-memory-objects-as-anv-does-cases.py} ${bash} ${check} ${read}
+        touch $out
+      '';
 
   # xe's 2 MiB buffer pages had the thread asking reclaim and compact for
   # them, round after round, while memory was fragmented, and niri stalled

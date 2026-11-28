@@ -7,12 +7,12 @@
 # alone and not as an else, and the preference must follow it. Both sides
 # are read, since the canvas breaks whichever of them drifts: anv must
 # still prefer 4K tiles for an image it exports with no modifier, and
-# iris must keep the constant-bandwidth branch the patch moved. Mesa as
-# released is then read too: its anv must pass as it stands, and its iris
-# must fail at that else, so each run shows the check catches the bug,
-# not some other failure.
+# iris must keep the constant-bandwidth branch the patch moved. Mesa's own
+# iris is then read too, and must fail at that else, so each run shows the
+# check catches the bug, not some other failure. anv is read only as
+# patched, since the patch leaves it as Mesa ships it.
 # usage: iris-tiles-memory-objects-as-anv-does.sh <iris_resource.c> <anv_image.c>
-#          <released iris_resource.c> <released anv_image.c>
+#          <Mesa's own iris_resource.c>
 set -euo pipefail
 
 memoryObject='(!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {'
@@ -79,17 +79,15 @@ judgeAnv() {
 
 judgeIris "$1"
 judgeAnv "$2"
-judgeAnv "$4"
 status=0
 # shellcheck disable=SC2310 # judgeIris failing is the result sought here, and it exits on its own.
 released=$(judgeIris "$3") || status=$?
 if ((status == 0)); then
-  echo "Mesa as released passes too, so it may carry the fix: read its" \
-    "iris_resource_configure_main, and take out the patch and this check if it does."
+  echo "Mesa's own iris passes too, so this check can't tell the patch is there."
   exit 1
 fi
 [[ $released == "$shadowed, "* ]] || {
-  echo "On Mesa as released the check failed for another reason: $released"
+  echo "On Mesa's own iris the check failed for another reason: $released"
   echo "So it can't tell the patch is there."
   exit 1
 }
