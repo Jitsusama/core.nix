@@ -15,7 +15,8 @@
 // sources' waking counts home found after its fill as a slice, which only
 // home's fill leaves to one, searching home again but for a chord. What
 // was presented is said by
-// place, each change timed from the earliest line not yet drawn
+// place, each change timed from the earliest line not yet drawn, and a
+// drawer only from a key its own opening heard shortly before
 // (launcher/Presented.js). A closing makes again only the spots of the
 // things whose stamp moved (launcher/Spots.js). y's flash starts its
 // time a turn after the frame that draws it, only for the newest yank
@@ -1907,10 +1908,32 @@ QtObject {
             Pacing.drawerCame(false, 0, true), "the frame after its letter");
     }
 
+    // A For You drawer said it was presented 785660 ms from its key, and
+    // another 392870 (Joel's journal, 27 November): the key kept while a
+    // drawer served apart was awaited timed one that came minutes on, or
+    // in a later opening. A drawer is timed only from a key of its own
+    // opening, pressed shortly before.
+    function drawersFromTheirKeys(failures) {
+        check(failures, "a drawer a round trip after its key is timed from it",
+            Presented.drawerKeyed(1000, 0, 1071), 1000);
+        check(failures, "and one just inside the bound still is",
+            Presented.drawerKeyed(1000, 0, 10999), 1000);
+        check(failures, "but one made as long after its key as the bound isn't",
+            Presented.drawerKeyed(1000, 0, 11000), 0);
+        check(failures, "nor one minutes on in the same opening",
+            Presented.drawerKeyed(1000, 0, 393870), 0);
+        check(failures, "nor one whose key was pressed before the launcher last shut",
+            Presented.drawerKeyed(1000, 1500, 2000), 0);
+        check(failures, "nor one no key brought", Presented.drawerKeyed(0, 0, 50), 0);
+        check(failures, "a key pressed since the launcher shut times its drawer",
+            Presented.drawerKeyed(2000, 1500, 2060), 2000);
+    }
+
     function run() {
         const failures = [];
         const every = 250;
         drawers(failures);
+        drawersFromTheirKeys(failures);
 
         const first = Pacing.heard(Pacing.rested(), 1000, every);
         check(failures, "the first change is taken at once", first.now, true);
