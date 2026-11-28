@@ -1361,38 +1361,57 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     // as long after as a sleep had left.
     let clears_at = u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX);
     let waiting = Arc::clone(shared);
-    let spawned = std::thread::Builder::new()
-        .name(CLEAR_WAIT.to_owned())
-        .spawn(move || {
-            let awake_since = Instant::now();
-            // A copy something else replaced was ended as it was, so its
-            // wait stops at its next look rather than waking on to its own
-            // time.
-            let still_ours = || {
-                lock(&waiting)
-                    .copied
-                    .as_ref()
-                    .is_some_and(|child| child.id() == pid)
-            };
-            waited_until(
-                clears_at,
-                clears,
-                now,
-                || awake_since.elapsed(),
-                still_ours,
-                std::thread::sleep,
-            );
-            ended_if_held(&waiting, pid);
-        });
-    if let Err(why) = spawned {
+    let wait = move || {
+        let awake_since = Instant::now();
+        // A copy something else replaced was ended as it was, so its wait
+        // stops at its next look rather than waking on to its own time.
+        let still_ours = || {
+            lock(&waiting)
+                .copied
+                .as_ref()
+                .is_some_and(|child| child.id() == pid)
+        };
+        waited_until(
+            clears_at,
+            clears,
+            now,
+            || awake_since.elapsed(),
+            still_ours,
+            std::thread::sleep,
+        );
+        ended_if_held(&waiting, pid);
+    };
+    waited_to_clear(
+        |wait| {
+            std::thread::Builder::new()
+                .name(CLEAR_WAIT.to_owned())
+                .spawn(wait)
+                .map(drop)
+        },
+        wait,
+        || ended_if_held(shared, pid),
+    )?;
+    Ok(clears_at)
+}
+
+/// Starts `wait`, which clears a copy once its time is up, with `spawn`; if
+/// nothing can wait, ends the copy now with `end_now` and refuses it. It's
+/// apart from copy, which starts it on a thread named CLEAR_WAIT, so its
+/// refusal can be tested without a daemon.
+fn waited_to_clear<W>(
+    spawn: impl FnOnce(W) -> std::io::Result<()>,
+    wait: W,
+    end_now: impl FnOnce(),
+) -> Result<(), String> {
+    if let Err(why) = spawn(wait) {
         // With nothing to end it, the copy would never clear, so it's
         // ended now and refused.
-        ended_if_held(shared, pid);
+        end_now();
         return Err(format!(
             "couldn't copy: nothing could wait to clear it: {why}"
         ));
     }
-    Ok(clears_at)
+    Ok(())
 }
 
 /// Ends the copier of the copy held, if it's still the one `pid` names,
