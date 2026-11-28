@@ -2251,16 +2251,18 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
-# Once every one of the twin's networks is a hub on the map, the frame after the one that first
-# showed them all, on the page's own clock from its opening: a frame's callbacks run before its
-# paint, so the second frame's run after the first was painted. Watched from each frame, as the
-# feed may draw the realm in parts, so neither the driver's polling nor the end of the map's own
-# script stands in for what the reader sees.
-WATCH_DRAWN = """(networks) => {
+# The map's own measure of its draw (view.js), named so a run's log and a profile read alike.
+DRAW_MEASURE = "mycelium-draw"
+# Once a frame first shows every one of the twin's networks as a hub on the map, the draw that
+# drew them, as the map measures it, on the page's own clock from its opening: its start and how
+# long it took, or null where the map left no measure. Watched from each frame, as the feed may
+# draw the realm in parts, and read at once, since each draw replaces the measure of the last.
+WATCH_DRAWN = """({ networks, measure }) => {
   const twin = '#world .hub[data-key^="h:orchestration.skf"]';
   const look = () => {
-    if (document.querySelectorAll(twin).length < networks) requestAnimationFrame(look);
-    else requestAnimationFrame(() => { window.drawnAt = performance.now(); });
+    if (document.querySelectorAll(twin).length < networks) return requestAnimationFrame(look);
+    const drew = performance.getEntriesByName(measure, "measure").at(-1);
+    window.drawn = drew ? { at: drew.startTime + drew.duration, took: drew.duration } : null;
   };
   requestAnimationFrame(look);
 }"""
@@ -2339,15 +2341,17 @@ def test_the_map_answers_its_keys_at_ten_thousand(
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
 
     def stands_drawn(page: Page) -> None:
-        page.evaluate(WATCH_DRAWN, TWIN_NETWORKS)
+        page.evaluate(WATCH_DRAWN, {"networks": TWIN_NETWORKS, "measure": DRAW_MEASURE})
         the_map_stands(page, "live", TWIN_MS)
-        page.wait_for_function("() => window.drawnAt", timeout=TWIN_MS)
+        page.wait_for_function("() => window.drawn !== undefined", timeout=TWIN_MS)
 
     try:
         # The heaviest page here, so a renderer a busy builder kills is opened once more.
         opened.first(stands_drawn)
         page = opened.page
-        drawn = round(page.evaluate("() => window.drawnAt"))
+        drew = page.evaluate("() => window.drawn")
+        assert drew is not None, f"the map drew ten thousand cells with no {DRAW_MEASURE} measure"
+        drawn, took = round(drew["at"]), round(drew["took"])
         page.evaluate(WATCH_LONG)
         where = page.locator("#where")
         page.locator("#map-view").focus()
@@ -2386,7 +2390,7 @@ def test_the_map_answers_its_keys_at_ten_thousand(
         # Said whether it passes, past pytest's capture, so each run's log adds a measure the
         # budgets can be read against.
         with capsys.disabled():
-            print(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
+            print(f"drawn at {drawn} ms, in {took}; Return {first}; j Return {step}; . {now}")
         assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
         for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
             assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
