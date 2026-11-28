@@ -652,20 +652,31 @@ fn said(search: Search, from: Option<u64>, to: Option<u64>, at: u64, whole: bool
     )
 }
 
-/// Adds `row`, one [`missed()`] made for `search`, raised `at` in
-/// milliseconds, to the rows in `file` saying what Slack's searches never
-/// read, as pineapple's `missed` keeps every reader's: its search's rows
-/// whose spans come within [`MEET`] of its own are said with it as one
-/// row, whole or in parts. The search is given, not read from the row's
-/// name, as its caller knows it and a guess would say an odd row as a
-/// tag row. What the row written says is given back, so the journal says
-/// what Joel reads.
+/// Adds the row [`missed()`] makes for `search` from `from` to `to`,
+/// raised `at`, each in milliseconds, to the rows in `file` saying what
+/// Slack's searches never read, as pineapple's `missed` keeps every
+/// reader's: its search's rows whose spans come within [`MEET`] of its
+/// own are said with it as one row, whole or in parts. The row is made
+/// here from `search`, as is any it's met into, so the two can't be said
+/// for different searches; which search read on past, the reader's
+/// `record` tells from the query each asks with. What the row written
+/// says is given back, so the journal says what Joel reads.
 ///
 /// # Errors
 ///
-/// Why it couldn't be read or written.
-pub fn keep_missed(file: &Path, search: Search, row: Value, at: u64) -> std::io::Result<String> {
+/// Why it couldn't be read or written, beside what the row it made says,
+/// so the journal names the span still untold.
+pub fn keep_missed(
+    file: &Path,
+    search: Search,
+    from: Option<u64>,
+    to: Option<u64>,
+    at: u64,
+) -> Result<String, (String, std::io::Error)> {
+    let row = missed(search, from, to, at);
+    let why = row["why"].as_str().unwrap_or_default().to_owned();
     missed::keep(file, MISSED, row, at, |from, to, whole| {
         said(search, from, Some(to), at, whole)
     })
+    .map_err(|error| (why, error))
 }

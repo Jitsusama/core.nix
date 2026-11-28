@@ -480,14 +480,12 @@ fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
         skipped.from.and_then(millis_of),
         skipped.to.and_then(millis_of),
     );
-    let row = deaf::missed(search, from, to, at);
-    let why = row["why"].as_str().unwrap_or_default().to_owned();
-    match deaf::keep_missed(file, search, row, at) {
+    match deaf::keep_missed(file, search, from, to, at) {
         Ok(written) => {
             eprintln!("<5>wrote Joel's row in {}: {written}", file.display());
             true
         }
-        Err(error) => {
+        Err((why, error)) => {
             eprintln!(
                 "<3>couldn't write Joel's row in {}: {why}: {error}",
                 file.display()
@@ -609,6 +607,10 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
     } else {
         waiting.file.with_file_name(MISSED_LIVE)
     };
+    // `Through` knows each search only by its query, and the tag's names
+    // Joel, who isn't known until it has asked, so which search read on
+    // past is told here from the query: the phrase's is its own, and the
+    // only other the reader asks is the tag's.
     let record = move |query: &str, skipped: Skipped| {
         let search = if query == round::PHRASE {
             Search::Phrase
