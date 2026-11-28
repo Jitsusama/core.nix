@@ -216,17 +216,18 @@ def test_the_noise_comes_out_quieter(noise: tuple[float, float]) -> None:
     assert raw - cleaned >= QUIETER_DB
 
 
-def test_a_voice_comes_through(joel: Joel, noise: tuple[float, float]) -> None:
+# These two ask for the noise only so the model has loaded, and the noise been recorded, first.
+@pytest.mark.usefixtures("noise")
+def test_a_voice_comes_through(joel: Joel) -> None:
     """A sentence spoken over the noise comes through about as loud as the microphone hears it."""
-    assert noise, "the noise was never recorded"
     raw, cleaned = joel.recorded("spoken.wav")
     print(f"voice: {raw} dB raw, {cleaned} dB noise-cancelled")
     assert abs(raw - cleaned) <= NEAR_DB
 
 
-def test_the_microphone_rests_once_nothing_records(joel: Joel, noise: tuple[float, float]) -> None:
+@pytest.mark.usefixtures("noise")
+def test_the_microphone_rests_once_nothing_records(joel: Joel) -> None:
     """Once the recording stops, the program says it rests and stops hearing the microphone."""
-    assert noise, "the noise was never recorded"
     joel.wait_until_said(f"resting {DESCRIPTION}", ANSWERS_WITHIN)
     joel.wait_for(f'test "$(pw-dump | jq -r {shlex.quote(RUNNING)})" != running', ANSWERS_WITHIN)
     assert f"cleaning {DESCRIPTION}" in joel.said()

@@ -172,6 +172,8 @@ ShellRoot {
         property var wants: ({})
         property var answered: []
         property bool puts: true
+        // Whether an answer not put went unheard: sent, with nothing said of it.
+        property bool unheard: false
         // What it gives For You, as a source's `forYou` (ForYou.js's given).
         property var forYou: []
 
@@ -179,9 +181,20 @@ ShellRoot {
             return wants[address] ?? null;
         }
 
-        function answerWant(address, fields, then) {
-            answered = answered.concat([{ address: address, fields: fields }]);
-            then(puts);
+        // Why answerKept refuses an answer (a walk's, or a second to an ask), keeping nothing,
+        // or "" where it takes it.
+        property string refuses: ""
+
+        // As Agents' answerKept, which keeps the answer among the session's before it goes,
+        // or refuses it, keeping and sending nothing.
+        function answerKept(address, fields, chose, then) {
+            if (refuses !== "") {
+                then(false, refuses, false, true);
+                return;
+            }
+            answered = answered.concat([{ address: address, fields: fields,
+                label: chose.label, want: chose.answers.want }]);
+            then(puts, "", !puts && unheard);
         }
 
         // Moved when a row's words move, as Agents' rows say they have.
@@ -239,11 +252,13 @@ ShellRoot {
         function afterFrame(then) {
             then();
         }
-        // What the foot was last told.
+        // What the foot was last told, and whether it was told it loose.
         property var said: []
+        property bool saidLoose: false
 
-        function say(keys) {
+        function say(keys, loose) {
             said = keys;
+            saidLoose = loose === true;
         }
         // What it was told failed, as toldThat's what and why, the place it
         // was last asked to open into, and how often it was asked to say a
@@ -532,6 +547,14 @@ ShellRoot {
             expect("For You's History asked again hands back the rows it held",
                 whole.length > 0 && wholeFresh.length === 0,
                 `${wholeFresh.length} of ${whole.length} new`);
+            // History's drawer says what its side's count is made of, term
+            // by term of resolvedCount, so its facts add up to that count
+            // (#7188's round, 2).
+            const keptFacts = now.historyRow.drawer()?.facts ?? [];
+            const keptSum = keptFacts.reduce((sum, one) => sum + Number(one.value), 0);
+            expect("History's drawer counts add up to its row's own count",
+                now.resolvedCount > 0 && keptSum === now.resolvedCount,
+                JSON.stringify([keptFacts, now.resolvedCount]));
             // Each notice's row is the one the daemon served, muted and
             // For You's as it came (row.rs), with nothing made of it here.
             const served = new Set(pastNotices.pastRows(["desktop", "slack"]));
@@ -2331,6 +2354,26 @@ ShellRoot {
         // anew at each revision, so they're kept by what they say.
         const toDo = (title, deadline) => ({ v: 2, title: title, ready: true,
             raisedAt: Date.now() - 2 * 3600000, deadline: deadline ?? null });
+        // Later's drawer names each item it holds that says what it waits
+        // for or how long it has, as its row says it at its side, and
+        // names them all as any place does where none says either
+        // (#7188's round, 2).
+        // The node says when an item was raised as a time in words, as
+        // NeedsYou.waited reads it.
+        const laterRaised = new Date(Date.now() - 2 * 3600000).toISOString();
+        WaitingOnYou.later = [{ v: 2, title: "Pay The Bill", ready: false, raisedAt: laterRaised,
+            minutes: 5 }, { v: 2, title: "Say Nothing", ready: false, raisedAt: null }];
+        const laterFacts = now.laterRow?.drawer()?.facts ?? [];
+        expect("Later's drawer says what one waits for and how long, and leaves out the other",
+            laterFacts.length === 1 && laterFacts[0].label === "Pay The Bill"
+                && laterFacts[0].value.startsWith("5 min \u00b7 waiting "),
+            JSON.stringify(laterFacts));
+        WaitingOnYou.later = [{ v: 2, title: "Say Nothing", ready: false, raisedAt: null }];
+        const laterNamed = now.laterRow?.drawer() ?? null;
+        expect("Later's drawer names them as any place does where none says either",
+            laterNamed !== null && JSON.stringify(laterNamed).includes("Say Nothing"),
+            JSON.stringify(laterNamed));
+        WaitingOnYou.later = [];
         WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
         now.lookTexts = { "d.json": lookAt("d", "Read D") };
         Sessions.wanting = [{ address: "WANTB", title: "Session B", presence: {
@@ -2992,6 +3035,47 @@ ShellRoot {
         expect("a read later keeps the bands kept for now",
             now.bandsKept.minute === keptMinute && now.bandsKept.times === keptTimes,
             JSON.stringify([keptMinute, now.bandsKept.minute, keptTimes, now.bandsKept.times]));
+        // And time alone moves how many need him, not only what leads, so
+        // home counts them from the bands at its clock, never from the live
+        // count (toDoCount), which a read later would say as now's. Three
+        // looks Agents gives stand in To Look At now, since a look lifts into
+        // what needs him only once it blocks or its due is a day off or less
+        // (ForYou.js's pressingBy and dueing). Sixteen hours on, Read A, due
+        // in 30 hours, and Read B, due in 34, are due within the day and
+        // lifted; Read C, due in 60, isn't. Read A waited three hours already,
+        // so it weighs 35 then to Read B's 15 (ForYou.js's weighBy: due within
+        // the day 10, a look 5, and waiting 20 at most) and leads.
+        WaitingOnYou.now = [];
+        Sessions.wanting = [];
+        const lookIn = (name, hours, since) => ({ row: { key: `agent:look:${name}`, name: name,
+            forYou: { kind: "look", source: "sessions" } }, thing: { kind: "look",
+            due: Date.now() + hours * 3600000, since: since ?? null } });
+        agents.forYou = [lookIn("Read A", 30, Date.now() - 3 * 3600000), lookIn("Read B", 34),
+            lookIn("Read C", 60)];
+        expect("time alone lifting looks, home says To Look At now and names one then",
+            now.homeSays() === "3 to look at" && now.homeSays(later) === "Read A \u00b7 1 more",
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // A to-do of his needs him at both clocks, and outweighs both looks
+        // then (a to-do 10, ready 20 and waiting 20 at most, ForYou.js's
+        // weighBy), so it leads at both, and only how many more moves: none
+        // now, the two lifted looks then.
+        WaitingOnYou.now = [toDo("Sign In")];
+        expect("time alone lifting looks under his to-do, home counts them more then",
+            now.homeSays() === "Sign In" && now.homeSays(later) === "Sign In \u00b7 2 more",
+            JSON.stringify([now.homeSays(), now.homeSays(later)]));
+        // Time only lifts a look, never puts one back, so only an earlier
+        // clock finds one in To Look At that needs him now. Read D, due in 10
+        // hours, is due within the day and needs him now (ForYou.js's
+        // dueing); sixteen hours before, it was due in 26 and stood in To
+        // Look At beside Read C, so home said both then, from the bands at
+        // that clock, where To Look At holds Read C alone now.
+        WaitingOnYou.now = [];
+        agents.forYou = [lookIn("Read D", 10), lookIn("Read C", 60)];
+        const earlier = Date.now() - 16 * 3600000;
+        expect("a look lifted since, home names it now and said To Look At before",
+            now.homeSays() === "Read D" && now.homeSays(earlier) === "2 to look at",
+            JSON.stringify([now.homeSays(), now.homeSays(earlier)]));
+        agents.forYou = [];
         Location.here = here;
         Facts.all = [];
         WaitingOnYou.now = [];
@@ -3072,20 +3156,51 @@ ShellRoot {
         expect("an answer never put isn't said to be answered",
             agents.answered.length === 1 && theLauncher.said.length === 0,
             JSON.stringify([agents.answered, theLauncher.said]));
+        // One nothing said of may have arrived, so the foot says so, not answered.
+        agents.unheard = true;
+        inside[0].run();
+        expect("an answer nothing said of says it may not have arrived",
+            agents.answered.length === 2 && !theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said) === JSON.stringify([[
+                    "Session E may not have your answer: nothing said whether it arrived", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
+        agents.unheard = false;
+        agents.answered = agents.answered.slice(0, 1);
+        theLauncher.said = [];
+        // Refused by answerKept, a second to an ask he answered, it says why on the foot.
+        agents.refuses = "Wanting has your answer already";
+        inside[0].run();
+        expect("a choice answerKept refuses sends nothing and says why on the foot",
+            agents.answered.length === 1 && theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said)
+                    === JSON.stringify([["Wanting has your answer already", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
+        agents.refuses = "";
+        theLauncher.said = [];
         agents.puts = true;
         inside[0].run();
         const answered = agents.answered[1] ?? {};
-        expect("its Return asks the daemon to answer the session, and once put the foot says so",
+        // Naming the want its row was made from, so the node refuses it once the session asks
+        // something else, as it refuses a Talk's answer (wants.rs's answer_of).
+        expect("its Return asks the daemon to answer the want shown, and once put the foot says so",
             agents.answered.length === 2 && answered.address === "WANTE"
-                && JSON.stringify(answered.fields) === JSON.stringify({ value: "push" })
+                && JSON.stringify(answered.fields) === JSON.stringify({
+                    want: "question@2026-11-12T07:00:00.000Z", value: "push" })
                 && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
             JSON.stringify([agents.answered, theLauncher.said]));
+        // Kept among the session's answers by its label, as a Talk's is, so a Talk opened after
+        // shows it and sends no second (Agents.qml's answerKept).
+        expect("it asks Agents to keep it among the answers, by its label, to the want shown",
+            answered.label === "Yes, push it"
+                && answered.want === "question@2026-11-12T07:00:00.000Z",
+            JSON.stringify(answered));
         expect("the shell steers nothing itself", Sessions.steered.length === 0,
             JSON.stringify(Sessions.steered));
         inside[3].given("after lunch");
-        expect("his own words go as words",
-            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
+        expect("his own words go as words, to the want shown",
+            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({
+                want: "question@2026-11-12T07:00:00.000Z", other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
         const named = name => inside.find(one => one.name === name);
         Sessions.wentTo = null;
@@ -3140,7 +3255,8 @@ ShellRoot {
         asked[0]?.run();
         expect("its Yes asks the daemon to answer it",
             agents.answered[3]?.address === "WANTF"
-                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({ value: "yes" }),
+                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({
+                    want: "approval@2026-11-12T07:00:00.000Z", value: "yes" }),
             JSON.stringify(agents.answered[3]));
         agents.answered = [];
         agents.wants = {};

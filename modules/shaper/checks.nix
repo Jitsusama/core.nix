@@ -212,6 +212,32 @@ let
     keyless = keyRefusals { ${one} = { }; };
     said = lib.concatStringsSep "; " unaddressed.keyed;
   };
+  # What the shaper's assertions refuse of a machine whose one network
+  # carries `down` and names its Wi-Fi's `link`.
+  lineRefusals =
+    down: link:
+    lib.pipe
+      (bareNixos [
+        self.nixosModules.shaper
+        {
+          jitsusama.shaper.networks.${one} = {
+            inherit down;
+            links.wlp0s20f3.down = link;
+          };
+        }
+      ]).config.assertions
+      [
+        (lib.filter (check: !check.assertion))
+        (map (check: check.message))
+        (lib.filter (lib.hasPrefix "jitsusama.shaper.networks"))
+      ];
+  linesTaken = {
+    under = lineRefusals 90000 20000;
+    level = lineRefusals 90000 90000;
+    unknown = lineRefusals null 200000;
+  };
+  linesWronglyRefused = lib.concatLists (lib.attrValues linesTaken);
+  over = lineRefusals 90000 200000;
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -289,6 +315,18 @@ onLinux {
     else
       "A plain key, or a keyed house beside a keyless one, was refused: ${refusedText}"
   ) (takenUnseen == [ ] && keyRefused.twoKeys != [ ] && wronglyRefused == [ ]);
+
+  # A link's line above its network's is refused as the machine builds,
+  # naming the link, since held over the line a call's hold leaves the
+  # router's queue to fill; one under or at it, or on a network whose
+  # line isn't known, builds.
+  shaper-holds-a-link-under-its-network = holds "shaper-holds-a-link-under-its-network" (
+    if !lib.any (lib.hasInfix "${one}.links.wlp0s20f3") over then
+      "A link's down above its network's was taken: ${lib.concatStringsSep "; " over}"
+    else
+      "A link's down under, at or beside an unknown line was refused: "
+      + lib.concatStringsSep "; " linesWronglyRefused
+  ) (lib.any (lib.hasInfix "${one}.links.wlp0s20f3") over && linesWronglyRefused == [ ]);
 
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for

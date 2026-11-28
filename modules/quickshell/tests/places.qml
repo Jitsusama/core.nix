@@ -43,6 +43,14 @@ QtObject {
                     logical: { x: 0, y: 0, width: 2560, height: 1440 } },
                 "eDP-1": { make: "LG Display", model: "0x07C6", serial: null, logical: null }
             }), { "DP-4": monitor });
+        // niri's answer, parsed, holds a connector named __proto__ as a key
+        // of its own, and it stays one, described, as far as connected().
+        const protoSaid = Places.screensOf(JSON.parse(
+            '{"__proto__": {"make": "LG Display", "model": "0x07C6", "serial": null}}'));
+        expect("a screen niri says on a connector named __proto__ is said and connected by name",
+            [Object.keys(protoSaid), protoSaid["__proto__"],
+                Places.connected(protoSaid, [{ id: 21, output: "__proto__" }])["__proto__"]],
+            [["__proto__"], panel, panel]);
 
         // Kept on the monitor as DP-4; after the boot it's DP-5, beside the
         // laptop's panel, which is in use.
@@ -93,7 +101,7 @@ QtObject {
             Places.placed(older, { "eDP-1": panel, "DP-4": monitor }, "DP-4")
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
         // Only a connector niri said is one: a prototype's name never is, so
-        // a place kept on one is gone, and noted away from it (noteAway).
+        // a place kept on one is gone, and says it's away from it (away).
         expect("a place kept on a prototype's name is gone, to the screen in use",
             Places.placed([{ output: "constructor", workspace: 2, column: 1, tile: 1 }],
                 { "eDP-1": panel }, "eDP-1").map(at => [at.output, at.away?.screen ?? null]),
@@ -109,10 +117,11 @@ QtObject {
         // prototype: gone after the screen in use's workspaces, among the
         // others, and noted away (Reopening's notedAway, noteAway's) as any.
         const proto = { output: "__proto__", workspace: 2, column: 1, tile: 1 };
+        const panelKept = { screen: panel, output: "eDP-1", workspace: 2, column: 1, tile: 1 };
         expect("a place kept on __proto__ is gone, after the screen in use's workspaces",
-            Places.placed([proto], { "eDP-1": panel }, "eDP-1")
+            Places.placed([panelKept, proto], { "eDP-1": panel }, "eDP-1")
                 .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
-            [["eDP-1", 2, "__proto__"]]);
+            [["eDP-1", 2, null], ["eDP-1", 4, "__proto__"]]);
         expect("a twin kept on __proto__ is among the others it left",
             Places.whereKept(protoTwin, [protoTwin, Object.assign({}, protoTwin,
                 { output: "__proto__" })], { "eDP-1": panel }, { inUse: "eDP-1" }).away.others,
@@ -126,6 +135,12 @@ QtObject {
                 Reopening.notedAway(protoNoted, null, 9),
                 Reopening.notedAway(protoNoted, { screen: panel })],
             [[["constructor", [7]], ["__proto__", [8]]], null, null, null, null]);
+        const protoMore = Reopening.notedAway(protoNoted, { screen: "__proto__", workspace: 3,
+            output: "DP-9", others: { "eDP-1": panel } }, 9);
+        expect("a workspace noted away keeps its number, connector and others",
+            [protoMore["__proto__"], Object.getPrototypeOf(protoMore)],
+            [[{ id: 8, workspace: 2, output: "__proto__", others: {} },
+                { id: 9, workspace: 3, output: "DP-9", others: { "eDP-1": panel } }], null]);
 
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
@@ -156,6 +171,14 @@ QtObject {
                 { "eDP-1": panel, "Virtual-2": twin },
                 { "eDP-1": panel, "Virtual-1": twin }
             ]);
+        // A twin's connector connected but not heard yet ("") is its twin
+        // still, as the boot's moment says, not a screen undescribed; heard
+        // as another screen, as one plugged in there since, it's that.
+        const twinOthers = virtual2 => Places.placed([twins[0]],
+            { "eDP-1": panel, "Virtual-2": virtual2 }, "eDP-1", [twins])[0].away?.others ?? null;
+        expect("a twin's connector is among the others as its twin until heard as another",
+            [twinOthers(""), twinOthers(monitor)],
+            [{ "eDP-1": panel, "Virtual-2": twin }, { "eDP-1": panel, "Virtual-2": monitor }]);
         // One alike twin of the two kept back: the place kept on it stays,
         // and the other's screen is gone, rather than both taken for it.
         expect("a twin kept beside another isn't taken for it",
@@ -194,6 +217,9 @@ QtObject {
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
+        expect("placing's options may be left out, as whereKept's may",
+            [Reopening.placedGiven([twins[1]], bothBack, "Virtual-3").given.length,
+                Reopening.keptBack(twins[1], twins, bothBack).gives.at === twins[1]], [1, true]);
         const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3",
             { moments: [twins], before: early }).given;
         expect("nor keeps a connector the other twin's sessions were given",
@@ -409,6 +435,10 @@ QtObject {
         expect("with no workspace listed yet each screen said is taken for there",
             Places.connected({ "Virtual-1": qemu, "eDP-1": panel }, []),
             { "Virtual-1": qemu, "eDP-1": panel });
+        expect("a screen said on a connector named __proto__ is connected by name",
+            Object.keys(Places.connected({ ["__proto__"]: qemu },
+                [{ id: 21, output: "__proto__" }])),
+            ["__proto__"]);
         // A screen niri lists a workspace on that the answer to Outputs
         // predates is there all the same, undescribed (""). Left out, as
         // when that answer named only the monitor since unplugged, the
@@ -582,6 +612,19 @@ QtObject {
             { moves: [{ output: "Virtual-1", id: 20, there: true }],
                 waiting: { [twin]: [Object.assign({}, byTwin[twin][1],
                     { others: { "Virtual-1": twin } })] } });
+        // Names from data are keys like any other, though one is __proto__:
+        // a screen so named still waits, and a twin's connector so named
+        // still keeps the one held off it.
+        const protoWaits = Places.homeward(Places.byName({ ["__proto__"]: [{ id: 21, workspace: 1,
+            output: "Virtual-2", others: {} }] }), { "Virtual-1": qemu }, onTheFirst);
+        const protoSibling = [{ id: 20, workspace: 1, output: "__proto__",
+            others: { "Virtual-2": twin } },
+            { id: 21, workspace: 2, output: "Virtual-2", others: {} }];
+        const protoHeld = Places.homeward({ [twin]: protoSibling }, { "Virtual-1": twin },
+            bothOnTheFirst).waiting[twin] ?? [];
+        expect("a screen or a twin's connector named __proto__ is kept by name",
+            [Object.keys(protoWaits.waiting), protoHeld.map(one => Object.keys(one.others))],
+            [["__proto__"], [["Virtual-1", "__proto__"]]]);
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
@@ -930,6 +973,27 @@ QtObject {
         Reopening.foundGone(still, { id: "fresh", afreshFor: "y" });
         expect("begun and still looked for, or queued afresh, it counts once found gone",
             heard.slice(-2), ["1 gone, 2 reopened", "2 gone, 1 reopened"]);
+        // Joining a tally still counting, so too: the harness hands one over,
+        // the walk begins it and looks for its folder while the tally's own
+        // waits its turn, and a press then gives it.
+        const counting = Reopening.tallyOf(null, ["b"], hear);
+        const handedOver = Reopening.tallyOf(walkOf(counting, [asked("b")], asked("y"), ["y"]),
+            ["y"], hear);
+        const toldBefore = heard.length;
+        Reopening.foundGone(counting, { id: "y" });
+        expect("joined while it counts, one begun and still looked for counts once found gone",
+            [handedOver === counting, heard.slice(toldBefore)], [true, ["1 gone, 1 reopened"]]);
+        // Its one exception: a list given just after one the walk used up
+        // within the same turn counts afresh, none that walk began among
+        // them, though the two were pressed as one, since nothing the walk
+        // holds says the first's may still be found gone.
+        const usedUp = Reopening.tallyOf(null, ["a"], hear);
+        const pressedAsOne = Reopening.tallyOf(walkOf(usedUp, [], null, ["a"]), ["a", "b"],
+            hear);
+        const toldThen = heard.length;
+        Reopening.foundGone(pressedAsOne, { id: "b" });
+        expect("given just after a list the walk used up in its turn, it counts afresh",
+            [pressedAsOne === usedUp, heard.slice(toldThen)], [false, ["1 gone, 0 reopened"]]);
         // A walk the harness began counts nothing, and a list given during
         // it counts the sessions both hold, whichever list queued them.
         const harness = walkOf(null, [asked("h"), asked("a")], null);

@@ -618,10 +618,11 @@ mod tests {
             counted(&json!({"ok": false, "error": "invalid_auth"})),
             Err(Refused::SignedOut)
         );
-        assert!(matches!(
-            counted(&json!({"ok": false, "error": "ratelimited"})),
-            Err(Refused::Unreachable(_))
-        ));
+        let busy = counted(&json!({"ok": false, "error": "ratelimited"}));
+        assert!(
+            matches!(busy, Err(Refused::Unreachable(_))),
+            "a refusal other than the sign-in's should be out of reach: {busy:?}"
+        );
     }
 
     #[test]

@@ -78,6 +78,7 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                 routed_at: None,
                 tries: 0,
                 sends_failed_at: Vec::new(),
+                sent_late_at: None,
                 unnoted_since: None,
                 taken_by: None,
                 answered_at: None,

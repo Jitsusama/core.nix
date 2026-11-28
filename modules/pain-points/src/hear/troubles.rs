@@ -30,9 +30,9 @@ pub fn cellless_since(state: &Path, at: i64, cellless: bool) -> Option<i64> {
 
 /// Since when the node couldn't be asked for its hubs, carried as the
 /// count of runs without cells is, so a node that blinks for a run as it
-/// restarts fails nothing (#6774's round, F15 and F8): that run's pains go
-/// to the fallback as they did before hubs, and one that stays out of
-/// reach still fails the unit past [`CELLLESS_AT_MOST_MS`].
+/// restarts fails nothing (#6774's round, F15 and F8): the pains a hub
+/// would take wait for the next run, and past [`CELLLESS_AT_MOST_MS`] go
+/// to the fallback, as [`hubless`] then says.
 pub fn hubless_since(state: &Path, at: i64, hubless: bool) -> Option<i64> {
     outage_since(state, at, hubless, |before| before.hubless_since)
 }
@@ -83,11 +83,65 @@ pub fn unkept(state: &Path, at: i64, why: Option<String>) -> Option<Unkept> {
     if let Some(why) = why {
         return Some(Unkept { at, why });
     }
+    within_the_hour(state, at, |before| before.unkept, |before| before.at)
+}
+
+/// Pains a run sent to the fallback because the node named no hubs past
+/// its blink, and why it named none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hubless {
+    /// When the run that sent them ran.
+    pub at: i64,
+    /// How many it sent there.
+    pub sent: usize,
+    pub why: String,
+}
+
+impl Hubless {
+    /// As the hour's troubles say it.
+    #[must_use]
+    pub fn trouble(&self) -> String {
+        let pains = match self.sent {
+            1 => "a pain no cell of its own takes".to_owned(),
+            sent => format!("{sent} pains no cell of their own takes"),
+        };
+        format!(
+            "the mycelium named no hubs, so {pains} went to the fallback: {}",
+            self.why
+        )
+    }
+}
+
+/// The pains this run sent to the fallback for want of hubs, `sent` of
+/// them as the node couldn't be asked, `why`, or else those the run
+/// before carries from within the hour, as unkept needs are carried. A
+/// node out of reach costs nothing while no pain needs a hub, so it's a
+/// trouble only once one went to the fallback for it (#6774's round, F1
+/// and F8).
+pub fn hubless(state: &Path, at: i64, sent: usize, why: Option<&str>) -> Option<Hubless> {
+    if let Some(why) = why.filter(|_| sent > 0) {
+        return Some(Hubless {
+            at,
+            sent,
+            why: why.to_owned(),
+        });
+    }
+    within_the_hour(state, at, |before| before.hubless, |before| before.at)
+}
+
+/// What `of` the run before carries, while `when` it ran is within the
+/// hour before `at`. One dated ahead of this run carries nothing.
+fn within_the_hour<T>(
+    state: &Path,
+    at: i64,
+    of: fn(Hour) -> Option<T>,
+    when: fn(&T) -> i64,
+) -> Option<T> {
     fs::read(state.join("hour.json"))
         .ok()
         .and_then(|text| serde_json::from_slice::<Hour>(&text).ok())
-        .and_then(|before| before.unkept)
-        .filter(|before| before.at <= at && at - before.at < HOUR_MS)
+        .and_then(of)
+        .filter(|before| when(before) <= at && at - when(before) < HOUR_MS)
 }
 
 /// What kept a run from routing as it should: sends that failed this run,

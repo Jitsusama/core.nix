@@ -255,7 +255,10 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     };
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
-    read::descends(config, api, &token, older, newer)
+    // Main at `newer` holding `older` is `newer` descending from it, asked
+    // as a hold is, so a token that sees nothing is said as that rather
+    // than as the host's word on the two.
+    read::holds(config, api, &token, older, newer)
 }
 
 /// Whether main at `head` holds `commit`: by root's copy when it has
@@ -289,7 +292,7 @@ pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Resu
     };
     let account = run::account(&hosted.user)?;
     let token = token(hosted, &account)?;
-    read::descends(config, api, &token, commit, head)
+    read::holds(config, api, &token, commit, head)
 }
 
 /// Whether the checkout holds only part of main's history, cut off below
@@ -564,19 +567,23 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
     Ok(folder)
 }
 
-/// An input's lock, by its name among the flake's own inputs.
+/// An input's lock, by its name among the flake's own inputs, or by its
+/// path through them, as Nix's `--override-input` takes one: `core/mycelium`
+/// is core's own mycelium. An input that follows another isn't found, since
+/// it has no lock of its own.
 pub fn locked<'a>(lock: &'a Value, name: &str) -> Result<&'a Value, Failure> {
-    let missing = || Failure::new(format!("the flake's lock has no input {name}"));
-    let root = lock["root"].as_str().ok_or_else(missing)?;
-    let node = lock["nodes"][root]["inputs"][name]
-        .as_str()
-        .ok_or_else(missing)?;
-    let locked = &lock["nodes"][node]["locked"];
-    if locked.is_object() {
-        Ok(locked)
-    } else {
-        Err(missing())
+    found(lock, name).ok_or_else(|| Failure::new(format!("the flake's lock has no input {name}")))
+}
+
+/// An input's lock as `locked` finds it, or none where the lock has no
+/// such input.
+pub fn found<'a>(lock: &'a Value, name: &str) -> Option<&'a Value> {
+    let mut node = lock["root"].as_str()?;
+    for own in name.split('/') {
+        node = lock["nodes"][node]["inputs"][own].as_str()?;
     }
+    let locked = &lock["nodes"][node]["locked"];
+    locked.is_object().then_some(locked)
 }
 
 /// Puts an input in the store as the account, by its lock: a path already
@@ -644,7 +651,11 @@ mod tests {
             "root": "root",
             "nodes": {
                 "root": { "inputs": { "private": "private_2", "followed": ["a", "b"] } },
-                "private_2": { "locked": { "type": "git", "url": "https://example.com/p", "rev": "abc" } },
+                "private_2": {
+                    "inputs": { "inner": "inner_3", "along": ["private"] },
+                    "locked": { "type": "git", "url": "https://example.com/p", "rev": "abc" },
+                },
+                "inner_3": { "locked": { "type": "github", "rev": "def" } },
             },
             "version": 7,
         })
@@ -662,8 +673,21 @@ mod tests {
     #[test]
     fn an_input_that_follows_another_or_isnt_there_isnt_found() {
         let lock = lock();
-        assert!(locked(&lock, "followed").is_err());
-        assert!(locked(&lock, "nowhere").is_err());
+        for name in [
+            "followed",
+            "nowhere",
+            "private/along",
+            "private/nowhere",
+            "nowhere/inner",
+        ] {
+            assert!(locked(&lock, name).is_err(), "{name} was found");
+        }
+    }
+
+    #[test]
+    fn an_inputs_own_input_is_found_by_its_path_through_them() {
+        let lock = lock();
+        assert_eq!(locked(&lock, "private/inner").unwrap()["rev"], "def");
     }
 
     #[test]

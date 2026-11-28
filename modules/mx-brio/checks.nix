@@ -29,12 +29,15 @@ onLinux {
   # second and on its MJPEG, which it takes only where NV12 can't be had
   # (tests/the-relay-takes-either-format.sh); the loopback's holders file
   # is named as the Brio is and removed when the Brio goes, and the shell
-  # lists the Brio only while that file is there, by its card; and the
-  # Brio's own watch writes in the hidden folder, never beside the
-  # loopback's file; and the seat's give-back is dropped.
+  # lists the Brio only while that file is there, by its card; the file's
+  # name is claimed from boot, so a second camera of the model writes
+  # beside it rather than over it; the Brio's own watch writes in the
+  # hidden folder, never beside the loopback's file; and the seat's
+  # give-back is dropped.
   the-mx-brio-is-shared =
     let
       inherit (shared.config) environment services systemd;
+      claims = systemd.tmpfiles.settings.camera-holders or { };
       relay = systemd.services.mx-brio or (throw "no service relays the MX Brio");
       holders = systemd.services.mx-brio-holders or (throw "no service says who holds the MX Brio");
       watch =
@@ -62,6 +65,10 @@ onLinux {
           lib.hasSuffix "'/run/camera-holders/${card}'" holders.serviceConfig.ExecStart;
         "the loopback's holders file stays once the Brio has gone" =
           lib.any (lib.hasInfix "/bin/rm -f '/run/camera-holders/${card}'") holders.serviceConfig.ExecStopPost;
+        # Without its claim, a second Brio's own watch finds the name free,
+        # writes over the loopback's file and empties it as it goes.
+        "the loopback's holders file name isn't claimed from boot" =
+          claims ? "/run/camera-holders/.claimed/${card}".f;
         "the Brio's own watch doesn't write in the hidden folder" =
           lib.hasSuffix " /run/camera-holders/.relayed" watch.serviceConfig.ExecStart;
         # The sharing drops the seat's give-back (nixos.nix's disabledModules),

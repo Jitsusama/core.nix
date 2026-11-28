@@ -545,7 +545,7 @@ mod tests {
                 at(0),
                 heard(
                     "Hilton",
-                    "e4:55:a8:57:49:e0",
+                    "02:00:00:00:b2:00",
                     2412,
                     -59,
                     radio(6, 20, Some(29)),
@@ -555,7 +555,7 @@ mod tests {
                 at(1),
                 heard(
                     "Hilton",
-                    "e6:55:b8:57:49:e0",
+                    "02:00:00:00:b3:00",
                     5200,
                     -56,
                     radio(6, 40, Some(13)),
@@ -563,13 +563,13 @@ mod tests {
             ),
             (
                 at(2),
-                heard("Hilton", "e4:55:a8:2f:63:0e", 2437, -65, radio(6, 20, None)),
+                heard("Hilton", "02:00:00:00:b1:00", 2437, -65, radio(6, 20, None)),
             ),
             (
                 at(3),
                 heard(
                     "Next Door",
-                    "ac:84:c9:f6:14:36",
+                    "02:00:00:00:b0:00",
                     2437,
                     -87,
                     radio(4, 20, None),
@@ -637,9 +637,9 @@ mod tests {
         assert_eq!(
             points,
             [
-                "e6:55:b8:57:49:e0",
-                "e4:55:a8:57:49:e0",
-                "e4:55:a8:2f:63:0e"
+                "02:00:00:00:b3:00",
+                "02:00:00:00:b2:00",
+                "02:00:00:00:b1:00"
             ]
         );
     }
@@ -693,7 +693,7 @@ mod tests {
         let detail = detail("Hilton", of(&hotel), [], []);
 
         let best = detail.best.unwrap();
-        assert_eq!(best.bssid, "e6:55:b8:57:49:e0");
+        assert_eq!(best.bssid, "02:00:00:00:b3:00");
         assert_eq!(best.estimate, detail.points[0].estimate);
         // The next is the hall's on channel 6, the other's channel too busy.
         assert_eq!(
@@ -770,7 +770,7 @@ mod tests {
 
         let joined = &detail.joined[0];
         assert_eq!(joined.card, "wlan0");
-        assert_eq!(joined.bssid.as_deref(), Some("e6:55:b8:57:49:e0"));
+        assert_eq!(joined.bssid.as_deref(), Some("02:00:00:00:b3:00"));
         assert_eq!(joined.signal, Some(-59));
         assert_eq!(
             (joined.receive.mbps, joined.receive.mcs),

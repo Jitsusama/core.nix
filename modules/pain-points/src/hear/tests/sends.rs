@@ -44,7 +44,7 @@ fn a_node_that_stops_answering_is_asked_once_and_the_rest_wait() {
     let mut node = an_hour_s_node(mycelium, Duration::from_secs(1));
     let started = Instant::now();
     let first = node.send("ABC123", "a finding", Put::Asked);
-    assert_eq!(first, Sent::Failed, "a send that hangs spends its try");
+    assert_eq!(first, Sent::Late, "a send that hangs is said as late");
     let second = node.send("GHI789", "another", Put::Asked);
     assert_eq!(second, Sent::Held, "a send after it waits for the next run");
     assert_eq!(node.held, 1, "the held send is counted as the node's");

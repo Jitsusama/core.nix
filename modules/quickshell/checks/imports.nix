@@ -125,12 +125,16 @@
     "FileFacts.js"
     "Fuzzy.js"
     "launcher/Captured.js"
-    "launcher/HeldWindows.js"
-    "launcher/Media.js"
     "launcher/Order.js"
     "launcher/Program.js"
     "launcher/Recent.js"
   ];
+  "launcher/ApplicationsPlaying.qml" = [ "launcher/Media.js" ];
+  "launcher/ApplicationsRecents.qml" = [
+    "launcher/Program.js"
+    "launcher/Recent.js"
+  ];
+  "launcher/ApplicationsWindows.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Ask.qml" = [
     "Fuzzy.js"
     "launcher/TalkOn.js"
@@ -185,6 +189,7 @@
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
   "launcher/Headings.js" = [ "Operators.js" ];
   "launcher/Heat.qml" = [ "launcher/Seen.js" ];
+  "launcher/Held.js" = [ "launcher/Thrown.js" ];
   "launcher/HomeNetwork.js" = [ "launcher/Numbers.js" ];
   "launcher/Keeping.js" = [ "launcher/Numbers.js" ];
   "launcher/KeyMap.qml" = [
@@ -242,6 +247,7 @@
     "launcher/Ago.js"
     "launcher/ForYou.js"
     "launcher/ForYouCells.js"
+    "launcher/ForYouDrawers.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Keeping.js"
@@ -312,6 +318,7 @@
     "launcher/Moved.js"
     "launcher/Presented.js"
     "launcher/ReadyRows.js"
+    "launcher/Thrown.js"
   ];
   "launcher/RealmMachines.js" = [
     "launcher/Machine.js"
@@ -323,6 +330,7 @@
     "Fuzzy.js"
     "PiSource.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
   ];
   "launcher/Showing.js" = [ "launcher/Order.js" ];
   "launcher/Sound.qml" = [

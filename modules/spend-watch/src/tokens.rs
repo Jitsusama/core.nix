@@ -774,7 +774,7 @@ mod tests {
             "$13,800 of $15,000 by the AI proxy's 05:02 count · $300 an hour"
         );
         assert_eq!(tokens.quiet.context, "92% by the AI proxy's 05:02 count");
-        assert!(!tokens.now);
+        assert!(!tokens.now, "four hours off shouldn't press now");
     }
 
     #[test]
@@ -798,7 +798,7 @@ mod tests {
         let now = AT + HOUR - 600.0;
         let tokens = outlook(&inputs(14_800.0, 300.0, 0.0), None, &toronto(), now).unwrap();
         assert_eq!(tokens.level, Level::Minutes);
-        assert!(tokens.now);
+        assert!(tokens.now, "ten minutes off should press now");
         assert_eq!(tokens.title, "Tokens Run Out in About 10 Min");
         assert_eq!(tokens.actions[1].name, "Pause 5FWIUS");
         assert_eq!(tokens.actions[1].session.as_deref(), Some("01a19269"));
@@ -831,7 +831,7 @@ mod tests {
         given.cap.state = "refused".into();
         let tokens = outlook(&given, None, &toronto(), NOW).unwrap();
         assert_eq!(tokens.level, Level::Out);
-        assert!(tokens.now);
+        assert!(tokens.now, "a refusal should press now");
         assert_eq!(tokens.title, "Tokens Ran Out");
         assert_eq!(tokens.back, Some(AT + HOUR));
         assert_eq!(tokens.hint, "Tokens ran out; they reset at 06:02");
@@ -849,7 +849,7 @@ mod tests {
         assert_eq!(tokens.level, Level::Unread);
         assert_eq!(tokens.unread.as_deref(), Some("can't be read since 05:02"));
         assert_eq!(tokens.quiet.unread, tokens.unread);
-        assert!(!tokens.now);
+        assert!(!tokens.now, "a stale reading shouldn't press now");
         assert_eq!(
             outlook(
                 &inputs(9_000.0, 300.0, 0.0),
@@ -928,7 +928,15 @@ mod tests {
         assert_eq!(read.refused, Some(AT + 600.0));
         assert_eq!(read.cap.name, "weekly");
         // The half hour so far and the later half of the hour before.
-        assert!((read.rate - 270.0).abs() < 1e-9);
-        assert!((read.rolling[0] - 90.0).abs() < 1e-9);
+        assert!(
+            (read.rate - 270.0).abs() < 1e-9,
+            "rate {}, not 270",
+            read.rate
+        );
+        assert!(
+            (read.rolling[0] - 90.0).abs() < 1e-9,
+            "rolling out {}, not 90",
+            read.rolling[0]
+        );
     }
 }

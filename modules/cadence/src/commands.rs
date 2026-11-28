@@ -97,8 +97,13 @@ fn axes() -> Help {
         "cadence axes --served words.json",
         "the launcher's Spec rows, as one line of JSON",
     )
+    .example(
+        "cadence axes --asked words.json",
+        "what Joel asked for that's open, as Asked For's rows",
+    )
     .argument("[axis]", "the one to step into")
     .option("--served WORDS", "Spec's rows, in the launcher's words")
+    .option("--asked WORDS", "Asked For's rows, in the launcher's words")
     .exit(Exit::NotFound, "no axis goes by that name")
     .exit(
         Exit::Failed,
@@ -187,7 +192,7 @@ mod tests {
 
     /// The words each unit runs cadence with, as home.nix spells them, and
     /// cadence-spec's ask for Spec's rows (spec/src/main.rs).
-    const UNITS: [&[&str]; 4] = [
+    const UNITS: [&[&str]; 5] = [
         &[
             "tick",
             "--watcher",
@@ -216,6 +221,7 @@ mod tests {
         ],
         &["review", "--to", "O", "--to", "A"],
         &["axes", "--served", "/run/words.json"],
+        &["axes", "--asked", "/run/words.json"],
     ];
 
     #[test]

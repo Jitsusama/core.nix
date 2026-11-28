@@ -12,6 +12,11 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-camera-watch-refuses-a-unit-holding-everyone = ''
+    a machine whose loopback camera's watch leaves out a person's manager, a session's scope,
+    init.scope, a slice or a path never builds, while one leaving out a relay's own service or
+    scope, or a system service named like a person's manager, does
+  '';
   a-card-says-how-it-stands-in-one-row = ''
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
@@ -470,8 +475,9 @@
     nothing
   '';
   an-ipc-reply-arrives-whole = ''
-    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
-    function that isn't there ends qs with a failure
+    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, a call to a
+    function that isn't there ends qs with a failure, and a call to one that answers nothing ends
+    it with success, having been given its words
   '';
   an-untrusted-client-passes-only-named-env = ''
     the Nix daemon hands a client that isn't trusted only the impure-env variables the machine
@@ -1340,6 +1346,11 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-linked-prompt-keeps-key-time = ''
+    every Prompt of the shell whose linked() its file calls is given keyNow in its own block, so
+    its link's quiet is timed on the launcher's monotonic clock rather than a wall clock that can
+    step back
+  '';
   every-lock-agrees-with-its-manifests = ''
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them
@@ -1638,7 +1649,8 @@
     history, newest first, leaving out any it can't read, offers a look's choices, answered by a
     steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
-    done
+    done, and has Later's drawer say what each waits for and how long, and History's how many each
+    source keeps
   '';
   formatting = ''
     everything is formatted and passes the linters
@@ -1928,6 +1940,11 @@
   ir-camera-relays-grey-frames = ''
     ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
     and refuses a short frame or a format it can't use
+  '';
+  iris-tiles-memory-objects-as-anv-does = ''
+    the patched source of the XPS 14's Mesa has iris prefer 4K tiles for every memory object, in a
+    branch no earlier one can shadow, and anv still prefers them for an image it exports with no
+    modifier
   '';
   jobs-broker-passes-clippy = ''
     clippy finds nothing in the jobs broker or its tests
@@ -2286,6 +2303,24 @@
     stranger's host name and a stranger's page, has two pages share one watch on a daemon with
     each told every change trimmed to the feed's fields, refuses an act before it reaches the
     daemon, and says a missing daemon broken with why
+  '';
+  lock-follows-opens-one-change-per-rev = ''
+    lock-follows does nothing while main locks upstream's newest; opens one draft change locking
+    that input alone at a newer, listing upstream's merges between, each subject in a code span so
+    a closing word closes nothing; opens nothing while it's open; once main moves on and upstream
+    with it, replaces that draft, naming it in the new one, commenting, closing, then deleting its
+    branch; replaces none whose lock commit someone amended, in its lock or its message, nor one
+    marked ready, another input's or a fork's; opens a declined rev's again neither while its
+    branch stands nor once deleted; leaves as taken a branch of its name holding the tool's commit
+    with someone's file amended in; ends non-zero when opening fails and opens on the pushed branch
+    next run, a fork's closed draft of that name declining nothing; leaves the older open when its
+    close fails, and closed with its branch kept when its delete is refused, saying so; and ends
+    with 75 when listing changes or fetching fails, writing a line for each run
+  '';
+  lock-follows-runs-every-quarter-hour = ''
+    lock-follows runs every 15 minutes in the background, catching up on a quarter slept
+    through, stopped after 10 minutes, following mycelium alone unless the account names more,
+    and an account naming no input is refused
   '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
@@ -2731,12 +2766,21 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling, a memory_full of 0 included, and one not kept lively none, the locked
-    mycelium reads that ceiling as kept_lively, an Option<Lively> whose cpu is a u32,
-    memory_available an Option<u64> and, from the lock that first has it, memory_full an
-    Option<u32>, read by a scan that fails on what it can't read, with nothing over Lively
-    refusing a field it doesn't know, one declaring nothing has no file, and agents in a realm
-    it doesn't join are refused
+    says its ceiling, a memory_full or io_full of 0 and the groups its disk pressure is read
+    from included, one naming no groups names none, and one not kept lively says none, one
+    declaring nothing has no file, and agents in a realm it doesn't join are refused
+  '';
+  mycelium-reads-a-lively-ceiling = ''
+    the locked mycelium reads the ceiling a machine kept lively says as kept_lively, an
+    Option<Lively> whose fields, by name and in any order, are cpu a u32, memory_available an
+    Option<u64> and, from the lock that first has each, memory_full and io_full an Option<u32>
+    and io_full_from a Vec<String>, read by a scan that fails on what it can't read; no serde
+    attribute stands over Declared or Lively, a cfg_attr's included, and kept_lively and each
+    of Lively's fields take only default, skip_serializing_if and their own readers. Copies of
+    today's source, each with Lively or Declared renamed or refusing unknown fields, a field
+    skipped, read otherwise, retyped or renamed, or kept_lively retyped or skipped, are each
+    refused for that reason alone, and one with its fields reordered isn't. A lock that drops
+    a part also passes, since core can't tell which lock is meant to have which part
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3316,6 +3360,17 @@
     passwords completes in zsh with keys, help and keys' --json, and none of the commands that
     reached an entry or a secret before the daemon answered the shell alone
   '';
+  passwords-copier-check-reads-are-bounded = ''
+    the copier check's reads of a copier each answer within its patience, a child holding the
+    copier's standard error open, a copier never ending, a reader never reading, a copier saying
+    nothing, one saying half a line and holding on and one pouring out a line with no end
+    included; a line is read whole and exactly, as the daemon reads it, so one said in pieces
+    is joined, two said at once are answered in turn, 'ready ' is never 'ready', and a half
+    line is answered as said only once the copier closed its standard output, and finished by
+    the next read if it was held open; what was read past a line comes
+    first in how the copier ended, a refusal keeps none of it, a copier with no pipe to read is
+    refused by name, and a read that raised fails saying what it raised
+  '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
     it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
@@ -3323,8 +3378,8 @@
     in locked memory as the secret is long, says it's ready only once it can't be read and held
     once Joel's display has the copy, one paste then pasting it whole, pastes whole and keeps
     locked a secret that outgrows its first page, pastes whole a secret of exactly its cap of a
-    MiB, refuses a standard input it can't read or one a byte past that cap, never saying it
-    held either, and refuses to say ready or held for a copy that isn't sensitive
+    MiB, which stays locked, refuses a standard input it can't read or one a byte past that cap,
+    never saying it held either, and refuses to say ready or held for a copy that isn't sensitive
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -4306,6 +4361,10 @@
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried
   '';
+  shaper-holds-a-link-under-its-network = ''
+    a link's download line above its network's is refused as the machine builds, naming the link,
+    while one under or at it, or on a network whose line isn't known, builds
+  '';
   shaper-refuses-a-house-key-it-can-t-read = ''
     a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
     or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
@@ -4692,8 +4751,9 @@
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
     carried, else the node's own why, that its why couldn't be read, or that no answer came; a
-    carried row reads as carrying back under the key ReadyRows made it with, its thing or else its
-    record's key, kept under row: where its thing claims a kind of the launcher's own
+    carried row reads as carrying back until then, and has a refusal said on it, under the key
+    ReadyRows made it with, its thing or else its record's key, kept under row: where its thing
+    claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -5174,11 +5234,14 @@
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
-    ahead of the step back, after a frame, and one told while already there, making no row on the
-    step back, though none as an opening fills in at home or in another place, under a viewer's
-    command line, or shut with a step held, and sees one made since, remaking only the quests a change
-    names and none a list written again leaves the same, and breaking each title into the pieces
-    A to Z reads once, again only when it changes
+    ahead of the step back, after a frame, and one told while already there once its sources have
+    woken, making no row on the step back, a turn's worth a frame, one at least, felt as Quests'
+    ahead, one that throws once made let go, not left made, and made whole at its step back, and
+    the rest made still, though none as an opening fills in at home, holds another place's step
+    or wakes its sources, under a viewer's command line, shut with a step held, owing a row told
+    then, or as a close runs a batch waiting on its frame, and sees one made since, remaking only
+    the quests a change names and none a list written again leaves the same, and breaking each
+    title into the pieces A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -5322,9 +5385,11 @@
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, and none over a viewer, so a change nobody
     sees builds none; and a key's act is said shown by the first frame begun after its refresh,
-    which another act refreshed while that frame is drawn never holds back; and an opening says what its own work
-    went on slowest first, and weighs the foot's room for Return's verbs again only once the
-    words file or the face has changed; and a daemon's changes are timed from the first line
+    which another act refreshed while that frame is drawn never holds back, and the helper the
+    launcher hands what waits on a frame runs each in turn, one that throws said in a line by
+    its kind and where, never its message, and the rest run still; and an opening says what its
+    own work went on slowest first, and weighs the foot's room for Return's verbs again only once
+    the words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is, a refresh
     held for home's find said apart from the pace and held from when it was first due; and y's
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
@@ -5781,7 +5846,8 @@
     thinks, crouches back, eases in and out with strides stepped by the ground covered,
     overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown;
     it's livelier the less Joel is engaged and still on a call, locked or drawn nowhere, its waits
-    and plays at random, no play twice running, and its wander and hop kept to the margin
+    and plays at random, no play twice running, and its wander and hop kept to the margin; only
+    a shell that reports takes an ask over the shell's ipc or says its level there
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces
@@ -5814,9 +5880,9 @@
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
-    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
-    folder, never beside it, and the seat's give-back is dropped
+    loopback's holders file is named as the Brio is, its name claimed from boot, and removed
+    when the Brio goes, the shell lists the Brio only while that file is there, the Brio's own
+    watch writes in the hidden folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
@@ -6197,6 +6263,14 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-stays-light-allowing-only-what-was-taken = ''
+    what the-shell-stays-light-on-niri lets the heap's resident climb by for pages the kernel
+    took is weighed on the round before the last, the lesser of what the machine took by then, by
+    the page size given and a MB of 2**20 bytes, a part of a MB counting as that part, and the
+    most any of its closings held but hadn't resident, a closing of unknown resident skipped,
+    one with none resident counting all it held and one holding less than it has resident none,
+    and a round with no closing known allows nothing
+  '';
   the-shell-stays-light-on-niri = ''
     opening every place the desktop's chords open and typing at home, three rounds over, the
     third round keeps no more than a tenth more of the shell's JavaScript heap live than the
@@ -6387,8 +6461,10 @@
   '';
   the-wifi-cases-fail-on-a-throw = ''
     the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
-    threw a TypeError, a ReferenceError or a RangeError, or a value Qt couldn't assign, and passes
-    one holding only the launcher's own lines, an Error: in no file's line among them
+    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError or SyntaxError
+    however it's said, or a value Qt couldn't assign; passes one holding only the launcher's own
+    lines, an Error: in no file's line among them; and stops the build when what was said can't be
+    read. Each of the four Wi-Fi cases runs the shell and then that guard, whatever the run ended in
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
@@ -7234,9 +7310,9 @@
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit
-    however a program names itself, one line a name, catches a holder that forks, empties when they
-    close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of
-    another name
+    however a program names itself, yet names one in that account's own unit of the relay's name,
+    one line a name, catches a holder that forks, empties when they close it or the camera stops,
+    keeps its folder, follows a new loopback, and takes no loopback of another name
   '';
   vm-machines-find-each-other-at-home = ''
     a machine on a network it trusts finds another there by its .local name through both

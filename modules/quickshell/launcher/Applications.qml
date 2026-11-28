@@ -41,6 +41,16 @@
 // 52da2a10).
 //
 // Inside Programs, only programs are listed and searched.
+//
+// Long because a program's row, its step, its drawer, its Sound and
+// its notices, the tabs and files it has open, the acts found from the
+// top and the answers held between keys for whether it starts only all
+// read one another and the same hooks of the other providers, and the
+// held answers let go on turns each of them moves. Its windows, what
+// plays for it and its Recent hold state of their own, so they are
+// ApplicationsWindows.qml, ApplicationsPlaying.qml and
+// ApplicationsRecents.qml, each made once below, with every name
+// another file reads of them still read here.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -50,9 +60,7 @@ import QtQuick
 import KeyTimes
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
-import "HeldWindows.js" as HeldWindows
 import "Captured.js" as Captured
-import "Media.js" as Media
 import "Order.js" as Order
 import "Program.js" as Program
 import "Recent.js" as Recent
@@ -160,69 +168,20 @@ Provider {
         return { rows: kept.map(f => f.row), grade: grade };
     }
 
-    // Held from the start, so the streams it binds say which program each
-    // is before a program is first stepped into.
-    readonly property var playing: Playing
+    // What plays for each program, as its Media and its drawer say it
+    // (ApplicationsPlaying.qml). Who plays, as last heard, is read here
+    // too: by the held answers below, by this provider's start and by
+    // the tests.
+    ApplicationsPlaying {
+        id: playingPart
+
+        provider: provider
+    }
+    property alias playingHeard: playingPart.playingHeard
+    property alias playingWhoNow: playingPart.playingWhoNow
 
     // How far Louder and Quieter go, as a share of the whole.
     readonly property real step: 0.05
-
-    // How every player and stream stands, in what a program's Media and
-    // Sound say of them, as one string. Mpris and PipeWire say when any of
-    // it changes, so nothing is polled, and while something is stepped
-    // into the launcher hears that this provider changed, which makes a
-    // program held from the top again (Launcher.qml's refreshed): Pause
-    // turns to Play when a media key pauses its player, Previous comes
-    // once there's a track before, and the volume's bar moves with Louder.
-    // A player's names and a stream's are in it too, since they may be
-    // heard only once it's listed or bound, and they say whose it is
-    // (playerOf, streamsOf, recordersOf).
-    // JSON, since the names are other processes' and could hold any
-    // separator, and one change that moved a name across it would say
-    // nothing. Who plays is a binding of its own, so a title changing
-    // makes it again only when a node did, and the handler reads it there.
-    readonly property string playingWhoNow: playingWho()
-    readonly property string playingNow: JSON.stringify([
-        playingWhoNow,
-        Playing.players.map(player => [player.isPlaying, player.canPlay, player.canPause,
-            player.canGoNext, player.canGoPrevious, player.trackTitle, player.trackArtist]),
-        Playing.streams.concat(Playing.recorders ?? []).map(node => [node.audio?.volume,
-            node.audio?.muted])
-    ])
-
-    onPlayingNowChanged: {
-        if (playingWhoNow !== playingHeard.who) {
-            playingHeard.who = playingWhoNow;
-            playingHeard.turn += 1;
-            startsTurn += 1;
-        }
-        redrawHeld();
-    }
-
-    // Who plays: each player's and stream's names, all a closed program's
-    // Media and Sound need to be there (startsOnly), not what plays or how
-    // loud; a node's audio is there from the start for every audio node,
-    // bound or not (Quickshell's PwNode, CONSTANT). A radio's titles
-    // came every few seconds and would let every held answer go between
-    // keys. Each change of who turns `turn`, which has each held answer
-    // ask again only whether anything plays for its program (playsAsHeld),
-    // since a chime's stream, an agent's done or a timer's ring, is no
-    // program's. Plain, kept as last heard from the start (onCompleted),
-    // so the first title after it isn't taken for a change of who; JSON,
-    // as playingNow is.
-    readonly property var playingHeard: ({ who: "", turn: 0 })
-    function playingWho() {
-        return JSON.stringify([
-            Playing.players.map(player => [player.dbusName, player.desktopEntry,
-                player.identity]),
-            Playing.streams.concat(Playing.recorders ?? []).map(node => {
-                const told = node.properties ?? {};
-                return [node.id, node.name, told["application.name"],
-                    told["application.process.binary"], told["node.link-group"],
-                    told["stream.monitor"]];
-            })
-        ]);
-    }
 
     // And a program found from the top, which lists what it holds under
     // it (`under`), is drawn again as that changes, as a Chrome's tabs
@@ -254,163 +213,40 @@ Provider {
 
     draws: programs.reduce((all, row) => all.concat(row.stands), [])
 
-    // Each program's open windows by its desktop entry's id, the one used
-    // last first, as the windows daemon says them (modules/windows), which
-    // names each window's owner: its entry, or for a browser's window of
-    // its own opened deeper than its program's own page, that program.
-    // Read when a row is drawn or run, so a window opening never prepares
-    // every program again. Heard only while it's wanted: every event niri
-    // sent once walked all of Joel's windows here, launcher shut or open
-    // (2026-11-10).
-    property var running: ({})
-    readonly property var windowsHeld: HeldWindows.kept()
-    readonly property var windowsDaemon: daemon
+    // Each program's open windows and what its rows say of them, heard
+    // from the windows daemon (ApplicationsWindows.qml). Read here too:
+    // by this provider's rows, by Provider.qml's noted and by the tests,
+    // which tell the daemon's stand-in what to say.
+    ApplicationsWindows {
+        id: windowsPart
 
-    // With the daemon down its row says so, since the counts it keeps
-    // through the gap may no longer be true. It never says it's still
-    // reading (Provider.stillReading), though its counts are the last
-    // opening's until this watch's first answer: Programs is a home row,
-    // so every terminal's show from home would ask twice, for counts the
-    // daemon answers within a frame.
+        provider: provider
+    }
+    property alias running: windowsPart.running
+    property alias windowsDaemon: windowsPart.windowsDaemon
     function noted() {
-        return windowsUnanswered ? Words.of("windows").said.silentFrom : "";
+        return windowsPart.noted();
     }
-    // Whether the windows daemon has been silent a second, as Windows.qml
-    // waits too, so a restart doesn't blink it (VKCF3Z, 2026-11-10).
-    property bool windowsUnanswered: false
-    Connections {
-        target: daemon
-        function onStateChanged() {
-            if (daemon.state === "not answering") {
-                windowsQuiet.restart();
-            } else {
-                windowsQuiet.stop();
-                provider.windowsUnanswered = false;
-            }
-        }
-    }
-    Timer {
-        id: windowsQuiet
-
-        interval: 1000
-        onTriggered: provider.windowsQuietFor()
-    }
-    // The second's silence over: said if the daemon is silent still.
     function windowsQuietFor() {
-        windowsUnanswered = daemon.state === "not answering";
+        windowsPart.windowsQuietFor();
     }
-
-    Daemon {
-        id: daemon
-
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
-        kind: "window"
-        // Watched while the launcher is open too, as Windows' are, so a
-        // step home asks for no window again (Windows.qml).
-        live: provider.wanted || provider.launcher?.open === true
-        paced: provider.launcher
-        answersWhole: true
-        onHeard: (changed, gone) => provider.hearWindows(changed, gone)
-    }
-
-    // Takes what the daemon said, and lists each program's windows again
-    // only when a window's record differs, so a whole answer as the
-    // launcher opens that reads the same changes nothing. The rows read
-    // their counts and Go To as they're drawn, so they're drawn again
-    // when a program's windows came or went or another was used last;
-    // a title alone changes only what a row stepped into holds.
-    function hearWindows(changed, gone) {
-        provider.tally.looked += changed.length + gone.length;
-        const held = provider.windowsHeld;
-        const records = changed.map(key => daemon.held[key]).filter(record => record);
-        if (HeldWindows.take(held, records, gone).length === 0 && gone.length === 0)
-            return;
-        const by = {};
-        for (const key of held.order) {
-            const owner = held.records[key].owner;
-            if (owner !== null)
-                (by[owner] ?? (by[owner] = [])).push(held.windows[key]);
-        }
-        const was = provider.running;
-        provider.running = by;
-        if (HeldWindows.ownersMoved(was, by))
-            provider.changed();
-        else
-            redrawHeld();
-    }
-
-    // When a window was last looked at, in nanoseconds, or 0 for never.
     function focusedAt(window) {
-        const stamp = window.focus_timestamp;
-        return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
+        return windowsPart.focusedAt(window);
     }
-
-    // How many windows a program has open, as the row says it beside the
-    // name, before what it is.
     function windowCount(entry) {
-        const open = (running[entry.id] ?? []).length;
-        return open === 0 ? "" : open === 1 ? "1 window" : `${open} windows`;
+        return windowsPart.windowCount(entry);
     }
-
-    // A window's title as its rows say it, without the program's name.
     function titled(window, entry) {
-        return provider.tidy(window.title ?? "", entry.name) || entry.name;
+        return windowsPart.titled(window, entry);
     }
-
-    // Its windows but the one used last, which Go To already goes to, as
-    // rows Return goes to, each by its own title, saying where it is as the
-    // Windows collection does: nothing on the workspace in front, and a
-    // column when two are titled alike. Each holds what Windows' row for it
-    // does (Windows.qml's actsOf), so a window has one set of insides
-    // wherever it shows.
-    // Whether a program has a window open now.
     function isRunning(entry) {
-        return (running[entry.id] ?? []).length > 0;
+        return windowsPart.isRunning(entry);
     }
-
-    // The pages a closed browser's saved session holds, each as a line of
-    // the sites it visited (`line`, its address, a tab and its title) and
-    // when it was last looked at (`at`, in milliseconds), newest first,
-    // each once.
-    function savedSites(entry) {
-        const seen = new Set();
-        return provider.recents.openIn(entry.id).map(line => line.split("\t"))
-            .filter(tab => (tab[4] ?? "") !== "")
-            .sort((a, b) => Number(b[3]) - Number(a[3]))
-            .filter(tab => !seen.has(tab[4]) && seen.add(tab[4]))
-            .map(tab => ({ line: `${tab[4]}\t${tab[5] ?? ""}`, at: Number(tab[3]) || undefined }));
-    }
-
-    // Its windows but the one used last and those a row it has open
-    // already stands for (`held`, window ids), so a window and its front
-    // tab or its file are never two rows. An agent's window, kitty's though
-    // it is, is left to kitty's Agents row, as its tabs are (Kitty.qml):
-    // listed, Joel's 112 drew 114 rows and took 474 ms a step into kitty
-    // (2026-11-13, VKCF3Z [b31d7a90]).
     function windowsOf(entry, held) {
-        return (running[entry.id] ?? []).slice(1)
-            .filter(window => window.session !== true && !(held ?? []).includes(window.id))
-            .map(window => windowRow(window, entry));
+        return windowsPart.windowsOf(entry, held);
     }
-
-    // One of a program's windows, as its row, by its title.
     function windowRow(window, entry) {
-        const listing = (provider.launcher?.sources ?? [])
-            .find(source => typeof source.actsOf === "function") ?? null;
-        const alike = (running[entry.id] ?? [])
-            .filter(other => titled(other, entry) === titled(window, entry)).length;
-        return thing({
-            thing: true,
-            key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
-            is: `window:${window.id}`,
-            verb: "go to",
-            name: titled(window, entry),
-            glyph: programGlyph(entry.id),
-            hue: "program",
-            side: provider.placeOf(window, Niri.workspaces[window.workspace_id], Niri.workspace(), alike),
-            run: () => Niri.act({ FocusWindow: { id: window.id } }),
-            verbs: listing ? () => listing.actsOf(window, entry) : null
-        });
+        return windowsPart.windowRow(window, entry);
     }
 
     // An act or a part as the vocabulary says it (Words.qml), in the state
@@ -527,78 +363,20 @@ Provider {
         };
     }
 
-    // Its player that matters: the one playing, or else the first.
+    // A program's player, what it plays, its Media row and that row's
+    // drawer, which Sound.qml asks of this provider by name
+    // (ApplicationsPlaying.qml).
     function playerOf(same) {
-        const players = Playing.players.filter(player => same(player.desktopEntry)
-            || same(player.identity));
-        return players.find(player => player.isPlaying) ?? players[0] ?? null;
+        return playingPart.playerOf(same);
     }
-
-    // A track and who plays it, a dot between them, as every part of a
-    // value is (VKCF3Z, 2026-11-08).
     function nowPlaying(player) {
-        return player.trackArtist === "" ? player.trackTitle
-            : `${player.trackTitle} \u00b7 ${player.trackArtist}`;
+        return playingPart.nowPlaying(player);
     }
-
-    // Media: playing or pausing, one row by how it stands, then the next
-    // and the last track, then what's playing. Next and Previous keep the
-    // launcher, since they're pressed again and again, and the foot and
-    // the last row say what's on now; a toggle is pressed once and goes.
     function media(player) {
-        const row = said("program:media", "", {
-            hue: "program",
-            // Everything the player says, under the row (Media.js).
-            thing: true,
-            drawer: () => provider.mediaDrawer(player),
-            targets: () => {
-                const rows = [];
-                const going = player.isPlaying;
-                if (going ? player.canPause : player.canPlay)
-                    rows.push(provider.said("verb:program:play", going ? "playing" : "", {
-                        stays: true,
-                        run: () => {
-                            if (player.isPlaying)
-                                player.pause();
-                            else
-                                player.play();
-                        }
-                    }));
-                if (player.canGoNext)
-                    rows.push(provider.said("verb:program:next", "", {
-                        stays: true,
-                        state: () => provider.nowPlaying(player),
-                        run: () => player.next()
-                    }));
-                if (player.canGoPrevious)
-                    rows.push(provider.said("verb:program:previous", "", {
-                        stays: true,
-                        state: () => provider.nowPlaying(player),
-                        run: () => player.previous()
-                    }));
-                if (player.trackTitle !== "")
-                    rows.push(provider.figure("program:playing", () => player.trackTitle,
-                        () => player.trackArtist, null));
-                return rows;
-            }
-        });
-        return gotten(row, { side: () => player.isPlaying ? "playing" : "paused" });
+        return playingPart.media(player);
     }
-
-    // A player's drawer, where it is in its track read again each second
-    // while one plays and the launcher shows, since MPRIS says a position
-    // only when asked. Its art may be the network's, so only with lookups.
     function mediaDrawer(player) {
-        void playedClock.date;
-        return Media.drawer(player, id => Words.name(`program:media:${id}`),
-            Words.of("program:media").said, settings.lookups !== false);
-    }
-
-    SystemClock {
-        id: playedClock
-        enabled: !!provider.launcher && provider.launcher.open
-            && Playing.players.some(player => player.isPlaying)
-        precision: SystemClock.Seconds
+        return playingPart.mediaDrawer(player);
     }
 
     // A program's drawer (Program.js): the workspaces its windows are on
@@ -953,14 +731,34 @@ Provider {
         return own === "desktop" ? "" : own;
     }
 
-    // The sources of each program's Recent: a page's own list, one with a
-    // `name` as Chrome's downloads, is its page's to read, not Recent's.
-    readonly property var recentSources: (settings.recents ?? []).filter(each => !each.name)
+    // What each program had open lately and has open now, its Recent and
+    // its Tabs (ApplicationsRecents.qml). Read here too: by
+    // this provider's rows and notes, by Screenshots.qml, which finds the
+    // recents by name among the launcher's providers, and by the tests.
+    ApplicationsRecents {
+        id: recentsPart
 
-    // What each program had open lately, from the files they write.
-    readonly property Recents recents: Recents {
-        sources: provider.recentSources
-        showing: provider.launcher?.open ?? false
+        provider: provider
+    }
+    property alias recentSources: recentsPart.recentSources
+    property alias recents: recentsPart.recents
+    function recent(entry) {
+        return recentsPart.recent(entry);
+    }
+    function sourceOf(entry) {
+        return recentsPart.sourceOf(entry);
+    }
+    function keepsRecent(entry, given) {
+        return recentsPart.keepsRecent(entry, given);
+    }
+    function kept(entry, asked, opens) {
+        return recentsPart.kept(entry, asked, opens);
+    }
+    function openRows(entry) {
+        return recentsPart.openRows(entry);
+    }
+    function openGroup(entry) {
+        return recentsPart.openGroup(entry);
     }
 
     // A program's notices past the notices place's page come once they're
@@ -971,50 +769,6 @@ Provider {
             .find(source => typeof source.sentBy === "function") ?? null
         function onChanged() {
             provider.redrawHeld();
-        }
-    }
-
-    // A list read after a program was stepped into, or changing while it's
-    // shown, draws its Recent again, as Media does with what's playing.
-    Connections {
-        target: provider.recents
-
-        function onLatelyChanged() {
-            provider.redrawHeld();
-        }
-
-        function onSharedChanged() {
-            provider.redrawHeld();
-        }
-
-        function onOpenNowChanged() {
-            provider.redrawHeld();
-        }
-
-        function onClosedChanged() {
-            provider.redrawHeld();
-        }
-    }
-
-    // What another provider gives a program (recentOf, programActs)
-    // changing while it's shown draws it again too: the launcher remakes a
-    // step only for the provider its row came from, and a program's row
-    // is this one's.
-    Variants {
-        model: (provider.launcher?.sources ?? []).filter(other => other !== provider
-            && (typeof other.recentOf === "function" || typeof other.programActs === "function"))
-
-        Connections {
-            required property var modelData
-
-            target: modelData
-            // A giver may have no changed to say (holdsSafely holds nothing
-            // then), and that's no fault to warn of.
-            ignoreUnknownSignals: true
-
-            function onChanged() {
-                provider.redrawHeld();
-            }
         }
     }
 
@@ -1073,219 +827,6 @@ Provider {
             keptThroughGap: false
             answersWhole: true
         }
-    }
-
-    // Recent: what it had open lately and has open no more (Recents.qml),
-    // laid out as every Recent is (Recent.js): newest first, each once,
-    // never what it has open now, which its step lists above it
-    // (`openRows`), nine at most. Each is a folder or a file by its name,
-    // beside the folder it's in.
-    // Return opens it through the program as its own list's settings say:
-    // `open` while a window of it is open, through the process behind the
-    // window used last ({pid}), and `start` while none is. A file from the
-    // desktop's list programs share opens in the program, by its own
-    // command given the file, when its entry takes files; one given to a
-    // program that opens none, such as a chat's attachment, opens as the
-    // desktop opens it, which is what the list itself says of those.
-    // A site Chrome visited, its source's `site` kind, is the page's title
-    // beside its host, opened by the program's own command given the page
-    // when its source names no command of its own. A closed browser's
-    // saved session is the sites it visited last, before its history. A
-    // file source may say what's open now, as mpv's says the file each mpv
-    // plays, and one saying no more than that keeps the list programs
-    // share for the rest. Any other provider may give a program's Recent
-    // its own things after these, each its one row, by
-    // `recentOf(program)`, newest first, as Docs' documents are given
-    // (Documents.qml).
-    //
-    // It stands wherever the program has a source of what it had, its own
-    // list's settings or a provider that says it keeps some
-    // (`keepsRecentOf(program)`), saying "none" while it holds nothing, and
-    // an ellipsis until a source read only as it's stepped into first
-    // answers, so it never comes late at the bottom of a step already
-    // drawn. Its side says how many, and its drawer their names, as a
-    // place's does (VKCF3Z, dafc2199).
-    function recent(entry) {
-        if (!provider.keepsRecent(entry))
-            return [];
-        provider.recents.ask(entry.id);
-        const words = Words.of("program:recent");
-        const kept = provider.kept(entry);
-        // Named from the rows themselves, kept while each reads the same,
-        // and only those it holds now are kept on.
-        const keeping = provider.recentKeeper(entry);
-        keepingBegun(keeping);
-        const names = kept.map(one => provider.made(entry, one).name);
-        keptOnly(keeping);
-        const source = provider.sourceOf(entry);
-        const waiting = source?.asked === true && !(entry.id in provider.recents.lately);
-        const stands = Recent.said(names, waiting, words.said);
-        return [said("program:recent", "", {
-            hue: "program",
-            side: stands.side,
-            heldNames: stands.held,
-            ask: "which?",
-            nested: true,
-            empty: waiting ? "\u2026" : words.empty,
-            // Its verbs are the same rows as its targets, as People's
-            // Recent's are, so it steps in inside a program whose step
-            // lists a thing's verbs, as Tuple's does, holding only acts.
-            verbs: () => provider.kept(entry).map(one => provider.made(entry, one)),
-            targets: () => provider.kept(entry).map(one => provider.made(entry, one))
-        })];
-    }
-
-    // Its list's settings, or null where it has none.
-    function sourceOf(entry) {
-        return recentSources.find(each => each.app === entry.id) ?? null;
-    }
-
-    // Whether it has a source of what it had: its own list's settings, the
-    // list programs share naming it, or another provider keeping some or
-    // giving some now.
-    // `given`, what other providers give it, is asked here when not passed,
-    // as it is by a note that reads it once for all it counts.
-    function keepsRecent(entry, given) {
-        return provider.sourceOf(entry) !== null || provider.recents.of(entry.id).length > 0
-            || provider.hooking.keepsRecentOf.some(other => other.keepsRecentOf(entry.id))
-            || (given ?? givenRecent(entry.id)).length > 0;
-    }
-
-    // What its Recent holds, as Recent.js lays them out, each { key, at,
-    // row } with `row` what its row is made from (`made`), so counting
-    // them makes no rows: a closed browser's saved pages, what its list
-    // keeps and what other providers give, merged by when each was last
-    // used where its source says (a dated source, recents.nix), none of
-    // what it has open now.
-    // `asked` and `opens`, what other providers give it and list as open in
-    // it, are asked here when not passed, as keepsRecent's `given` is.
-    function kept(entry, asked, opens) {
-        const source = provider.sourceOf(entry);
-        const site = source?.kind === "site";
-        const kind = site ? "site" : source?.list && source.kind === "folder" ? "folder" : "file";
-        const keyed = line => {
-            const tab = line.indexOf("\t");
-            return keyOf(kind, site && tab >= 0 ? line.slice(0, tab) : line);
-        };
-        const saved = site && !provider.isRunning(entry) ? provider.savedSites(entry)
-            .map(one => ({ key: keyed(one.line), at: one.at, row: { line: one.line } })) : [];
-        const listed = provider.recents.of(entry.id).map(line => ({
-            key: keyed(line),
-            at: provider.recents.atOf(entry.id, line),
-            row: { line: line }
-        }));
-        const given = (asked ?? givenRecent(entry.id))
-            .map(row => ({ key: row.key, at: row.at, row: { made: row } }));
-        return Recent.listed([saved, listed, given], provider.openKeys(entry, opens),
-            provider.recents.most);
-    }
-
-    // One of what its Recent holds as its row, kept while its line is, so
-    // a step held, drawn again at every change of Programs (redrawHeld),
-    // makes none of its Recent again: Chrome's step on Joel's shell was
-    // made again whole as its downloads were read (2026-11-10, 136 ms).
-    function made(entry, one) {
-        if (one.row.made)
-            return one.row.made;
-        const source = provider.sourceOf(entry);
-        const line = one.row.line;
-        // Kept while it says the same when, too, so a file used again, or
-        // an hour on, never keeps saying "just now".
-        const when = Number.isFinite(one.at) ? provider.usedWhen(one.at) : "";
-        return keptOr(provider.recentKeeper(entry), line, `${line}\t${when}`,
-            () => source?.kind === "site" ? provider.visited(entry, line)
-                : provider.lately(entry, source?.list ? source : null, line, one.at));
-    }
-
-    // Each program's keeper of its Recent's rows, by its desktop entry's
-    // id, made anew when its entry or its list's settings are, as when
-    // the desktop entries are read again, so no kept row holds one gone.
-    // A plain object, so keeping notifies nothing.
-    readonly property var recentKept: ({})
-    function recentKeeper(entry) {
-        const source = provider.sourceOf(entry);
-        const had = recentKept[entry.id];
-        if (had && had.entry === entry && had.source === source)
-            return had.keeping;
-        const keeping = keeper();
-        recentKept[entry.id] = { entry: entry, source: source, keeping: keeping };
-        return keeping;
-    }
-
-    // What it has open now, where its source says (`opened`), each the
-    // thing it is, listed in its step before its Recent: every page a
-    // browser has open while it runs (openSites), each file mpv plays
-    // (openFiles). A browser's tabs are open only while it runs: one its
-    // saved session still holds once it's closed is a site it visited,
-    // in its Recent, never "open" beside a Return that starts it (VKCF3Z,
-    // 2026-11-07). Not named opened, the hook the launcher calls as
-    // Programs is stepped into (Provider.qml).
-    function openRows(entry) {
-        const source = provider.sourceOf(entry);
-        if (!opensNow(entry, source))
-            return [];
-        return source.kind === "site" ? provider.openSites(entry, source)
-            : provider.openFiles(entry, source);
-    }
-
-    // Whether its source says what it has open now, asked of it once it
-    // does, which a browser's does only while it runs.
-    function opensNow(entry, source) {
-        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
-            return false;
-        provider.recents.ask(entry.id);
-        return true;
-    }
-
-    // What a browser has open, as one row of its own, Tabs, holding its
-    // tabs by their pages, so they read apart from its windows, acts and settings
-    // (Joel, 2026-11-11: "it also needs to be more obvious what part of
-    // the program menu is tabs versus other stuff"). Typing in its step
-    // still finds a page, as Recent's are found. What another program has
-    // open, as mpv's files, stays as it was, among its acts. Its pages are
-    // counted without making them, and made only once Tabs is stepped into
-    // or searched, once for each making of its acts.
-    function openGroup(entry) {
-        const source = provider.sourceOf(entry);
-        if (source?.kind !== "site")
-            return provider.openRows(entry);
-        const count = opensNow(entry, source)
-            ? Program.pagesOpen(provider.recents.openIn(entry.id)) : 0;
-        if (count === 0)
-            return [];
-        let made = null;
-        const open = () => {
-            made = made ?? provider.openSites(entry, source);
-            return made;
-        };
-        const words = Words.of("program:open-tabs").said ?? {};
-        return [said("program:open-tabs", "", {
-            hue: "program",
-            side: ((count === 1 ? words.one : words.many) ?? "")
-                .replace("{count}", String(count)),
-            ask: "which?",
-            nested: true,
-            verbs: open,
-            targets: open
-        })];
-    }
-
-    // The keys of what it has open now, read from what its source said
-    // without making a row, and of what other providers list as open in
-    // it (givenOpen), so its Recent never lists one again.
-    function openKeys(entry, given) {
-        return ownOpenKeys(entry).concat(given ?? provider.givenOpen(entry.id));
-    }
-
-    function ownOpenKeys(entry) {
-        const source = provider.sourceOf(entry);
-        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
-            return [];
-        const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
-        return source.kind === "site"
-            ? lines.filter(tab => (tab[4] ?? "") !== "").map(tab => keyOf("site", tab[4]))
-            : lines.filter(([who, path]) => (path ?? "") !== ""
-                && provider.fileWindow(entry, who) !== null).map(([, path]) => keyOf("file", path));
     }
 
     // The keys, as keyOf makes them, of what other providers list as open
@@ -1619,7 +1160,8 @@ Provider {
             side: window ? titled(window, entry) : "",
             run: go
         })];
-        const closes = !Recent.reaches(source.close, page) ? [] : [said("verb:recent:site:close", "", {
+        const closes = !Recent.reaches(source.close, page) ? [] : [said(
+            "verb:recent:site:close", "", {
             key: `verb:recent:site:close:${tab.address}`,
             hue: "action",
             stays: true,
