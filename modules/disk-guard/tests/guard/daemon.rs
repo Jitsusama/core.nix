@@ -4,6 +4,7 @@ use disk_guard::config::Config;
 use disk_guard::daemon::{Explained, Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
 use disk_guard::replaced::Uses;
+use disk_guard::sizes::SETTLED;
 use disk_guard::socket::{Reply, Request};
 use disk_guard::units::Size;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
@@ -2108,6 +2109,42 @@ fn a_preview_reads_the_survey_the_last_pass_kept_rather_than_walking_again() {
         .unwrap();
     assert_eq!(surveyed, None, "asked fresh, it surveys");
     assert_eq!(fresh[0].taken, [], "and finds it gone");
+}
+
+// On 27 November the sizes surveys knew lived only in the running guard,
+// so every restart's first survey walked every candidate again.
+#[test]
+fn a_restarted_guard_knows_the_sizes_its_last_whole_survey_kept() {
+    let home = Home::new();
+    let entry = home.cold_scratch("run-1");
+    // Past the time a stamp must settle for, so the survey keeps its size.
+    std::thread::sleep(std::time::Duration::from_secs_f64(2.0 * SETTLED));
+    let mut daemon = home.guard(home.config("0%", "100%"));
+    daemon.step(&tick(), &CALM).unwrap();
+    assert!(entry.exists(), "an upkeep pass took scratch with no window");
+    let kept = home.root.join("state").join(disk_guard::sizes::FILE);
+    assert!(kept.exists(), "the whole survey kept no sizes");
+    drop(daemon);
+    // Grown where its stamp doesn't read, and dated back, so only a
+    // record could still say its old size.
+    let out = entry.join("out");
+    fs::write(&out, "x".repeat(65_536)).unwrap();
+    touch(&out, 1_000_000_000);
+    let sized = || {
+        let mut planner = home.guard(home.config("0%", "100%"));
+        let (_, fresh) = planner
+            .preview(&tick(), Some(Band::Filling), None, true)
+            .unwrap();
+        let taken = fresh[0].taken.iter().find(|taken| taken.path == entry);
+        taken.expect("the preview didn't take the entry").size
+    };
+    let known = sized();
+    fs::remove_file(&kept).unwrap();
+    let walked = sized();
+    assert!(
+        known < walked,
+        "the restarted guard walked the entry again: {known} against {walked}"
+    );
 }
 
 #[test]

@@ -4,8 +4,9 @@
 use crate::discover::{dir, file, stop_after};
 use crate::survey::{config, find, now, offers_sized, offers_stopping, real, src};
 use disk_guard::config::Config;
-use disk_guard::sizes::{SETTLED, Sizes};
+use disk_guard::sizes::{FILE, SETTLED, Sizes, VERSION};
 use std::cell::Cell;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -145,4 +146,68 @@ fn a_walk_a_stop_cut_short_leaves_no_size_behind() {
         size >= (FOLDERS * 1_000) as u64,
         "the entry kept what its cut walk counted: {size}"
     );
+}
+
+// The record lived only in the running guard, so the first survey after
+// every restart walked every candidate again.
+#[test]
+fn a_guard_restarted_between_two_surveys_walks_nothing_in_the_second() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let (config, one, two) = built(&home);
+    let state = dir(&home.join("state"));
+    settle();
+    let (first, sizes) = offers_sized(&config, now(), Sizes::default());
+    sizes.save(&state).unwrap();
+    drop(sizes);
+    let (second, sizes) = offers_sized(&config, now(), Sizes::load(&state));
+    assert_eq!(
+        sizes.walked, 0,
+        "the restarted guard walked a candidate again"
+    );
+    for path in [&one, &two, &home.join("scratch/run-1")] {
+        assert_eq!(
+            find(&second, path).candidate.size,
+            find(&first, path).candidate.size,
+            "{} came back from the record at another size",
+            path.display()
+        );
+    }
+}
+
+// A record that can't be read is only sizes to walk again, so a guard
+// that refused to start over one would guard no disk for nothing.
+#[test]
+fn a_damaged_record_starts_empty_and_the_survey_sizes_everything() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let (config, one, _) = built(&home);
+    let state = dir(&home.join("state"));
+    settle();
+    let (fresh, sizes) = offers_sized(&config, now(), Sizes::default());
+    let everything = sizes.walked;
+    let size = find(&fresh, &one).candidate.size;
+    // The record this survey kept, which would have been known whole.
+    sizes.save(&state).unwrap();
+    let kept = fs::read_to_string(state.join(FILE)).unwrap();
+    let version = format!(r#""version":{VERSION}"#);
+    assert!(kept.contains(&version), "the record has no version: {kept}");
+    let another = kept.replacen(&version, &format!(r#""version":{}"#, VERSION + 1), 1);
+    let cut = &kept[..kept.len() / 2];
+    for (damage, text) in [
+        ("a record cut off", cut),
+        ("a record of another version", &another),
+    ] {
+        file(&state.join(FILE), text);
+        let (found, sizes) = offers_sized(&config, now(), Sizes::load(&state));
+        assert_eq!(
+            sizes.walked, everything,
+            "a survey after {damage} didn't walk everything"
+        );
+        assert_eq!(
+            find(&found, &one).candidate.size,
+            size,
+            "{damage} gave a size"
+        );
+    }
 }

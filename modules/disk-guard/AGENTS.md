@@ -94,7 +94,10 @@ or launchd, and [`home.nix`][2] the account's.
   a small crate built on Linux showed. On 27 November seven whole
   surveys walked every candidate afresh for 136 GB. A size known this
   way adds nothing to the survey's shared blocks, nothing about idleness
-  or use comes from it, and a walk a stop cut short keeps no size.
+  or use comes from it, and a walk a stop cut short keeps no size. The
+  record is kept in `sizes.json` after each whole survey, so a restart
+  walks only what changed while the guard was down; a file of another
+  version, or one that can't be read, starts it empty.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -655,7 +658,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/survey/`             | what builds and every other kind of source offer         |
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
-| `src/sizes.rs`            | what surveys sized, by each entry's stamp                |
+| `src/sizes.rs`            | what surveys sized, by each entry's stamp, kept on disk  |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |

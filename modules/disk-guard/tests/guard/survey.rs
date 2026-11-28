@@ -180,6 +180,9 @@ fn surveyed_asking(
     uses: &Uses,
     (at, sizes, awake, stop): (f64, Sizes, &Awake, &dyn Fn() -> bool),
 ) -> (Vec<Offer>, usize, Sizes) {
+    // As the daemon does before each survey.
+    let mut sizes = sizes;
+    sizes.began(at);
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
     let mut world = World {

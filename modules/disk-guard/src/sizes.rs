@@ -11,8 +11,10 @@
 //! two entries share may count in both; either only misstates what a pass
 //! frees.
 
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
@@ -26,6 +28,14 @@ const STAMP_DEPTH: usize = 2;
 /// would tell the entry was changed again.
 pub const SETTLED: f64 = 0.1;
 
+/// Where in a daemon's state the record is kept across restarts, so the
+/// first survey after one walks only what changed while it was down.
+pub const FILE: &str = "sizes.json";
+
+/// The shape of the record's file, its own rather than the state's: a
+/// file of any other is read as no record at all.
+pub const VERSION: u32 = 1;
+
 /// The sizes of the entries surveys sized, each by the stamp it was sized
 /// at, kept by a daemon from one survey to the next.
 #[derive(Debug, Default)]
@@ -36,16 +46,93 @@ pub struct Sizes {
     asked: BTreeSet<PathBuf>,
     /// How many were walked to be sized, rather than known.
     pub walked: usize,
+    /// When the survey under way began, in wall seconds, which each size
+    /// it walks is kept as walked at.
+    now: f64,
 }
 
-/// An entry's size, and the stamp it was sized at.
+/// An entry's size, the stamp it was sized at, and when it was walked,
+/// in wall seconds.
 #[derive(Clone, Copy, Debug)]
 struct Known {
     stamp: f64,
     size: u64,
+    walked: f64,
+}
+
+/// The record as its file holds it.
+#[derive(Serialize, Deserialize)]
+struct Record {
+    version: u32,
+    sizes: Vec<Kept>,
+}
+
+/// One entry's size as the file holds it.
+#[derive(Serialize, Deserialize)]
+struct Kept {
+    path: String,
+    stamp: f64,
+    size: u64,
+    walked: f64,
 }
 
 impl Sizes {
+    /// The record kept in the state folder `state`, or none when there is
+    /// none, it can't be read, or its shape is another's. A failed read is
+    /// taken as nothing rather than refusing to start, since a size the
+    /// record lacks is only walked again, as every survey did before one
+    /// was kept, and a guard that won't start guards no disk.
+    pub fn load(state: &Path) -> Sizes {
+        let record: Option<Record> = crate::state::load(&state.join(FILE)).ok().flatten();
+        let known = record
+            .filter(|record| record.version == VERSION)
+            .map(|record| record.sizes)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|kept| kept.stamp.is_finite() && kept.walked.is_finite())
+            .map(|kept| {
+                let known = Known {
+                    stamp: kept.stamp,
+                    size: kept.size,
+                    walked: kept.walked,
+                };
+                (PathBuf::from(kept.path), known)
+            })
+            .collect();
+        Sizes {
+            known,
+            ..Sizes::default()
+        }
+    }
+
+    /// Keeps the record in the state folder `state`, whole, for the guard
+    /// after a restart. A path that isn't UTF-8 has no place in the file,
+    /// so its entry is only walked again then.
+    pub fn save(&self, state: &Path) -> io::Result<()> {
+        let sizes = self
+            .known
+            .iter()
+            .filter_map(|(path, known)| {
+                Some(Kept {
+                    path: path.to_str()?.to_owned(),
+                    stamp: known.stamp,
+                    size: known.size,
+                    walked: known.walked,
+                })
+            })
+            .collect();
+        let record = Record {
+            version: VERSION,
+            sizes,
+        };
+        crate::state::save(&state.join(FILE), &record)
+    }
+
+    /// Starts a survey at `now`, in wall seconds.
+    pub fn began(&mut self, now: f64) {
+        self.now = now;
+    }
+
     /// What `path`, stamped `stamp`, holds: known when an earlier survey
     /// sized it at that stamp, `measure`d otherwise. A stamp that isn't
     /// finite is never known, as the entry may be changing. What a walk a
@@ -69,7 +156,15 @@ impl Sizes {
         self.walked += 1;
         match measure() {
             Some(size) if stamp.is_finite() => {
-                self.known.insert(path.to_owned(), Known { stamp, size });
+                let walked = self.now;
+                self.known.insert(
+                    path.to_owned(),
+                    Known {
+                        stamp,
+                        size,
+                        walked,
+                    },
+                );
                 size
             }
             Some(size) => {
