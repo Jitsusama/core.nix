@@ -413,31 +413,36 @@ fn names_and_a_why_from_outside_draw_no_control_and_a_break_as_a_space() {
     // A why wrapping at 60 and at the 80 that 200 is held to, so it hangs
     // in both, holding a break from outside between two words, apart
     // from the controls: drawn as a space, it starts no line and joins
-    // neither word to the other. A terminal's wrap closes up every run of
-    // blanks, so only the piped room sees a break drawn as two spaces or
-    // kept: that room is the one pinning the space itself.
+    // neither word to the other. This why is too wide for either
+    // terminal's line, and a wrap parting it closes up its blanks, so only
+    // the piped room sees a break drawn as two spaces or kept: that room
+    // is the one pinning the space itself.
     if let Some(heard) = link.heard.as_mut() {
         heard.why = heard
             .why
             .take()
             .map(|why| format!("{why} \u{1b}[2J\u{7} held\ncleared"));
     }
+    // The heading's names are drawn whole on either side of their
+    // controls, so a filter running past an escape's end, or a heading
+    // left without them, fails here and not only where a control is. The
+    // heading is never wrapped, so one room is enough.
+    let heading = said(&link, Room::Unbounded).swap_remove(0);
+    assert!(
+        heading.starts_with("wlp0")
+            && heading.contains("s20f3  on 00:00")
+            && heading.ends_with(":5e"),
+        "the heading didn't draw both names: {heading:?}"
+    );
     for room in [Room::Cells(60), Room::Cells(200), Room::Unbounded] {
         let lines = said(&link, room);
+        // The leader's name is drawn whole past its escape too, as it
+        // hangs rather than being held to one line as the heading is.
         assert!(
             lines
                 .iter()
-                .any(|line| line.starts_with("  at enp0") && line.contains("'s rate: both")),
-            "the leader wasn't said into {room:?}: {lines:#?}"
-        );
-        // The heading's names are drawn whole on either side of their
-        // controls, so a filter running past an escape's end, or a heading
-        // left without them, fails here and not only where a control is.
-        assert!(
-            lines[0].starts_with("wlp0")
-                && lines[0].contains("s20f3  on 00:00")
-                && lines[0].ends_with(":5e"),
-            "into {room:?} the heading didn't draw both names: {lines:#?}"
+                .any(|line| line.starts_with("  at enp0") && line.contains("s13f0's rate: both")),
+            "the leader wasn't said whole into {room:?}: {lines:#?}"
         );
         assert!(
             lines.iter().all(|line| !line.chars().any(char::is_control)),
