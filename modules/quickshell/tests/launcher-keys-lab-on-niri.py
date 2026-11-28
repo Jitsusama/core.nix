@@ -20,7 +20,13 @@ LAB_AGENTS, it lays that many live sessions and serves them through the realm's 
 agents daemon (agents_served.py), so a step into Agents lays as many agent rows as Joel's, one
 of them moving before each step as his do between his looks. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
-and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
+and steps out of it to home with nothing typed, as Joel's Super+Tab then - does; given home, it
+opens home by the shell's toggle and closes it again, as his Super does. Every such opening here
+opens on what home kept, unless LAB_WHOLE=first asks for it whole: it restarts the shell before
+each round, its first opening being whole until home is first kept. Profiled, each opening's
+toggled() call is then split where openWorkDone returned, into its working and its settling, and
+the wait before the shell heard its frame swapped is a span of its own; given LAB_TRACES, each
+trace is printed too, packed, so it can be read again later.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
 ran inside them. Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
@@ -32,6 +38,8 @@ LAB_PROFILE, LAB_PROFILE without QS_GIVEN's `--debug 3768`, or LAB_BACK without 
 
 from __future__ import annotations
 
+import base64
+import gzip
 import itertools
 import os
 import re
@@ -66,6 +74,17 @@ PORT = "3768"
 # A key's line, as Trials.qml says it, and each part of it the lab reads by name.
 KEY = re.compile(r'launcher: "(?P<typed>[^"]*)" took (?P<took>\d+) ms to its frame, (?P<rest>.*)')
 PARTS = ("searching", "rows", "answers", "before", "counting", "typed", "words", "readying")
+
+# The kinds of the trace's ranges that are the shell's own script, as against the scene graph's
+# frames, which the profiler times apart.
+SCRIPTED = frozenset(("Binding", "HandlingSignal", "Javascript"))
+
+# What an opening's line says of its frame's time from its sync until the shell heard it swapped,
+# as launcher/Thread.js says it.
+SWAPPED = re.compile(r"(\d+) before the shell heard it swapped")
+
+# How many characters of a trace, packed, each of its lines LAB_TRACES asks for holds.
+PACKED = 4000
 
 # How long the profiler may take to write its trace once asked, in seconds.
 FLUSHING = 60
@@ -237,6 +256,46 @@ def chorded_out(shell: Shell, place: str) -> tuple[str | None, str | None]:
     return opening, out
 
 
+def opened_home(shell: Shell, whole: str, profiling: Profiling | None) -> str | None:
+    """Open home from shut by its toggle, as Super+Space does, and give the opening's line.
+
+    Home is no place a chord steps into, so nothing is stepped out of. Kept, it opens from what
+    was kept, as every opening but a shell's first does. Given LAB_WHOLE=first, the shell starts
+    again first and home opens at once, before warming keeps it, so each is whole and the first
+    since the shell started, as two of Joel's three whole openings were (2026-11-27).
+    """
+    if whole == "first":
+        restarted(shell, profiling)
+    else:
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    since = shell.mark()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    opening = into_said(shell, since)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    return opening
+
+
+def restarted(shell: Shell, profiling: Profiling | None) -> None:
+    """Start the shell again, and its profiler with it, so a trace holds its first opening.
+
+    A restart drops the profiler's connection, so the trace so far is written first, and the
+    shell starts waiting for a new profiler (`--waitfordebug`), which tries its port until it
+    listens, so nothing the shell runs as it starts goes unrecorded.
+    """
+    if profiling is None:
+        shell.restart()
+        return
+    profiling.written()
+    given = os.environ.get("QS_GIVEN", "")
+    os.environ["QS_GIVEN"] = f"{given} --waitfordebug"
+    try:
+        shell.restart(while_down=lambda: profiling.begin(fresh=True))
+    finally:
+        os.environ["QS_GIVEN"] = given
+
+
 def into_said(shell: Shell, since: int) -> str | None:
     """Give the opening's line the shell has said since the mark, from its time on, or None.
 
@@ -382,11 +441,13 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     # and what ran inside it, so the function's own place in its span says what its calls took.
     asked = set(within_asked())
     within: dict[str, str] = {}
+    kinds: dict[str, str] = {}
     for event in root.iter("event"):
         where = Path(event.findtext("filename") or "").name
         kind = event.findtext("type") or ""
         details = (event.findtext("details") or "").replace("\n", " ")[:60]
         places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
+        kinds[event.get("index", "")] = kind
         if where == "Launcher.qml" and details in parts.functions:
             parts.functions[details].add(event.get("index", ""))
         if where == "Launcher.qml" and kind == "Javascript" and details in asked:
@@ -402,6 +463,8 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     ):
         start = int(each.get("startTime", "0"))
         index = each.get("eventIndex", "")
+        if kinds.get(index) not in SCRIPTED:
+            continue
         ends = start + int(each.get("duration", "0"))
         took = int(each.get("duration", "0")) / 1e6
         while held and held[-1][0] <= start:
@@ -421,6 +484,215 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
             tally.whole += took
         held.append((ends, tallies, inside))
     return spans
+
+
+class Opening:
+    """One toggled() call that opened the launcher, as the trace holds it, in its clock's ns."""
+
+    def __init__(self, start: int, ends: int) -> None:
+        """Begin with the call's span, its way of opening and its work's end still unknown."""
+        self.start = start
+        self.ends = ends
+        self.how = ""
+        # When openWorkDone returned, its stamp ending the opening's own work, or the call's end.
+        self.done = ends
+        self.worked = False
+        # When the shell heard its frame swapped, its handler's start, and the opening's line.
+        self.heard = -1
+        self.line = ""
+
+
+# A span a place is tallied in: its name, from and to, and where its working ends, if it's split.
+Window = tuple[str, int, int, int | None]
+
+
+def portions(start: int, ends: int, done: int | None) -> tuple[int, int]:
+    """Give how much of a span came before `done` and how much after, all before with none."""
+    if done is None:
+        return ends - start, 0
+    return max(0, min(ends, done) - start), max(0, ends - max(start, done))
+
+
+class Openings:
+    """Each opening toggled() made in a trace, read range by range in order of their start.
+
+    Whole runs wakeOpen within the call and kept runs beginOpening; a call running neither shut
+    the launcher. The frame is heard where the handler holding openDrawn (whole) or openShown
+    (kept) begins, which runs it as the frame is swapped, and an opening's line is the next the
+    shell says.
+    """
+
+    def __init__(self, root: ET.Element) -> None:
+        """Know the launcher's functions, the signal handlers and the openings' lines by event."""
+        self.named: dict[str, str] = {}
+        self.handlers: set[str] = set()
+        self.lines: dict[str, str] = {}
+        for event in root.iter("event"):
+            index = event.get("index", "")
+            kind = event.findtext("type") or ""
+            text = event.findtext("details") or ""
+            if (
+                Path(event.findtext("filename") or "").name == "Launcher.qml"
+                and kind == "Javascript"
+            ):
+                self.named[index] = text
+            if kind == "HandlingSignal":
+                self.handlers.add(index)
+            if "opening took" in text:
+                self.lines[index] = text
+        self.calls: list[Opening] = []
+        self.handling: list[tuple[int, int]] = []
+
+    def read(self, start: int, ends: int, index: str) -> None:
+        """Read one range, starting and ending so, of this event."""
+        name = self.named.get(index, "")
+        if name == "toggled":
+            self.calls.append(Opening(start, ends))
+        elif index in self.handlers:
+            self.handling.append((start, ends))
+        elif index in self.lines:
+            unsaid = [one for one in self.calls if one.how and not one.line]
+            if unsaid:
+                unsaid[0].line = self.lines[index]
+        call = self.calls[-1] if self.calls else None
+        if call is None or not call.start <= start < call.ends:
+            self.heard(name, start)
+        elif name == "wakeOpen":
+            call.how = "whole"
+        elif name == "beginOpening":
+            call.how = "kept"
+        elif name == "openWorkDone" and not call.worked:
+            call.done, call.worked = ends, True
+
+    def heard(self, name: str, start: int) -> None:
+        """Mark the last opening still unheard as heard, where a call of `name` says it is."""
+        waiting = [one for one in self.calls if one.how and one.heard < 0]
+        holding = [each for each in self.handling if each[0] <= start < each[1]]
+        if name not in {"openDrawn", "openShown"} or not waiting or not holding:
+            return
+        if (name == "openDrawn") == waiting[-1].how.startswith("whole"):
+            waiting[-1].heard = holding[-1][0]
+
+
+def openings(root: ET.Element, *, fresh: bool) -> list[Opening]:
+    """Give each opening toggled() made in the trace, how it opened and when it was heard.
+
+    The first in a trace whose profiler began with the shell is the first since the shell
+    started, `whole-first`.
+    """
+    read = Openings(root)
+    for start, ends, index in ranged(root):
+        read.read(start, ends, index)
+    opened = [one for one in read.calls if one.how]
+    if fresh and opened and opened[0].how == "whole":
+        opened[0].how = "whole-first"
+    return opened
+
+
+def ranged(root: ET.Element) -> list[tuple[int, int, str]]:
+    """Give each range's start, end and event, a call after its caller where both start at once."""
+    every = [
+        (int(one.get("startTime", "0")), int(one.get("duration", "0")), one.get("eventIndex", ""))
+        for one in root.iter("range")
+    ]
+    return [
+        (start, start + took, index)
+        for start, took, index in sorted(every, key=lambda one: (one[0], -one[1]))
+    ]
+
+
+def settled(trace: Path, *, fresh: bool) -> tuple[dict[str, dict[str, Spent]], list[str]]:
+    """Split each opening's toggled() at its own work's end, and say what its frame waited on.
+
+    Root's open handler (whole) or beginOpening (kept) ends the opening's own work by calling
+    openWorkDone, and what toggled() runs after that is its settling: the other handlers and
+    bindings hearing `open` or `opening` turn. So each place a toggled() call runs is spanned
+    `<how>-working` before that call and `<how>-settling` after it, its own time split at it
+    where it straddles it, by how it opened (Opening). Each place the shell's thread ran from the
+    opening's frame's sync until it heard the frame swapped, as long as its line says that was,
+    is spanned `<how>-unheard`. Each opening is said too, its spans as the trace times them.
+    """
+    root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
+    places: dict[str, str] = {}
+    kinds: dict[str, str] = {}
+    for event in root.iter("event"):
+        where = Path(event.findtext("filename") or "").name
+        kind = event.findtext("type") or ""
+        details = (event.findtext("details") or "").replace("\n", " ")[:60]
+        places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
+        kinds[event.get("index", "")] = kind
+    windows, said = windowed(openings(root, fresh=fresh))
+    return settled_spans(root, places, kinds, windows), said
+
+
+def windowed(opened: list[Opening]) -> tuple[list[Window], list[str]]:
+    """Give each opening's windows, its toggled() call and its frame's wait, and its line said."""
+    windows: list[Window] = []
+    said: list[str] = []
+    for one in opened:
+        windows.append((one.how, one.start, one.ends, one.done))
+        swapped = SWAPPED.search(one.line)
+        unheard = int(swapped.group(1)) * 1_000_000 if swapped and one.heard >= 0 else -1
+        if unheard >= 0:
+            windows.append((f"{one.how}-unheard", one.heard - unheard, one.heard, None))
+        said.append(
+            f"{one.how}: toggled {(one.ends - one.start) / 1e6:.2f} ms, working"
+            f" {(one.done - one.start) / 1e6:.2f}, settling {(one.ends - one.done) / 1e6:.2f},"
+            f" heard {(one.heard - one.ends) / 1e6 if one.heard >= 0 else -1:.2f} after,"
+            f" its line {one.line.split('opening ', 1)[-1][:400]!r}"
+        )
+    return windows, said
+
+
+def tallied_in(
+    spans: dict[str, dict[str, Spent]], entry: list, place: str, window: Window | None
+) -> None:
+    """Add a range, held as `entry`, to its window's spans, its own time split where it's split."""
+    if window is None:
+        return
+    _, _, before, after, start, took = entry
+    name, _, _, done = window
+    first = name if done is None else f"{name}-{'working' if start < done else 'settling'}"
+    spent = spans[first][place]
+    spent.count += 1
+    spent.whole += took / 1e6
+    if done is None:
+        spent.own += before / 1e6
+        return
+    spans[f"{name}-working"][place].own += before / 1e6
+    spans[f"{name}-settling"][place].own += after / 1e6
+
+
+def settled_spans(
+    root: ET.Element, places: dict[str, str], kinds: dict[str, str], windows: list[Window]
+) -> dict[str, dict[str, Spent]]:
+    """Give each window's places, by their own time and their whole, as settled says."""
+    spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
+    # The ranges still open where the next starts, each with its place, its window and its own
+    # time on either side of where the window's working ends, what it called being taken out.
+    held: list[tuple[str, Window | None, list]] = []
+    for start, ends, index in ranged(root):
+        if kinds.get(index) not in SCRIPTED:
+            continue
+        while held and held[-1][2][0] <= start:
+            tallied_in(spans, *popped(held))
+        window = next((one for one in windows if one[1] <= start < one[2]), None)
+        before, after = portions(start, ends, window[3] if window else None)
+        if held and window is not None and held[-1][1] is window:
+            held[-1][2][2] -= before
+            held[-1][2][3] -= after
+        held.append(
+            (places.get(index, "?"), window, [ends, index, before, after, start, ends - start])
+        )
+    while held:
+        tallied_in(spans, *popped(held))
+    return spans
+
+
+def popped(held: list[tuple[str, Window | None, list]]) -> tuple[list, str, Window | None]:
+    """Take the last range held, as tallied_in takes it."""
+    place, window, entry = held.pop()
+    return entry, place, window
 
 
 class Parts:
@@ -480,24 +752,71 @@ def census(trace: Path) -> list[str]:
     return [f"{kind}: {count} ranges, as {sample[kind]}" for kind, count in counted.items()]
 
 
-def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str]) -> None:
-    """Print each span's costliest places by their own time, or what the trace held instead.
+def merged(into: dict[str, dict[str, Spent]], spans: dict[str, dict[str, Spent]]) -> None:
+    """Add each place's tally in `spans` to its own in `into`, span by span."""
+    for name, places in spans.items():
+        for place, spent in places.items():
+            tally = into[name][place]
+            tally.count += spent.count
+            tally.own += spent.own
+            tally.whole += spent.whole
 
-    With no span, what the profiler and the shell said of the debugger is printed too, as what's
-    said leaves the run with it.
+
+def say_packed(trace: Path) -> None:
+    """Print the trace packed, a line of PACKED characters at a time, so it outlives the run."""
+    packed = base64.b64encode(gzip.compress(trace.read_bytes())).decode()
+    for at in range(0, len(packed), PACKED):
+        print(f"lab-trace {trace.name} {packed[at : at + PACKED]}", flush=True)
+
+
+def gathered(
+    traces: list[tuple[Path, bool]],
+) -> tuple[dict[str, dict[str, Spent]], list[str]]:
+    """Give every trace's spans added together, and each of their openings said."""
+    spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
+    opened: list[str] = []
+    for trace, fresh in traces:
+        merged(spans, profiled(trace))
+        split, lines = settled(trace, fresh=fresh)
+        merged(spans, split)
+        opened.extend(f"{trace.name} {line}" for line in lines)
+    return spans, opened
+
+
+def say_held(traces: list[tuple[Path, bool]], opened: list[str]) -> None:
+    """Print what each trace holds, the trace itself given LAB_TRACES, and each opening."""
+    for trace, _ in traces:
+        for line in census(trace):
+            print(f"lab-profile held {trace.name} {line}", flush=True)
+        if os.environ.get("LAB_TRACES"):
+            say_packed(trace)
+    for line in opened:
+        print(f"lab-opening {line}", flush=True)
+
+
+def say_profiled(
+    traces: list[tuple[Path, bool]], said: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Print each span's costliest places by their own time, or what the traces held instead.
+
+    Each trace is a life of the shell's, and their spans are added together. With no span, what
+    the profiler and the shell said of the debugger is printed too, as what's said leaves the
+    run with it. Given LAB_TRACES, each trace is printed too, packed.
     """
-    spans = profiled(trace) if trace.exists() else {}
+    written = [(trace, fresh) for trace, fresh in traces if trace.exists()]
+    spans, opened = gathered(written)
     with capsys.disabled():
         for name in [name for name in within_asked() if f"within-{name}" not in spans]:
             print(f"lab-profile within-{name}: never called while profiled", flush=True)
-        for line in census(trace) if trace.exists() else []:
-            print(f"lab-profile held {line}", flush=True)
+        say_held(written, opened)
         if not spans:
             for line in said:
                 print(f"lab-profile said: {line}", flush=True)
-            # The trace this run wrote, as the others are.
-            whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
-            ranges = len(list(whole.iter("range"))) if whole is not None else 0
+            # The traces this run wrote, as the others are.
+            ranges = sum(
+                len(list(ET.parse(trace).getroot().iter("range")))  # noqa: S314
+                for trace, _ in written
+            )
             print(f"lab-profile: no search profiled, of {ranges} ranges", flush=True)
         each = sorted(
             (span for span in spans if span.startswith("before#")),
@@ -591,6 +910,8 @@ def lab_asks_known(launcher: Path) -> None:
         if asked and not os.environ.get("LAB_PROFILE")
         else f'LAB_PROFILE profiles only a shell given QS_GIVEN = "--debug {PORT}"'
         if os.environ.get("LAB_PROFILE") and not debugged(os.environ.get("QS_GIVEN", ""))
+        else "LAB_WHOLE is first, or not given"
+        if os.environ.get("LAB_WHOLE", "") not in {"", "first"}
         else None
     )
     if refused:
@@ -610,8 +931,39 @@ def say_heard(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
                 print(f"lab-heard {line}", flush=True)
 
 
+class Profiling:
+    """Qt's profiler on the shell, a trace for each of its lives, as a restart ends one."""
+
+    def __init__(self, folder: Path) -> None:
+        """Begin with no trace, each to be written in `folder`, all saying into one log."""
+        self.folder = folder
+        self.log = folder / "profiler.log"
+        # Each trace, and whether its profiler began before the shell did, so its first
+        # opening is the first since the shell started.
+        self.traces: list[tuple[Path, bool]] = []
+        self.ended: list[int] = []
+        self.process: subprocess.Popen[bytes] | None = None
+
+    def begin(self, *, fresh: bool) -> None:
+        """Start a profiler writing a trace of its own."""
+        trace = self.folder / f"keys-{len(self.traces)}.qtd"
+        self.traces.append((trace, fresh))
+        self.process = profiler_started(trace, self.log)
+
+    def written(self) -> None:
+        """Have the profiler write its trace and quit, while the shell still runs."""
+        if self.process is None:
+            return
+        flushed(self.process, self.traces[-1][0])
+        self.ended.append(self.process.wait(timeout=60))
+        self.process = None
+
+
 def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
-    """Start qmlprofiler on the shell's debug port, writing its trace to `trace`."""
+    """Start qmlprofiler on the shell's debug port, writing its trace to `trace`.
+
+    It's asked for the scene graph's frames too, so an opening's frame is found by its sync.
+    """
     return subprocess.Popen(
         [
             os.environ["QMLPROFILER"],
@@ -623,24 +975,38 @@ def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
             "-o",
             str(trace),
             "--include",
-            "binding,javascript,handlingsignal,debugmessages",
+            "binding,javascript,handlingsignal,debugmessages,scenegraph",
         ],
         stdin=subprocess.PIPE,
-        stdout=profiling.open("wb"),
+        stdout=profiling.open("ab"),
         stderr=subprocess.STDOUT,
     )
 
 
-def warmed(shell: Shell, step: str, step_key: str) -> None:
+def chorded(shell: Shell, chord: str, profiling: Profiling | None) -> tuple[str | None, str | None]:
+    """Open LAB_CHORD's place and step out of it, or home by its toggle, given both lines.
+
+    Home steps out of nothing, so its second is None; LAB_WHOLE says how it opens (opened_home).
+    """
+    if chord != "home":
+        return chorded_out(shell, chord)
+    return opened_home(shell, os.environ.get("LAB_WHOLE", ""), profiling), None
+
+
+def warmed(shell: Shell, step: str, step_key: str, profiling: Profiling | None) -> None:
     """Step into `step` and out of LAB_CHORD's place once untimed, as the words are typed once."""
     if step:
         stepped_from_home(shell, step, step_key)
     if chord := os.environ.get("LAB_CHORD"):
-        chorded_out(shell, chord)
+        chorded(shell, chord, profiling)
 
 
 def stepped_round(
-    shell: Shell, round_: int, step: tuple[str, str], capsys: pytest.CaptureFixture[str]
+    shell: Shell,
+    round_: int,
+    step: tuple[str, str],
+    profiling: Profiling | None,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Step into `step` by its key and back out, then out of LAB_CHORD's place, printing each."""
     if step[0]:
@@ -650,10 +1016,11 @@ def stepped_round(
             if os.environ.get("LAB_BACK"):
                 print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
     if chord := os.environ.get("LAB_CHORD"):
-        opening, out = chorded_out(shell, chord)
+        opening, out = chorded(shell, chord, profiling)
         with capsys.disabled():
             print(f"lab-into {round_}: {opening or 'never said'}", flush=True)
-            print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
+            if chord != "home":
+                print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
 
 
 def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -663,9 +1030,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     """
     words = os.environ.get("LAB_WORDS", " ".join(WORDS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
-    trace = tmp_path / "keys.qtd"
-    profiling = tmp_path / "profiler.log"
-    profiler: subprocess.Popen[bytes] | None = None
+    profiling = Profiling(tmp_path) if os.environ.get("LAB_PROFILE") else None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     step = os.environ.get("LAB_STEP", "")
     if os.environ.get("LAB_BACK") and not step:
@@ -682,26 +1047,26 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         # Windows to list are opened before the profiler listens, so it hears only the keys.
         for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
             shell.opened(f"Lab {nth}", app="foot")
-        if os.environ.get("LAB_PROFILE"):
-            profiler = profiler_started(trace, profiling)
+        if profiling is not None:
+            profiling.begin(fresh=False)
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         typed_from_home(shell, words[0])
         rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
-        warmed(shell, step, step_key)
+        warmed(shell, step, step_key, profiling)
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
             # A session moves while home's shut, as Joel's do between his looks, so Agents
             # has something new to say once the step wants its rows; with no LAB_AGENTS, none.
             moved()
-            stepped_round(shell, round_, (step, step_key), capsys)
-        if profiler is not None:
-            flushed(profiler, trace)
+            stepped_round(shell, round_, (step, step_key), profiling, capsys)
+        if profiling is not None:
+            profiling.written()
     heard: list[str] = []
-    if profiler is not None:
-        heard.append(f"the profiler ended {profiler.wait(timeout=60)}")
-        heard.extend(profiling.read_text(errors="replace").splitlines())
+    if profiling is not None:
+        heard.extend(f"the profiler ended {ended}" for ended in profiling.ended)
+        heard.extend(profiling.log.read_text(errors="replace").splitlines())
         logged = shell.log.read_text(errors="replace").splitlines()
         heard.extend(line for line in logged if "ebug" in line or "qmltooling" in line)
     for typed, each in parts.items():
@@ -709,5 +1074,5 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         with capsys.disabled():
             print(f"lab-keys {typed!r}: {len(each['took'])} typed, medians {medians}", flush=True)
     say_heard(shell.log, capsys)
-    if profiler is not None:
-        say_profiled(trace, heard, capsys)
+    if profiling is not None:
+        say_profiled(profiling.traces, heard, capsys)
