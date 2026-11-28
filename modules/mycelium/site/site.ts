@@ -37,6 +37,9 @@ const FLOOR_MS = 2000;
 /** The event the drawing hears each reading by. */
 const NOW_EVENT = "mycelium:now";
 
+/** The event the drawers hear the messages' unread words by, between readings. */
+const UNREAD_EVENT = "mycelium:unread";
+
 const KINDS = ["network", "cell", "machine", "message"] as const;
 type Kind = (typeof KINDS)[number];
 
@@ -83,6 +86,8 @@ let expires: number | undefined;
 let readingSince: number | undefined;
 // What the standing line last said, so a line the drawing wrote since is told apart.
 let saidLast: string | undefined;
+// What the drawers were last told of the messages, so they are told only when it moves.
+let told: Unread | undefined;
 
 /**
  * The worst of the watches' states, the one the map says. Messages still
@@ -126,7 +131,9 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  saidLast = `${sayStanding(now)}${talkWords(unreadOf(now))}${trouble}`;
+  const talk = unreadOf(now);
+  saidLast = `${sayStanding(now)}${talkWords(talk)}${trouble}`;
+  tellUnread(talk);
   asof.textContent = saidLast;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
@@ -169,15 +176,30 @@ function pastPatience(): boolean {
 }
 
 /**
+ * Tells the drawers how the messages stand when it moves. A drawer's words
+ * are all that move, so the drawing changes just those rather than being
+ * handed a reading, which would draw the whole map again. Messages that
+ * have answered come with a reading of their own.
+ */
+function tellUnread(now: Unread | undefined): void {
+  if (now === undefined || now === told) {
+    return;
+  }
+  told = now;
+  document.dispatchEvent(new CustomEvent(UNREAD_EVENT, { detail: now }));
+}
+
+/**
  * Says how the map stands once its patience with messages has run out,
- * and hands the drawers a reading to say it too, unless the drawing has
- * written the line since, as when a reading couldn't draw: that stays
- * until the next reading is handed over.
+ * and so tells the drawers, unless the drawing has written the line since,
+ * as when a reading couldn't draw: that stays until the next reading is
+ * handed over, and only the drawers are told.
  */
 function sayPastPatience(): void {
   if (asof.textContent === saidLast) {
     sayHow();
-    owe();
+  } else {
+    tellUnread(unreadOf(standing()));
   }
 }
 
@@ -187,6 +209,7 @@ function handOver(): void {
   owed = false;
   handed = Date.now();
   const now = { ...nowOf(heard, handed), unread: unreadOf(standing()) };
+  told = now.unread;
   // A line the drawing wrote of a reading it couldn't draw is that reading's alone:
   // the drawing takes each reading as it's handed, so one that fails again says so again.
   if (saidLast !== undefined && asof.textContent !== saidLast) {
@@ -281,14 +304,10 @@ function watch(kind: Kind): Held {
         owe();
       },
       stands: (now) => {
+        // Messages yet to answer are said in the drawers as well as the
+        // line, by how the map stands, so saying it tells the drawers too.
         standings.set(kind, now);
         sayHow();
-        // Messages yet to answer are said in the drawers as well as the
-        // line, by how the map stands, so any watch moving then hands the
-        // drawers a reading.
-        if (readingTalk()) {
-          owe();
-        }
       },
       problem: (what) => {
         unread.set(kind, `${kind}: ${what}`);

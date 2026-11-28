@@ -3103,7 +3103,8 @@ import {
     waiting: "Still waiting on the node's latest messages.",
     broken: "Couldn't read the node's latest messages.",
   };
-  const unreadHint = () => `<p class="hint">${UNREAD_WORDS[current.unread] || UNREAD_WORDS.reading}</p>`;
+  const unreadWords = () => UNREAD_WORDS[current.unread] || UNREAD_WORDS.reading;
+  const unreadHint = () => `<p class="hint" data-unread>${unreadWords()}</p>`;
   // Where the node serves no waits, who owes an answer is guessed from the
   // messages (owing), so until they are read nobody owing one is unknown,
   // not all clear.
@@ -4998,6 +4999,13 @@ import {
     }
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));
+  // Unread words told between readings change only the drawer's words, as
+  // a reading would draw the whole map again.
+  document.addEventListener("mycelium:unread", (e) => {
+    if (!current || current.messagesHeard) return;
+    current.unread = e.detail;
+    for (const p of panelBody.querySelectorAll("[data-unread]")) p.textContent = unreadWords();
+  });
 
   // How things stand, as one sentence over the work, its last clause the
   // italic turn: who needs him, else what is stuck or moving, else that
