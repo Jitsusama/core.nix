@@ -250,6 +250,12 @@
     at the walk's pace, those kept nowhere, even one whose folder went, but in a window when no
     boot's places are known
   '';
+  a-screen-named-for-a-prototypes-key-takes-its-workspace-back = ''
+    a screen on a connector named __proto__ or constructor, unplugged, has its workspace noted
+    away by its described name, not by what a plain object holds at that key, the workspace
+    waiting while only the laptop's screen is there, and plugged back in takes it back on its
+    own connector, noted away no longer
+  '';
   a-screen-niri-is-late-to-name-takes-its-workspaces-back = ''
     a monitor plugged back in takes back the workspace niri kept on the laptop's screen, leaving
     the one niri gave back, even when niri never answers the shell's look at the screens as the
