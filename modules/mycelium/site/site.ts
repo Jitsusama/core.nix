@@ -126,7 +126,7 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  saidLast = `${sayStanding(now)}${talkWords(now)}${trouble}`;
+  saidLast = `${sayStanding(now)}${talkWords(unreadOf(now))}${trouble}`;
   asof.textContent = saidLast;
   asof.dataset["state"] = now?.state ?? "connecting";
   // The drawing's own look for a map that isn't now.
@@ -134,37 +134,38 @@ function sayHow(): void {
 }
 
 /**
- * What the line says of messages the map is drawn without: that it is
- * reading them, and past its patience that it is still waiting on them,
- * said again then so the words move without a reading to move them. A
- * map that isn't live reads nothing, and its standing says why.
+ * How the messages the map is drawn without stand, for the line and the
+ * drawers alike, so the two never disagree: read for, and past the map's
+ * patience waited on, said again then so the words move without a reading
+ * to move them. A map that isn't live reads nothing, whichever watch is
+ * why, so the drawers say they couldn't read them while the line's own
+ * standing says why. Nothing once the messages have answered.
  */
-function talkWords(now: Standing | undefined): string {
-  if (!readingTalk() || now?.state !== "live" || standings.get("message")?.state === "broken") {
-    return "";
+function unreadOf(now: Standing | undefined): Unread | undefined {
+  if (!readingTalk()) {
+    return undefined;
+  }
+  if (now?.state !== "live") {
+    return "broken";
   }
   if (readingSince === undefined) {
     readingSince = performance.now();
     globalThis.setTimeout(sayPastPatience, TALK_PATIENCE_MS + 1);
   }
-  return pastPatience() ? WAITING_TALK : READING_TALK;
+  return pastPatience() ? "waiting" : "reading";
+}
+
+/** What the line says of the messages: only that it reads or waits on them. */
+function talkWords(talk: Unread | undefined): string {
+  if (talk === "reading") {
+    return READING_TALK;
+  }
+  return talk === "waiting" ? WAITING_TALK : "";
 }
 
 /** Whether the map has been drawn without its messages for longer than its patience. */
 function pastPatience(): boolean {
   return readingSince !== undefined && performance.now() - readingSince > TALK_PATIENCE_MS;
-}
-
-/** What the drawers say of the messages, as the line does, or nothing once they have answered. */
-function unreadTalk(): Unread | undefined {
-  if (answered.has("message")) {
-    return undefined;
-  }
-  const state = standings.get("message")?.state;
-  if (state === "broken" || state === "stale") {
-    return "broken";
-  }
-  return pastPatience() ? "waiting" : "reading";
 }
 
 /**
@@ -185,7 +186,7 @@ function handOver(): void {
   waiting = undefined;
   owed = false;
   handed = Date.now();
-  const now = { ...nowOf(heard, handed), unread: unreadTalk() };
+  const now = { ...nowOf(heard, handed), unread: unreadOf(standing()) };
   // A line the drawing wrote of a reading it couldn't draw is that reading's alone:
   // the drawing takes each reading as it's handed, so one that fails again says so again.
   if (saidLast !== undefined && asof.textContent !== saidLast) {
@@ -283,8 +284,9 @@ function watch(kind: Kind): Held {
         standings.set(kind, now);
         sayHow();
         // Messages yet to answer are said in the drawers as well as the
-        // line, so a watch of them breaking hands the drawers a reading.
-        if (kind === "message" && !answered.has(kind)) {
+        // line, by how the map stands, so any watch moving then hands the
+        // drawers a reading.
+        if (readingTalk()) {
           owe();
         }
       },

@@ -3096,8 +3096,8 @@ import {
   };
   // What a drawer says of messages the node has yet to give, in the words
   // the standing line says it in (site.ts): reading them, waiting on them
-  // past its patience, or unable to read them once their watch broke or the
-  // map went stale. A reading that says none is still being read.
+  // past its patience, or unable to read them while the map isn't live,
+  // whichever watch is why. A reading that says none is still being read.
   const UNREAD_WORDS = {
     reading: "Still reading the node's latest messages.",
     waiting: "Still waiting on the node's latest messages.",
