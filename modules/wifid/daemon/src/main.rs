@@ -3842,15 +3842,12 @@ impl Wifid<'_> {
             }
             Heed::LetGo if looked == Looked::Failed => {
                 println!("<6>{card}'s look for the points asked failed, so may join any again");
-                self.heed_ended(card, from.as_deref());
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::LetGo => {
                 println!("<6>{card} hears none of the points asked, so may join any again");
-                // A look this warning began was its heed, and has ended.
-                if looked != Looked::Not {
-                    self.heed_ended(card, from.as_deref());
-                }
+                // Kept above as a let-go, the look this warning began, its
+                // heed, has ended (`Heed::keep_warned`).
                 self.let_go(card, joining != Some(card)).await;
             }
         }

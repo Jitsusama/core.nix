@@ -728,6 +728,38 @@ mod tests {
         );
     }
 
+    /// `Wifid::asked` once ended a let-go's heed itself as its look's end.
+    /// A let-go is heeded only by a card not leaving, so keeping it has
+    /// already ended the look's heed, and nothing is left to end.
+    #[test]
+    fn a_let_go_is_heeded_only_not_leaving_so_its_look_leaves_no_heed_to_end() {
+        let request = warning(vec![named(FAR, None)]);
+        let heeds = |leaving| request.heed(Some(ON), &heard(&[]), true, leaving, true, PASSWORD);
+        let start = Instant::now();
+        let (ended, until) = (start + Duration::from_secs(1), start + SETTLE);
+        let mut state = on_the_warning_point();
+        Heed::Look(vec![2437]).keep_warned(&mut state, ("wlan2", ON), false, (start, until));
+        let let_go = heeds(false);
+        let_go.keep_warned(&mut state, ("wlan2", ON), false, (ended, until));
+        let kept = state.clone();
+        state.heed_ended("wlan2", ON);
+
+        assert_eq!(
+            let_go,
+            Heed::LetGo,
+            "a look hearing none of the points named didn't let the card go"
+        );
+        assert_eq!(
+            heeds(true),
+            Heed::Leaving,
+            "a card still leaving was let go"
+        );
+        assert_eq!(
+            state, kept,
+            "a let-go kept its look's heed for the look's end to end"
+        );
+    }
+
     #[test]
     fn a_heed_left_to_wpa_supplicant_keeps_the_wait_on_a_warned_move_still_leaving() {
         let mut state = on_the_warning_point();
