@@ -284,6 +284,10 @@ Item {
     // came inside it however late they landed. A press repeated because its release came late
     // is the same key, so it isn't counted.
     property int quietDropped: 0
+    // How many Returns the line held back since it opened, waiting for a key typed first, which
+    // the launcher's showing says, so a check sees its Return heard and held, not yet to come.
+    // A held key's repeats are the same press, so they aren't counted.
+    property int returnsHeld: 0
     // Whether Return waits for the caret at the line's end too: a line holding words a page
     // offered (the launcher's newWork) starts them only once Joel has read through to their
     // end, since a one-line field shows only part of what a page may offer, and stray keys
@@ -296,6 +300,7 @@ Item {
     function linked(offered) {
         quietUntil = Date.now() + linkQuiet;
         quietDropped = 0;
+        returnsHeld = 0;
         returnWaits = true;
         endWaits = offered === true;
     }
@@ -303,6 +308,7 @@ Item {
     function unlinked() {
         quietUntil = 0;
         quietDropped = 0;
+        returnsHeld = 0;
         returnWaits = false;
         walkHeld = false;
         endWaits = false;
@@ -324,8 +330,11 @@ Item {
             walkHeld = false;
         if (!returnWaits)
             return false;
-        if (returning)
+        if (returning) {
+            if (!event.isAutoRepeat)
+                returnsHeld += 1;
             return true;
+        }
         if (typed)
             returnWaits = false;
         return false;

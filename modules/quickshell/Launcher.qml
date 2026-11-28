@@ -10597,6 +10597,9 @@ Scope {
             // How many keys a link's quiet dropped since it opened the field
             // (Prompt.qml), so a check knows which of its keys came inside it.
             quietDropped: prompt.quietDropped,
+            // How many Returns it held since, waiting for a key typed first (Prompt.qml), so a
+            // check knows its Return was heard before it says nothing landed.
+            returnsHeld: prompt.returnsHeld,
             // What the list says in place of rows, where it has none.
             nothing: nothingShown.visible ? nothingShown.name : "",
             // The cat drawn beside it, if any: which mark's, a cell in the
