@@ -743,8 +743,9 @@ def test_now_and_a_network_say_their_talk_is_still_read(
     expect(drawer, "a network still read talk that had answered").not_to_contain_text(
         DRAWER_READING
     )
-    page.keyboard.press(".")
-    expect(page.locator("#panel-title"), ". didn't open Now again").to_have_text("Now")
+    # With nothing chosen the drawer is Now again, since . opened it.
+    page.evaluate("location.hash = ''")
+    expect(page.locator("#panel-title"), "Now didn't open again").to_have_text("Now")
     expect(drawer.locator(".talk-line"), "Now said no talk once it answered").to_be_visible()
     expect(drawer, "Now still read talk that had answered").not_to_contain_text(DRAWER_READING)
     opened.close()
