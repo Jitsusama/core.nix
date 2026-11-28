@@ -983,6 +983,40 @@ def test_messages_broken_before_they_answer_are_said_broken(
     opened.close()
 
 
+# A map that isn't live reads nothing, whatever its message watch says, so a cell watch breaking
+# while the messages are still read leaves the line saying nothing of reading them and the
+# drawer open beside it saying it can't; once the cells answer again, neither says so.
+def test_a_map_not_live_says_its_messages_unread_alike_in_the_line_and_drawer(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    cell_opens(page, "TERN01")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
+    slow_talk_node.withhold("cell")
+    slow_talk_node.cut("cell")
+    the_map_stands(page, "broken")
+    expect(asof, "a broken cell watch wasn't said as not live").to_contain_text(NOT_LIVE)
+    expect(asof, "a map not live was said reading its messages").not_to_contain_text(READING_TALK)
+    expect(drawer, "a drawer read the messages of a map the line says isn't live").to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
+    expect(drawer, "a drawer said reading and broken at once").not_to_contain_text(DRAWER_READING)
+    slow_talk_node.answer("cell")
+    the_map_stands(page, "live", timeout=BACK_MS)
+    # Past its patience by now or not, the line and the drawer no longer say the map can't read.
+    expect(asof, "a map live again was still said not live").not_to_contain_text(NOT_LIVE)
+    expect(drawer, "a drawer still couldn't read with the map live again").not_to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
+    opened.close()
+
+
 # Messages that answered and then lose their watch, as when the node drops it,
 # are said broken while the server watches again, and live once they answer
 # again. They were read once, so the line never says it is reading them.
