@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import (
     Browser,
     BrowserContext,
@@ -257,7 +258,12 @@ def shown_by_its_cap(page: Page, drawn: str, how: str) -> None:
     loaded = page.evaluate("() => globalThis.loaded")
     assert loaded is not None, f"the page {how} was never read as it loaded"
     assert loaded["opacity"] == "0", f"the page {how} was at {loaded} as it loaded"
-    page.wait_for_function("() => globalThis.seenAt !== undefined", timeout=CAPPED_MS)
+    try:
+        page.wait_for_function("() => globalThis.seenAt !== undefined", timeout=CAPPED_MS)
+    except PlaywrightTimeoutError:
+        seen = page.evaluate("() => getComputedStyle(document.body).opacity")
+        message = f"the page {how} was still at opacity {seen} past its cap, {CAPPED_MS} ms"
+        raise AssertionError(message) from None
     at = page.evaluate("() => globalThis.seenAt")
     assert UNSEEN_MS <= at < CAPPED_MS, f"the page {how} was seen at {at:.0f} ms, not its cap"
     found = page.evaluate("(drawn) => document.querySelector(drawn) !== null", drawn)
