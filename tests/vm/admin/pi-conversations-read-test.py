@@ -6,16 +6,45 @@ whole and readable.
 
 from __future__ import annotations
 
-from pi_conversations_read import failure_read
+from pi_conversations_read import failure_read, read_for_failure
 
 # What coreutils' timeout exits with when its command runs out of time, written out here rather
-# than read from the module, so a wrong constant there fails these cases.
+# than read from the module, so a wrong constant there fails these cases. That the driver gives
+# it is the driver's own: nixos/lib/test-driver's _execute runs a command under `timeout` and
+# returns ${PIPESTATUS[0]}, which these cases can't reach.
 TIMEOUT_EXIT = 124
 
 
 def test_a_read_gives_its_lines_as_one() -> None:
     said = failure_read(0, "first\n\n  \nsecond\n", 30)
     assert said == "first | second", f"blank lines dropped and the rest joined, not {said!r}"
+
+
+def test_a_line_holding_a_control_code_alone_is_kept() -> None:
+    said = failure_read(0, "a\n\r\n\x0b\nb\n", 30)
+    assert said == "a | \\r | \\x0b | b", f"lines of control codes kept as escapes, not {said!r}"
+
+
+def test_a_read_quotes_a_backslash_and_a_pipe_so_it_reads_back_one_way() -> None:
+    said = failure_read(0, "C:\\x1b | next\n", 30)
+    assert said == "C:\\\\x1b \\| next", (
+        f"a host's backslash and pipe can't pass for an escape or a break, not {said!r}"
+    )
+
+
+def test_a_read_that_raised_says_so() -> None:
+    def gone() -> tuple[int, str]:
+        message = "the shell went away"
+        raise OSError(message)
+
+    said = read_for_failure(gone, 30)
+    assert said == "nothing, as reading it failed: OSError('the shell went away')", (
+        f"what was raised, not {said!r}"
+    )
+    read = read_for_failure(lambda: (0, "ActiveState=active\n"), 30)
+    assert read == "ActiveState=active", (
+        f"a read that ran is said as failure_read says it, not {read!r}"
+    )
 
 
 def test_a_read_that_printed_nothing_says_so() -> None:
