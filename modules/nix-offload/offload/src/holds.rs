@@ -72,6 +72,8 @@ impl Holds {
             if machine.starts_with('.') {
                 continue;
             }
+            // A hold whose reason can't be read still holds its machine,
+            // with no reason said, so an unreadable file holds rather than frees.
             let reason = fs::read_to_string(entry.path()).ok().and_then(|text| {
                 let first = text.lines().next().unwrap_or_default().trim();
                 (!first.is_empty()).then(|| first.to_owned())

@@ -3978,9 +3978,12 @@ fn lent_hold(dir: &Path) -> Option<Hold> {
 /// its ssh alias, as its store names it, or by its full name, as its
 /// health says it (`proof.rs`).
 fn lent_hold_in(dir: &Path, folder: &Path) -> Option<Hold> {
+    // A lender with no store names no builder, so there's none to hold.
     let store = fs::read_to_string(dir.join("store")).ok()?;
     let mut names =
         builder(store.trim()).map_or_else(Vec::new, |lent| holds::host_names(&lent.host));
+    // No health yet only leaves out the full name; the alias still finds
+    // a hold.
     let health = fs::read_to_string(dir.join(proof::HEALTH)).unwrap_or_default();
     let said: serde_json::Value = serde_json::from_str(&health).unwrap_or_default();
     names.extend(said["builder"].as_str().map(str::to_owned));
