@@ -55,7 +55,7 @@ let
 
   # Each names its country, as nearly every real access point does, so the
   # test doesn't depend on whether nixpkgs's kernel records the name of a
-  # network whose access point names none. The XPS 14's
+  # network whose access point names none. Core's kernel's
   # wifi-names-a-network-without-a-country holds core.nix's kernel to that.
   accessPoint =
     name: settings:

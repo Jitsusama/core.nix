@@ -72,6 +72,35 @@ fn it_lists_the_stops_standing() {
 }
 
 #[test]
+fn it_lists_a_stop_holding_the_terminals_escapes_without_them() {
+    let state = scratch("escapes");
+    fs::write(
+        state.join("pineapple/stops/slack-C1-1.0.json"),
+        json!({
+            "id": "slack:C1:1.0",
+            "shadow": false,
+            "said_by": "U0OTHER001\u{1b}[2J",
+            "where": "https://example.slack.com/archives/C1/p1\u{1b}[1A",
+            "reaches": ["branch:example/shop@\u{1b}]52;c;aGk=\u{7}main"],
+            "resumed": null,
+        })
+        .to_string(),
+    )
+    .expect("a stop is written");
+    let said = pineapple(&state, &["stops"], false);
+    let out = String::from_utf8_lossy(&said.stdout);
+    assert!(said.status.success(), "stops answers: {said:?}");
+    assert!(
+        !out.contains(['\u{1b}', '\u{7}']),
+        "what anyone said reaches Joel's terminal with none of its escapes: {out:?}"
+    );
+    assert!(
+        out.contains("stops branch:example/shop@]52;c;aGk=main"),
+        "says what it reaches, without them: {out:?}"
+    );
+}
+
+#[test]
 fn it_refuses_a_resume_where_pi_says_it_runs() {
     let state = scratch("refused");
     let said = pineapple(&state, &["resume", "all"], true);

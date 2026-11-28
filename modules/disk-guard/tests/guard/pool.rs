@@ -167,7 +167,8 @@ fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
 /// file off every disk and so out of every freeze.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a lease still refuses the read: \
             run with --ignored and TMPDIR on a Btrfs folder"]
 fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() {
     let dir = tempfile::tempdir().unwrap();
@@ -176,6 +177,7 @@ fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() 
         "{} isn't on Btrfs",
         dir.path().display()
     );
+    says_subvolumes(dir.path());
     let expected = pool(dir.path()).unwrap();
     let file = dir.path().join("leased");
     let held = fs::OpenOptions::new()
@@ -205,8 +207,10 @@ fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() 
 /// could keep its file off every disk and so out of every freeze.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
-            run with --ignored and TMPDIR on a Btrfs folder"]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+            and Linux 6.10 or later, before which a mode still refuses the read \
+            of an account without CAP_DAC_OVERRIDE: run with --ignored, as such an \
+            account, and TMPDIR on a Btrfs folder"]
 fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
@@ -215,13 +219,36 @@ fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
         "{} isn't on Btrfs",
         dir.path().display()
     );
+    says_subvolumes(dir.path());
+    let expected = pool(dir.path()).unwrap();
     let file = dir.path().join("unreadable");
     fs::write(&file, "written").unwrap();
     fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
     assert_eq!(
         pool(&file).ok(),
-        pool(dir.path()).ok(),
+        Some(expected),
         "a file nobody may read, on its subvolume's pool"
+    );
+}
+
+/// Fails, saying so, unless this kernel says which subvolume a file in
+/// `dir` is in, as Linux 6.10 and later do, so a case that needs it
+/// doesn't fail on an older kernel as if the guard were wrong.
+#[cfg(target_os = "linux")]
+fn says_subvolumes(dir: &Path) {
+    // STATX_SUBVOL, which rustix doesn't name.
+    const SUBVOLUME: u32 = 0x8000;
+    let read = rustix::fs::statx(
+        rustix::fs::CWD,
+        dir,
+        rustix::fs::AtFlags::empty(),
+        rustix::fs::StatxFlags::from_bits_retain(SUBVOLUME),
+    )
+    .unwrap();
+    assert_ne!(
+        read.stx_mask & SUBVOLUME,
+        0,
+        "this kernel doesn't say a file's subvolume, which Linux 6.10 and later do"
     );
 }
 

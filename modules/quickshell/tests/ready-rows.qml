@@ -1,11 +1,9 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
-// `the-launcher-words-each-ready-row-it-is-served` check copies
-// launcher/ReadyRows.js, launcher/Found.js, launcher/Beneath.js and
-// launcher/EmojiSearch.js, the When.js ReadyRows.js and the Fuzzy.js
-// EmojiSearch.js read from beside the launcher's folder, launcher/Ago.js,
-// launcher/Interfaces.js and tests/lib/Expect.js
-// beside this file and runs `qml -platform offscreen ready-rows.qml` over
+// `the-launcher-words-each-ready-row-it-is-served` check copies the
+// launcher's files checks/ready-rows.nix names, with what each imports in
+// turn as checks/imports.nix says (checks/helpers.nix's copied), and
+// tests/lib/Expect.js beside this file, and runs `qml -platform offscreen ready-rows.qml` over
 // records made up here in the crate's wrapped form. Long because every
 // case holds one form, the ready rows' (attachments' ready-rows.md), which
 // changes as one, a copy asked for at Return with it.
@@ -713,6 +711,13 @@ QtObject {
             Presented.keyMade({}, "collection:Harbour"), "row:collection:Harbour");
         Expect.same("or a category", Presented.keyMade({ thing: "category:x" }, "k"),
             "row:category:x");
+        // A row made from its daemon's key alone, as Timers', Runs' and
+        // OnSelection's are, whose `thing` is no key, is made the same way.
+        Expect.same("a served key is kept as its daemon wrote it",
+            Presented.keyServed("timer:7"), "timer:7");
+        for (const kind of ["place", "category", "collection"])
+            Expect.same(`but one claiming a ${kind} is kept under row:`,
+                Presented.keyServed(`${kind}:x`), `row:${kind}:x`);
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");

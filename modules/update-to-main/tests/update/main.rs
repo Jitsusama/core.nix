@@ -403,11 +403,13 @@ impl World {
                      if [ -e \"$here/unit-fails\" ]; then echo 'warning: the following units \
                      failed: home-manager-joel.service' >&2; exit 4; fi\n\
                      echo \"$1\" >> {modes}\n\
-                     case \"$1\" in switch|boot) ln -sfn \"$here\" {boots};; esac\n\
+                     case \"$1\" in switch|boot)\n\
+                     ln -sfn \"$(readlink -f {profile})\" {boots};; esac\n\
                      case \"$1\" in switch|test) ln -sfn \"$here\" {running}\n\
                      echo \"restarting the following units: sshd.service\";; esac\n",
                     head = stand_in_head(),
                     modes = self.root.join("modes").display(),
+                    profile = self.config.profile.display(),
                     boots = self.root.join("boots").display(),
                     running = self.root.join("running").display()
                 ),
@@ -443,7 +445,9 @@ impl World {
     }
 
     /// The system the boot loader starts next, which only
-    /// switch-to-configuration's `switch` and `boot` set.
+    /// switch-to-configuration's `switch` and `boot` set, to what the
+    /// profile names then rather than to the system they were run from, as
+    /// lanzaboote's loader starts the profile's newest generation.
     fn boots(&self) -> PathBuf {
         fs::read_link(self.root.join("boots")).unwrap()
     }
@@ -1693,6 +1697,175 @@ fn going_back_to_a_checked_system_makes_it_the_boot_default_again() {
         fs::canonicalize(world.boots()).unwrap(),
         fs::canonicalize(&checked).unwrap(),
         "going back left a switch that failed its health check the boot default"
+    );
+}
+
+/// A system of main's `commit` that boots as the booted system does, so
+/// its switch makes it the boot default at once, and whose health fails.
+fn unhealthy_booting_as_booted(world: &World, commit: &str) -> PathBuf {
+    let system = world.system(commit);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
+    fs::write(system.join("unhealthy"), "").unwrap();
+    system
+}
+
+/// A machine whose update-to-main made main's `zero` its boot default,
+/// then ran main's `one`, whose boot check failed, so it boots `zero`
+/// still; and main's `two`, whose switch makes it the boot default and
+/// whose health then fails. Gives `zero` and `two`.
+fn a_switch_failing_after_a_failed_boot_check(world: &mut World) -> (PathBuf, PathBuf) {
+    let booted = world.system("booted");
+    fs::write(booted.join("initrd"), "one").unwrap();
+    std::os::unix::fs::symlink(&booted, &world.config.booted).unwrap();
+    let zero = world.signed("zero");
+    std::os::unix::fs::symlink(booted.join("initrd"), world.system(&zero).join("initrd")).unwrap();
+    let (_, switched) = world.update();
+    assert!(
+        matches!(switched, Line::Done { boots: None, .. }),
+        "main's zero didn't switch: {switched:?}"
+    );
+    a_failed_boot_check(world);
+    let two = world.signed("two");
+    let failing = unhealthy_booting_as_booted(world, &two);
+    (world.system(&zero), failing)
+}
+
+/// The why of `ending`, an update that failed and went back.
+fn went_back(ending: &Line) -> &str {
+    let Line::Failed { why, .. } = ending else {
+        panic!("the unhealthy switch didn't fail: {ending:?}")
+    };
+    assert!(why.contains("went back to what it ran"), "{why}");
+    why
+}
+
+#[test]
+fn going_back_unchecked_puts_back_what_the_machine_booted_before() {
+    // Going back to a system whose boot check failed only activates it,
+    // so a switch that failed after making itself the boot default stayed
+    // it: the machine would next boot what had just failed.
+    let mut world = World::new();
+    let (zero, _) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "going back left the switch that failed what the machine boots: {why}"
+    );
+    assert_eq!(
+        world.modes().last().map(String::as_str),
+        Some("boot"),
+        "what the machine booted before wasn't made the boot default again"
+    );
+    assert_eq!(
+        fs::canonicalize(&world.config.profile).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "the profile, which a loader boots the newest of, didn't name what it booted before"
+    );
+}
+
+#[test]
+fn a_healthy_switch_is_what_going_back_unchecked_puts_back() {
+    let mut world = World::new();
+    a_switch_failing_after_a_failed_boot_check(&mut world);
+    world.update();
+    let three = world.signed("three");
+    let healthy = world.system(&three);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), healthy.join("initrd")).unwrap();
+    let (_, switched) = world.update();
+    assert!(
+        matches!(switched, Line::Done { boots: None, .. }),
+        "main's three didn't switch: {switched:?}"
+    );
+    let four = world.signed("four");
+    a_new_initrd(&mut world, &four, "exit 1");
+    let (_, unchecked) = world.update();
+    assert!(
+        matches!(unchecked, Line::Done { boots: Some(_), .. }),
+        "main's four didn't fail its boot check: {unchecked:?}"
+    );
+    let five = world.signed("five");
+    unhealthy_booting_as_booted(&world, &five);
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&healthy).unwrap(),
+        "going back didn't put back the boot default the healthy switch made: {why}"
+    );
+}
+
+#[test]
+fn a_boot_default_set_by_hand_since_is_left_be_and_said() {
+    // A switch by hand moves the boot default to the person's choice, so
+    // the one update-to-main kept before it is no longer what to go back to.
+    let mut world = World::new();
+    let (_, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let by_hand = world.system("by-hand");
+    for link in [world.config.profile.clone(), world.root.join("boots")] {
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&by_hand, &link).unwrap();
+    }
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert!(
+        why.contains("the profile moved outside update-to-main"),
+        "going back didn't say why it left the boot default be: {why}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&two).unwrap(),
+        "going back moved a boot default the profile no longer named: {why}"
+    );
+}
+
+#[test]
+fn a_switch_cut_off_after_it_moved_the_profile_still_puts_back_the_boot_default() {
+    // update-to-main moves the profile itself before a switch ends, so a
+    // daemon cut off between the two left the profile its own, not a hand's.
+    let mut world = World::new();
+    let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    let one = world.running();
+    let moved = [
+        world.config.profile.clone(),
+        world.root.join("boots"),
+        world.root.join("running"),
+    ];
+    for link in moved {
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&two, &link).unwrap();
+    }
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({ "system": two, "previous": one }).to_string(),
+    )
+    .unwrap();
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "a switch cut off after moving the profile left the one that failed the boot default: {why}"
+    );
+}
+
+#[test]
+fn a_boot_default_collected_since_is_said_left_to_the_switch_that_failed() {
+    let mut world = World::new();
+    let (zero, two) = a_switch_failing_after_a_failed_boot_check(&mut world);
+    fs::remove_dir_all(&zero).unwrap();
+    let (_, failed) = world.update();
+    let why = went_back(&failed);
+    let next = format!("boots {} next", two.display());
+    assert!(
+        why.contains(&next) && why.contains("is gone from the store"),
+        "going back didn't say the machine boots the switch that failed next: {why}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&two).unwrap(),
+        "{why}"
     );
 }
 
@@ -2950,6 +3123,302 @@ fn a_main_the_host_says_doesnt_descend_is_refused() {
     };
     assert!(why.contains("doesn't descend"), "{why}");
     assert!(!world.checkout_has(&two), "the checkout was fetched");
+}
+
+/// A main the checkout holds without the commit last switched to, read
+/// from the host and never fetched, is asked of the host, which says it
+/// descends, rather than refused as a history gone another way.
+#[test]
+fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&one),
+        "the checkout wasn't left holding two without one"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a main descending from what the machine ran was refused for a commit the checkout lacks"
+    );
+}
+
+/// Leaves the account's checkout holding main's head alone, as a fetch
+/// of part of its history does, and gives that head.
+fn shallow_checkout(world: &World) -> String {
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &[
+            "fetch",
+            "--quiet",
+            "--depth=1",
+            "origin",
+            "+main:refs/shallow",
+        ],
+    );
+    git(checkout, &["rev-parse", "refs/shallow"])
+        .trim()
+        .to_owned()
+}
+
+/// A main gone another way from what the machine ran, whose head the
+/// checkout holds without what it ran, is refused on the host's word.
+#[test]
+fn a_main_the_host_says_went_another_way_is_refused_though_the_checkout_lacks_its_past() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&one),
+        "the checkout held what the machine ran"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the host says went another way wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
+}
+
+/// A held commit main holds, which the checkout lacks below the head it
+/// holds, is asked of the host rather than judged not in main.
+#[test]
+fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let stopped = world.hosted_commit("stopped", None);
+    world.answer();
+    world.system(&stopped);
+    assert_eq!(
+        world.update().1,
+        done(&stopped),
+        "the first head wasn't read"
+    );
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main holding a held commit the checkout lacks wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "refused without the host saying main holds it: {why}"
+    );
+}
+
+/// With no host to ask, a copy that can't walk between two commits it
+/// holds says so, rather than that main went another way: on 26 November
+/// that refusal read as a rewritten main and hid the copy's gap.
+#[test]
+fn a_copy_that_cant_walk_with_no_host_to_ask_says_so() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    world.system(&two);
+    let ending = world.update().1;
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("main's history")),
+        "a copy that couldn't walk between the two was said to show another way: {ending:?}"
+    );
+}
+
+/// A copy holding both commits that can't walk the history between them
+/// asks the host, rather than failing the update on its own error.
+#[test]
+fn a_copy_that_cant_walk_between_two_commits_asks_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a copy that couldn't walk between the two failed the update rather than asking"
+    );
+}
+
+/// With no host to ask, a held commit the checkout lacks below the head
+/// it holds can't be told held or not, so it stops the update: a copy
+/// holding part of main's history proves nothing by lacking it.
+#[test]
+fn a_held_commit_the_checkout_lacks_with_no_host_to_ask_stops_main() {
+    // Nothing has read main yet, so the checkout holds only the head a
+    // fetch of part of its history brought.
+    let world = World::hosted_from(World::new(), counted_token);
+    let stopped = world.hosted_commit("stopped", None);
+    let two = world.hosted_commit("two", None);
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a held commit the checkout lacks, with no host, let main through: {ending:?}")
+    };
+    assert!(
+        why.contains("couldn't be told") && why.contains("no host's API"),
+        "a held commit the checkout lacks wasn't said untold for want of a host: {why}"
+    );
+}
+
+/// With no host to ask, a checkout fetched whole holds every commit before
+/// main's head, so a held commit it lacks isn't main's and main switches:
+/// a hold on a branch's commit not merged yet keeps nothing else off.
+#[test]
+fn a_held_commit_a_whole_checkout_lacks_with_no_host_to_ask_lets_main_through() {
+    let world = World::hosted_from(World::new(), counted_token);
+    world.hosted_commit("one", None);
+    let two = world.hosted_commit("two", None);
+    let unmerged = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {unmerged}"), Some(1000));
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a held commit a whole checkout lacks, with no host, stopped main"
+    );
+}
+
+/// A main rewritten past what the machine ran, both of which root's copy
+/// holds, is refused on the copy's own walk: a host that can't say how
+/// they stand mustn't turn the refusal into a failed update.
+#[test]
+fn a_main_the_copy_shows_went_another_way_is_refused_without_the_host() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    // The checkout holds what the machine ran and the rewritten head both,
+    // whole, as a person's own fetches would leave it.
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    git(&checkout, &["fetch", "--quiet", "origin", "+main:refs/ran"]);
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    // The host is never told of two, so asking it how two stands fails.
+    let two = world.hosted_commit("two", None);
+    git(
+        &checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/rewritten"],
+    );
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the copy shows went another way wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
+}
+
+/// A hold on a commit nobody can say main holds stops the update, and the
+/// stop says how to let it through.
+#[test]
+fn a_hold_that_cant_be_told_says_how_to_lift_it() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let nobody = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {nobody}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a hold that couldn't be told let main through: {ending:?}")
+    };
+    assert!(
+        why.contains(&format!("update-to-main lift {nobody}")),
+        "a hold that couldn't be told didn't say how to lift it: {why}"
+    );
+    held::ask(&world.config, &format!("lift {nobody}"), Some(1000));
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "lifting a hold that couldn't be told didn't let main through"
+    );
 }
 
 /// A hosted world whose account names the commit that last changed the

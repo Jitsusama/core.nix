@@ -32,7 +32,7 @@ import {
 } from "./draw.ts";
 import { keptOf, looksOf } from "./looks.ts";
 import { machineHeadline, whenSaid } from "./machine.ts";
-import { allTold, type System, systemOf, type Thing } from "./model.ts";
+import { allTold, type System, systemOf, type Thing, thingsHeld } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -67,13 +67,14 @@ const clearOfMast = new ResizeObserver(() => {
 });
 clearOfMast.observe(mast);
 
-const KINDS = ["summary", "part", "machine"] as const;
+const KINDS = ["summary", "part", "machine", "builder"] as const;
 // What each watch holds: the Held its follow keeps, which is the one it
 // folds each answer into, so the page reads that one and makes none.
 const held: { [kind in (typeof KINDS)[number]]: Held } = {
   summary: new Held(),
   part: new Held(),
   machine: new Held(),
+  builder: new Held(),
 };
 const standings = new Map<string, Standing>();
 // The watches that have told their records whole, since a watch answers
@@ -124,7 +125,10 @@ function when(at: string): string {
   return whenSaid(at, Date.now());
 }
 
-/** The worst of the three watches' states, the one the page says. */
+/**
+ * The worst of the four watches' states, the one the page says: the
+ * builders' among them, since a page whose builders aren't live isn't.
+ */
 function standing(): Standing | undefined {
   const order = ["broken", "stale", "connecting", "live"];
   return [...standings.values()].sort(
@@ -322,7 +326,7 @@ function draw(): void {
     sayWhen();
     return;
   }
-  system = systemOf(held.summary, held.part, held.machine);
+  system = systemOf(held.summary, held.part, thingsHeld(held.machine, held.builder));
   sayWhen();
   if (system === undefined) {
     return;

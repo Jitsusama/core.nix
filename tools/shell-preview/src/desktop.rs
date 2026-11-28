@@ -212,7 +212,11 @@ mod tests {
 
         desktop.end(Duration::from_secs(5));
 
-        assert!(!present(desktop.group));
+        assert!(
+            !present(desktop.group),
+            "process group {} should be gone once asked to end",
+            desktop.group
+        );
         assert!(
             asked.elapsed() < Duration::from_secs(5),
             "it was killed, not asked"
@@ -226,7 +230,11 @@ mod tests {
 
         desktop.end(Duration::from_millis(300));
 
-        assert!(!present(desktop.group));
+        assert!(
+            !present(desktop.group),
+            "process group {} should be gone once killed",
+            desktop.group
+        );
         assert_eq!(heard.recv(), Ok(Ended::Closed(128 + libc::SIGKILL)));
     }
 
@@ -238,7 +246,11 @@ mod tests {
 
         assert_eq!(heard.recv(), Ok(Ended::Closed(3)));
         desktop.end(Duration::from_secs(5));
-        assert!(!present(desktop.group));
+        assert!(
+            !present(desktop.group),
+            "process group {} should be gone once it closed",
+            desktop.group
+        );
     }
 
     #[test]

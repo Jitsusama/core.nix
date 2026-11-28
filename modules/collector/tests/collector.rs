@@ -225,7 +225,11 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     assert!(first["took_ms"].is_number(), "{first}");
 
     let tree = ask(&store, &["traces", TRACE]);
-    assert!(tree.status.success());
+    assert!(
+        tree.status.success(),
+        "asking for the trace's tree failed: {}",
+        String::from_utf8_lossy(&tree.stderr)
+    );
     let tree = String::from_utf8(tree.stdout).unwrap();
     let rows: Vec<&str> = tree.lines().collect();
     assert_eq!(rows.len(), 2, "{tree}");

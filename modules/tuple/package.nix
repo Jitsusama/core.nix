@@ -8,9 +8,8 @@
 # printed a command's arguments without running it, where `tuple new --help`
 # failed with "too many cmdline args"; no check holds either, so read the
 # help in the build sandbox, not on a machine signed in. This build calls
-# new and share
-# deprecated, which tuple-call runs to open Joel's room and share his
-# screen, so a later one may drop them.
+# new and share deprecated, which tuple-call runs to open Joel's room and
+# share his screen, so a later one may drop them.
 # New strings say a camera's or a video's colour space isn't handled, one
 # adding that it's converted as BT.601 limited; nobody has yet seen Tuple
 # say them. The log lines and stream keys tuple-call reads, the contacts'

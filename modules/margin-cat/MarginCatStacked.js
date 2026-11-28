@@ -66,6 +66,20 @@ function risesFrom(place, at) {
     return { x: place.x, y: Math.min(place.y, at.height + DROPS_FROM * at.tall) };
 }
 
+// Where it comes to the floor from `place` with no window left under it:
+// carried off the screen's side, from the floor past that edge, head first,
+// to sit just inside it, never on a seat out of sight; otherwise straight
+// down where it is. `off` says which side it was off, 0 for none.
+function floorsFrom(place, at) {
+    const y = at.height - at.tall;
+    const off = place.x + at.wide <= 0 ? -1 : place.x >= at.across ? 1 : 0;
+    if (off === 0) {
+        return { off, from: place, to: { x: place.x, y } };
+    }
+    const edge = off < 0 ? { from: -at.wide, to: 0 } : { from: at.across, to: at.across - at.wide };
+    return { off, from: { x: edge.from, y }, to: { x: edge.to, y } };
+}
+
 // It comes onto the screen head first at `x`, from under it if it's going
 // `up`, else head down from the gap over it, hanging by a side on its
 // `side`: its ears and then its eyes come over the edge, its paws moving,
@@ -125,7 +139,9 @@ function walkAlong(from, to, at) {
 // between that window and the one inside the edge, if there's one and
 // that window is all past the edge, and walks on from there without
 // thinking again. Partly on the screen, it walks on from where it's drawn.
-function comesIn(from, at) {
+// It first `holds` that many ms out of sight where given, as niri slides
+// to another workspace under it (moves()).
+function comesIn(from, at, holds) {
     if (at.across === undefined || Routes.onScreen(from.x, at)) {
         return null;
     }
@@ -145,6 +161,9 @@ function comesIn(from, at) {
     way.turn = 0;
     if (seen) {
         return { way, side };
+    }
+    if (holds) {
+        Ways.leg(way, "rides", way, { ms: holds, slide: () => 0, posed: () => null });
     }
     Ways.leg(way, "climbs", { x: peeked, y },
         { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
@@ -167,21 +186,6 @@ function comesIn(from, at) {
     return { way, side };
 }
 
-// A ride on niri's scroll to `to`, which niri set off at `told.at` on its
-// `told.spring`, from where the cat was drawn as niri set it off: at `place`, short
-// of it by what was left then of the ride `carry` under way, or by nothing
-// (MarginCatScreen.qml's rideTo). The scroll turned back mid-way carries
-// on from where the cat was as niri turned it, never from where it's drawn
-// now, which would count the time since twice and set it ahead of its
-// window.
-function rides(carry, place, to, told) {
-    const { at, spring } = told;
-    const left = carry === null ? { x: 0, y: 0 }
-        : MarginCat.lags(carry.from, Math.min(at - carry.at, carry.ends), carry.spring);
-    const from = { x: place.x + left.x - to.x, y: place.y + left.y - to.y };
-    return { from, at, ends: MarginCat.slides(spring), spring };
-}
-
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
 // one above, from `from` on `at.was`'s tiles to its seat `to` on
 // `at.now`'s, as MarginCatPaths.js's moves() takes it. It's walked as
@@ -202,6 +206,19 @@ function moves(from, to, at) {
     // it 90 px into its window's face as niri's spring ran fastest.
     const told = { way: at.way, ahead: (at.ahead ?? 0) + (down ? at.frame ?? 0 : 0), from,
         stacked: { lift, spring } };
+    // Carried wholly off the screen's side as niri scrolled the strip
+    // (MarginCatScreen.qml's carried), it's out of sight as the workspace
+    // slides, so it holds there and then comes in at that edge head first
+    // over the new workspace's windows, as a walk does (comesIn()), never
+    // crossing them from where its old window went, thousands of pixels off.
+    if (to !== null && at.across !== undefined
+        && (from.x >= at.across || from.x + at.wide <= 0)) {
+        const now = Object.assign({}, at, { cols: Paths.columns(at.now, 0), hurried: true });
+        const coming = comesIn(from, now, MarginCat.slides(spring));
+        const way = Paths.onward(coming.way, to, Object.assign({}, now,
+            { facing: coming.way.facing }));
+        return Object.assign(Ways.timed(way), { way: at.way, ahead: told.ahead, from });
+    }
     if (to === null) {
         const way = Ways.begun(at, { x: from.x, y: from.y - lift });
         Ways.leg(way, "rides", way, { ms: MarginCat.slides(spring), slide: () => 0,

@@ -27,9 +27,13 @@ QtObject {
             if (JSON.stringify(got) !== JSON.stringify(want))
                 failures.push(`${name}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
         };
-        visits(expect);
-        trots(expect);
-        drawings(expect);
+        // The whole visit, worked out once for the three, as each is some
+        // 23,500 frames of the cases' minute of processor time.
+        const played = Puppy.visit(Seated.sat());
+        const visited = frames(played);
+        visits(expect, played, visited);
+        trots(expect, played, visited);
+        drawings(expect, visited);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -43,9 +47,7 @@ QtObject {
     }
 
     // The visit's beats, the cat's answers and where the puppy is in each.
-    function visits(expect) {
-        const played = Puppy.visit(Seated.sat());
-        const visited = frames(played);
+    function visits(expect, played, visited) {
         const beat = name => played.beats.find(each => each.name === name);
         const puppyAt = t => Puppy.frame(played, t);
         const catAt = t => Games.frame(played, t);
@@ -100,9 +102,7 @@ QtObject {
     // Its trot: in whole cells, at the pace the cat walks a way that long,
     // a drawing for every two or three cells, in the cat's order, and none
     // shown for less than two frames at 60 Hz.
-    function trots(expect) {
-        const played = Puppy.visit(Seated.sat());
-        const both = frames(played);
+    function trots(expect, played, both) {
         const all = both.map(frame => frame.puppy);
         const waits = played.beats[0];
         expect("its trot in at the cat's hurry, 891 cells at 80 a second",
@@ -141,8 +141,13 @@ QtObject {
             Seated.sat({ seat: { x: 892, y: 20 }, column: { left: 908 - width, top: 30, width } })];
         // Both sides of each width, joined by hand, since Quickshell's
         // JavaScript has no flatMap.
-        const inwards = [200, 201, 202, 203, 204, 205].map(sides)
+        // From 80 to 102 across its way in is 63 to 85 cells, trotted at a
+        // stride of two; from 200, at three.
+        const widths = [80, 81, 82, 100, 101, 102, 200, 201, 202, 203, 204, 205];
+        const inwards = widths.map(sides)
             .reduce((all, pair) => all.concat(pair), []).map(Puppy.visit);
+        expect("its ways in trotted at a stride of two and of three",
+            Array.from(new Set(inwards.map(inward => inward.puppy.stride))).sort(), [2, 3]);
         for (const inward of inwards) {
             const trotted = Array.from({ length: Math.ceil(inward.beats[0].ends) },
                 (_, t) => Puppy.frame(inward, t));
@@ -191,16 +196,17 @@ QtObject {
     }
 
     // Each pose it takes is one of the theme's drawings, which the screen
-    // turns the way it faces (MarginCat.yarnDrawn, as the yarn's): the
+    // turns the way it faces (MarginCat.companionDrawn, as the yarn's): the
     // same stride trotting off is the mirror of its trotting in.
-    function drawings(expect) {
-        const shown = frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy);
+    function drawings(expect, visited) {
+        const shown = visited.map(frame => frame.puppy);
         const posed = new Set(shown.map(puppy => puppy?.pose));
         posed.delete(undefined);
         expect("every pose it takes is drawn",
             Array.from(posed).filter(pose => (Drawings.poses[pose] ?? []).length === 0), []);
-        const drawn = facing => MarginCat.yarnDrawn(MarginCat.yarnLooks(shown.find(puppy =>
-            puppy?.facing === facing && puppy.pose === "puppyWalkingA")), Drawings.poses);
+        const drawn = facing => MarginCat.companionDrawn(MarginCat.companionLooks(
+            shown.find(puppy => puppy?.facing === facing && puppy.pose === "puppyWalkingA")),
+            Drawings.poses);
         const mirrored = drawn(-1).map(row => row.split("").reverse().join(""));
         expect("and turned the way it faces, off as it trots back",
             [JSON.stringify(drawn(1)) === JSON.stringify(mirrored),

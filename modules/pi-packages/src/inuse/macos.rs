@@ -72,10 +72,22 @@ struct ProcRegionWithPathInfo {
 
 // The kernel answers only a buffer of exactly its own size, so a layout
 // that drifted from xnu's fails here rather than reading nothing.
-const _: () = assert!(size_of::<ProcFileInfo>() == 24);
-const _: () = assert!(size_of::<VnodeFdInfoWithPath>() == 1200);
-const _: () = assert!(size_of::<ProcRegionInfo>() == 96);
-const _: () = assert!(size_of::<ProcRegionWithPathInfo>() == 1272);
+const _: () = assert!(
+    size_of::<ProcFileInfo>() == 24,
+    "proc_fileinfo is 24 bytes in xnu"
+);
+const _: () = assert!(
+    size_of::<VnodeFdInfoWithPath>() == 1200,
+    "vnode_fdinfowithpath is 1200 bytes in xnu"
+);
+const _: () = assert!(
+    size_of::<ProcRegionInfo>() == 96,
+    "proc_regioninfo is 96 bytes in xnu"
+);
+const _: () = assert!(
+    size_of::<ProcRegionWithPathInfo>() == 1272,
+    "proc_regionwithpathinfo is 1272 bytes in xnu"
+);
 
 /// `PROC_PIDFDVNODEPATHINFO`: an open file's vnode and path.
 const PROC_PIDFDVNODEPATHINFO: c_int = 2;

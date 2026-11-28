@@ -22,6 +22,15 @@ let
   restoreFile = "${scripts}/restore-file.ts";
   windowsElsewhere = "${scripts}/windows-elsewhere.ts";
   sweepScript = "${scripts}/pi-sweep.ts";
+  # Waits for the machine to have room for a sweep (sweep-room.sh).
+  sweepRoom = pkgs.writeShellApplication {
+    name = "pi-sweep-room";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+    ];
+    text = builtins.readFile ./sweep-room.sh;
+  };
   sweepProviders = config.jitsusama.pi.sweep.providerModules;
   # Whether pi's SSH agent proxy runs here, as home.nix and host.nix decide
   # it, so the sweep is pointed at its socket only where there is one.
@@ -167,6 +176,21 @@ in
       };
       Service = {
         Type = "oneshot";
+        # A sweep waits up to 15 minutes for a machine stalled on memory or
+        # I/O, reading it every 30 s, and never skips the hour, as two
+        # skipped hours hand sweeping to the hosts (sweep-room.sh). The
+        # hosts take over two hours after the last whole sweep ended, by
+        # the stamp the harness's pi-sweep.ts dates as each run ends
+        # (markSweptOutside), and only while no sweep holds the lock, which
+        # the sweep takes as it starts and the wait doesn't. So the wait
+        # ends two minutes and a reading short of those two hours, reading
+        # the stamp on every pass, as a sleep ages it, and one whose stamp
+        # it would outlast starts at once. The dash starts the sweep anyway
+        # if the wait itself fails.
+        ExecStartPre = lib.concatStringsSep " " [
+          "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
+          "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
+        ];
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
@@ -191,8 +215,17 @@ in
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
         # session's trees as a host's would, and the TPM agent's socket, which
-        # a host hides from its conversations too.
+        # a host hides from its conversations too. And the variables bash
+        # reads as it starts a script, as the room check is one: a file to
+        # run, its options, its shell options, and the trace prompt those
+        # options can expand. Exported functions, whose names vary, can't
+        # be cleared by name; whatever sets the account manager's
+        # environment could set these too.
         UnsetEnvironment = [
+          "BASHOPTS"
+          "BASH_ENV"
+          "SHELLOPTS"
+          "PS4"
           "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
           "NODE_PATH"
@@ -204,22 +237,31 @@ in
           "OPENSSL_MODULES"
         ]
         ++ lib.optional (!agentProxied) "SSH_AUTH_SOCK";
-        # A sweep still going after two hours is wedged. The hosts' sweeps
+        # A sweep still going after two hours, its wait for room included,
+        # is wedged. The hosts' sweeps
         # wait on the same lock meanwhile, so none sweeps beside it, and its
         # lock goes stale an hour after it stops, for the next sweep to take.
         TimeoutStartSec = "2h";
         # Walking thousands of trees fills the kernel's caches of folders and
         # files, charged to this unit: on 23 November a run peaked at 5.8 GB
         # and the next at 2.9 GB, while the sweep's own memory stayed under
-        # 0.26 GB and file pages under 0.6 GB. The rest is taken to be
-        # reclaimable slab: no sample caught a peak, but the largest, 1.47
-        # GB in the second run, was 1.35 GB of it. Past
-        # this mark the kernel takes that back from the sweep rather than
-        # from what Joel is using. No hard limit of its own: a kill partway
+        # 0.26 GB and file pages under 0.6 GB. Past this mark the kernel
+        # takes that back from the sweep. At 1.5 GB it took back too much:
+        # on 26 November one run sat at the mark for 34 minutes while its
+        # git status read 8 GB from the disk and 741 KB through read(), so
+        # nearly all of it was a large repository's mapped pack files
+        # faulted in again, 1.8 million times, as each tree's status maps
+        # those packs anew. 6 GiB is over the 5.8 GB peak, and the same on
+        # every machine, as what thrashes is the packs and the trees, not
+        # the memory there is, though on a machine under about 23 GiB
+        # jobs.slice's own ceiling, at least a quarter of memory, may come
+        # first. The mark reserves nothing: what Joel is using keeps its
+        # slices' floors beneath it. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
-        # back. The two-hour timeout above, systemd-oomd watching the slice
-        # for pressure and the kernel's own OOM killer may still end it.
-        MemoryHigh = "1536M";
+        # back. The two-hour timeout above, systemd-oomd
+        # watching the slice for pressure and the kernel's own OOM killer
+        # may still end it.
+        MemoryHigh = "6G";
       };
     };
     systemd.user.timers.pi-sweep = {

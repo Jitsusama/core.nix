@@ -26,8 +26,13 @@ closing's line says how much of what's held is resident, which counts what a pag
 no longer costs. A lent page counts as resident until the kernel takes it, and a page swapped out,
 to zswap's pool or the disk, until it's touched again, so a builder short of memory may read a
 round low and the next one at its true height. The kernel's counts of those are the whole
-machine's, so they bound what it could have taken of the shell: the round before is let that much
-higher, which on a quiet builder is nothing and on a busy one says why the bound was loose.
+machine's, so they bound what it could have taken of the shell, and on a quiet builder are nothing.
+On a busy one they grow with every other build, so the shell bounds them too: a page taken of its
+heap stays held, so no more was taken than any of the round's closings held but hadn't resident,
+give or take its chunks' headers, which resident counts and held doesn't, and each figure's
+rounding to a MB. The headers can only tighten it, so a busy builder may fail a sound round by
+them, never pass a climb.
+The round before is let the lesser higher, which says why the bound was loose when it is.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
+from resident_allowance import allowance
 
 if TYPE_CHECKING:
     import pytest
@@ -103,12 +109,19 @@ def live_after_closings(shell: Shell) -> list[int]:
     return live
 
 
-def resident_after_closings(shell: Shell) -> list[int]:
-    """Give the MB each closing said the heap held resident, in order, -1 where unknown."""
+def resident_after_closings(shell: Shell) -> list[tuple[int, int]]:
+    """Give the MB each closing said the heap held, and held resident, in order.
+
+    Resident is -1 where the closing said it was unknown.
+    """
     said = shell.log.read_text(errors="replace")
     return [
-        int(each.split()[0]) if each[0].isdigit() else -1
-        for each in re.findall(r" MB held, (\d+ MB|an unknown amount) of it resident,", said)
+        (int(held), int(resident.split()[0]) if resident[0].isdigit() else -1)
+        for held, resident in re.findall(
+            r"launcher: collected after closing in \d+ ms: \d+ MB live of (\d+) MB held, "
+            r"(\d+ MB|an unknown amount) of it resident,",
+            said,
+        )
     ]
 
 
@@ -157,15 +170,24 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]
         assert not memfds, f"the shell maps its heap from a memfd {len(memfds)} times"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
-    resident = [float(statistics.median(each)) if each else 0.0 for each in residents]
-    # A take in the third round only lowers it, so only what was taken before it counts.
-    allowed = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
+    resident = [
+        float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
+    ]
+    # It weighs the second round, the one before the last, which the third is held to.
+    room = allowance(
+        started=started,
+        taken=taken,
+        page_size=os.sysconf("SC_PAGE_SIZE"),
+        rounds=residents,
+    )
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
         print(
-            f"resident after each round's closings, medians in MB: {resident}, the machine's"
-            f" taken pages before the third letting the second {allowed:.1f} MB higher",
+            f"resident after each round's closings, medians in MB: {resident}, letting the"
+            f" second {room.allowed:.1f} MB higher for pages taken before the third, the least of"
+            f" {room.machine:.1f} MB the machine took and {room.shell} MB the shell held"
+            " unresident",
             flush=True,
         )
     assert all(rounds), f"a round's closings weren't collected: {rounds}"
@@ -179,23 +201,25 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         f"a round's closings didn't each say what's held resident as this check reads it:"
         f" {residents}"
     )
-    assert all(each >= 0 for said in residents for each in said), (
+    assert all(said >= 0 for each in residents for _, said in each), (
         f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
     )
-    assert resident[2] <= (resident[1] + allowed) * GROWTH, (
+    assert resident[2] <= (resident[1] + room.allowed) * GROWTH, (
         f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
-        f" round before, which the kernel could have taken {allowed:.1f} MB of (medians by"
+        f" round before, which the kernel could have taken {room.allowed:.1f} MB of (medians by"
         f" round, in MB: {resident}), so the heap keeps pages it no longer uses"
     )
 
 
-def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]], list[int]]:
-    """Give the bytes left live, and the MB held resident, at each closing of three rounds.
+def rounds_kept(
+    shell: Shell,
+) -> tuple[list[list[int]], list[list[tuple[int, int]]], list[int]]:
+    """Give the bytes left live, and the MB held and held resident, at each closing of three rounds.
 
     And the pages the kernel had taken anywhere by the end of each round, as pages_taken counts.
     """
     rounds: list[list[int]] = []
-    residents: list[list[int]] = []
+    residents: list[list[tuple[int, int]]] = []
     taken: list[int] = []
     seen = len(live_after_closings(shell))
     for _ in range(3):
