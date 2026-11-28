@@ -552,11 +552,18 @@ mod tests {
     fn text_cut_short_leaves_out_the_line_it_was_cut_in() {
         // Lines of 300 bytes, so the read holds 13 whole and cuts the 14th,
         // fewer than it would show.
-        let line = format!("{}\n", "a".repeat(299));
+        const LEN: usize = 300;
+        const {
+            assert!(
+                !READ.is_multiple_of(LEN) && READ / LEN < LINES,
+                "the read must end inside a line, and hold fewer whole lines than it shows"
+            );
+        }
+        let line = format!("{}\n", "a".repeat(LEN - 1));
         let mut read = line.repeat(20).into_bytes();
         read.truncate(READ + 1);
         let lines = lines_of(&read).unwrap();
-        assert_eq!(lines.len(), READ / line.len(), "the line it cut was shown");
+        assert_eq!(lines.len(), READ / LEN, "the line it cut was shown");
     }
 
     #[test]
