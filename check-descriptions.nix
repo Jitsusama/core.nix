@@ -5690,6 +5690,11 @@
     the launcher's journal names what counted most, the most first and a tie by name, no more
     than it's asked for, none that counted nothing, and nothing for none
   '';
+  the-launcher-says-what-you-asked-for = ''
+    the launcher's Asked For reads what the cadence-spec daemon serves: still asking before it
+    answers, two asks in the order served under a warning head, the unread head with no rows when
+    cadence can't read the list, and no answer of its own once the daemon stops
+  '';
   the-launcher-says-the-page-zathura-is-on = ''
     zathura's provider reads open-now's lines as each zathura's document, page and page count,
     says the page beside a document only one zathura has open, and its drawer says each one's

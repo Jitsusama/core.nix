@@ -22,9 +22,14 @@
 //! 4443be2d). Each place's read has a deadline of its own, past which
 //! cadence is stopped with all it started and the place keeps its last
 //! rows, so a Spec read that hangs, on a git lock or a niri that doesn't
-//! answer, holds Asked For back for no longer than Spec's deadline. The
-//! places are read one after the other, so Asked For asked while Spec is
-//! being read waits out that read, its seconds.
+//! answer, holds Asked For back for no longer than Spec's deadline. A
+//! place whose words say an unread headline, as Asked For's do, serves it
+//! over those rows, so a read that stopped vouches for no row late or due.
+//! The
+//! places are read one after the other, Asked For first, so both watched
+//! at once see Asked For's rows before Spec's read begins; Asked For
+//! watched while a Spec read is already going waits out that read, its
+//! seconds.
 
 use std::io::Read;
 use std::os::unix::process::CommandExt;
@@ -58,21 +63,23 @@ struct Place {
     deadline: Duration,
 }
 
-/// The places it serves, Spec first.
+/// The places it serves, read in this order: Asked For first, since it
+/// takes milliseconds and Spec seconds, so Asked For's first answer never
+/// waits out a Spec read begun beside it (round 6 on #6875, F119).
 const PLACES: [Place; 2] = [
-    Place {
-        name: "spec",
-        flag: "--served",
-        fresh: Duration::from_mins(5),
-        // It takes seconds, so a minute is a read gone wrong.
-        deadline: Duration::from_mins(1),
-    },
     Place {
         name: "asked",
         flag: "--asked",
         fresh: Duration::from_mins(1),
         // It reads two files in milliseconds.
         deadline: Duration::from_secs(10),
+    },
+    Place {
+        name: "spec",
+        flag: "--served",
+        fresh: Duration::from_mins(5),
+        // It takes seconds, so a minute is a read gone wrong.
+        deadline: Duration::from_mins(1),
     },
 ];
 
@@ -140,28 +147,25 @@ fn serving(socket: &Path, asking: &Asking) -> Result<(), Failure> {
     let mut kept: [Kept; 2] = Default::default();
     let mut last: [Option<Instant>; 2] = [None; 2];
     loop {
-        let mut moved = false;
-        let mut wait: Option<Duration> = None;
+        let mut waits: [Option<Duration>; 2] = [None; 2];
         for (at, place) in PLACES.iter().enumerate() {
             let watched = shared.watches("row", place.name) || shared.watches("head", place.name);
             if watched && last[at].is_none_or(|made| made.elapsed() >= place.fresh) {
                 last[at] = Some(Instant::now());
-                let made = made(asking, place);
-                moved |= took(&mut kept[at], made, || {
-                    unread_head(&asking.words, place.name)
-                });
+                let moved = read(&mut kept[at], asking, place);
+                // Handed as soon as this place moves, before the next
+                // place's read, so Asked For isn't held back by Spec's;
+                // every place's rows are handed at once, since a record
+                // left out is told as gone.
+                if moved {
+                    let all = kept.iter().flat_map(Kept::all).cloned().collect();
+                    shared.change(all, json!({}));
+                }
             }
             let since = last[at].map(|made| made.elapsed());
-            if let Some(this) = waiting(watched, since, place.fresh) {
-                wait = Some(wait.map_or(this, |other| other.min(this)));
-            }
+            waits[at] = waiting(watched, since, place.fresh);
         }
-        // Every place's rows are handed at once, since a record left out
-        // is told as gone.
-        if moved {
-            let all = kept.iter().flat_map(Kept::all).cloned().collect();
-            shared.change(all, json!({}));
-        }
+        let wait = soonest(waits);
         // Woken as a watch begins or ends, else when the soonest rows
         // watched go stale.
         let ended = match wait {
@@ -187,6 +191,23 @@ fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Du
     watched.then(|| since.map_or(fresh, |since| fresh.saturating_sub(since)))
 }
 
+/// The soonest of each place's waits, so no place watched goes stale while
+/// another's longer wait is slept; none where no place is watched.
+fn soonest(waits: [Option<Duration>; 2]) -> Option<Duration> {
+    waits.into_iter().flatten().min()
+}
+
+/// Reads `place` of cadence into its own `kept`, headed unread in its
+/// own words where cadence made nothing of it, saying whether what it
+/// serves moved. A place headed in another's words would serve over that
+/// place's own headline, as a failed Spec read heading Asked For unread
+/// would (review of #6875, 151).
+fn read(kept: &mut Kept, asking: &Asking, place: &Place) -> bool {
+    took(kept, made(asking, place), || {
+        unread_head(&asking.words, place.name)
+    })
+}
+
 /// What cadence made of a place: its rows in the order shown, or none
 /// where it said to keep the last, and its headline as a whole record.
 #[derive(Debug, PartialEq)]
@@ -197,21 +218,23 @@ struct Made {
 
 /// Whether what cadence made of a place moved what it serves, taken into
 /// that place's own `kept`: its rows, or the last it served where it said
-/// keep, beside its new headline. Where cadence made nothing of a place
-/// that has served no headline yet, the headline saying its list is unread
-/// (`unread`) is served alone, so a place that waits on its headline, as
-/// Asked For does, stops asking (round 5, F91); one served a headline
-/// before keeps all it served.
+/// keep, beside its new headline. Where cadence made nothing of a place,
+/// the headline saying its list is unread (`unread`) is served beside the
+/// last rows it served, if any: a place that waits on its headline, as
+/// Asked For does, stops asking (round 5, F91), and one whose rows say
+/// what's late doesn't go on saying it in normal colours from a read that
+/// stopped (#6875's eighth round, 147). A place whose words say no unread
+/// headline, as Spec's don't, keeps all it served.
 fn took(kept: &mut Kept, made: Option<Made>, unread: impl FnOnce() -> Option<Value>) -> bool {
     match made {
         Some(Made { rows, head }) => {
             let rows = rows.unwrap_or_else(|| last_rows(kept));
             !kept.take(rows, vec![head]).is_empty()
         }
-        None if !kept.all().any(|record| record["kind"] == "head") => {
-            unread().is_some_and(|head| !kept.take(Vec::new(), vec![head]).is_empty())
-        }
-        None => false,
+        None => unread().is_some_and(|head| {
+            let rows = last_rows(kept);
+            !kept.take(rows, vec![head]).is_empty()
+        }),
     }
 }
 
@@ -326,7 +349,7 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
     if !status.success() {
         return Err(format!("cadence ended {status}"));
     }
-    match reading.recv_timeout(deadline.saturating_sub(started.elapsed())) {
+    match reading.recv_timeout(output_wait(deadline, started.elapsed())) {
         Ok(Ok(printed)) => Ok(printed),
         Ok(Err(why)) => Err(format!("cadence's output couldn't be read: {why}")),
         Err(_) => Err(format!(
@@ -334,6 +357,17 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
             deadline.as_secs()
         )),
     }
+}
+
+/// How long to wait for a read's output once it ended at `elapsed` and its
+/// group was stopped and reaped: what's left of `deadline`, but never less
+/// than a moment. Nothing can still hold the pipe then, so its end is on
+/// its way, and a read that ended just inside its deadline is kept rather
+/// than said to have held its output open past it (review of #6875, 154).
+fn output_wait(deadline: Duration, elapsed: Duration) -> Duration {
+    deadline
+        .saturating_sub(elapsed)
+        .max(Duration::from_millis(100))
 }
 
 /// Whether `child` has ended, seen without reaping it, so the number of
@@ -412,7 +446,7 @@ mod tests {
 
     #[test]
     fn unwatched_it_sleeps_until_a_watch_however_stale_the_rows() {
-        let fresh = PLACES[0].fresh;
+        let fresh = Duration::from_mins(5);
         let stale = Some(fresh + Duration::from_secs(60));
         assert_eq!(
             waiting(false, stale, fresh),
@@ -432,9 +466,31 @@ mod tests {
     }
 
     #[test]
+    fn it_sleeps_the_soonest_wait_of_the_places_watched() {
+        let minute = Duration::from_mins(1);
+        let four = Duration::from_mins(4);
+        assert_eq!(soonest([Some(four), Some(minute)]), Some(minute));
+        assert_eq!(soonest([Some(minute), Some(four)]), Some(minute));
+        assert_eq!(
+            soonest([None, Some(four)]),
+            Some(four),
+            "a place unwatched waits on nothing"
+        );
+        assert_eq!(
+            soonest([None, None]),
+            None,
+            "nothing watched sleeps till a watch"
+        );
+    }
+
+    #[test]
     fn each_place_is_asked_of_cadence_by_its_own_flag_and_keeps_its_own_head() {
         let names: Vec<(&str, &str)> = PLACES.iter().map(|p| (p.name, p.flag)).collect();
-        assert_eq!(names, [("spec", "--served"), ("asked", "--asked")]);
+        assert_eq!(
+            names,
+            [("asked", "--asked"), ("spec", "--served")],
+            "Asked For, read in milliseconds, before Spec's seconds"
+        );
         let printed = br#"{"rows": [], "head": {"said": "3 open"}}"#;
         let Made { head, .. } = parsed(printed, "asked").expect("a headline");
         assert_eq!(head["key"], "head:asked");
@@ -469,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn a_place_cadence_made_nothing_of_is_headed_unread_only_before_its_first_headline() {
+    fn a_place_cadence_made_nothing_of_is_headed_unread_beside_the_rows_it_served() {
         let unread = || {
             Some(json!({"key": "head:asked", "kind": "head",
             "head": {"said": "can't read the list now", "glyph": "failed"}}))
@@ -490,12 +546,35 @@ mod tests {
             vec![json!({"key": "head:asked", "kind": "head", "head": {"said": "1 open"}})],
         );
         assert!(
-            !took(&mut headed, None, unread),
-            "one headed keeps all it served"
+            took(&mut headed, None, unread),
+            "one headed before is headed unread too"
         );
         assert_eq!(
-            headed.get("head:asked").expect("its headline")["head"]["said"],
-            "1 open"
+            headed.get("head:asked").expect("its headline")["head"]["glyph"],
+            "failed",
+            "a read that stopped says so rather than the last headline"
+        );
+        let rows: Vec<Value> = last_rows(&headed)
+            .iter()
+            .map(|row| row["key"].clone())
+            .collect();
+        assert_eq!(rows, ["row:asked:a"], "beside the rows it served");
+        assert!(
+            !took(&mut headed, None, unread),
+            "a second stopped read moves nothing"
+        );
+        let mut spec = Kept::default();
+        spec.take(
+            vec![json!({"key": "row:spec:a"})],
+            vec![json!({"key": "head:spec", "kind": "head", "head": {"said": "1 due"}})],
+        );
+        assert!(
+            !took(&mut spec, None, || None),
+            "a place with no unread words keeps all it served"
+        );
+        assert_eq!(
+            spec.get("head:spec").expect("its headline")["head"]["said"],
+            "1 due"
         );
     }
 
@@ -511,7 +590,63 @@ mod tests {
         assert_eq!(head["head"]["said"], "can't read it");
         assert_eq!(head["head"]["glyph"], "failed");
         assert_eq!(unread_head(&words, "spec"), None, "Spec's words say none");
+        let torn = words.with_extension("torn");
+        std::fs::write(&torn, r#"{"things": [{"id": "asked:head", "sa"#)
+            .expect("the torn words written");
+        assert_eq!(
+            unread_head(&torn, "asked"),
+            None,
+            "words that don't read as JSON serve no unread headline"
+        );
+        assert_eq!(
+            unread_head(&words.with_extension("missing"), "asked"),
+            None,
+            "words that aren't there serve no unread headline"
+        );
         let _ = std::fs::remove_file(&words);
+        let _ = std::fs::remove_file(&torn);
+    }
+
+    #[test]
+    fn a_failed_read_heads_its_own_place_unread_and_no_other() {
+        // `false` fails whatever it's asked, as a cadence whose read went
+        // wrong, and the words are the launcher's own as cadence's tests
+        // hold them, so each place's read runs as the serving loop runs it.
+        let asking = Asking {
+            cadence: PathBuf::from("false"),
+            words: PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/words.json")),
+        };
+        let [asked, spec] = &PLACES;
+        let mut asked_kept = Kept::default();
+        assert!(
+            read(&mut asked_kept, &asking, asked),
+            "Asked For's failed read is headed unread, so it stops waiting"
+        );
+        assert_eq!(
+            asked_kept.get("head:asked").expect("Asked For's headline")["head"],
+            json!({"key": "head:asked", "place": "asked",
+                "said": "can't read the list now", "glyph": "failed"}),
+            "headed in Asked For's own words for an unread list"
+        );
+        let mut spec_kept = Kept::default();
+        spec_kept.take(
+            vec![json!({"key": "row:spec:a"})],
+            vec![json!({"key": "head:spec", "kind": "head", "head": {"said": "1 due"}})],
+        );
+        assert!(
+            !read(&mut spec_kept, &asking, spec),
+            "Spec's failed read moves nothing, since its words say no unread headline"
+        );
+        let keys: Vec<Value> = spec_kept
+            .all()
+            .map(|record| record["key"].clone())
+            .collect();
+        assert_eq!(
+            keys,
+            ["head:spec", "row:spec:a"],
+            "Spec keeps all it served and heads no other place, whose headline it would \
+             serve over"
+        );
     }
 
     #[test]
@@ -524,18 +659,24 @@ mod tests {
             Ok(b"made\n".to_vec())
         );
         // What hangs is a child of its own, as cadence's git or niri msg
-        // would be, its number written down to look for after.
+        // would be, its number written down to look for after. It's written
+        // whole and then moved into place, since a redirection makes the
+        // file before echo fills it, and a read stopped in between would
+        // leave it empty, looking at no child at all (review of #6875, 152).
         let folder = std::env::temp_dir().join(format!("cadence-spec-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder for the hung child's number");
         let numbered = folder.join("hung");
         let mut hung = Command::new(&shell);
         hung.args([
             "-c",
-            &format!("sleep 30 & echo $! > {}; wait", numbered.display()),
+            &format!(
+                "sleep 30 & echo $! > {0}.part && mv {0}.part {0}; wait",
+                numbered.display()
+            ),
         ])
         .stdout(Stdio::piped());
         let started = Instant::now();
-        let stopped = within(&mut hung, Duration::from_millis(500));
+        let stopped = within(&mut hung, Duration::from_secs(1));
         assert!(
             stopped.as_ref().is_err_and(|why| why.contains("ran past")),
             "a hung cadence is said to have run past its time, not {stopped:?}"
@@ -544,8 +685,14 @@ mod tests {
             started.elapsed() < Duration::from_secs(5),
             "a hung read is stopped at its deadline, not waited out"
         );
-        let left = std::fs::read_to_string(&numbered).expect("the hung child's number");
-        let proc = format!("/proc/{}/stat", left.trim());
+        let left = std::fs::read_to_string(&numbered).unwrap_or_default();
+        let child: u32 = left.trim().parse().unwrap_or_else(|_| {
+            panic!(
+                "the hung child's number was never written before its read was stopped, so \
+                 no child would be looked at: {left:?}"
+            )
+        });
+        let proc = format!("/proc/{child}/stat");
         // Gone, or dead and waiting on whoever reaps it now.
         let ended = || match std::fs::read_to_string(&proc) {
             Err(_) => true,
@@ -609,6 +756,27 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&folder);
         assert!(gone, "what it left is stopped, not left running");
+    }
+
+    #[test]
+    fn a_read_ended_at_its_deadline_still_waits_a_moment_for_its_output() {
+        let minute = Duration::from_mins(1);
+        let moment = Duration::from_millis(100);
+        assert_eq!(
+            output_wait(minute, Duration::from_millis(59_990)),
+            moment,
+            "a read ending 10 ms inside its deadline is given a moment, not 10 ms"
+        );
+        assert_eq!(
+            output_wait(minute, Duration::from_millis(60_015)),
+            moment,
+            "one seen ended just past it, as the 20 ms look can, is given a moment too"
+        );
+        assert_eq!(
+            output_wait(minute, Duration::from_secs(10)),
+            Duration::from_secs(50),
+            "one ending early waits out the rest of its deadline"
+        );
     }
 
     #[test]

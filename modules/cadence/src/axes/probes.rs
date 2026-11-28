@@ -39,8 +39,11 @@ pub struct Probed {
 ///
 /// # Errors
 ///
-/// Why the record is unread, in words that follow "as".
-pub fn gather(state_home: &Path) -> Result<String, String> {
+/// Why the record is unread, in words that follow "as". A run dated
+/// past `now`, by more than two machines' clocks part, is unread too,
+/// since as an ask's newest run it would hold its verdict until then
+/// whatever ran after it (round 6 on #6875, F115).
+pub fn gather(state_home: &Path, now: i64) -> Result<String, String> {
     let bytes = match fs::read(state_home.join("mission/probes.jsonl")) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
@@ -51,11 +54,25 @@ pub fn gather(state_home: &Path) -> Result<String, String> {
         return Err(format!("its line {line} isn't text"));
     }
     match unread(&text) {
+        0 => {}
+        1 => return Err("a line of it isn't a run".to_owned()),
+        lines => return Err(format!("{lines} lines of it aren't runs")),
+    }
+    let ahead = text
+        .lines()
+        .filter_map(run)
+        .filter(|(_, at, ..)| *at > now + CLOCKS_APART)
+        .count();
+    match ahead {
         0 => Ok(text),
-        1 => Err("a line of it isn't a run".to_owned()),
-        lines => Err(format!("{lines} lines of it aren't runs")),
+        1 => Err("a run in it is dated past now".to_owned()),
+        runs => Err(format!("{runs} runs in it are dated past now")),
     }
 }
+
+/// How far ahead of this machine's clock another runner's may stand, in
+/// seconds, before a run it dates is read as past now.
+const CLOCKS_APART: i64 = 300;
 
 /// One run as a line of the record gives it: its ask, when, whether it
 /// passed, the switch it read and who ran it.
@@ -110,15 +127,20 @@ pub fn read(text: &str) -> BTreeMap<String, Probed> {
 /// milliseconds it would have run in 1973, and in seconds in 5138.
 const SECONDS_UNDER: i64 = 100_000_000_000;
 
+/// Below this, and not below `SECONDS_UNDER`, it's timed in milliseconds;
+/// past it, it would have run in 5138 timed so, which no unit read here
+/// fits, so it's no time (round 6 on #6875, F115).
+const MILLISECONDS_UNDER: i64 = SECONDS_UNDER * 1000;
+
 /// A run's time in seconds: written as a time, or as a number of
 /// milliseconds, as the first runs were, or of seconds.
 fn seconds(at: &Value) -> Option<i64> {
     if let Some(number) = at.as_i64() {
-        return Some(if number < SECONDS_UNDER {
-            number
-        } else {
-            number / 1000
-        });
+        return match number {
+            ..SECONDS_UNDER => Some(number),
+            SECONDS_UNDER..MILLISECONDS_UNDER => Some(number / 1000),
+            _ => None,
+        };
     }
     at.as_str()?
         .parse::<Timestamp>()
@@ -135,25 +157,52 @@ mod tests {
         let home = tempfile::tempdir().expect("a home");
         let record = home.path().join("mission/probes.jsonl");
         assert_eq!(
-            gather(home.path()),
+            gather(home.path(), NOW),
             Ok(String::new()),
             "no record is no runs yet"
         );
         fs::create_dir_all(record.parent().expect("its folder")).expect("its folder made");
         let passed = r#"{"ask": "a1", "at": "2026-11-26T12:00:00-05:00", "passed": true}"#;
         fs::write(&record, format!("{passed}\n")).expect("written");
-        assert_eq!(gather(home.path()), Ok(format!("{passed}\n")));
+        assert_eq!(gather(home.path(), NOW), Ok(format!("{passed}\n")));
         // A fail torn as it was appended, which may be a1's newest run.
         let torn = r#"{"ask": "a1", "at": "2026-11-26T13:00:00-05:00", "passed": fal"#;
         fs::write(&record, format!("{passed}\n{torn}\n")).expect("written");
         assert_eq!(
-            gather(home.path()),
+            gather(home.path(), NOW),
             Err("a line of it isn't a run".to_owned())
         );
         let mut bytes = format!("{passed}\n").into_bytes();
         bytes.extend_from_slice(b"{\"ask\": \"a1\", \xff}\n");
         fs::write(&record, bytes).expect("written");
-        assert_eq!(gather(home.path()), Err("its line 2 isn't text".to_owned()));
+        assert_eq!(
+            gather(home.path(), NOW),
+            Err("its line 2 isn't text".to_owned())
+        );
+    }
+
+    /// 2026-11-26T13:00:00-05:00, an hour after the runs these tests write.
+    const NOW: i64 = 1_795_716_000;
+
+    #[test]
+    fn a_run_dated_past_now_is_unread_rather_than_held_as_newest() {
+        let home = tempfile::tempdir().expect("a home");
+        let record = home.path().join("mission/probes.jsonl");
+        fs::create_dir_all(record.parent().expect("its folder")).expect("its folder made");
+        let failed = r#"{"ask": "a1", "at": "2026-11-26T12:00:00-05:00", "passed": false}"#;
+        let ahead = |at: &str| format!(r#"{{"ask": "a1", "at": "{at}", "passed": true}}"#);
+        let skewed = ahead("2026-11-26T13:04:00-05:00");
+        fs::write(&record, format!("{failed}\n{skewed}\n")).expect("written");
+        assert!(
+            gather(home.path(), NOW).is_ok(),
+            "a runner's clock a few minutes ahead is still read"
+        );
+        let dated = ahead("2027-01-01T00:00:00-05:00");
+        fs::write(&record, format!("{failed}\n{dated}\n{dated}\n")).expect("written");
+        assert_eq!(
+            gather(home.path(), NOW),
+            Err("2 runs in it are dated past now".to_owned())
+        );
     }
 
     #[test]
@@ -213,6 +262,11 @@ mod tests {
             1_764_176_400,
             "one timed in seconds isn't read as run in 1970"
         );
+        for at in [1_764_176_400_000_000_i64, 1_764_176_400_000_000_000] {
+            let text = format!(r#"{{"ask": "d4", "at": {at}, "passed": true}}"#);
+            assert!(read(&text).is_empty(), "{at} fits neither unit");
+            assert_eq!(unread(&text), 1, "so it's said, not taken");
+        }
     }
 
     #[test]

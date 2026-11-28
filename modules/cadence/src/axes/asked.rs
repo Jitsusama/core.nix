@@ -10,9 +10,11 @@
 //! 775a3aa8), read as his where cadence counts them his (tracking.rs) and
 //! open until it `landed`. An ask is written again whole as its date
 //! moves or it lands, so each is read from its latest line, as the hour's
-//! measures read it. An owner kept by hand before `answers` reads as the
-//! hour reads one (hour/measures/owner.rs). Its `live` is a batch's stamp, not when it went
-//! live (A210E4CA, 20e58736), so it says nothing here. Each probe stands
+//! measures read it, but for its words, which are what he said and so come
+//! from the line that first wrote it. An owner kept by hand before
+//! `answers` reads as the hour reads one (hour/measures/owner.rs). Its
+//! `live` is a batch's stamp, not when it went live (A210E4CA, 20e58736),
+//! so it says nothing here. Each probe stands
 //! by its newest run (probes.rs). An ask late comes first, the longest late
 //! leading, then those due soonest, then those given no date, oldest
 //! asked first. Times are served as `{at, as}` for the shell to word, so a
@@ -77,7 +79,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let open = open(&asks);
     let owners: BTreeSet<&str> = open.iter().map(|ask| ask.answers.as_str()).collect();
     let titles = titled(&quests(&home), &owners);
-    let probed = probes::gather(&state_home)
+    let probed = probes::gather(&state_home, now)
         .inspect_err(|why| {
             eprintln!("cadence: the probes record is unread, as {why}, so every probe reads so");
         })
@@ -123,8 +125,8 @@ struct Ask {
 }
 
 /// His asks in `text` not yet landed, each with the id it's known by and
-/// read from its latest line; one with no id or time is none, since
-/// nothing could find it again.
+/// read from its latest line, but for its words, read from its first; one
+/// with no id or time is none, since nothing could find it again.
 fn open(text: &str) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
@@ -132,11 +134,20 @@ fn open(text: &str) -> Vec<Ask> {
             .map(Timestamp::as_second)
     };
     let mut latest: BTreeMap<String, Value> = BTreeMap::new();
+    // An ask's words are what Joel said, and its one act copies them for
+    // him to paste to an agent as his own, so they come from the line that
+    // first wrote the ask: any writer of the list can append a later line,
+    // and one replacing the words would have him hand on words he never
+    // said. Its dates and landing move, so they come from its latest line
+    // (review of #6875, 153).
+    let mut said: BTreeMap<String, String> = BTreeMap::new();
     for ask in text
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
     {
         if let Some(id) = ask["id"].as_str().filter(|id| !id.is_empty()) {
+            said.entry(id.to_owned())
+                .or_insert_with(|| one_line(ask["words"].as_str().unwrap_or("")));
             latest.insert(id.to_owned(), ask);
         }
     }
@@ -148,10 +159,11 @@ fn open(text: &str) -> Vec<Ask> {
                 || first_owner(ask["owner"].as_str().unwrap_or("")),
                 str::to_owned,
             );
+            let id = ask["id"].as_str().filter(|id| !id.is_empty())?.to_owned();
             Some(Ask {
-                id: ask["id"].as_str().filter(|id| !id.is_empty())?.to_owned(),
                 at: time(&ask["at"])?,
-                words: one_line(ask["words"].as_str().unwrap_or("")),
+                words: said.get(&id).cloned().unwrap_or_default(),
+                id,
                 answers,
                 expected: time(&ask["expected"]),
                 moved: promised(&ask).len().saturating_sub(1),
@@ -426,6 +438,40 @@ mod tests {
     }
 
     #[test]
+    fn an_asks_words_are_what_its_first_line_said() {
+        let text = [
+            line("w1", "2026-11-26T09:00:00-05:00", "what Joel said", ""),
+            line(
+                "w1",
+                "2026-11-26T09:00:00-05:00",
+                "words someone else wrote",
+                r#", "expected": "2026-11-26T15:00:00-05:00""#,
+            ),
+        ]
+        .join("\n");
+        let (rows, _) = made(
+            &open(&text),
+            Some(&BTreeMap::new()),
+            &BTreeMap::new(),
+            &words(),
+            NOON,
+        );
+        assert_eq!(
+            rows[0]["acts"][0]["copy"], "what Joel said",
+            "Return copies what he said, not words a later line put in their place"
+        );
+        assert_eq!(
+            (&rows[0]["name"], &rows[0]["drawer"]["title"]),
+            (&json!("what Joel said"), &json!("what Joel said")),
+            "the row and its drawer say what he said too"
+        );
+        assert_eq!(
+            rows[0]["side"][0]["said"], "due {time}",
+            "while its date still comes from its latest line"
+        );
+    }
+
+    #[test]
     fn an_owner_kept_by_hand_reads_as_the_hour_reads_it() {
         let by_hand = |id: &str, owner: &str| {
             serde_json::json!({"id": id, "at": "2026-11-26T09:00:00-05:00", "words": id,
@@ -583,6 +629,25 @@ mod tests {
         };
         assert_eq!(side("p1"), "probe can't be read");
         assert_eq!(side("n4"), "no probe yet");
+    }
+
+    #[test]
+    fn a_probe_is_given_only_where_it_names_a_check() {
+        let given_as = [
+            (json!({"check": "z"}), true),
+            (json!([{"check": "z"}]), true),
+            (json!("launcher show asked"), true),
+            (json!({}), false),
+            (json!([]), false),
+            (json!(""), false),
+            (json!(false), false),
+            (json!(true), false),
+            (json!(1), false),
+            (Value::Null, false),
+        ];
+        for (probe, meant) in given_as {
+            assert_eq!(given(&probe), meant, "{probe}");
+        }
     }
 
     #[test]
