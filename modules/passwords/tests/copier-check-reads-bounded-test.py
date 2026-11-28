@@ -345,9 +345,19 @@ def a_carriage_return_ending_a_copier_with_no_newline_is_kept() -> None:
 
 
 def a_copier_pouring_out_one_line_is_answered_at_the_cap() -> None:
-    """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come."""
-    with copier("yes x | tr -d '\\n'") as pouring:
-        said, took = timed(lambda: CHECK.said_next(pouring))
+    """said_next answers a copier pouring out bytes with no newline once SAID_CAP has come.
+
+    It pours a MiB, far past the cap, and holds on without ending, so a read that ignored
+    the cap would hold no more than that, and fail on how long its answer is and took, and
+    on its thread, so one that never answered fails too, rather than reading on for PATIENCE
+    at whatever pace the machine pours.
+    """
+    pour = f"head -c {len(DATA)} /dev/zero | tr '\\0' x; exec sleep 30"
+    with copier(pour) as pouring:
+        answer = answered_in_time(lambda: CHECK.said_next(pouring))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a copier pouring out a line held it past {waited:g} s"
+    said, took = answer
     assert said.endswith(CHECK.UNFINISHED), f"a line with no end was said {said[:80]!r}"
     most = CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
     assert len(said) <= most, f"a line with no end was answered {len(said)} characters long"
