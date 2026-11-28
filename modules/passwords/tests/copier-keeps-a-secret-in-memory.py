@@ -53,6 +53,7 @@ import resource
 import secrets
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -139,7 +140,8 @@ class Cases:
     def copier_started(self, stdin: int, *, typed: bool = True) -> subprocess.Popen[bytes]:
         """Start the copier as the daemon does, reading from `stdin`, keeping what it says.
 
-        Untyped, it's given no type, which the daemon always gives.
+        Untyped, it's given no type, which the daemon always gives. It leads a process group
+        of its own, so what it started is killed with it.
         """
         typing = ["--type", TEXT] if typed else []
         return subprocess.Popen(
@@ -148,6 +150,7 @@ class Cases:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environment,
+            process_group=0,
         )
 
     def anything_made(self) -> str | None:
@@ -277,6 +280,7 @@ class Cases:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environment,
+            process_group=0,
         )
         ended, said, told = ended_within(copier)
         made = self.anything_made()
@@ -463,7 +467,7 @@ def refused_instead(copier: subprocess.Popen[bytes]) -> str | None:
     try:
         _, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired as held_open:
-        copier.kill()
+        killed(copier)
         heard = (held_open.stderr or b"").decode(errors="replace").strip()
         return (
             f"it ended with {code}, its standard error still open after {PATIENCE:g} s, "
@@ -496,17 +500,35 @@ def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str, str]
     """Answer how the copier ended, or None, ended here, if it held on, and what it said.
 
     What it said is on its standard error, then its standard output, which begins with
-    anything said_next read of it but didn't answer.
+    anything said_next read of it but didn't answer. One that held on is killed with its
+    group, and what it said is read for PATIENCE once more, as a child it left outside its
+    group could hold its pipes open past it.
     """
     before = unanswered(copier)
     try:
         told, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
-        copier.kill()
-        told, said = copier.communicate()
+        killed(copier)
+        try:
+            told, said = copier.communicate(timeout=PATIENCE)
+        except subprocess.TimeoutExpired as held_open:
+            told, said = held_open.output or b"", held_open.stderr or b""
+            copier.wait()
         return None, said.decode(errors="replace"), (before + told).decode(errors="replace")
     told = before + told
     return copier.returncode, said.decode(errors="replace"), told.decode(errors="replace")
+
+
+def killed(copier: subprocess.Popen[bytes]) -> None:
+    """Kill the copier's group, it and whatever it started that's left in it.
+
+    It leads a group of its own, as the check starts it, so the group holds only it and what
+    it started that hasn't left. A group with nothing left running is gone: Linux says so
+    with ESRCH once none of it is left, Darwin with EPERM while its ended leader is still
+    unwaited, so both are taken as gone.
+    """
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(copier.pid, signal.SIGKILL)
 
 
 def refusal(ended: int | None, said: str, why: str) -> str | None:

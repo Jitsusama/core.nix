@@ -171,6 +171,40 @@ def a_copier_never_ending_is_ended_after_patience() -> None:
         assert holding.poll() is not None, "a copier that never ends was left running"
 
 
+def a_copier_never_ending_is_ended_with_its_children_after_patience() -> None:
+    """ended_within kills a copier that never ends with its group, and answers within PATIENCE.
+
+    Its child holds its pipes open, so a read waiting for them to close once the copier
+    alone was killed would wait for the child.
+    """
+    with copier("sleep 30 & exec sleep 30") as holding:
+        answer = answered_in_time(lambda: CHECK.ended_within(holding))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a copier whose child holds its pipes held it past {waited:g} s"
+    (code, _, _), took = answer
+    assert code is None, f"a copier that never ends was said to end with {code}"
+    assert took < PATIENCE + SLACK, f"a copier whose child holds its pipes held it {took:.1f} s"
+
+
+def a_child_left_outside_the_copiers_group_is_waited_on_no_longer_than_patience() -> None:
+    """ended_within gives up on pipes held past the copier's group after PATIENCE once more.
+
+    The child is a job of its own, outside the group killed, so it holds the pipes open past
+    it; ended_within still says what the copier said by then.
+    """
+    script = "set -m; sleep 20 & set +m; echo $!; echo gone >&2; exec sleep 30"
+    with copier(script) as holding:
+        answer = answered_in_time(lambda: CHECK.ended_within(holding))
+    waited = PATIENCE + SLACK + HUNG
+    assert answer is not None, f"a child outside the copier's group held it past {waited:g} s"
+    (code, said, told), took = answer
+    with contextlib.suppress(ValueError, ProcessLookupError):
+        os.kill(int(told), signal.SIGKILL)
+    assert code is None, f"a copier that never ends was said to end with {code}"
+    assert took < 2 * PATIENCE + SLACK, f"a child outside its group held it {took:.1f} s"
+    assert said == "gone\n", f"a copier saying 'gone' was said to say {said!r}"
+
+
 def each_refusal_names_what_was_wrong() -> None:
     """Check refusal says a copier held on, ended well or said the wrong thing, alone."""
     held = CHECK.refusal(None, "", WHY)
@@ -429,6 +463,8 @@ CASES = [
     a_copier_ending_well_is_said_to_have_copied,
     a_child_holding_standard_error_open_is_waited_on_no_longer_than_patience,
     a_copier_never_ending_is_ended_after_patience,
+    a_copier_never_ending_is_ended_with_its_children_after_patience,
+    a_child_left_outside_the_copiers_group_is_waited_on_no_longer_than_patience,
     each_refusal_names_what_was_wrong,
     a_reader_never_reading_is_fed_no_longer_than_patience,
     a_reader_that_closed_is_fed_without_fault,

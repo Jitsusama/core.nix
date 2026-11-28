@@ -3301,7 +3301,8 @@
   '';
   passwords-copier-check-reads-are-bounded = ''
     the copier check's reads of a copier each answer within its patience, a child holding the
-    copier's standard error open, a copier never ending, a reader never reading, a copier saying
+    copier's standard error open, a copier never ending, killed with its group, and a child it
+    left outside that group holding its pipes, a reader never reading, a copier saying
     nothing, one saying half a line and holding on and one pouring out a line with no end
     included; a line is read whole and exactly, as the daemon reads it, so one said in pieces
     is joined, two said at once are answered in turn, 'ready ' is never 'ready', one past a
