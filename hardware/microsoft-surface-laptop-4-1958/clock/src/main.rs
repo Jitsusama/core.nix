@@ -31,8 +31,10 @@ const TARGET_CATEGORY_SAM: u8 = 0x01;
 const TARGET_ID_SAM: u8 = 0x01;
 const COMMAND_SET_UNIX_TIME: u8 = 0x0f;
 const COMMAND_GET_UNIX_TIME: u8 = 0x10;
-/// Time zones run from 12 hours behind UTC to 14 ahead, so an offset past
-/// that can't be the firmware's own and is refused.
+/// Time zones run from 12 hours behind UTC to 14 ahead. Which sign the
+/// firmware's offset takes depends on which of its two clocks keeps local
+/// time, so either is taken up to the widest zone's 14 hours, and an offset
+/// past that can't be the firmware's own and is refused.
 const OFFSET_LIMIT: i64 = 14 * 3600;
 /// What adjtimex answers while the kernel's time isn't synchronised.
 const TIME_ERROR: i32 = 5;
@@ -152,14 +154,25 @@ fn read_cmos(rtc: &Path) -> Result<i64, String> {
     Err(format!("no CMOS clock under {}", rtc.display()))
 }
 
+/// Whether `offset` is one a time zone could give, the one check of both
+/// the offset measured and the offset kept, so the two can't drift apart.
+/// A range rather than `abs`, which wraps `i64::MIN` to itself in a release
+/// build.
+fn within_a_zone(offset: i64) -> bool {
+    (-OFFSET_LIMIT..=OFFSET_LIMIT).contains(&offset)
+}
+
 /// The firmware's offset, checked to be one a time zone could give.
 fn offset_from(controller: i64, cmos: i64) -> Result<i64, String> {
-    let offset = controller - cmos;
-    if offset.abs() > OFFSET_LIMIT {
-        return Err(format!(
-            "the Aggregator's clock is {offset} s from the CMOS clock, past any time zone's offset"
-        ));
-    }
+    let offset = controller
+        .checked_sub(cmos)
+        .filter(|&offset| within_a_zone(offset))
+        .ok_or_else(|| {
+            format!(
+                "the Aggregator's clock reads {controller} and the CMOS clock {cmos}, \
+                 further apart than any time zone's offset"
+            )
+        })?;
     Ok(offset)
 }
 
@@ -168,7 +181,7 @@ fn parse_offset(text: &str) -> Result<i64, String> {
         .trim()
         .parse()
         .map_err(|error| format!("the offset kept, {text:?}: {error}"))?;
-    if offset.abs() > OFFSET_LIMIT {
+    if !within_a_zone(offset) {
         return Err(format!(
             "the offset kept, {offset} s, is past any time zone's offset"
         ));
@@ -327,10 +340,31 @@ mod tests {
 
     #[test]
     fn an_offset_past_any_time_zone_is_refused() {
-        offset_from(1_747_475_245, 1_793_366_371)
-            .expect_err("a measured offset of over a year was taken");
         parse_offset("-50401\n").expect_err("a kept offset past 14 hours behind was read");
         parse_offset("50401\n").expect_err("a kept offset past 14 hours ahead was read");
+        parse_offset(&i64::MIN.to_string()).expect_err("the furthest kept offset behind was read");
+        parse_offset(&i64::MAX.to_string()).expect_err("the furthest kept offset ahead was read");
+        offset_from(i64::from(u32::MAX), i64::MIN)
+            .expect_err("a CMOS clock too far behind to subtract from was taken");
+    }
+
+    #[test]
+    fn a_measured_offset_is_taken_to_14_hours_either_way_and_no_further() {
+        let cmos = 1_747_446_445;
+        assert_eq!(
+            offset_from(cmos + 50_400, cmos),
+            Ok(50_400),
+            "an Aggregator 14 hours ahead of the CMOS clock should be taken"
+        );
+        assert_eq!(
+            offset_from(cmos - 50_400, cmos),
+            Ok(-50_400),
+            "an Aggregator 14 hours behind the CMOS clock should be taken"
+        );
+        offset_from(cmos + 50_401, cmos)
+            .expect_err("an Aggregator past 14 hours ahead of the CMOS clock was taken");
+        offset_from(cmos - 50_401, cmos)
+            .expect_err("an Aggregator past 14 hours behind the CMOS clock was taken");
     }
 
     #[test]
@@ -343,7 +377,7 @@ mod tests {
         assert_eq!(
             parse_offset("-50400\n"),
             Ok(-50_400),
-            "the limit is the same behind"
+            "14 hours behind should be read too, the offset's sign following which clock is local"
         );
     }
 

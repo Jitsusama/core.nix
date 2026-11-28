@@ -72,6 +72,15 @@ QtObject {
             Mending.deepByKind(undefined, ["presence"]), {});
         Expect.same("a watch asking nothing deep is said nothing deep",
             Mending.deepByKind(offered, undefined), {});
+        // Parsed, since a literal's `__proto__` sets what it inherits rather than a key.
+        const odd = Mending.deepByKind(JSON.parse(
+            '{"__proto__": {"deep": ["presence"]}, "constructor": {"deep": ["step"]}}'),
+            ["presence", "step"]);
+        Expect.same("a kind the hello names as what every object inherits is a kind of its own",
+            [Mending.deepOf(odd, { key: "__proto__:kestrel" }),
+                Mending.deepOf(odd, { key: "machine:tern", kind: "constructor" }),
+                Mending.deepOf(odd, { key: "toString" })],
+            [["presence"], ["step"], []]);
 
         const by = { session: ["presence"] };
         Expect.same("a change's kind is the one it says",

@@ -43,6 +43,17 @@
     waiting = import ./every-fixed-wait-says-why-waiting.nix;
   };
 
+  # A file read whose failure becomes empty text counts a file lost, torn
+  # or barred as holding nothing, so what it feeds reads as met while
+  # nothing was looked at; such a read says why nothing is true there, or
+  # says it couldn't read. Those before the rule wait, counted by file, in
+  # tests/rules/every-failed-read-says-why-waiting.nix, and a count may
+  # only fall.
+  every-failed-read-says-why = self.lib.everyFailedReadSaysWhy pkgs {
+    src = ../..;
+    waiting = import ./every-failed-read-says-why-waiting.nix;
+  };
+
   # A failure that says only "assertion failed" makes the reader run the test
   # again to learn anything, so an assertion the language can't show both
   # sides of carries a message. Those before the rule wait, counted by
@@ -212,6 +223,7 @@
         boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
         boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
         cadence-path = script "cadence-path" ../../modules/cadence/path.sh { };
+        cadence-site = script "cadence-site" ../../modules/cadence/site.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
         camera-loopback = script "camera-loopback" ../../modules/v4l2loopback/loopback.sh { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };

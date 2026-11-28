@@ -3125,6 +3125,302 @@ fn a_main_the_host_says_doesnt_descend_is_refused() {
     assert!(!world.checkout_has(&two), "the checkout was fetched");
 }
 
+/// A main the checkout holds without the commit last switched to, read
+/// from the host and never fetched, is asked of the host, which says it
+/// descends, rather than refused as a history gone another way.
+#[test]
+fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&one),
+        "the checkout wasn't left holding two without one"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a main descending from what the machine ran was refused for a commit the checkout lacks"
+    );
+}
+
+/// Leaves the account's checkout holding main's head alone, as a fetch
+/// of part of its history does, and gives that head.
+fn shallow_checkout(world: &World) -> String {
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &[
+            "fetch",
+            "--quiet",
+            "--depth=1",
+            "origin",
+            "+main:refs/shallow",
+        ],
+    );
+    git(checkout, &["rev-parse", "refs/shallow"])
+        .trim()
+        .to_owned()
+}
+
+/// A main gone another way from what the machine ran, whose head the
+/// checkout holds without what it ran, is refused on the host's word.
+#[test]
+fn a_main_the_host_says_went_another_way_is_refused_though_the_checkout_lacks_its_past() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&one),
+        "the checkout held what the machine ran"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the host says went another way wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
+}
+
+/// A held commit main holds, which the checkout lacks below the head it
+/// holds, is asked of the host rather than judged not in main.
+#[test]
+fn a_held_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let stopped = world.hosted_commit("stopped", None);
+    world.answer();
+    world.system(&stopped);
+    assert_eq!(
+        world.update().1,
+        done(&stopped),
+        "the first head wasn't read"
+    );
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main holding a held commit the checkout lacks wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains(&format!("main at {} holds it", &two[..12])),
+        "refused without the host saying main holds it: {why}"
+    );
+}
+
+/// With no host to ask, a copy that can't walk between two commits it
+/// holds says so, rather than that main went another way: on 26 November
+/// that refusal read as a rewritten main and hid the copy's gap.
+#[test]
+fn a_copy_that_cant_walk_with_no_host_to_ask_says_so() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    world.system(&two);
+    let ending = world.update().1;
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("main's history")),
+        "a copy that couldn't walk between the two was said to show another way: {ending:?}"
+    );
+}
+
+/// A copy holding both commits that can't walk the history between them
+/// asks the host, rather than failing the update on its own error.
+#[test]
+fn a_copy_that_cant_walk_between_two_commits_asks_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let between = world.hosted_commit("between", None);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/whole"],
+    );
+    let object = checkout
+        .join(".git/objects")
+        .join(&between[..2])
+        .join(&between[2..]);
+    fs::remove_file(&object).expect("the commit between wasn't a loose object to remove");
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a copy that couldn't walk between the two failed the update rather than asking"
+    );
+}
+
+/// With no host to ask, a held commit the checkout lacks below the head
+/// it holds can't be told held or not, so it stops the update: a copy
+/// holding part of main's history proves nothing by lacking it.
+#[test]
+fn a_held_commit_the_checkout_lacks_with_no_host_to_ask_stops_main() {
+    // Nothing has read main yet, so the checkout holds only the head a
+    // fetch of part of its history brought.
+    let world = World::hosted_from(World::new(), counted_token);
+    let stopped = world.hosted_commit("stopped", None);
+    let two = world.hosted_commit("two", None);
+    held::ask(&world.config, &format!("hold {stopped}"), Some(1000));
+    assert_eq!(
+        shallow_checkout(&world),
+        two,
+        "the checkout wasn't fetched to two"
+    );
+    assert!(
+        !world.checkout_has(&stopped),
+        "the checkout held the held commit"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a held commit the checkout lacks, with no host, let main through: {ending:?}")
+    };
+    assert!(
+        why.contains("couldn't be told") && why.contains("no host's API"),
+        "a held commit the checkout lacks wasn't said untold for want of a host: {why}"
+    );
+}
+
+/// With no host to ask, a checkout fetched whole holds every commit before
+/// main's head, so a held commit it lacks isn't main's and main switches:
+/// a hold on a branch's commit not merged yet keeps nothing else off.
+#[test]
+fn a_held_commit_a_whole_checkout_lacks_with_no_host_to_ask_lets_main_through() {
+    let world = World::hosted_from(World::new(), counted_token);
+    world.hosted_commit("one", None);
+    let two = world.hosted_commit("two", None);
+    let unmerged = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {unmerged}"), Some(1000));
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a held commit a whole checkout lacks, with no host, stopped main"
+    );
+}
+
+/// A main rewritten past what the machine ran, both of which root's copy
+/// holds, is refused on the copy's own walk: a host that can't say how
+/// they stand mustn't turn the refusal into a failed update.
+#[test]
+fn a_main_the_copy_shows_went_another_way_is_refused_without_the_host() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    // The checkout holds what the machine ran and the rewritten head both,
+    // whole, as a person's own fetches would leave it.
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    git(&checkout, &["fetch", "--quiet", "origin", "+main:refs/ran"]);
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    // The host is never told of two, so asking it how two stands fails.
+    let two = world.hosted_commit("two", None);
+    git(
+        &checkout,
+        &["fetch", "--quiet", "origin", "+main:refs/rewritten"],
+    );
+    assert!(
+        world.checkout_has(&one) && world.checkout_has(&two),
+        "the checkout didn't hold both ends"
+    );
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a main the copy shows went another way wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("doesn't descend"),
+        "refused for another reason: {why}"
+    );
+}
+
+/// A hold on a commit nobody can say main holds stops the update, and the
+/// stop says how to let it through.
+#[test]
+fn a_hold_that_cant_be_told_says_how_to_lift_it() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let nobody = "d".repeat(40);
+    held::ask(&world.config, &format!("hold {nobody}"), Some(1000));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    let ending = world.update().1;
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a hold that couldn't be told let main through: {ending:?}")
+    };
+    assert!(
+        why.contains(&format!("update-to-main lift {nobody}")),
+        "a hold that couldn't be told didn't say how to lift it: {why}"
+    );
+    held::ask(&world.config, &format!("lift {nobody}"), Some(1000));
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "lifting a hold that couldn't be told didn't let main through"
+    );
+}
+
 /// A hosted world whose account names the commit that last changed the
 /// folder with the shell command `changed` gives for the world's folder.
 fn with_changed(changed: impl Fn(&Path) -> String) -> World {

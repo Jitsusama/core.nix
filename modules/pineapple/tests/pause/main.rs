@@ -32,10 +32,12 @@ struct Unit {
 /// names, and one whose link dropped once it began for what `dropped`
 /// names. When `peek` names a file, what it holds as the Mac is asked is
 /// kept in `peeked`, and when `block` names one, a folder is made there as
-/// the Mac is asked, so no file can be written in its place.
+/// the Mac is asked, so no file can be written in its place. How many
+/// programs each batch run together held is kept in `batches`.
 #[derive(Default)]
 struct Machine {
     asked: Vec<String>,
+    batches: Vec<usize>,
     timers: Vec<String>,
     units: Vec<Unit>,
     refusing: Option<&'static str>,
@@ -82,6 +84,13 @@ impl Machine {
 }
 
 impl Runs for Machine {
+    fn run_all(&mut self, runs: &[(&Path, &[String])]) -> Vec<Result<String, String>> {
+        self.batches.push(runs.len());
+        runs.iter()
+            .map(|(program, args)| self.run(program, args))
+            .collect()
+    }
+
     fn run(&mut self, program: &Path, args: &[String]) -> Result<String, String> {
         let asked = format!("{} {}", program.to_string_lossy(), args.join(" "));
         self.asked.push(asked.clone());

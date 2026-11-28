@@ -799,6 +799,40 @@ mod tests {
     }
 
     #[test]
+    fn a_machines_looks_of_one_health_keep_the_order_they_were_found_in() {
+        // Its battery and its firmware, each worth a look, are found before
+        // its failing code, which the worst first moves ahead of them both.
+        let mut studio = laptop(&[], "healthy");
+        studio["name"] = json!("studio");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 600});
+        studio["health"] = json!({"parts": {"code": "bad"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        let looks: Vec<(&str, Health)> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| (look.side.as_str(), look.health))
+            .collect();
+        assert_eq!(
+            looks,
+            [
+                ("code failing", Health::Bad),
+                ("on battery at 12%", Health::Watch),
+                (
+                    "booted under an hour ago after a firmware error",
+                    Health::Watch
+                )
+            ],
+            "the bad first, then the worth a look in the order they were found"
+        );
+    }
+
+    #[test]
     fn every_look_says_why_it_matters_and_the_side_cuts_them_where_looks_keep_all() {
         let mut studio = laptop(&[], "nearly-full");
         studio["name"] = json!("studio");

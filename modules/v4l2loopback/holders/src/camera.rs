@@ -178,29 +178,44 @@ pub mod tests {
     #[test]
     fn an_idle_camera_isnt_streaming() {
         let camera = Camera::new("idle", "MX Brio 705 for Business");
-        assert!(!streams(&camera.sysfs, &camera.node));
+        assert!(
+            !streams(&camera.sysfs, &camera.node),
+            "a camera with every interface at setting 0 was said to stream"
+        );
     }
 
     #[test]
     fn a_streaming_interface_with_an_alternate_setting_streams() {
         let camera = Camera::new("streaming", "MX Brio 705 for Business");
         camera.alternate("2-1:1.1", 9);
-        assert!(streams(&camera.sysfs, &camera.node));
+        assert!(
+            streams(&camera.sysfs, &camera.node),
+            "its video streaming interface at setting 9 wasn't said to stream"
+        );
         camera.alternate("2-1:1.1", 0);
-        assert!(!streams(&camera.sysfs, &camera.node));
+        assert!(
+            !streams(&camera.sysfs, &camera.node),
+            "it was still said to stream once its interface went back to setting 0"
+        );
     }
 
     #[test]
     fn only_a_video_streaming_interface_counts() {
         let camera = Camera::new("audio", "MX Brio 705 for Business");
         camera.alternate("2-1:1.4", 1);
-        assert!(!streams(&camera.sysfs, &camera.node));
+        assert!(
+            !streams(&camera.sysfs, &camera.node),
+            "an audio interface's alternate setting was taken as the camera streaming"
+        );
     }
 
     #[test]
     fn a_camera_gone_from_sysfs_isnt_streaming() {
         let camera = Camera::new("gone", "MX Brio 705 for Business");
-        assert!(!streams(&camera.sysfs, &camera.root.join("dev/video9")));
+        assert!(
+            !streams(&camera.sysfs, &camera.root.join("dev/video9")),
+            "a node sysfs doesn't hold was said to stream"
+        );
     }
 
     #[test]

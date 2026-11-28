@@ -535,16 +535,210 @@ fn a_take_that_isnt_heard_says_why() {
 fn the_daemon_leaves_out_a_take_that_isnt_heard() {
     // One take not heard mustn't end the call or stop its thread: the
     // daemon goes on with no line and no words, as for a take of silence.
+    let failed = || Err("the encoder failed".to_owned());
     assert_eq!(
-        heard_or_left_out(Err("the encoder failed".to_owned())),
-        (None, Vec::new()),
-        "a take that wasn't heard wasn't left out"
+        heard_or_left_out(failed()),
+        ((None, Vec::new()), Some("the encoder failed".to_owned())),
+        "a take that wasn't heard wasn't left out, with why"
     );
     let heard = || (Some("Not yet.".to_owned()), vec![word("Not", 40 * SECOND)]);
     assert_eq!(
         heard_or_left_out(Ok(heard())),
-        heard(),
-        "what was heard of a take wasn't kept"
+        (heard(), None),
+        "what was heard of a take wasn't kept, or was taken for a failure"
+    );
+}
+
+#[test]
+fn a_call_is_told_once_whichever_failure_comes_first() {
+    // A model failing on every take of theirs would raise a notice a
+    // take, so a call's first failure is told and the rest aren't, its
+    // model not loading or failing on part of it alike; another call's
+    // first still is.
+    let mut told = HashSet::new();
+    let load = || notices::not_transcribed("Standup", "The speech model didn't load: x");
+    let part = || notices::not_all_heard("Standup", "the encoder failed");
+    let heading = |notice: Option<Notice>| notice.map(|notice| notice.heading);
+    assert_eq!(
+        heading(told_once(&mut told, "call", load)),
+        Some("Standup Couldn't Be Transcribed".to_owned()),
+        "the call's first failure wasn't told"
+    );
+    assert_eq!(
+        heading(told_once(&mut told, "call", part)),
+        None,
+        "a call told its model didn't load was told again of part not heard"
+    );
+    assert_eq!(
+        heading(told_once(&mut told, "another", part)),
+        Some("Part of Standup Wasn't Heard".to_owned()),
+        "another call wasn't told, since this one was"
+    );
+    assert_eq!(
+        heading(told_once(&mut told, "another", load)),
+        None,
+        "a call told part wasn't heard was told again its model didn't load"
+    );
+}
+
+#[test]
+fn a_transcript_says_what_wasnt_heard() {
+    // Once the notice is gone, the file is all that says a call's
+    // transcript is missing part of it, so it says so, ahead of the
+    // record's note and its lines.
+    let mut writing = Writing {
+        lines: vec![line(Side::Mine, 10, None)],
+        ..Writing::default()
+    };
+    let said = transcript_of(&writing, "Joel", None, Some("Invited: Ada and Bo."));
+    assert_eq!(Unheard::read(said.as_str()), None, "all of it was heard");
+    writing.unheard = Some(unheard::and(None, 750 * SECOND));
+    writing.unheard = Some(unheard::and(writing.unheard, 80 * SECOND));
+    let said = transcript_of(&writing, "Joel", None, Some("Invited: Ada and Bo."));
+    let unheard = Unheard {
+        stretches: 2,
+        first: 80 * SECOND,
+    };
+    assert_eq!(
+        Unheard::read(said.as_str()),
+        Some(unheard),
+        "the transcript doesn't say what wasn't heard: {said}"
+    );
+    // The summary carries only what comes before the first line, so the
+    // note is said ahead of it.
+    let at = |text: &str| said.find(text);
+    let (note, invited, first) = (
+        at(&unheard.note()),
+        at("Invited: Ada and Bo."),
+        at("**Joel**, 0:10: Said."),
+    );
+    assert!(
+        note.is_some() && note < invited && invited < first,
+        "what wasn't heard isn't said ahead of the note and the lines: {said}"
+    );
+}
+
+#[test]
+fn a_take_not_heard_is_written_down_at_once_and_read_back_after_a_restart() {
+    // After a lost device every take may fail, so none is heard again
+    // to write the file: each take not heard writes it, and a restart
+    // reads its count back from the Transcript section alone, not from
+    // a summary that quotes the note.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    let quoted = Unheard {
+        stretches: 9,
+        first: SECOND,
+    };
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        summary: Some(quoted.note()),
+        ..record(&[], None)
+    });
+    let mut writing = Writing {
+        lines: vec![line(Side::Mine, 10, None)],
+        ..Writing::default()
+    };
+    let mut told = HashSet::new();
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    let mut lose = |at| not_heard(&book, "call:e1", &mut writing, "Joel", at, &mut told, part);
+    let first = lose(80 * SECOND).map(|notice| notice.heading);
+    let read_back = || resumed(&book, "call:e1", "Joel").unheard;
+    let unheard = |stretches| {
+        Some(Unheard {
+            stretches,
+            first: 80 * SECOND,
+        })
+    };
+    assert_eq!(
+        first.as_deref(),
+        Some("Part of Planning Wasn't Heard"),
+        "the call's first take not heard wasn't told"
+    );
+    assert_eq!(
+        read_back(),
+        unheard(1),
+        "a take not heard wasn't written down before the next line was heard"
+    );
+    assert!(
+        lose(90 * SECOND).is_none(),
+        "a call was told twice of part not heard"
+    );
+    assert_eq!(
+        read_back(),
+        unheard(2),
+        "a restart didn't read back how much wasn't heard"
+    );
+}
+
+#[test]
+fn a_call_none_of_which_was_heard_has_a_file_saying_so() {
+    // A call whose every take failed from its start, or whose model
+    // never loaded, had no file, so a restart before a line was heard
+    // left it reading whole from the restart on.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let mut writing = Writing::default();
+    let mut told = HashSet::new();
+    let load = || notices::not_transcribed("Planning", "The speech model didn't load: x");
+    not_heard(&book, "call:e1", &mut writing, "Joel", 0, &mut told, load);
+    let unheard = Some(Unheard {
+        stretches: 1,
+        first: 0,
+    });
+    assert_eq!(
+        resumed(&book, "call:e1", "Joel").unheard,
+        unheard,
+        "a call with no line heard had no file saying it wasn't heard"
+    );
+    let file = std::fs::read_to_string(folder.path().join(TRANSCRIPT)).unwrap();
+    assert!(
+        file.contains("None of the call was heard"),
+        "a call none of which was heard was said to be heard in part: {file}"
+    );
+}
+
+#[test]
+fn a_call_taken_up_again_is_told_anew_after_a_restart_or_a_rejoin() {
+    // Nothing says the notice raised before is still up: it may have
+    // been put away, or gone with the daemon before it was shown. So a
+    // second notice is raised, rather than none at all.
+    let folder = tempfile::tempdir().unwrap();
+    let book = Shared::new(Book::default());
+    book.lock().put(Record {
+        folder: folder.path().to_path_buf(),
+        ..record(&[], None)
+    });
+    let part = || notices::not_all_heard("Planning", "the encoder failed");
+    let lose = |key: &str, at: usize, writing: &mut Writing, told: &mut HashSet<String>| {
+        not_heard(&book, key, writing, "Joel", at, told, part)
+    };
+    let before = lose("call:e1", 0, &mut Writing::default(), &mut HashSet::new());
+    assert!(before.is_some(), "the call's first failure wasn't told");
+    let mut told = HashSet::new();
+    let mut writing = taken_up(&mut Vec::new(), &book, "call:e1", "Joel");
+    assert!(
+        lose("call:e1", SECOND, &mut writing, &mut told).is_some(),
+        "a call its file said wasn't heard in part wasn't told anew after a restart"
+    );
+    assert!(
+        lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_none(),
+        "a call was told twice in one sitting"
+    );
+    let held = Writing {
+        unheard: Some(unheard::and(None, 0)),
+        ..Writing::default()
+    };
+    let mut ended = vec![("call:e1".to_owned(), held)];
+    let mut told = HashSet::new();
+    let mut writing = taken_up(&mut ended, &book, "call:e1", "Joel");
+    assert!(
+        lose("call:e1", 2 * SECOND, &mut writing, &mut told).is_some(),
+        "a call rejoined after it ended wasn't told anew"
     );
 }
 

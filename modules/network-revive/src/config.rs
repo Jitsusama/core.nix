@@ -93,6 +93,6 @@ mod tests {
     fn a_setting_it_doesnt_know_is_refused() {
         let text = r#"{"units": [{"name": "proxy.service", "reloads": true}]}"#;
 
-        assert!(Config::parsed(text).is_err());
+        Config::parsed(text).expect_err("a unit with a setting it doesn't know was read");
     }
 }

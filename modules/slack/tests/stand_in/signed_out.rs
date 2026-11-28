@@ -7,8 +7,8 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    StandIn, asked, credentials, forget, kept, listed, socket, unreads, unreads_from, until,
-    waiting, wants_joel,
+    StandIn, asked, credentials, forget, kept, listed, no_sign_in, socket, unreads, unreads_from,
+    until, waiting, wants_joel,
 };
 
 #[test]
@@ -16,7 +16,7 @@ fn a_refused_sign_in_is_held_as_signed_out_with_nothing_counted() {
     let stand_in = StandIn::new(|_| r#"{"ok": false, "error": "invalid_auth"}"#.into());
     let path = credentials("unreads-refused");
     let run = path.with_extension("refused");
-    let mut program = unreads(&stand_in, &path, &run);
+    let program = unreads(&stand_in, &path, &run);
     until("Joel was never asked to sign in", || {
         kept(&waiting(&run)).is_some()
     });
@@ -29,8 +29,7 @@ fn a_refused_sign_in_is_held_as_signed_out_with_nothing_counted() {
     );
     let hello = asked(&run, &serde_json::json!({"id": 2, "ask": "hello"}));
     assert_eq!(hello["sources"]["slack"], "signed-out");
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     // As For You reads it, once, done when he signs in again.
     let asked = kept(&waiting(&run)).unwrap();
     assert_eq!(
@@ -51,9 +50,9 @@ fn a_refused_sign_in_is_held_as_signed_out_with_nothing_counted() {
 #[test]
 fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
     let stand_in = StandIn::new(wants_joel);
-    let missing = std::env::temp_dir().join("slack-unreads-no-such-file.json");
+    let missing = no_sign_in("unreads-none");
     let run = std::env::temp_dir().join(format!("slack-unreads-none-{}", std::process::id()));
-    let mut program = unreads(&stand_in, &missing, &run);
+    let program = unreads(&stand_in, &missing, &run);
     until("the socket never came", || socket(&run).exists());
     // Long enough for several rounds of asking.
     thread::sleep(Duration::from_millis(300));
@@ -62,8 +61,7 @@ fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
         [serde_json::json!({"standing": "none"})]
     );
     assert_eq!(listed(&run, "slack-unread"), [] as [serde_json::Value; 0]);
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     assert!(
         !waiting(&run).exists(),
         "with no sign-in, nothing should be held as waiting at {}",
@@ -84,7 +82,7 @@ fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
 #[test]
 fn with_no_sign_in_it_still_tells_its_watchdog() {
     let stand_in = StandIn::new(wants_joel);
-    let missing = std::env::temp_dir().join("slack-unreads-no-such-file.json");
+    let missing = no_sign_in("unreads-watched");
     let run = std::env::temp_dir().join(format!("slack-unreads-watched-{}", std::process::id()));
     let notify = run.with_extension("notify");
     let _ = std::fs::remove_file(&notify);
@@ -94,11 +92,10 @@ fn with_no_sign_in_it_still_tells_its_watchdog() {
         .unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_slack-unreads"));
     command.env("NOTIFY_SOCKET", &notify);
-    let mut program = unreads_from(command, &stand_in, &missing, &run);
+    let program = unreads_from(command, &stand_in, &missing, &run);
     let mut told = [0; 64];
     let heard = systemd.recv(&mut told);
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     let _ = std::fs::remove_file(&notify);
     let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     let length = heard.expect("the watchdog was never told, with no sign-in");

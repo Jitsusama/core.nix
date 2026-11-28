@@ -140,6 +140,11 @@ let
       outPath = ./tests/stale-mycelium + "/${name}";
       rev = "stand-in-${name}";
     };
+  # The lines of FILE in the locked mycelium's source, and what the items
+  # in them hold, read failing closed, so a check pins core's words to the
+  # types the lock reads them into.
+  lockedLines = file: lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/${file}");
+  rust = import ./rust-items.nix { inherit lib; };
   # The stand-ins lacking a guard, by what the switch must say of each
   # file a guard is looked for in: that it has no line matching the
   # guard's pattern, named so the person can tell what form it takes, that
@@ -1530,11 +1535,12 @@ in
   # or strict fence names its system's launcher for an agent's run, which
   # runs pi's strict profile; whether every start goes through it is
   # mycelium's to keep, not this check's. An unfenced one says none, so mycelium
-  # refuses it.
+  # refuses it. A machine kept lively says its ceiling, which
+  # mycelium-reads-a-lively-ceiling pins to what the lock reads.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling or one not kept lively says one, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling, a memory_full or io_full of 0 and the groups io_full is read from included, one not kept lively says one or one naming no groups names some, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -1586,6 +1592,59 @@ in
           }).kept_lively or null == {
             cpu = 28;
             memory_full = 3;
+          }
+        )
+        # Core writes a memory_full of 0 rather than dropping it as it drops
+        # a null, so a ceiling of no memory stall at all is held to.
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryAvailable = 1024;
+              memoryFull = 0;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_available = 1024;
+            memory_full = 0;
+          }
+        )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 1;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 1;
+          }
+        )
+        # Core writes an io_full of 0 rather than dropping it, as for
+        # memory_full, and leaves out a list naming no groups.
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 0;
+              ioFullFrom = [ ];
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 0;
+          }
+        )
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              ioFull = 1;
+              ioFullFrom = [ "agents.slice" ];
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            io_full = 1;
+            io_full_from = [ "agents.slice" ];
           }
         )
         && !((launching mac everyKind) ? pi_fences_itself)
@@ -1655,6 +1714,179 @@ in
         })
       );
 
+  # The locked mycelium reads the ceiling a machine kept lively says (as
+  # above) into kept_lively, an Option<Lively>, whose fields are those core
+  # writes by name and type, in any order since serde reads a struct's
+  # fields by name: the held ones, then memory_full, io_full and
+  # io_full_from from the lock that first has each. Declared reads it
+  # through lively_or_none, so a ceiling in a shape the lock can't read
+  # drops whole and silently, and the machine ranks as any machine does.
+  # No serde attribute may stand over Declared or Lively, a cfg_attr's
+  # included, as rename_all, try_from or transparent would read core's
+  # words otherwise and deny_unknown_fields would make a lock from before
+  # a part drop a ceiling naming it; nor may kept_lively or a field of
+  # Lively take a serde word off its list, as skip, with, from or another
+  # reader would. A lock that drops a part still passes, since core can't
+  # tell which lock is meant to have which part. Copies of today's source,
+  # each with one change, show the pin refuses each for its own reason.
+  mycelium-reads-a-lively-ceiling =
+    holds "mycelium-reads-a-lively-ceiling"
+      "The locked mycelium doesn't read kept_lively as an Option<Lively> of the fields core writes, by name and type in any order, a serde attribute stands over Declared or Lively, kept_lively or a field of Lively takes a serde word off its list, or a copy of today's source with one such change isn't refused for its own reason."
+      (
+        let
+          held = [
+            {
+              name = "cpu";
+              type = "u32";
+            }
+            {
+              name = "memory_available";
+              type = "Option<u64>";
+            }
+          ];
+          newest = held ++ [
+            {
+              name = "memory_full";
+              type = "Option<u32>";
+            }
+            {
+              name = "io_full";
+              type = "Option<u32>";
+            }
+            {
+              name = "io_full_from";
+              type = "Vec<String>";
+            }
+          ];
+          byName = lib.sort (one: other: one.name < other.name);
+          # Each shape a lock has read it in, by name: the held fields, then
+          # each the one before with the next part it gained.
+          shapes = map (count: byName (lib.take count newest)) (
+            lib.range (lib.length held) (lib.length newest)
+          );
+          # The serde words kept_lively and Lively's fields may take; any
+          # other would read core's words otherwise or not at all.
+          keptWords = [
+            "default"
+            "skip_serializing_if = \"Option::is_none\""
+            "deserialize_with = \"lively_or_none\""
+          ];
+          fieldWords = [
+            "default"
+            "skip_serializing_if = \"Option::is_none\""
+            "skip_serializing_if = \"Vec::is_empty\""
+            "deserialize_with = \"whole_or_none\""
+            "deserialize_with = \"groups_or_none\""
+          ];
+          # Each word of serde attributes' words SAID, one by one.
+          wordsOf = said: lib.concatMap (lib.splitString ", ") said;
+          # Whether each word of SAID is among WORDS.
+          allowed = words: said: lib.all (word: lib.elem word words) (wordsOf said);
+          # Whether item FOUND has no serde attribute over it, as itself or
+          # within a cfg_attr.
+          plain = found: found.serde == [ ] && !lib.any (lib.hasInfix "serde(") found.over;
+          # What in LINES, a declared.rs, keeps the ceiling from being read
+          # as core writes it, by name: none where nothing does, and only
+          # that it can't be read where the scan reads null.
+          refusals =
+            lines:
+            let
+              declaration = rust.structIn lines "Declared";
+              lively = rust.structIn lines "Lively";
+              kept = lib.findFirst (field: field.name == "kept_lively") null declaration.fields;
+              ceiling = byName (map (field: { inherit (field) name type; }) lively.fields);
+              fieldSerde = lib.concatMap (field: field.serde) lively.fields;
+            in
+            if declaration == null || lively == null then
+              [ "unread" ]
+            else
+              lib.attrNames (
+                lib.filterAttrs (_: passes: !passes) {
+                  declared-plain = plain declaration;
+                  lively-plain = plain lively;
+                  kept-type = kept.type or null == "Option<Lively>";
+                  kept-words = allowed keptWords (kept.serde or [ ]);
+                  field-words = allowed fieldWords fieldSerde;
+                  fields = lib.elem ceiling shapes;
+                }
+              );
+          # Today's Declared and Lively as the newest lock reading them
+          # has them, each doc line cut to one.
+          today = ''
+
+            /// What a machine says of itself.
+            #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+            #[cfg_attr(test, derive(Default))]
+            pub struct Declared {
+                /// How lightly it is kept loaded.
+                #[serde(
+                    default,
+                    skip_serializing_if = "Option::is_none",
+                    deserialize_with = "lively_or_none"
+                )]
+                pub kept_lively: Option<Lively>,
+            }
+
+            /// The ceiling a machine kept lively holds its load to.
+            #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+            pub struct Lively {
+                /// The processor pressure it stays at or under.
+                pub cpu: u32,
+                /// The memory it keeps available at least.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub memory_available: Option<u64>,
+                /// The memory pressure it stays at or under.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub memory_full: Option<u32>,
+                /// The disk pressure it stays at or under.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub io_full: Option<u32>,
+                /// The groups whose disk pressure is read.
+                #[serde(
+                    default,
+                    skip_serializing_if = "Vec::is_empty",
+                    deserialize_with = "groups_or_none"
+                )]
+                pub io_full_from: Vec<String>,
+            }
+          '';
+          # Today's source with each of FROM changed to the TO in its place.
+          # A FROM not there changes nothing, so the copy is today's.
+          copy = from: to: builtins.replaceStrings from to today;
+          refusedAs = from: to: refusals (lib.splitString "\n" (copy from to));
+          # The refusals of today's source with ATTRIBUTE over ITEM's line.
+          over = attribute: item: refusedAs [ item ] [ "${attribute}\n${item}" ];
+          livelyLine = "pub struct Lively {";
+          declaredLine = "pub struct Declared {";
+          cpu = "    /// The processor pressure it stays at or under.\n    pub cpu: u32,\n";
+          last = "    pub io_full_from: Vec<String>,\n";
+          # Lively's fields with cpu moved last, which serde reads the same.
+          moving = [
+            cpu
+            last
+          ];
+          moved = [
+            ""
+            "${last}${cpu}"
+          ];
+        in
+        refusals (lockedLines "declared.rs") == [ ]
+        && refusals (lib.splitString "\n" today) == [ ]
+        && copy moving moved != today
+        && refusedAs moving moved == [ ]
+        && over "#[serde(rename_all = \"camelCase\")]" livelyLine == [ "lively-plain" ]
+        && over "#[serde(rename_all = \"camelCase\")]" declaredLine == [ "declared-plain" ]
+        && over "#[serde(deny_unknown_fields)]" livelyLine == [ "lively-plain" ]
+        && over "#[cfg_attr(test, serde(deny_unknown_fields))]" livelyLine == [ "lively-plain" ]
+        && over "    #[serde(skip)]" "    pub cpu: u32," == [ "field-words" ]
+        && refusedAs [ "\"groups_or_none\"" ] [ "\"other\"" ] == [ "field-words" ]
+        && refusedAs [ "pub cpu: u32," ] [ "pub cpu: f64," ] == [ "fields" ]
+        && refusedAs [ "pub memory_full:" ] [ "pub memory_stall:" ] == [ "fields" ]
+        && refusedAs [ "\"lively_or_none\"" ] [ "\"lively_or_none\", skip" ] == [ "kept-words" ]
+        && refusedAs [ "Option<Lively>," ] [ "Option<Ceiling>," ] == [ "kept-type" ]
+        && over "    #[serde(rename = \"memory\")]" "    pub memory_full:" == [ "unread" ]
+      );
+
   # What work begun in some folders or naming some words needs is written
   # in mycelium's words, each need as mycelium reads it from the words
   # `--need` takes, and left out where nothing is said. A need mycelium
@@ -1685,16 +1917,12 @@ in
           taken =
             extra:
             (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
-          locked = "${self.inputs.mycelium}/src";
-          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
-          # What the locked source's items hold, read failing closed.
-          rust = import ./rust-items.nix { inherit lib; };
-          need = rust.enumIn (linesOf "placement.rs") "Need";
-          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
-          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          need = rust.enumIn (lockedLines "placement.rs") "Need";
+          accelerators = rust.enumIn (lockedLines "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (lockedLines "declared.rs") "Declared";
           # needs_in's field, or null on a lock from before it.
           needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
-          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          rule' = rust.structIn (lockedLines "declared.rs") "NeedsIn";
           kinds = map (variant: variant.name) (need.variants or [ ]);
           # Rust's lines as a fixture gives them.
           fixture = text: lib.splitString "\n" text;
