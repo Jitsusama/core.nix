@@ -1438,9 +1438,7 @@ fn a_restarted_guard_beats_without_the_pass_the_last_one_left() {
 #[test]
 fn a_restarted_guard_beats_without_the_last_one_s_passed_moments() {
     let home = Home::new();
-    // A whole second, since serde_json, without its float_roundtrip
-    // feature, can read a long fraction back a little off what was written.
-    let ahead = (wall() + 3600.0).floor();
+    let ahead = wall() + 3600.0;
     fs::write(
         home.root.join("status.json"),
         format!(

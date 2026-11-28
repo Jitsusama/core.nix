@@ -13,8 +13,13 @@ libc = "0.2"
 regex-lite = "0.1"
 rustix = { version = "1.1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
-# Walls kept in memory.json and the journal are compared exactly when read
-# back, and without float_roundtrip a parsed float can be an ulp off.
+# Without float_roundtrip a parsed float can be an ulp off what was written.
+# Only the scenarios compare the walls read back from memory.json,
+# status.json and the journal exactly: the guard and `disk-guard status`
+# subtract and order them, where an ulp, a quarter of a microsecond today,
+# changes nothing. But what a guard carries over unchanged, as a restarted
+# one does each moment of the status file it restamps, would come back
+# changed.
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # The shape every command of ours takes: help, the answer's form, the
 # terminal's colours and the shared exits (../terminal-kit).

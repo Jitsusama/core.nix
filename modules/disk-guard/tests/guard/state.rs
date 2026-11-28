@@ -26,6 +26,25 @@ fn what_is_saved_is_loaded() {
     crate::assert_exactly(loaded.learned.ratio(Class::Target), 0.6);
 }
 
+// On 27 November a measure's stamp, 1795802163.1340997, came back from the
+// journal as 1795802163.1340995, since serde_json parses a float within an
+// ulp of it unless its float_roundtrip feature is on. About one wall in
+// eight near it reads back off without it, so this wall, known to be one,
+// fails here every run should the feature go.
+#[test]
+fn a_wall_is_loaded_exactly_as_it_was_saved() {
+    let wall = 1_795_802_163.134_099_7;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("memory.json");
+    let memory = Memory {
+        upkept: Some(wall),
+        ..Memory::default()
+    };
+    save(&path, &memory).unwrap();
+    let loaded: Memory = load(&path).unwrap().expect("nothing was saved");
+    crate::assert_exactly(loaded.upkept.expect("the wall wasn't loaded"), wall);
+}
+
 #[test]
 fn nothing_saved_loads_as_nothing() {
     let dir = tempfile::tempdir().unwrap();
