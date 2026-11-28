@@ -1923,6 +1923,35 @@ mod tests {
     }
 
     #[test]
+    fn a_call_with_nowhere_to_give_way_to_says_what_faded_and_what_it_keeps_off() {
+        let (desk, hall, stairs) = (
+            "02:00:00:00:01:00",
+            "02:00:00:00:02:00",
+            "02:00:00:00:03:00",
+        );
+
+        let keeping = stranded(&joined(desk), &Why::Lossy(2), &[hall, stairs]);
+        let faint = stranded(&joined(desk), &Why::Faint(-75), &[]);
+
+        assert_eq!(
+            keeping,
+            format!(
+                "wlan2 is fading during a call, as {desk} lost 2 echoes in 10 s, and hears \
+                 nowhere to give way to, keeping off {hall}, {stairs}"
+            ),
+            "a stranded call doesn't say what faded, or each point it keeps off"
+        );
+        assert_eq!(
+            faint,
+            format!(
+                "wlan2 is fading during a call, as {desk} has faded to -75 dBm, and hears \
+                 nowhere to give way to"
+            ),
+            "a stranded call keeping nothing off says it keeps some off, or not how it faded"
+        );
+    }
+
+    #[test]
     fn a_card_keeping_to_its_wider_band_says_what_it_kept_off_and_why() {
         let quick_middle = Measured {
             p50: Some(ms(5)),
