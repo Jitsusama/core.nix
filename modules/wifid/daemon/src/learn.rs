@@ -263,6 +263,15 @@ impl Learned {
     /// for nothing, and a point left for 250 ms reads as its usual 41 ms,
     /// quick enough to be tried again as known better. Read as the worse,
     /// a point left for carrying badly isn't gone back to within the hour.
+    ///
+    /// This hour's minutes count only where they're as recent, the ones
+    /// that made the card leave: those of another day, kept on the disk,
+    /// would let a few slow minutes a week ago bar a point that carried
+    /// well all of the hour just gone. The minutes are summed to reach
+    /// `ENOUGH`, yet the reading may rest on one of this hour's, which can
+    /// keep the point off until the hour turns. That's meant: it's the
+    /// minute the card left for, and the card off the point can't measure
+    /// it lifting.
     pub fn just_left(
         &self,
         point: &str,
@@ -278,7 +287,11 @@ impl Learned {
         };
         let figures = |learnt: &Learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes);
         let near = || self.near(point, signal);
-        let this = summed(near().filter(|learnt| learnt.hour == hour).map(figures));
+        let this = summed(
+            near()
+                .filter(|learnt| learnt.hour == hour && lately(learnt))
+                .map(figures),
+        );
         let before = summed(
             near()
                 .filter(|learnt| learnt.hour == gone && lately(learnt))
@@ -906,6 +919,74 @@ mod tests {
             learned.of(DESK, 10, -44),
             None,
             "hour 10 alone knew the point, so the figure above wasn't shown to be hour 9's"
+        );
+    }
+
+    /// That many minutes on the desk at this hour, heard at -44 dBm, each
+    /// ending `ended` by the boot clock.
+    fn on_the_desk(
+        learned: &mut Learned,
+        (hour, ended): (u8, Duration),
+        measured: &Measured,
+        count: u32,
+    ) {
+        let here = Here {
+            booted: ended,
+            ..at(DESK, hour, -44)
+        };
+        minutes(learned, &here, measured, count);
+    }
+
+    #[test]
+    fn a_point_just_left_isn_t_read_by_this_hour_s_minutes_of_another_day() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(FILE);
+        let mut another_day = Learned::kept_in(&file);
+        on_the_desk(&mut another_day, (10, NINE), &carried(Some(300), 0.0), 3);
+        let mut learned = Learned::kept_in(&file);
+        let last = NINE + Duration::from_hours(1);
+        on_the_desk(&mut learned, (9, last), &carried(Some(35), 0.0), 60);
+
+        assert_eq!(
+            just_left_p95(&learned, 10, last + Duration::from_mins(20)),
+            Some(35),
+            "three slow minutes of hour 10 from another day, read back from the disk, \
+             outweighed sixty of hour 9 at 35 ms measured just now"
+        );
+    }
+
+    #[test]
+    fn a_point_just_left_reads_by_the_hour_gone_where_that_was_worse() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join(FILE));
+        let last = NINE + Duration::from_hours(1);
+        on_the_desk(&mut learned, (9, last), &carried(Some(250), 0.0), 60);
+        on_the_desk(&mut learned, (10, last), &carried(Some(35), 0.0), 2);
+
+        assert_eq!(
+            just_left_p95(&learned, 10, last + Duration::from_mins(5)),
+            Some(250),
+            "two quick minutes this hour stood for a point that carried 250 ms all of \
+             the hour just gone"
+        );
+    }
+
+    #[test]
+    fn a_point_just_left_reads_the_worse_loss_of_the_two_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join(FILE));
+        let last = NINE + Duration::from_hours(1);
+        on_the_desk(&mut learned, (9, last), &carried(Some(35), 6.0), 60);
+        on_the_desk(&mut learned, (10, last), &carried(Some(35), 0.5), 2);
+
+        let left = learned
+            .just_left(DESK, 10, -44, last + Duration::from_mins(5))
+            .expect("left five minutes before");
+        assert!(
+            (left.lost - 6.0).abs() < 0.01,
+            "the point read by this hour's loss, or the two weighed, not the worse of \
+             the hour gone's 6 %: {}",
+            left.lost
         );
     }
 

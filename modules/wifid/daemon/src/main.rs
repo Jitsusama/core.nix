@@ -1675,6 +1675,53 @@ fn held_before_the_move(readied: Option<bool>, held: bool) -> bool {
     readied.unwrap_or(held)
 }
 
+/// The cards `Wifid::ready` held for a move, each with whether it was held
+/// before and the points it was readied for, until a move of it is asked
+/// and taken, so every move a ready was taken for, refused or not, puts the
+/// card's hold back as it was (`held_before_the_move`).
+#[derive(Debug, Default)]
+struct Readies(HashMap<String, Readied>);
+
+#[derive(Debug)]
+struct Readied {
+    held_before: bool,
+    /// The points it was readied for, so a move refused because its point
+    /// is no longer heard, which names no card, still finds this one.
+    to: Vec<String>,
+}
+
+impl Readies {
+    /// Takes in that the card was held for a move to that point. A card
+    /// readied again before its move keeps whether it was held before the
+    /// first: by the second it's held by the first, which would read as
+    /// held before though it had been free.
+    fn readied(&mut self, card: &str, bssid: &str, held_before: bool) {
+        let readied = self.0.entry(card.to_owned()).or_insert(Readied {
+            held_before,
+            to: Vec::new(),
+        });
+        readied.to.push(bssid.to_owned());
+    }
+
+    /// Takes the card's ready for the move asked of it now, whatever point
+    /// it's to, so none is read by a later move it wasn't kept for.
+    fn taken(&mut self, card: &str) -> Option<bool> {
+        self.0.remove(card).map(|readied| readied.held_before)
+    }
+
+    /// Takes the ready of the card readied for a move to that point, with
+    /// whether it was held before, for a move refused before its card is
+    /// known.
+    fn taken_for(&mut self, bssid: &str) -> Option<(String, bool)> {
+        let card = self.0.iter().find_map(|(card, readied)| {
+            let to = |point: &String| point.eq_ignore_ascii_case(bssid);
+            readied.to.iter().any(to).then(|| card.clone())
+        })?;
+        let held_before = self.taken(&card)?;
+        Some((card, held_before))
+    }
+}
+
 /// The point a card whose move was refused is held to again: the one it's
 /// on, where it was held before the move (`held_before_the_move`). None
 /// where it wasn't held, no point is known, or its point warned it drops
@@ -1777,6 +1824,21 @@ fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch
         let left = until.saturating_duration_since(Instant::now());
         let minutes = left.as_secs().div_ceil(60);
         println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
+    }
+}
+
+/// Forgets a network saved for a join that didn't happen, from the store
+/// and from the saved networks the state shows. The state takes the store's
+/// listing afresh rather than dropping the name itself, so it holds what
+/// the store holds, as it does after every other change, and the next time
+/// the cards are given their networks changes nothing in it.
+fn forget_unjoined(store: &Store, state: &watch::Sender<State>, name: &str) {
+    if let Err(error) = store.forget(name) {
+        eprintln!("<4>can't forget {name} again: {error:?}");
+    }
+    match store.networks() {
+        Ok(listing) => change(state, |state| state.saved(&listing.saved)),
+        Err(error) => eprintln!("<3>can't read the saved networks: {error}"),
     }
 }
 
@@ -1976,10 +2038,9 @@ struct Wifid<'a> {
     /// The cards moved to an access point, each with the network it's
     /// held to that point on, until the card comes off it.
     held: RefCell<HashMap<String, OwnedObjectPath>>,
-    /// The cards `Wifid::ready` held for a move, each with whether it was
-    /// held before, until the move is asked, so a refused move leaves the
-    /// card as it was then (`held_before_the_move`).
-    readied: RefCell<HashMap<String, bool>>,
+    /// The cards `Wifid::ready` held for a move, until the move is asked
+    /// (`Readies`).
+    readied: RefCell<Readies>,
     /// The cards that took another network as they were let go, each with
     /// the network they were held on, to look again once joined.
     astray: RefCell<HashMap<String, OwnedObjectPath>>,
@@ -2804,12 +2865,14 @@ impl Wifid<'_> {
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
                 self.picked.borrow_mut().remove(card);
-                // Forgotten before the refusal is said, so whoever asked
-                // finds nothing saved once told: told first, a test's
-                // Describe read the network still saved 0.1 s later
-                // (2026-11-27).
-                if *new && let Err(error) = self.store.forget(name) {
-                    eprintln!("<4>can't forget {name} again: {error:?}");
+                // Forgotten from the store and from what Describe reads
+                // before the refusal is said, so whoever asked finds it
+                // saved nowhere once told. The state used to change only
+                // as the cards were given their networks again, after the
+                // refusal and networkd's reload, so a test's Describe read
+                // the network still saved 0.1 s after it (2026-11-27).
+                if *new {
+                    forget_unjoined(self.store, self.state, name);
                 }
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
@@ -3043,7 +3106,21 @@ impl Wifid<'_> {
         joining: Option<&str>,
         missed: Missed,
     ) -> Result<(), Refused> {
-        let card = self.state.borrow().roamer(bssid)?;
+        let roamer = self.state.borrow().roamer(bssid);
+        let card = match roamer {
+            Ok(card) => card,
+            Err(refused) => {
+                // Most often the point readied for went unheard before the
+                // move was asked, as wpa_supplicant forgot it. The card is
+                // found by its ready, as the refusal names none, and put back
+                // as it was, so a card that was free isn't left held there.
+                let readied = self.readied.borrow_mut().taken_for(bssid);
+                if let Some((card, held_before)) = readied {
+                    self.kept_where_it_is(&card, held_before).await;
+                }
+                return Err(refused);
+            }
+        };
         self.roam_card(&card, bssid, joining, missed).await
     }
 
@@ -3070,12 +3147,17 @@ impl Wifid<'_> {
         let card = card.to_owned();
         // Taken by every move, refused or not, so none is read by a later
         // move it wasn't kept for.
-        let readied = self.readied.borrow_mut().remove(&card);
+        let readied = self.readied.borrow_mut().taken(&card);
         let held_before = held_before_the_move(readied, self.held.borrow().contains_key(&card));
         let busy = self
             .arrivals
             .borrow()
             .busy(&card, missed == Missed::LetJoin);
+        // Its hold is left as it is: `ready` refuses a busy card, so a
+        // readied one found busy here began its way back or warned move
+        // since, which held it to that move's point in place of the ready.
+        // Put back as it was before the ready, it would be let go or held
+        // where it is partway into that move.
         if let Some(busy) = busy {
             return Err(Refused::Failed {
                 reason: format!("{card} {}", busy.why()),
@@ -3700,7 +3782,7 @@ impl Wifid<'_> {
         };
         let (interface, on) = match held.await {
             Ok(held) => {
-                self.readied.borrow_mut().insert(card.clone(), held_before);
+                self.readied.borrow_mut().readied(&card, bssid, held_before);
                 held
             }
             Err(error) => {
@@ -4121,6 +4203,58 @@ mod tests {
         zbus::Error::from(reply)
     }
 
+    /// A network the launcher saves, open, so it keeps no password.
+    fn open(name: &str) -> network::Network {
+        network::Network {
+            name: name.to_owned(),
+            security: network::Security::Open,
+            secret: None,
+            priority: 0,
+            hidden: false,
+            address: network::Address::Network,
+            trusted: false,
+            account: None,
+        }
+    }
+
+    // That the refusal is said only after this is seen in the joins-when-
+    // asked VM test alone, whose wrong password reaches wpa_supplicant.
+    #[test]
+    fn a_network_saved_for_a_join_that_didn_t_happen_is_saved_nowhere_once_forgotten() {
+        let root = tempfile::TempDir::new().expect("no directory for the store");
+        let store = Store {
+            declared: root.path().join("etc"),
+            saved: root.path().join("var"),
+            runtime: root.path().join("run"),
+            defaults: root.path().join("etc/90-wifi.network"),
+        };
+        for directory in [&store.declared, &store.saved, &store.runtime] {
+            fs::create_dir(directory).expect("no directory in the store");
+        }
+        fs::write(&store.defaults, "[Match]\nType=wlan\n").expect("no defaults");
+        for name in ["Lantern", "Roadside Inn"] {
+            store
+                .save(&open(name))
+                .expect("a network couldn't be saved");
+        }
+        let (state, _shell) = watch::channel(State::default());
+        let listing = store.networks().expect("the store couldn't be read");
+        change(&state, |state| state.saved(&listing.saved));
+
+        forget_unjoined(&store, &state, "Lantern");
+
+        assert_eq!(
+            state.borrow().saved_names(),
+            vec!["Roadside Inn".to_owned()],
+            "a network whose join was refused still read as saved once forgotten, \
+             so Describe would show it saved after the refusal"
+        );
+        assert!(
+            !store.saved.join("lantern.network").exists(),
+            "the refused network's file was kept"
+        );
+    }
+
     #[test]
     fn a_refused_move_keeps_a_held_card_to_its_point_unless_that_point_warned() {
         let on = || Some("02:00:00:00:01:00".to_owned());
@@ -4168,6 +4302,71 @@ mod tests {
         assert!(
             !held_before_the_move(None, false),
             "a free card moved again after a look was taken as held"
+        );
+    }
+
+    // What no test reaches: that `roam` takes a ready when it refuses a
+    // point no longer heard, that `roam_card` takes it before its busy
+    // return, and that `kept_where_it_is` holds or lets go by what's taken.
+    // Each runs against wpa_supplicant over D-Bus, which nothing here
+    // stands in for, and no VM test has a roam refused.
+    #[test]
+    fn a_card_readied_twice_before_its_move_keeps_how_it_was_before_the_first() {
+        let mut readies = Readies::default();
+        readies.readied("wlan0", "02:00:00:00:01:00", false);
+        readies.readied("wlan0", "02:00:00:00:02:00", true);
+
+        assert_eq!(
+            readies.taken("wlan0"),
+            Some(false),
+            "a card free before two readies read as held, held there by the first, so \
+             a refused move would pin it where it is"
+        );
+    }
+
+    #[test]
+    fn a_move_refused_before_its_card_is_known_finds_the_card_by_its_ready() {
+        let mut readies = Readies::default();
+        readies.readied("wlan0", "02:00:00:00:01:00", false);
+        readies.readied("wlan1", "02:00:00:00:02:00", true);
+
+        assert_eq!(
+            readies.taken_for("02:00:00:00:02:00".to_uppercase().as_str()),
+            Some(("wlan1".to_owned(), true)),
+            "a move refused as its point went unheard didn't find the card readied for \
+             it, so the card stayed held as the ready left it"
+        );
+        assert_eq!(
+            readies.taken("wlan1"),
+            None,
+            "a refused move left its ready behind, for a later move to read"
+        );
+        assert_eq!(
+            readies.taken_for("02:00:00:00:03:00"),
+            None,
+            "a move to a point no card was readied for took another card's ready"
+        );
+        assert_eq!(
+            readies.taken("wlan0"),
+            Some(false),
+            "one card's refused move took another's ready"
+        );
+    }
+
+    #[test]
+    fn a_move_takes_its_card_s_ready_whatever_point_it_s_to() {
+        let mut readies = Readies::default();
+        readies.readied("wlan0", "02:00:00:00:01:00", false);
+
+        assert_eq!(
+            readies.taken("wlan0"),
+            Some(false),
+            "a move of the readied card didn't find its ready"
+        );
+        assert_eq!(
+            readies.taken_for("02:00:00:00:01:00"),
+            None,
+            "a ready outlived the move of its card, for a later refusal to read"
         );
     }
 

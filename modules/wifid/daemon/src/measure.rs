@@ -502,6 +502,15 @@ fn took_back(
             }
             None
         }
+        Back::OutOfReach { card, to, asked } => {
+            let way_back = choosers
+                .get_mut(&card)
+                .and_then(|chooser| chooser.out_of_reach(now, &to, asked));
+            if way_back.is_some() {
+                println!("<6>{card}'s way back to {to} found it unheard, so it stays where it is");
+            }
+            None
+        }
         Back::Refused { card, to, asked } => {
             let Some(chooser) = choosers.get_mut(&card) else {
                 println!("<6>{card}'s move to {to} was refused once the card was gone");
@@ -1008,7 +1017,7 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::choose::tests::{found_on, found_on_at};
+    use crate::choose::tests::{found_on, found_on_at, sent_back_from_the_hall};
 
     const DESK: &str = "02:00:00:00:a4:00";
     const HALL: &str = "02:00:00:00:a6:00";
@@ -1956,6 +1965,57 @@ pub(crate) mod tests {
         assert!(
             !chooser.keeps_off(HALL, later),
             "a give-way refused was followed as one never reached, keeping the hall off"
+        );
+    }
+
+    #[test]
+    fn a_way_back_out_of_reach_is_taken_back_as_refused() {
+        let start = Instant::now();
+        let (sent_back, back) = sent_back_from_the_hall(start);
+        let mut choosers = HashMap::from([("wlan2".to_owned(), sent_back)]);
+        let out_of_reach = Back::OutOfReach {
+            card: "wlan2".into(),
+            to: DESK.into(),
+            asked: back,
+        };
+
+        let chosen = took_back(&mut choosers, out_of_reach, back + Duration::from_secs(1));
+
+        assert_eq!(
+            chosen, None,
+            "a card was chosen for on a way back out of reach"
+        );
+        let chooser = choosers.get("wlan2").expect("a chooser was dropped");
+        assert_eq!(
+            found_on(chooser),
+            None,
+            "a way back refused as the desk was unheard was taken as answered, so the \
+             chooser still found the card on the desk it never went back to"
+        );
+    }
+
+    #[test]
+    fn a_give_way_out_of_reach_is_followed_as_one_never_reached() {
+        let start = Instant::now();
+        let mut gave = Chooser::default();
+        gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
+        let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
+        let out_of_reach = Back::OutOfReach {
+            card: "wlan2".into(),
+            to: HALL.into(),
+            asked: start,
+        };
+
+        let answered_at = start + Duration::from_secs(1);
+        took_back(&mut choosers, out_of_reach, answered_at);
+        let later = answered_at + fading::BETWEEN;
+        let chooser = choosers.get_mut("wlan2").expect("a chooser was dropped");
+        chooser.followed(later, DESK);
+
+        assert!(
+            chooser.keeps_off(HALL, later),
+            "a give-way to a point out of reach wasn't followed, so it wasn't kept off \
+             as never reached"
         );
     }
 

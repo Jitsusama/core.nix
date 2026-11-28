@@ -1668,14 +1668,14 @@ mod tests {
     }
 
     #[test]
-    fn a_point_heard_before_the_clock_began_isn_t_heard_just_now() {
+    fn a_point_s_age_saturates_rather_than_overflows_as_it_grows() {
         let mut state = at_the_inn();
         let mut aged = heard("Roadside Inn", -60);
         aged.bssid = "02:00:00:00:02:00".into();
-        // Older than a clock that can't count back past boot, as macOS's
-        // `Instant` can't. Linux's counts back that far, so there this
-        // checks only that the age saturates rather than overflow as it
-        // grows.
+        // A second short of the most an age can say, so 40 more would
+        // overflow. Whether a point heard before the clock began reads as
+        // heard lately can't be pinned here: Linux's `Instant` counts back
+        // past boot, so the age taken is never cut short.
         aged.age = u32::MAX - 1;
         let now = Instant::now();
         state.heard("/Interfaces/0/BSSs/2", Some(aged), now);
@@ -1690,7 +1690,8 @@ mod tests {
         assert_eq!(
             oldest,
             Some(u32::MAX),
-            "a point heard longer ago than the clock reaches read as heard lately"
+            "a point's age grown past the most it can say didn't stay at that most, so it \
+             overflowed or wrapped to read as heard lately"
         );
     }
 
