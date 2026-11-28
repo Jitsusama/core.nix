@@ -122,7 +122,6 @@
   "modules/quickshell/tests/program-acts.qml" = 2;
   "modules/quickshell/tests/program-controls.qml" = 2;
   "modules/quickshell/tests/program-drawer.qml" = 1;
-  "modules/quickshell/tests/query-keys.qml" = 1;
   "modules/quickshell/tests/quests.qml" = 2;
   "modules/quickshell/tests/queue.qml" = 2;
   "modules/quickshell/tests/recent.qml" = 1;
