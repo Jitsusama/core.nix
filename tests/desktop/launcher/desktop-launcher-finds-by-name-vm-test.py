@@ -723,8 +723,10 @@ def walk_the_gutter(desktop: Desktop) -> None:
     numbered(["1", "1", "2"], relative=True)
     desktop.shoot("launcher-gutter")
     # The find narrows the list, which normal says after it, in the field: how many it found,
-    # the gutter and the status line saying where the cursor is.
-    count = desktop.showing()["count"]
+    # the gutter and the status line saying where the cursor is. A row kept dimmed after its
+    # source let it go isn't found any more, so the head leaves it out (Found.foundSaid).
+    shown = desktop.showing()
+    count = shown["count"] - shown["went"]
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
     assert any(word["text"] == f"\u00b7 {count} found" for word in field), field
     # On the find it numbers each row as it is, in the same room, so no row moves, and normal

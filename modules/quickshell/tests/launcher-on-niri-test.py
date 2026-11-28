@@ -2874,12 +2874,16 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     shown, found = (int(part) for part in counted.groups())
     # N and M are both counted from the launcher's own list, so each is held to the history's
     # answer instead: M past N is what it found past the keys it gave, every one made a row.
-    # M past what it found is what the launcher listed beside the answer, less the rows kept
-    # dimmed from an answer let go (Steady.kept), which M counts too. Emoji's words name no parts,
+    # M past what it found is what the launcher listed beside the answer. A row kept dimmed from an
+    # answer let go (Steady.kept) is no longer found, so N and M both leave it out (Found.js's
+    # foundSaid), and N is the answer's keys alone. Emoji's words name no parts,
     # the history finds no group (clipboard/src/search.rs keeps only emoji), and nothing was
     # acted on to be still offered (Launcher.qml's stillActed), so there are none.
     went = cast("int", head["went"])
-    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"] - went
+    past, beside = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
+    assert shown == answer["keysHeld"], (
+        f"the head should count the answer's keys and not the {went} kept gone: {said}, {answer}"
+    )
     assert found - shown == past, f"the head said {said}, the history {answer}"
     assert beside == 0, (
         f"the head listed {beside} beside the answer and {went} kept gone: {said}, {answer}"
