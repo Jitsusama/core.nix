@@ -168,7 +168,8 @@
   # (tests/repository/every-hardware-address-is-made-up.sh). Those below
   # are kept on purpose: each has a real maker's prefix, as a vendor is
   # named from or a card is read like, under a device part plainly made up.
-  # A made-up tree shows a copied address is refused and these aren't
+  # A made-up tree, with a list of its own, shows a copied address is
+  # refused, each bound holds and a kept one passes only while it's kept
   # (tests/repository/every-hardware-address-is-made-up-test.sh).
   every-hardware-address-is-made-up =
     let
@@ -204,6 +205,7 @@
           ./copied.txt:2:04:00:00:00:00:01
           ./copied.txt:3:48:00:00:00:00:01
           ./copied.txt:4:0C:00:00:00:00:01
+          ./copied.txt:5:8c:00:00:00:00:01
           The addresses above could be a real device's. Write a made-up one, as
           02:00:00:00:a0:00, or RFC 7042's 00:00:5e:00:53:01; an address that needs
           a vendor's real prefix is kept on purpose in tests/repository/checks.nix.
@@ -213,7 +215,7 @@
     pkgs.runCommandLocal "every-hardware-address-is-made-up" { nativeBuildInputs = [ pkgs.ripgrep ]; }
       ''
         ${script} ${../..} ${kept}
-        ${test} ${./every-hardware-address-is-made-up.sh} ${kept} ${madeUp.said}
+        ${test} ${./every-hardware-address-is-made-up.sh} ${madeUp.said}
         touch $out
       '';
 
