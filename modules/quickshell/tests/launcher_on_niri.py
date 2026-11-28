@@ -295,11 +295,23 @@ class Shell:
         socket.unlink(missing_ok=True)
 
     def stop(self) -> None:
-        """End the shell."""
+        """End the shell, and fail saying which never ended and what the shell last logged.
+
+        One still running after 10 s is killed, and the rest are still ended, so a slow end
+        neither leaves processes behind it nor fails with no word of why.
+        """
+        lingered: list[str] = []
         for process in (self.process, *self.daemons.values()):
-            if process is not None:
-                process.terminate()
+            if process is None:
+                continue
+            process.terminate()
+            try:
                 process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                lingered.append(str(process.args))
+        assert not lingered, f"still running 10 s after asked to end: {lingered}\n{self.tail()}"
 
     def tail(self) -> str:
         """Give the end of the shell's log, to say why a wait failed."""
