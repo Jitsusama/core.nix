@@ -83,8 +83,9 @@
 //! only taking lines from its tests, is said and not built. A candidate of
 //! merge-net's train, all merges of changes judged at their own heads,
 //! isn't judged again: the train is to mark it with
-//! `CHANGED_CHECKS_CANDIDATE=1`, and until it does, a change with no commit
-//! of its own besides merges is taken for one. Red first judges the commit
+//! `CHANGED_CHECKS_CANDIDATE=1`, a mark nix-offload must carry to the far side for a run there
+//! to see it; until it does, a range of merges alone, with no commit of its own, is taken for
+//! the candidate. Red first judges the commit
 //! the run evaluated, not whatever `HEAD` is by the time it starts, and
 //! not at all on a person's machine whose run built the head's checks on
 //! the lent builder, which fetches only origin's commits, so the builds

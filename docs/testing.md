@@ -77,10 +77,11 @@ at all, a build over the base that failed with no builder failing it, and
 red first itself failing are said rather than refused. A revert is
 excused, and so is the train's candidate, whose riders were each judged
 at their own heads: the train is to mark it with
-`CHANGED_CHECKS_CANDIDATE=1`, and until then a change with no commit of
-its own besides merges is taken for one. A run on a person's machine
-whose own build went to the lent builder leaves red first to the gate,
-since the builds over the base would fall to the machine. Nix's log of
+`CHANGED_CHECKS_CANDIDATE=1`, a mark nix-offload must carry to the far
+side for a run there to see it; until it does, a range of merges alone,
+with no commit of its own, is taken for the candidate. A run on a person's
+machine whose own build went to the lent builder leaves red first to the
+gate, since the builds over the base would fall to the machine. Nix's log of
 the builds over the base is kept out of the run's, since one failing
 there as it should says nix's words for a failed build. Those builds
 stop after ten minutes in all (`CHANGED_CHECKS_RED_FIRST_SECONDS` sets
