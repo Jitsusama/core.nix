@@ -12,6 +12,11 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-camera-watch-refuses-a-unit-holding-everyone = ''
+    a machine whose loopback camera's watch leaves out a person's manager, a session's scope,
+    init.scope, a slice or a path never builds, while one leaving out a relay's own service or
+    scope, or a system service named like a person's manager, does
+  '';
   a-card-says-how-it-stands-in-one-row = ''
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
