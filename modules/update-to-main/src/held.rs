@@ -18,6 +18,7 @@ use crate::hosted;
 use crate::read;
 use crate::run::Failure;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -223,9 +224,76 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
             ));
         }
     };
+    let mut copies = Copies::default();
     holds
         .iter()
-        .find_map(|hold| stopped_by(config, head, &built, hold))
+        .find_map(|hold| stopped_by(config, head, &built, hold, &mut copies))
+}
+
+/// What one judgement of the holds has fetched into each input's copy, so
+/// each is fetched at most once however many holds there are: a
+/// repository out of reach would otherwise cost each hold its fetch's
+/// tries again.
+#[derive(Default)]
+struct Copies {
+    /// Whether each input's copy has what the build reads of it, once
+    /// fetched for it if it hadn't, or why not.
+    readied: BTreeMap<String, Result<(), String>>,
+    /// The inputs whose main has been fetched, or tried.
+    fetched: BTreeSet<String>,
+}
+
+impl Copies {
+    /// Whether the copy of `name` has `commit`, which the build reads,
+    /// fetched first when it lacks it: its main, then, for a lock pinning a
+    /// commit off its main, that commit by its id.
+    fn readied(&mut self, repo: &Repo, name: &str, commit: &str) -> Result<(), String> {
+        if let Some(readied) = self.readied.get(name) {
+            return readied.clone();
+        }
+        let readied = if git::has(repo, commit) {
+            Ok(())
+        } else {
+            self.fetched.insert(name.to_owned());
+            git::fetch(repo)
+                .and_then(|_| {
+                    if git::has(repo, commit) {
+                        Ok(())
+                    } else {
+                        git::fetch_commit(repo, commit)
+                    }
+                })
+                .map_err(|failure| failure.why)
+                .and_then(|()| {
+                    if git::has(repo, commit) {
+                        Ok(())
+                    } else {
+                        Err(format!(
+                            "{} hasn't got {}, which the build reads",
+                            repo.called,
+                            git::short(commit)
+                        ))
+                    }
+                })
+        };
+        self.readied.insert(name.to_owned(), readied.clone());
+        readied
+    }
+
+    /// Fetches the main of `name` once, so a commit landed there since its
+    /// copy's last fetch is seen to be its own. Its failure is only said in
+    /// the journal, since the copy still proves what it builds.
+    fn look_again(&mut self, repo: &Repo, name: &str) {
+        if !self.fetched.insert(name.to_owned()) {
+            return;
+        }
+        if let Err(failure) = git::fetch_once(repo) {
+            eprintln!(
+                "looking for held commits in {} failed, so its copy is judged as it was: {}",
+                repo.called, failure.why
+            );
+        }
+    }
 }
 
 /// Whether a hold names `commit` of the input `name`, or one it holds, as
@@ -242,7 +310,13 @@ pub fn keeps_off(config: &Config, name: &str, commit: &str) -> bool {
 }
 
 /// Why `hold` stops main at `head`, its inputs at `built`, if it does.
-fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Option<String> {
+fn stopped_by(
+    config: &Config,
+    head: &str,
+    built: &Followed,
+    hold: &Hold,
+    copies: &mut Copies,
+) -> Option<String> {
     let main = Repo::main(config);
     // A commit is judged in main and in every input the build reads, and
     // held if any of them builds it: anyone who can push to one repository,
@@ -258,7 +332,9 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
     // since its last fetch is seen to be its own: an input moved only when
     // asked is otherwise never fetched, and a hosted main's 404 for the
     // commit would then leave every update refused as untold. That fetch
-    // failing changes nothing, since the copy still proves what it builds.
+    // failing changes nothing, since the copy still proves what it builds,
+    // so it is tried once, and each copy is fetched at most once for all
+    // the holds (`Copies`).
     let mut unknown = None;
     let mut theirs = false;
     let mut in_followed = false;
@@ -267,28 +343,12 @@ fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Opt
             continue;
         };
         let repo = Repo::followed(config, name, follow);
-        if !git::has(&repo, commit)
-            && let Err(failure) = git::fetch(&repo)
-        {
-            unknown.get_or_insert(failure.why);
-            continue;
-        }
-        if !git::has(&repo, commit)
-            && let Err(failure) = git::fetch_commit(&repo, commit)
-        {
-            unknown.get_or_insert(failure.why);
-            continue;
-        }
-        if !git::has(&repo, commit) {
-            unknown.get_or_insert(format!(
-                "{} hasn't got {}, which the build reads",
-                repo.called,
-                git::short(commit)
-            ));
+        if let Err(why) = copies.readied(&repo, name, commit) {
+            unknown.get_or_insert(why);
             continue;
         }
         if !git::has(&repo, &hold.commit) {
-            let _ = git::fetch(&repo);
+            copies.look_again(&repo, name);
         }
         if git::has(&repo, &hold.commit) {
             theirs = true;

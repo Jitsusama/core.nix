@@ -140,9 +140,20 @@ pub fn holds_file(repo: &Repo, commit: &str, path: &str) -> bool {
 
 /// Fetches main into root's copy, whole, and gives its head.
 pub fn fetch(repo: &Repo) -> Result<String, Failure> {
+    fetched(repo, &repo.config.fetch_again)
+}
+
+/// Fetches main into root's copy as `fetch` does, but tries only once, for
+/// a fetch that settles nothing the copy can't already: a host out of
+/// reach would otherwise cost a minute and a quarter it needn't.
+pub fn fetch_once(repo: &Repo) -> Result<String, Failure> {
+    fetched(repo, &[])
+}
+
+fn fetched(repo: &Repo, waits: &[Duration]) -> Result<String, Failure> {
     make_copy(repo)?;
     let refspec = format!("+refs/heads/{}:{MAIN}", repo.branch);
-    retried(&repo.config.fetch_again, thread::sleep, || {
+    retried(waits, thread::sleep, || {
         run::output(
             git(repo),
             &format!("fetching {}", repo.called),
