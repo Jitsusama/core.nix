@@ -10,8 +10,8 @@ pragma ComponentBehavior: Bound
 // it was given, so a window kept on its twin goes to the other, unless a
 // session took that connector, when the session's twin goes with it.
 // Sessions handed over outside a walk give windows nothing, and a walk
-// joined keeps the screen in use as it began. Twin sessions of one boot
-// take a connector each, as the places their boot kept say, and a session
+// joined keeps the screen in use as it began. Twin sessions take a
+// connector each, as the places each one's own boot kept say, and a session
 // kept on a screen that's gone goes to the screen in use as its walk
 // began. No walk starts anything. A window noted away from a
 // screen named for a prototype's key, constructor or __proto__, is noted
@@ -92,6 +92,9 @@ ShellRoot {
     function goneFrom(one) {
         root.gone = root.gone.concat([one.id]);
     }
+    // How many were found gone as the stage now running began, so each
+    // stage reads only what the walk of the case before it found gone.
+    property int goneAt: 0
     readonly property string goneFolder: "/nowhere/given-back"
 
     // The walk places a session kept on the second twin on the first
@@ -206,17 +209,25 @@ ShellRoot {
             .map(one => [one.one.id, one.at?.output]).sort();
     }
 
-    // Two sessions of one boot, kept on each twin, take a connector each,
-    // since the places their boot kept (each one's moment) say the twins
-    // are two screens. It alone catches a reopenHere that hands
-    // placedGiven no moments, `here.map(() => [])`: both then take the
-    // first connector found.
+    // Two sessions, kept on each twin, each placed by the places its own
+    // boot kept (its moment). s-left's boot kept it alone, so says no twin
+    // of its screen, and it takes the first connector found. s-right's kept
+    // windows on three screens of the model, Virtual-1 to Virtual-3, so it
+    // takes a connector none of those twins hold, the other. It alone
+    // catches a reopenHere that hands placedGiven no moments,
+    // `here.map(() => [])`, or one that looks up another session's moment:
+    // with s-left's for both, s-right takes the first connector found too,
+    // and with s-right's for s-left, s-left takes the other.
     function momentsSetTwinsApart() {
-        const boot = [root.keptOn("Virtual-1", "pi"), root.keptOn("Virtual-2", "pi")];
+        const left = root.keptOn("Virtual-1", "pi");
+        const right = root.keptOn("Virtual-2", "pi");
+        const kept = { "s-left": left, "s-right": right };
+        const moments = { "s-left": [left],
+            "s-right": [left, right, root.keptOn("Virtual-3", "pi")] };
         Sessions.reopenHere([{ id: "s-left", cwd: root.goneFolder },
-            { id: "s-right", cwd: root.goneFolder }], root.goneFrom,
-            id => boot[id === "s-left" ? 0 : 1], Sessions.carryOn, () => boot, true, null);
-        Expect.same("each twin session of one boot takes a connector of its own",
+            { id: "s-right", cwd: root.goneFolder }], root.goneFrom, id => kept[id],
+            Sessions.carryOn, id => moments[id], true, null);
+        Expect.same("each twin session takes the connector its own boot's places say",
             root.placedNow(), [["s-left", "Virtual-3"], ["s-right", "Virtual-4"]]);
     }
 
@@ -260,16 +271,20 @@ ShellRoot {
     // waits for that walk to end rather than join it.
     property string stage: "docking"
     function step() {
+        // Before the wait for an open walk, so a walk that starts something
+        // and stays open fails a tick later, naming what it started.
+        Expect.same(`nothing is started at ${root.stage}, its sessions' folders gone`,
+            Niri.spawns, []);
         if (root.stage !== "docking" && Sessions.reopening !== null)
             return;
-        Expect.same(`nothing is started as ${root.stage} begins, its sessions' folders gone`,
-            Niri.spawns, []);
+        const walked = root.gone.slice(root.goneAt);
+        root.goneAt = root.gone.length;
         if (root.stage === "docking") {
             root.docked();
             root.sessionsGive();
             root.stage = "given";
         } else if (root.stage === "given") {
-            Expect.same("the walk ends with its session's folder found gone", root.gone,
+            Expect.same("the walk ends with its session's folder found gone", walked,
                 ["s-twin"]);
             root.windowsBeforeKeep();
             root.stage = "kept";
@@ -278,12 +293,12 @@ ShellRoot {
             root.stage = "taken";
         } else if (root.stage === "taken") {
             Expect.same("the walk taken over ends with its session's folder found gone",
-                root.gone, ["s-twin", "s-took"]);
+                walked, ["s-took"]);
             root.handedOverGivesNone();
             root.stage = "handed";
         } else if (root.stage === "handed") {
-            Expect.same("the hand-over ends with its session's folder found gone", root.gone,
-                ["s-twin", "s-took", "s-handed"]);
+            Expect.same("the hand-over ends with its session's folder found gone", walked,
+                ["s-handed"]);
             root.rewalkedKeepsItsScreen();
             root.stage = "rewalked";
         } else if (root.stage === "rewalked") {
@@ -291,12 +306,12 @@ ShellRoot {
             root.stage = "apart";
         } else if (root.stage === "apart") {
             Expect.same("the twins' walk ends with each session's folder found gone",
-                root.gone.slice(3).sort(), ["s-left", "s-right"]);
+                walked.sort(), ["s-left", "s-right"]);
             root.walkBegunOnTheOther();
             root.stage = "begun";
         } else if (root.stage === "begun") {
             Expect.same("the walk begun on the other twin ends with its folder found gone",
-                root.gone.slice(5), ["s-far"]);
+                walked, ["s-far"]);
             root.prototypesNoted();
             Expect.same("no walk started anything, its sessions' folders gone", Niri.spawns,
                 []);
@@ -306,6 +321,34 @@ ShellRoot {
             console.log("twin screens each take their own windows back");
             Qt.exit(0);
         }
+    }
+
+    // A value in words, as JSON says it, else what kind of thing it is.
+    function said(value) {
+        try {
+            return JSON.stringify(value);
+        } catch (error) {
+            return `a ${typeof value} JSON can't say, as ${Expect.thrown(error)}`;
+        }
+    }
+
+    // What the walk still holds, so a look for a folder that never answers
+    // reads apart from a walk wedged waiting on a window or settling. A
+    // walk's looking is the session whose folder it waits to hear of, set
+    // as it asks and cleared as the look answers; Sessions' looking holds
+    // the looks not asked yet.
+    function walkHolds() {
+        const walk = Sessions.reopening;
+        if (walk === null)
+            return "its walk ended";
+        const look = walk.looking ? `its look for ${walk.looking.one?.id}'s folder unanswered`
+            : "no look for a folder unanswered";
+        const held = walk.waiting === null ? "waiting on no window"
+            : `waiting on a window, ${root.said(walk.waiting)}`;
+        const settling = walk.settling ? `settling, round ${walk.rounds}` : "not settling";
+        return `its walk open: ${look}, ${Sessions.looking.length} looks not asked yet, `
+            + `${held}, ${settling}, ${walk.queue.length} queued, ${walk.late.length} late, `
+            + `${walk.behind.length} behind`;
     }
 
     // Stepped on a tick rather than as the shell is made, since Quickshell
@@ -326,24 +369,23 @@ ShellRoot {
             }
         }
     }
+
     // A walk that never ends fails here, saying where it stopped, well
-    // before the check's own timeout would kill it unsaid.
+    // before the check's own timeout would kill it unsaid. What it says
+    // past the stage is built in a try, so a throw there still fails it.
     Timer {
         id: deadline
         running: true
         interval: 20000
         onTriggered: {
             steps.stop();
-            // A walk's looking is the session whose folder it waits to hear
-            // of, cleared as the look answers.
-            const walk = Sessions.reopening;
-            let said = "ended";
-            if (walk?.looking)
-                said = `still open, its look for ${walk.looking.one.id}'s folder unanswered`;
-            else if (walk)
-                said = "still open, waiting on no look for a folder";
-            Expect.fail(`the case stopped at ${root.stage}, its walk ${said}, having started `
-                + JSON.stringify(Niri.spawns));
+            let message = `the case stopped at ${root.stage}`;
+            try {
+                message += `, ${root.walkHolds()}, having started ${root.said(Niri.spawns)}`;
+            } catch (error) {
+                message += `, and saying what its walk holds threw: ${Expect.thrown(error)}`;
+            }
+            Expect.fail(message);
         }
     }
 }
