@@ -64,13 +64,15 @@ CHECK = loaded(sys.argv[2])
 
 
 @contextlib.contextmanager
-def copier(script: str) -> Iterator[subprocess.Popen[bytes]]:
+def copier(script: str, stdin: int | None = None) -> Iterator[subprocess.Popen[bytes]]:
     """Start a fake copier running `script`, and kill it and whatever it left once done.
 
     It starts in a session of its own, so a child it left behind is killed with its group.
+    Its standard input is `stdin` where given, so the test says what it reads and when.
     """
     started = subprocess.Popen(
         [BASH, "-c", script],
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
@@ -293,9 +295,57 @@ def a_copier_pouring_out_one_line_is_answered_at_the_cap() -> None:
     with copier("yes x | tr -d '\\n'") as pouring:
         said, took = timed(lambda: CHECK.said_next(pouring))
     assert said.endswith(CHECK.UNFINISHED), f"a line with no end was said {said[:80]!r}"
-    most = 2 * CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
-    assert len(said) < most, f"a line with no end was answered {len(said)} characters long"
+    most = CHECK.SAID_CAP + len(CHECK.UNFINISHED) + 1
+    assert len(said) <= most, f"a line with no end was answered {len(said)} characters long"
     assert took < SLACK, f"a copier pouring out a line held it {took:.1f} s"
+
+
+def said_at_once(said: bytes) -> int:
+    """Answer a pipe's reading end with `said` written to it whole and closed, for cat to say.
+
+    A fake copier running cat on it says it in one write, so a read of the copier gets all of
+    it or none of it, however fast bash starts.
+    """
+    reading, writing = os.pipe()
+    os.write(writing, said)
+    os.close(writing)
+    return reading
+
+
+def a_line_is_cut_at_the_cap_never_past_it() -> None:
+    """said_next answers no more of a line than SAID_CAP, even after what it kept of a read.
+
+    The copier says 'ready' and twice the cap with no newline at once, so the first read
+    keeps what came past 'ready', and the second may read only what the cap leaves.
+    """
+    told = said_at_once(b"ready\n" + b"x" * (2 * CHECK.SAID_CAP))
+    with copier("cat; exec sleep 30", stdin=told) as pouring:
+        os.close(told)
+        first = CHECK.said_next(pouring)
+        second = CHECK.said_next(pouring)
+    assert first == "ready", f"a copier saying 'ready' then more was first said {first!r}"
+    cut = f"{'x' * CHECK.SAID_CAP} {CHECK.UNFINISHED}"
+    assert second == cut, (
+        f"a line past the cap was answered {len(second)} characters long, "
+        f"not {len(cut)}: the cap's worth and {CHECK.UNFINISHED!r}"
+    )
+
+
+def a_line_cut_at_the_cap_is_read_on_and_never_ready() -> None:
+    """said_next reads on past a line it cut at SAID_CAP, and answers its end unfinished.
+
+    The daemon hears the whole line, the cap's worth and 'ready', so its end is never 'ready'.
+    """
+    told = said_at_once(b"x" * CHECK.SAID_CAP + b"ready\n")
+    with copier("cat; exec sleep 30", stdin=told) as pouring:
+        os.close(told)
+        first = CHECK.said_next(pouring)
+        second, took = timed(lambda: CHECK.said_next(pouring))
+    cut = f"{'x' * CHECK.SAID_CAP} {CHECK.UNFINISHED}"
+    assert first == cut, f"a line past the cap was first said {first[-80:]!r}, not cut at it"
+    ended = f"ready {CHECK.UNFINISHED}"
+    assert second == ended, f"the end of a line past the cap was said {second[-80:]!r}"
+    assert took < SLACK, f"the end of a line past the cap took {took:.1f} s to answer"
 
 
 def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
@@ -390,6 +440,8 @@ CASES = [
     a_half_line_held_at_the_patience_is_finished_by_the_next_read,
     a_line_is_answered_as_the_daemon_hears_it_exactly,
     a_copier_pouring_out_one_line_is_answered_at_the_cap,
+    a_line_is_cut_at_the_cap_never_past_it,
+    a_line_cut_at_the_cap_is_read_on_and_never_ready,
     a_copier_with_no_pipe_to_read_is_refused_by_name,
     a_read_that_raised_fails_saying_so,
     what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,

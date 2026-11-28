@@ -154,8 +154,10 @@ onLinux {
   # saying nothing says nothing. A line is read whole and exactly, as the
   # daemon reads it: one said in pieces is joined, two said at once are
   # answered in turn, 'ready ' is never 'ready', one with no end is cut off
-  # at a cap, and a half line is answered as said only once the copier
-  # closed its standard output, the next read finishing one held open.
+  # at a cap, never answered past it, the next read reading on and never
+  # answering its rest as a word, and a half line is answered as said only
+  # once the copier closed its standard output, the next read finishing one
+  # held open.
   # What was read past a line comes first in how the copier ended, and a
   # refusal keeps none of it. A copier with no pipe to read is refused by
   # name, and a read that raised fails by what it raised, not as a hang.

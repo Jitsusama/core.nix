@@ -88,12 +88,17 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 # What each copier said past the line said_next last answered of it, kept for its next call.
 UNANSWERED: dict[subprocess.Popen[bytes], bytes] = {}
-# What said_next adds to a line a copier began and held on after without ending it, so it's
-# never answered as the word the daemon waits for: the daemon reads whole lines, and hears a
-# half one only once the copier closes its standard output.
-UNFINISHED = "(said with no newline, which the daemon waits on)"
-# How much of a line said_next reads, in bytes, before it answers what it has as unfinished,
+# The copiers whose line said_next cut at SAID_CAP, so what it reads on of that line is
+# never answered as a whole one.
+CUT: set[subprocess.Popen[bytes]] = set()
+# What said_next adds to what it can't answer as a whole line, so it's never answered as the
+# word the daemon waits for: a line a copier began and held on after without ending it, as
+# the daemon reads whole lines and hears a half one only once the copier closes its standard
+# output, or any part of one past SAID_CAP, as all of that line is past the daemon's words.
+UNFINISHED = "(not heard as a whole line, which the daemon waits on)"
+# The most of a line said_next answers, in bytes, what it kept of an earlier read included,
 # so a copier pouring out bytes with no newline can't grow its read for the whole PATIENCE.
+# What it cut there is answered as unfinished, and the next call reads on from the cut.
 SAID_CAP = 4096
 
 
@@ -378,6 +383,11 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
     kept for the next call on the same copier, as two lines said at once come in one read,
     and for ended_within.
 
+    No answer is past SAID_CAP, what was kept included, as each read takes at most what the
+    cap leaves. A line cut there is answered with UNFINISHED after it and let go of, and the
+    next call reads on from the cut, answering the rest of that line with UNFINISHED too,
+    even once it ends, as no part of a line past the cap is a word the daemon waits for.
+
     It reads the pipe itself, never the file object's buffer, so nothing it read sits
     where select can't see it, and communicate later reads on from where it stopped.
     """
@@ -385,30 +395,47 @@ def said_next(copier: subprocess.Popen[bytes]) -> str:
     if stdout is None:
         why = "the copier was started with no pipe for its standard output"
         raise ValueError(why)
-    heard = unanswered(copier)
+    cut = copier in CUT
+    heard, ended = read_on(stdout.fileno(), unanswered(copier))
+    line, newline, rest = heard.partition(b"\n")
+    if rest:
+        UNANSWERED[copier] = rest
+    held_on = not newline and not ended
+    if cut or len(line) == SAID_CAP:
+        if held_on:
+            CUT.add(copier)
+        return f"{line.decode(errors='replace')} {UNFINISHED}" if line or newline else ""
+    if held_on and line:
+        UNANSWERED[copier] = line
+        return f"{line.decode(errors='replace')} {UNFINISHED}"
+    whole = line.removesuffix(b"\r") if newline else line
+    return whole.decode(errors="replace")
+
+
+def read_on(said: int, heard: bytes) -> tuple[bytes, bool]:
+    """Read on from `heard` through `said` for a line, answering it and whether `said` ended.
+
+    It reads for PATIENCE at most, only once select says there's something to read, and
+    stops at a newline or once SAID_CAP is heard, never reading past it.
+    """
     until = time.monotonic() + PATIENCE
-    ended = False
     while b"\n" not in heard and len(heard) < SAID_CAP:
         waiting = until - time.monotonic()
-        if waiting <= 0 or not select.select([stdout], [], [], waiting)[0]:
-            break
-        more = os.read(stdout.fileno(), SAID_CAP)
+        if waiting <= 0 or not select.select([said], [], [], waiting)[0]:
+            return heard, False
+        more = os.read(said, SAID_CAP - len(heard))
         if not more:
-            ended = True
-            break
+            return heard, True
         heard += more
-    line, newline, rest = heard.partition(b"\n")
-    if newline or ended or not line:
-        if rest:
-            UNANSWERED[copier] = rest
-        whole = line.removesuffix(b"\r") if newline else line
-        return whole.decode(errors="replace")
-    UNANSWERED[copier] = line
-    return f"{line.decode(errors='replace')} {UNFINISHED}"
+    return heard, False
 
 
 def unanswered(copier: subprocess.Popen[bytes]) -> bytes:
-    """Give what said_next read of the copier past the line it answered, and keep it no more."""
+    """Give what said_next read of the copier past the line it answered, and keep it no more.
+
+    A line it cut at SAID_CAP is let go of too, so nothing of the copier is kept.
+    """
+    CUT.discard(copier)
     return UNANSWERED.pop(copier, b"")
 
 
