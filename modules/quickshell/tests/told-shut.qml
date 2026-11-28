@@ -133,9 +133,25 @@ QtObject {
                 about: "VPN not connected" },
             { told: refused("no answer", "Home not disconnected"), at: 0,
                 about: "Home not disconnected" }]), minute).tells;
-        const firstWhole = ["timed out", "x"];
-        Expect.same("a narrow foot gives the newest refusal way whole",
-            ToldShut.fitting(refusals, roomFor(3)).map(one => one[0]), firstWhole);
+        const newestWhole = ["no answer", "x"];
+        Expect.same("a narrow foot gives the oldest refusal way whole",
+            ToldShut.fitting(refusals, roomFor(3)).map(one => one[0]), newestWhole);
+        // A look link's word told after the refusals answers the act just
+        // made, and its first word is the one Return's place is sized from
+        // (Launcher.qml's foot.returnPlace).
+        const linked = ToldShut.due(kept([
+            { told: refused("timed out", "VPN not connected"), at: 0,
+                about: "VPN not connected" },
+            { told: refused("no answer", "Home not disconnected"), at: 0,
+                about: "Home not disconnected" },
+            { told: offer, at: 0, about: "from Quest C" }]), minute).tells;
+        Expect.same("a narrow foot keeps the first word Return was sized from",
+            ToldShut.fitting(linked, roomFor(3))[0], ToldShut.said(linked)[0]);
+        Expect.same("and keeps the newest tell, giving the oldest way whole",
+            shown(ToldShut.fitting(linked, roomFor(3))),
+            ["x Home not disconnected", "no answer ", "link from Quest C"]);
+        Expect.same("and a foot with room for one word keeps the newest",
+            ToldShut.fitting(linked, roomFor(1)), offer);
         Expect.same("and says both where both fit, each why beside its own what",
             shown(ToldShut.fitting(refusals, roomFor(4))),
             ["x VPN not connected", "timed out ", "x Home not disconnected", "no answer "]);
@@ -147,7 +163,7 @@ QtObject {
                 ToldShut.sameWords(said.slice(0, 2), said), ToldShut.sameWords(said, null)],
             [true, true, false, false]);
         Expect.same("the one tell left is left for the foot to cut",
-            ToldShut.fitting(refusals, roomFor(1)).map(one => one[0]), firstWhole);
+            ToldShut.fitting(refusals, roomFor(1)).map(one => one[0]), newestWhole);
         Expect.same("a lapsed tell counts its words",
             opened([{ told: tally(1, 3), at: 0, about: "reopen them all" }],
                 15 * minute + 1).lapsed,
