@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 # A name in capitals, as a constant's: one that says what a sleep waits through.
 CONSTANT = re.compile(r"^[A-Z][A-Z0-9_]+$")
 COMMENT = {".py": "#", ".sh": "#", ".rs": "//"}
+# A brace, or a word that opens a loop: `loop`, `while`, and a `for`
+# followed by its pattern and `in`, which the `for` of `impl Trait for Type`
+# and of a `for<'a>` bound never is. A loop's pattern may hold a struct's
+# braces, one deep.
+RUST_LOOP_OR_BRACE = re.compile(r"\b(?:loop|while)\b|\bfor\b(?=(?:[^;{}]|\{[^;{}]*\})*\bin\b)|[{}]")
 TEST_NAMES = ("-test.py", "_test.py", "-test.sh", "_test.sh")
 
 
@@ -93,19 +98,20 @@ def shell_sleeps(text: str) -> Iterator[tuple[int, bool]]:
 def rust_sleeps(text: str) -> Iterator[tuple[int, bool]]:
     """Give each Rust sleep's line, and whether it polls or sleeps for a constant.
 
-    A block counts as a loop's when `loop`, `while` or `for` came before its
-    brace, so a sleep inside one, however deep, polls. Only code is read, so
-    a word or a brace in a string or a comment neither starts a loop nor
-    closes one, and a sleep named in a string isn't one.
+    A block counts as a loop's when `loop`, `while` or a loop's `for` came
+    before its brace, so a sleep inside one, however deep, polls. Only code
+    is read, so a word or a brace in a string or a comment neither starts a
+    loop nor closes one, and a sleep named in a string isn't one. A
+    `fn sleep(` defines a sleep, as a fake clock does, rather than waiting.
     """
     blocks: list[bool] = []
     looping = False
     for number, code in enumerate(rust_code(text).splitlines(), 1):
-        sleep = re.search(r"\bsleep\((.*)", code)
+        sleep = re.search(r"(?<!\bfn\s)\bsleep\((.*)", code)
         if sleep:
             named = re.search(r"\b[A-Z][A-Z0-9_]+\b", sleep.group(1)) is not None
             yield number, any(blocks) or named
-        for token in re.finditer(r"\b(loop|while|for)\b|[{}]", code):
+        for token in RUST_LOOP_OR_BRACE.finditer(code):
             if token.group(0) == "{":
                 blocks.append(looping)
                 looping = False
@@ -117,6 +123,22 @@ def rust_sleeps(text: str) -> Iterator[tuple[int, bool]]:
 
 
 READERS = {".py": python_sleeps, ".sh": shell_sleeps, ".rs": rust_sleeps}
+
+
+def comments_readable(text: str, suffix: str) -> list[str]:
+    """Give a file's lines with what only looks like a comment blanked out.
+
+    A Rust string such as `"http://a"` holds a `//` that says nothing, so
+    each of a Rust file's strings and characters is blanked where rust_code
+    filled it, and a `//` left is one it read as a comment. Python and
+    shell are read as they are.
+    """
+    if suffix != ".rs":
+        return text.splitlines()
+    kept = (
+        raw if read in (raw, " ") else " " for raw, read in zip(text, rust_code(text), strict=True)
+    )
+    return "".join(kept).splitlines()
 
 
 def commented(lines: list[str], number: int, mark: str) -> bool:
@@ -135,8 +157,9 @@ def bare_sleeps(tree: Path) -> Iterator[tuple[str, int, str]]:
             continue
         text = path.read_text(errors="replace")
         lines = text.splitlines()
+        readable = comments_readable(text, path.suffix)
         for number, reasoned in READERS[path.suffix](text):
-            if reasoned or commented(lines, number, COMMENT[path.suffix]):
+            if reasoned or commented(readable, number, COMMENT[path.suffix]):
                 continue
             yield relative.as_posix(), number, lines[number - 1].strip()
 
