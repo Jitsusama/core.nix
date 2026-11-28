@@ -326,6 +326,42 @@ mod tests {
         );
     }
 
+    // A quest's title can hold a comma or a double quote, so its field is
+    // quoted and the quote doubled, and the row still has four fields.
+    #[test]
+    fn a_csv_name_holding_a_comma_and_a_quote_stays_one_field() {
+        let mut report = a_wide_report("last week", 0.5, "$12.50");
+        report.rows.truncate(1);
+        report.rows[0].name = "Fast, \"Calm\" Work".into();
+        assert_eq!(
+            render(&report, Format::Csv),
+            "name,dollars,share,estimated\n\"Fast, \"\"Calm\"\" Work\",12.50,0.5000,false\n",
+            "a name holding a comma and a quote wasn't kept as one field"
+        );
+    }
+
+    // The caps report's rows are what changed and when, so its Markdown is
+    // a table of those, and a "|" in a cell is turned to "/" so it can't
+    // open a column of its own.
+    #[test]
+    fn the_caps_report_in_markdown_is_a_table_of_what_changed() {
+        let mut report = a_wide_report("caps", 0.0, "$100 to $200 with $40 spent");
+        report.title = "Caps".into();
+        report.shown = String::new();
+        report.notes = vec!["Own Week: $40 of $200 (20%).".into()];
+        report.rows.truncate(1);
+        report.rows[0].name = "Mon 12 Oct raised | by hand".into();
+        assert_eq!(
+            render(&report, Format::Markdown),
+            "## Caps\n\n\
+             | When | What changed |\n\
+             |---|---|\n\
+             | Mon 12 Oct raised / by hand | $100 to $200 with $40 spent |\n\n\
+             - Own Week: $40 of $200 (20%).\n",
+            "the caps report wasn't a table of what changed, or a \"|\" opened a column"
+        );
+    }
+
     #[test]
     fn into_a_pipe_a_report_is_set_as_its_files_are() {
         let report = a_wide_report("last week", 0.5, "$12.50");
