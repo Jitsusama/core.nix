@@ -35,7 +35,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use model_relay::{CONNECT_WITHIN, Clocks, DRAINS_WITHIN, IDLE_EXIT, Origin, Relay, Roots};
+use model_relay::{
+    CONNECT_WITHIN, Clocks, DRAINS_WITHIN, HANDED_OVER_ANSWERS_WITHIN, IDLE_EXIT, Origin, Relay,
+    Roots,
+};
 use terminal_kit::{Exit, Failure, Help, flags};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::signal::unix::SignalKind;
@@ -72,6 +75,8 @@ const AGENTS: &str = "agents";
 const READY_WITHIN: Duration = Duration::from_secs(30);
 /// What a build started to take over says on its stdout once it listens.
 const READY: &str = "listening";
+/// What a relay says on its control socket once it has a hand-over's ask.
+const ASKED: &str = "asked";
 /// How long a hand-over's ask may take to arrive whole.
 const ASKED_WITHIN: Duration = Duration::from_secs(5);
 /// The most a hand-over's ask, or its answer, may hold: a path and a few
@@ -187,9 +192,7 @@ struct Handed {
 /// Which of `Handed`'s sockets each descriptor is, by its name, pi's going
 /// unnamed, or why the names don't say one pi's and at most one of each
 /// other.
-fn sorted<'a>(
-    named: impl Iterator<Item = (&'a str, RawFd)>,
-) -> Result<[Option<RawFd>; 3], String> {
+fn sorted<'a>(named: impl Iterator<Item = (&'a str, RawFd)>) -> Result<[Option<RawFd>; 3], String> {
     let mut sorted = [None; 3];
     for (name, fd) in named {
         let (at, whose) = match name {
@@ -292,20 +295,7 @@ fn taken(over: &str) -> Result<Handed, Failure> {
     // SAFETY: the relay handing over left these open and listening across
     // its exec for this process alone, named as `--taken-over` says, and
     // nothing else here takes them.
-    let handed = unsafe { listeners(fds) }.ok_or_else(unread)?;
-    for listener in [
-        Some(&handed.agents),
-        handed.lend.as_ref(),
-        handed.control.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        socket2::SockRef::from(listener)
-            .set_cloexec(true)
-            .map_err(|why| unlistened(&why))?;
-    }
-    Ok(handed)
+    unsafe { listeners(fds) }.ok_or_else(unread)
 }
 
 /// Binds `path` itself, answering only the account that runs it. The
@@ -410,16 +400,21 @@ fn listening(sockets: &Sockets<'_>) -> Result<Handed, Failure> {
             .try_this("model-relay --origin URL --socket PATH"));
         }
     };
-    handed
-        .agents
-        .set_nonblocking(true)
-        .map_err(|why| unlistened(&why))?;
-    for listener in [handed.lend.as_ref(), handed.control.as_ref()]
-        .into_iter()
-        .flatten()
+    for listener in [
+        Some(&handed.agents),
+        handed.lend.as_ref(),
+        handed.control.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
     {
-        listener
+        // Those systemd hands and those a hand-over leaves come open across
+        // execs, so a build it hands over to would hold each a second time,
+        // unnamed, beside the copies `--taken-over` names.
+        let socket = socket2::SockRef::from(listener);
+        socket
             .set_nonblocking(true)
+            .and_then(|()| socket.set_cloexec(true))
             .map_err(|why| unlistened(&why))?;
     }
     Ok(handed)
@@ -442,22 +437,42 @@ fn hand_over(control: &str, args: &[String]) -> Result<(), Failure> {
         ask.push(0);
         ask.extend_from_slice(arg.as_bytes());
     }
-    let mut stream = std::os::unix::net::UnixStream::connect(control).map_err(|why| {
+    let stream = std::os::unix::net::UnixStream::connect(control).map_err(|why| {
         refused(format!("nothing answers {control}: {why}")).try_this(
             "start the relay, which then runs this build: systemctl --user start \
                        model-relay-agents",
         )
     })?;
-    let answer = stream
-        .set_read_timeout(Some(READY_WITHIN + ASKED_WITHIN))
-        .and_then(|()| stream.write_all(&ask))
+    // A relay that can hand over says it has the ask at once; systemd holds
+    // the control socket even for one started before it could, which never
+    // takes the ask, so only that word tells the two apart in good time.
+    let mut heard = std::io::BufReader::new(&stream);
+    let mut first = String::new();
+    stream
+        .set_read_timeout(Some(ASKED_WITHIN))
+        .and_then(|()| (&stream).write_all(&ask))
         .and_then(|()| stream.shutdown(std::net::Shutdown::Write))
-        .and_then(|()| {
-            let mut answer = String::new();
-            (&stream).take(ASK_AT_MOST).read_to_string(&mut answer)?;
-            Ok(answer)
-        })
-        .map_err(|why| refused(format!("the relay at {control} didn't answer: {why}")))?;
+        .and_then(|()| (&mut heard).take(ASK_AT_MOST).read_line(&mut first))
+        .map_err(|why| {
+            refused(format!(
+                "nothing took the ask on {control} within {} s: {why}",
+                ASKED_WITHIN.as_secs()
+            ))
+            .try_this(
+                "a relay started before it could hand over takes none, so restart it once: \
+                 systemctl --user restart model-relay-agents",
+            )
+        })?;
+    let answer = if first.trim() == ASKED {
+        let mut answer = String::new();
+        stream
+            .set_read_timeout(Some(READY_WITHIN + ASKED_WITHIN))
+            .and_then(|()| (&mut heard).take(ASK_AT_MOST).read_to_string(&mut answer))
+            .map_err(|why| refused(format!("the relay at {control} didn't answer: {why}")))?;
+        answer
+    } else {
+        first
+    };
     match answer.trim().strip_prefix("taken by ") {
         Some(pid) => {
             eprintln!("model-relay: handed over to this build, running as {pid}");
@@ -536,7 +551,7 @@ impl Shared {
 /// Starts the build `ask` names to take over `shared`, and once it says
 /// it listens, makes it systemd's main process, giving back its pid; or
 /// stops it and says why.
-async fn take_over(ask: &[u8], shared: &Shared) -> Result<u32, String> {
+async fn take_over(ask: &[u8], shared: &Shared, stopping: &AtomicBool) -> Result<u32, String> {
     let mut parts = ask.split(|&byte| byte == 0);
     let exe = std::ffi::OsStr::from_bytes(parts.next().unwrap_or_default());
     if !Path::new(exe).is_absolute() {
@@ -590,7 +605,17 @@ async fn take_over(ask: &[u8], shared: &Shared) -> Result<u32, String> {
             READY_WITHIN.as_secs()
         )),
     };
-    let made_main = ready.and_then(|()| notify(&format!("MAINPID={pid}")));
+    // Stopped while the new build started, it may start nothing that
+    // outlasts it, as `answer_hand_overs` says.
+    let made_main = ready
+        .and_then(|()| {
+            if stopping.load(Ordering::SeqCst) {
+                Err("this relay was stopped as the new build started".to_owned())
+            } else {
+                Ok(())
+            }
+        })
+        .and_then(|()| notify(&format!("MAINPID={pid}")));
     if let Err(why) = made_main {
         // Killed, its read ends, and nothing is left of it to wait on.
         let _ = child.kill();
@@ -630,7 +655,12 @@ async fn answer_hand_overs(
             Ok(Ok(_)) if stopping.load(Ordering::SeqCst) => {
                 Err("this relay is stopping, so it hands over to nothing".to_owned())
             }
-            Ok(Ok(_)) => take_over(&ask, &shared).await,
+            Ok(Ok(_)) => {
+                // Its asker waits only `ASKED_WITHIN` for this, and one
+                // that has hung up is refused nothing it can still hear.
+                let _ = stream.write_all(format!("{ASKED}\n").as_bytes()).await;
+                take_over(&ask, &shared, &stopping).await
+            }
             Ok(Err(why)) => Err(format!("its ask couldn't be read: {why}")),
             Err(_) => Err(format!(
                 "its ask didn't arrive within {} s",
@@ -710,6 +740,15 @@ fn serve(args: &[String]) -> Result<(), Failure> {
             "--drain-within takes at least a second",
         ));
     }
+    // A build that took over waits out the longest the one it took over
+    // from may still answer before it counts itself idle: it's systemd's
+    // main process, so its leaving would take the unit down, and with it
+    // the answers the other still holds.
+    let idle_exit = if given[TAKEN_OVER].is_some() {
+        idle_exit.max(HANDED_OVER_ANSWERS_WITHIN)
+    } else {
+        idle_exit
+    };
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
@@ -844,10 +883,26 @@ mod tests {
     #[test]
     fn sockets_are_told_apart_by_their_names_in_any_order() {
         for (count, names, sorted) in [
-            ("2", "model-relay-agents.socket:lend", [Some(3), Some(4), None]),
-            ("2", "lend:model-relay-agents.socket", [Some(4), Some(3), None]),
-            ("2", "control:model-relay-agents.socket", [Some(4), None, Some(3)]),
-            ("3", "control:lend:model-relay-agents.socket", [Some(5), Some(4), Some(3)]),
+            (
+                "2",
+                "model-relay-agents.socket:lend",
+                [Some(3), Some(4), None],
+            ),
+            (
+                "2",
+                "lend:model-relay-agents.socket",
+                [Some(4), Some(3), None],
+            ),
+            (
+                "2",
+                "control:model-relay-agents.socket",
+                [Some(4), None, Some(3)],
+            ),
+            (
+                "3",
+                "control:lend:model-relay-agents.socket",
+                [Some(5), Some(4), Some(3)],
+            ),
         ] {
             assert_eq!(
                 places(count, names),

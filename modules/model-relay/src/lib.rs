@@ -1562,6 +1562,10 @@ impl Relay {
         let taking = tokio::select! {
             never = relay.accept(&listener, &leaving) => match never {},
             () = tokio::time::sleep(taking_for) => None,
+            // Handed over as it leaves, it takes no more, so the build it
+            // handed over to answers pi's late connections on the same
+            // socket rather than this one telling them to go direct.
+            () = &mut handed_over => None,
             () = &mut drained => Some(false),
             () = stopped(&mut stops) => Some(true),
         };
@@ -1604,6 +1608,11 @@ impl Relay {
             self.connections.now.load(Ordering::SeqCst),
             HANDED_OVER_ANSWERS_WITHIN.as_secs()
         );
+        // Closed at once, an idle connection could drop a request pi had
+        // just begun to write on it, so it gives pi the moment it gives a
+        // late connection as it leaves idle; one written after that is
+        // the race any keep-alive close runs.
+        tokio::time::sleep(LEAVING_GRACE).await;
         // Nobody is left to tell when every connection has gone already.
         let _ = leave.send(Leave::AsAnswersEnd);
         let began = Instant::now();

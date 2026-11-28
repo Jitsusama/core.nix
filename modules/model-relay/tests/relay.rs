@@ -1553,7 +1553,7 @@ async fn a_hand_over_ends_the_answer_in_hand_whole_and_the_next_ask_goes_to_the_
         "the hand-over wasn't said: {said}"
     );
     assert!(
-        !said.contains("go direct"),
+        !said.contains("pi goes directly"),
         "a request was sent direct through the hand-over: {said}"
     );
 }
@@ -1613,6 +1613,41 @@ fn a_hand_over_with_no_relay_to_ask_fails_saying_so() {
     assert!(
         !ran.status.success() && said.contains("nothing answers"),
         "a hand-over with nobody to ask didn't fail saying so: {said}"
+    );
+}
+
+/// A relay started before it could hand over, beside a control socket
+/// systemd holds for it, takes no ask: the reload fails within the ask's
+/// time, saying to restart it, rather than waiting on a new build.
+#[test]
+fn a_hand_over_nothing_takes_fails_in_good_time_saying_to_restart() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let control = folder.path().join("control.sock");
+    let _held = std::os::unix::net::UnixListener::bind(&control).expect("a socket held");
+
+    let began = Instant::now();
+    let ran = Command::new(env!("CARGO_BIN_EXE_model-relay"))
+        .arg("--hand-over")
+        .arg(&control)
+        .args(["--origin", "https://models.example"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("a hand-over runs");
+    let took = began.elapsed();
+
+    let said = said_of(&ran);
+    assert!(
+        !ran.status.success() && said.contains("nothing took the ask"),
+        "a hand-over nothing took didn't fail saying so: {said}"
+    );
+    assert!(
+        said.contains("systemctl --user restart model-relay-agents"),
+        "a hand-over nothing took didn't say to restart the relay: {said}"
+    );
+    assert!(
+        took < Duration::from_secs(15),
+        "a hand-over nothing took waited {took:?}, past the ask's time"
     );
 }
 
