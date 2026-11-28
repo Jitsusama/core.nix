@@ -530,6 +530,52 @@ in
       cp ${report} Report.qml
       cp ${../tests/sessions-screen-comes-home.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/NiriWorkspaces.js} NiriWorkspaces.js
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # A screen on a connector named for a prototype's key, __proto__ or
+  # constructor, takes its workspace back once it's plugged back in, noted
+  # away by its screen's described name as it went
+  # (modules/quickshell/tests/sessions-prototype-screens-come-home.qml), with
+  # niri stood in.
+  a-screen-named-for-a-prototypes-key-takes-its-workspace-back =
+    let
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "a-screen-named-for-a-prototypes-key-takes-its-workspace-back" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} \
+        $XDG_STATE_HOME
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../tests/sessions-prototype-screens-come-home.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/NiriWorkspaces.js} NiriWorkspaces.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml

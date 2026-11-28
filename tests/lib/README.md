@@ -26,6 +26,7 @@ For other checks:
 | `expect-test.qml` and `.sh`  | each way Expect.run's cases can end, and what qml exits with      |
 | `Frames.js`                  | a stand-in launcher's afterFrame, run as a test says a frame is   |
 | `HeardWindows.js`            | a stand-in niri's windows, told as the windows daemon tells them  |
+| `NiriWorkspaces.js`          | a stand-in niri's workspaces, and where the shell sent each back  |
 | `Watch.js`                   | a change a stand-in daemon tells the watch the shell holds on it  |
 | `Memory.js`                  | a QML test's own anonymous memory, read from /proc               |
 | `Until.qml`                  | a QML test's wait for what a daemon it runs has yet to do         |
