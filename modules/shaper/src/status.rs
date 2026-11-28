@@ -445,7 +445,7 @@ mod tests {
         LinkStatus {
             name: "wlp0s20f3".to_owned(),
             ifb: "ifb4wlp0s20f3".to_owned(),
-            network: "6c:ae:f6:c2:d6:b2".to_owned(),
+            network: "02:00:00:00:aa:00".to_owned(),
             up: 10_800,
             down: 2_000_000,
             state: "steady".to_owned(),
@@ -686,7 +686,7 @@ mod tests {
         // a terminal both of a hang's outcomes see the controls; piped, one.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
-            network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
+            network: "00:00\u{1b}]0;owned\u{7}:5e".to_owned(),
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };

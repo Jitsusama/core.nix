@@ -7,7 +7,7 @@
 //! ```text
 //! {"id": 7, "ask": "act", "act": "leave", "network": "Lantern"}
 //! {"id": 7, "done": true}
-//! {"id": 9, "ask": "act", "act": "roam", "bssid": "6c:ae:f6:c1:84:26"}
+//! {"id": 9, "ask": "act", "act": "roam", "bssid": "02:00:00:00:a4:00"}
 //! {"id": 9, "done": true}
 //! {"id": 8, "ask": "act", "act": "join", "network": "Lantern", "password": "..."}
 //! {"id": 8, "stage": "joining", "said": "connecting to Lantern\u{2026}", "done": false}
@@ -175,7 +175,7 @@ fn address(said: &Value) -> Result<String, (&'static str, String)> {
     if parts.len() == 6 && parts.iter().all(hex) {
         Ok(bssid.to_ascii_lowercase())
     } else {
-        let why = "say the access point by its address, as 6c:ae:f6:c1:84:26";
+        let why = "say the access point by its address, as 02:00:00:00:a4:00";
         Err(("bad-ask", why.to_owned()))
     }
 }
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn what_an_act_wants_is_said_by_its_act_and_never_its_password() {
         let said = [
-            json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"}),
+            json!({"act": "roam", "bssid": "02:00:00:00:a4:00"}),
             json!({"act": "join", "network": "Lantern", "password": "secret"}),
             json!({"act": "leave", "network": "Lantern"}),
             json!({"act": "forget"}),
@@ -442,7 +442,7 @@ mod tests {
         assert_eq!(
             said,
             [
-                "to roam to \"6c:ae:f6:c1:84:26\"",
+                "to roam to \"02:00:00:00:a4:00\"",
                 "to join \"Lantern\"",
                 "to leave \"Lantern\"",
                 "to forget no network",
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn what_an_act_wants_is_said_on_one_line_whatever_it_names() {
-        let forged = "x\n<6>pid 2211 (quickshell.service) asks to roam to 6c:ae:f6:c1:84:26";
+        let forged = "x\n<6>pid 2211 (quickshell.service) asks to roam to 02:00:00:00:a4:00";
 
         let said = wanted(&json!({"act": "roam", "bssid": forged}));
 
@@ -590,7 +590,7 @@ mod tests {
                     Err(Refused::NotNearby)
                 }
             };
-            let address = "6c:ae:f6:c1:84:26";
+            let address = "02:00:00:00:a4:00";
             while let Some(ask) = taken.recv().await {
                 match ask {
                     Ask::Ready { bssid, done } => {
@@ -625,7 +625,7 @@ mod tests {
             }
             (asked, waited)
         });
-        let asked = json!({"act": "roam", "bssid": "6C:AE:F6:C1:84:26"});
+        let asked = json!({"act": "roam", "bssid": "02:00:00:00:A4:00"});
         act(asks, watching, json!(7), asked, told, None).await;
         let (asked, waited) = main_loop.await.expect("the main loop answered");
         let mut heard = Vec::new();
@@ -841,7 +841,7 @@ mod tests {
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
         let heard = acted(json!({"act": "radio"}), drop).await;
         assert_eq!(heard[0]["error"]["code"], "bad-ask");
-        for bssid in [json!(null), json!("next door"), json!("6c:ae:f6:c1:84")] {
+        for bssid in [json!(null), json!("next door"), json!("02:00:00:00:a4")] {
             let heard = acted(json!({"act": "roam", "bssid": bssid}), drop).await;
             assert_eq!(heard[0]["error"]["code"], "bad-ask", "roaming to {bssid}");
         }
