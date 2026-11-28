@@ -582,8 +582,11 @@ in
               evaluates without warnings refuses. Name the node once one built
               the same way on the machine's own platform shows it takes the
               percent. Given another node, the realm warns again, so a node
-              changed later doesn't go unproven unsaid. A machine built on its
-              own platform is proven either way.
+              changed later doesn't go unproven unsaid. That holds only for a
+              node named by its store path written out: named by the expression
+              that gives the realm's node, such as lib.getExe pkgs.nodejs_22,
+              the vouch follows each later node and vouches for it unproven. A
+              machine built on its own platform is proven either way.
             '';
           };
           conversationHeapGrowthMayGoUnproven = lib.mkOption {

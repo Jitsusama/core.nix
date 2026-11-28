@@ -371,9 +371,11 @@ in
         "the percent."
       ];
       # Exits 124 itself once given the word, as timeout does when it ends a
-      # node, but without timeout sending a signal, so it fails another way.
+      # node, but without timeout sending a signal, so it fails another way,
+      # though it prints the line timeout would.
       quitting = pkgs.writeShellScript "node" ''
         if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "timeout: sending signal TERM to command 'node'" >&2
           echo "$0: quitting" >&2
           exit 124
         fi
@@ -389,10 +391,10 @@ in
         seconds = 1;
       } "one";
       # Never ends once given the word, as a node that hangs as it starts
-      # doesn't, given a second to.
+      # doesn't, given a second to, leaving its last line unended.
       hanging = pkgs.writeShellScript "node" ''
         if [ "$1" = --heap-growing-percent=70 ]; then
-          echo "$0: still starting" >&2
+          printf '%s: still starting' "$0" >&2
           exec sleep 600
         fi
       '';
@@ -452,9 +454,9 @@ in
       renderedOf =
         kind: grown.xdg.configFile."systemd/user/pi-conversation-traced-${kind}@.service".source;
       # A workstation built here for an aarch64 machine, whose node its
-      # builder can't run: realm one vouches for its own node, and realm two
-      # for another, as a realm does whose node changed after it vouched.
-      # Only evaluated, never built.
+      # builder can't run: realm one vouches for its own node, realm two for
+      # another, as a realm does whose node changed after it vouched, and
+      # realm three for none. Only evaluated, never built.
       crossMachine = bareNixos [
         self.nixosModules.workstation
         (
@@ -467,6 +469,7 @@ in
                 (growingHostsOf (_: lib.getExe pkgs.nodejs_22) {
                   one = 70;
                   two = 70;
+                  three = 70;
                 })
                 {
                   one.conversationHeapGrowthVouchedNode = lib.getExe pkgs.nodejs_22;
@@ -485,7 +488,7 @@ in
         ];
       # The proof the cross-built machine's units name stands unproven,
       # running no node, and says which option vouches for a node. Its
-      # account warns of the realm vouching for another node, which
+      # account warns of the realms vouching for another node or none, which
       # home-manager carries into the machine's warnings, and not of the one
       # vouching for its own; the workstation built on its own platform
       # warns of no such proof.
@@ -495,12 +498,14 @@ in
       } "one" crossNode 70;
       crossWarnings = (account crossMachine).warnings;
       warnsOf = home: lib.any (lib.hasInfix "built on another platform, whose builder") home.warnings;
+      vouchSaid = "name its node in the realm's conversationHeapGrowthVouchedNode";
       unproven =
         elsewhere ? unproven
         && lib.hasPrefix (unprovenSaidOf "one") elsewhere.unproven
-        && lib.hasInfix "name its node in the realm's conversationHeapGrowthVouchedNode" elsewhere.unproven
+        && lib.hasInfix vouchSaid elsewhere.unproven
         && !lib.hasInfix "taken.sh" elsewhere.buildCommand
         && lib.any (lib.hasPrefix (unprovenSaidOf "two")) crossWarnings
+        && lib.any (lib.hasPrefix (unprovenSaidOf "three")) crossWarnings
         && !lib.any (lib.hasPrefix (unprovenSaidOf "one")) crossWarnings
         && !warnsOf grown;
       # A realm still giving the bare yes the vouched node replaced is
