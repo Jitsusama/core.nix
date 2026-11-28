@@ -37,7 +37,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
+
+use crate::boot::Instant;
 
 use crate::fading;
 use crate::measure::{Measured, SPAN};
@@ -328,8 +330,8 @@ pub struct Chooser {
     /// is a trial that didn't pay. Like `spurned`, it lives as long as the
     /// card's chooser, through a drop, a resume and a change of network, as
     /// points are named by address: only a restart of wifid starts every
-    /// point afresh. Its times are awake time, as `Instant` doesn't count a
-    /// suspend.
+    /// point afresh. Its times, as every one the chooser keeps, are of the
+    /// boot clock, so a keep-off counts the hours the machine slept.
     struck: HashMap<String, Struck>,
     /// What the card's access point carried over each of the last
     /// `JUDGED_MINUTES` minutes alone, where, and whether badly, as a trial

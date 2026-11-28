@@ -27,6 +27,7 @@ mod acts;
 mod address;
 mod air;
 mod arrive;
+mod boot;
 mod calling;
 mod card;
 mod check;
@@ -994,7 +995,7 @@ impl<'a> Air<'a> {
             "BSSRemoved" => {
                 if let Ok(point) = body.deserialize::<OwnedObjectPath>() {
                     self.points.remove(point.as_str());
-                    let now = Instant::now();
+                    let now = boot::Instant::now();
                     change(&self.state, |state| state.heard(point.as_str(), None, now));
                 }
             }
@@ -1049,7 +1050,7 @@ impl<'a> Air<'a> {
                         };
                         point.changed(changed);
                         let heard = point.heard();
-                        let now = Instant::now();
+                        let now = boot::Instant::now();
                         change(&self.state, |state| state.heard(path.as_str(), heard, now));
                     }
                     "fi.w1.wpa_supplicant1.Interface" => {
@@ -1372,7 +1373,7 @@ impl<'a> Air<'a> {
         let point = AccessPoint::new(properties);
         let heard = point.heard();
         self.points.insert(path.into(), point);
-        let now = Instant::now();
+        let now = boot::Instant::now();
         change(&self.state, |state| state.heard(path, heard, now));
     }
 

@@ -9,6 +9,8 @@ use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
+
+use crate::boot;
 use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
@@ -32,8 +34,10 @@ pub struct State {
     /// When each of those was taken in, by the same path, and its age
     /// then: what each says is as of a look that long before, and its age
     /// grows from it. Kept so, not as the look's own instant, as an age
-    /// older than the clock `Instant` counts from can't be one.
-    heard_when: BTreeMap<String, (Instant, u32)>,
+    /// older than the clock counts from can't be one. On the boot clock,
+    /// as wpa_supplicant's own ages are, so an age grows while the machine
+    /// sleeps.
+    heard_when: BTreeMap<String, (boot::Instant, u32)>,
     radio_off: bool,
     wired: bool,
     /// How many times each card, by name, has begun joining a network,
@@ -425,8 +429,8 @@ impl State {
 
     /// Takes in what wpa_supplicant says of an access point, or that it's
     /// no longer heard, and when a look last heard it, from its age at
-    /// `now`, when it was said.
-    pub fn heard(&mut self, path: &str, heard: Option<Heard>, now: Instant) {
+    /// `now` on the boot clock, when it was said.
+    pub fn heard(&mut self, path: &str, heard: Option<Heard>, now: boot::Instant) {
         if let Some(heard) = heard {
             self.heard_when.insert(path.into(), (now, heard.age));
             self.heard.insert(path.into(), heard);
@@ -614,11 +618,15 @@ impl State {
     /// a warned move it would otherwise send the card straight back to a
     /// point that carried better and drops it again.
     ///
-    /// Each one's age is as of `now`, from when a look last heard it, as
+    /// Each one's age is as of `booted`, from when a look last heard it, as
     /// wpa_supplicant says an age only when a look hears the point again:
     /// a call fading minutes after a look would otherwise take that look's
     /// level for one read just now (fading.rs).
-    pub fn around_to_choose(&self, card: &str, now: Instant) -> Vec<Heard> {
+    pub fn around_to_choose(
+        &self,
+        card: &str,
+        (now, booted): (Instant, boot::Instant),
+    ) -> Vec<Heard> {
         let warned = self.warned_from(card, now);
         self.around_by_path(card)
             .filter(|(_, heard)| {
@@ -627,7 +635,7 @@ impl State {
             .map(|(path, heard)| {
                 let mut heard = heard.clone();
                 if let Some(&(taken, then)) = self.heard_when.get(path) {
-                    let since = now.saturating_duration_since(taken).as_secs();
+                    let since = booted.saturating_duration_since(taken).as_secs();
                     heard.age = then.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
                 }
                 heard
@@ -1212,7 +1220,7 @@ mod tests {
 
     #[test]
     fn a_network_in_the_air_is_shown_once_by_its_strongest_access_point() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
 
         state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -82)), now);
@@ -1231,7 +1239,7 @@ mod tests {
 
     #[test]
     fn networks_in_the_air_are_shown_strongest_first_then_by_name() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
 
         state.heard("/Interfaces/0/BSSs/1", Some(heard("Faint", -90)), now);
@@ -1252,7 +1260,7 @@ mod tests {
 
     #[test]
     fn signal_wandering_within_a_bar_changes_nothing_shown() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -62)), now);
         let before = state.described();
@@ -1264,7 +1272,7 @@ mod tests {
 
     #[test]
     fn an_access_point_no_longer_heard_is_no_longer_shown() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -52)), now);
         state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -82)), now);
@@ -1294,7 +1302,7 @@ mod tests {
 
     #[test]
     fn a_card_that_looked_and_heard_no_saved_network_is_settled() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
@@ -1413,7 +1421,7 @@ mod tests {
 
     #[test]
     fn a_card_hearing_a_saved_network_isn_t_settled_until_it_s_on_it() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
@@ -1426,7 +1434,7 @@ mod tests {
 
     #[test]
     fn a_card_that_couldn_t_join_the_saved_network_it_heard_is_settled() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
@@ -1441,7 +1449,7 @@ mod tests {
 
     #[test]
     fn a_card_going_takes_what_it_heard_with_it() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.heard("/Interfaces/1/BSSs/1", Some(heard("Lantern", -52)), now);
         state.heard("/Interfaces/10/BSSs/2", Some(heard("Inn", -52)), now);
@@ -1461,7 +1469,7 @@ mod tests {
 
     #[test]
     fn a_network_in_detail_has_what_the_card_on_it_read_of_its_link() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.follow(&inn(2));
         state.heard(
@@ -1479,7 +1487,7 @@ mod tests {
 
     #[test]
     fn a_network_in_detail_marks_the_access_point_a_card_is_on_before_its_link_is_read() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.follow(&inn(2));
         state.heard(
@@ -1497,7 +1505,7 @@ mod tests {
 
     #[test]
     fn an_access_point_a_card_has_left_is_no_longer_marked() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.follow(&inn(2));
         state.heard(
@@ -1514,7 +1522,7 @@ mod tests {
 
     #[test]
     fn a_card_s_access_point_taken_in_before_the_card_is_followed_is_kept() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
 
@@ -1532,7 +1540,7 @@ mod tests {
     /// A card on Roadside Inn at one access point, hearing another of its
     /// at 02:00:00:00:02:00.
     fn at_the_inn() -> State {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.follow(&inn(2));
         let mut other = heard("Roadside Inn", -60);
@@ -1581,7 +1589,7 @@ mod tests {
 
     #[test]
     fn a_card_s_link_is_joined_as_its_network_is_saved_whatever_its_point_advertises() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = at_the_inn();
         let mut open = heard("Roadside Inn", -52);
         open.security = Security::Open;
@@ -1612,7 +1620,7 @@ mod tests {
 
     #[test]
     fn a_card_hears_around_it_only_its_own_network_s_access_points() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = at_the_inn();
         state.heard("/Interfaces/0/BSSs/3", Some(heard("Lantern", -40)), now);
         state.heard(
@@ -1644,18 +1652,18 @@ mod tests {
         let mut aged = heard("Roadside Inn", -60);
         aged.bssid = "02:00:00:00:02:00".into();
         aged.age = 3;
-        // Taken in 5 s after the paused clock reads, so an age grown from
+        // Taken in 5 s after the boot clock reads, so an age grown from
         // the clock rather than from the instant given reads 48.
-        let now = Instant::now();
+        let booted = boot::Instant::now();
         state.heard(
             "/Interfaces/0/BSSs/2",
             Some(aged),
-            now + Duration::from_secs(5),
+            booted + Duration::from_secs(5),
         );
 
-        let later = now + Duration::from_secs(45);
+        let later = booted + Duration::from_secs(45);
         let seconds_ago: Vec<u32> = state
-            .around_to_choose("wlan2", later)
+            .around_to_choose("wlan2", (Instant::now(), later))
             .into_iter()
             .map(|heard| heard.age)
             .collect();
@@ -1673,16 +1681,15 @@ mod tests {
         let mut aged = heard("Roadside Inn", -60);
         aged.bssid = "02:00:00:00:02:00".into();
         // A second short of the most an age can say, so 40 more would
-        // overflow. Whether a point heard before the clock began reads as
-        // heard lately can't be pinned here: Linux's `Instant` counts back
-        // past boot, so the age taken is never cut short.
+        // overflow. The age is kept as said, not as an instant before
+        // boot, so it is never cut short.
         aged.age = u32::MAX - 1;
-        let now = Instant::now();
-        state.heard("/Interfaces/0/BSSs/2", Some(aged), now);
+        let booted = boot::Instant::now();
+        state.heard("/Interfaces/0/BSSs/2", Some(aged), booted);
 
-        let later = now + Duration::from_secs(40);
+        let later = booted + Duration::from_secs(40);
         let oldest = state
-            .around_to_choose("wlan2", later)
+            .around_to_choose("wlan2", (Instant::now(), later))
             .into_iter()
             .map(|heard| heard.age)
             .max();
@@ -1708,6 +1715,7 @@ mod tests {
             .find(|heard| heard.bssid != on)
             .expect("another point of the inn");
         let now = Instant::now();
+        let booted = boot::Instant::now();
         state.warned_off(
             "wlan2",
             &other.bssid.to_uppercase(),
@@ -1720,7 +1728,7 @@ mod tests {
         );
 
         assert_eq!(
-            signals(state.around_to_choose("wlan2", now)),
+            signals(state.around_to_choose("wlan2", (now, booted))),
             [-52],
             "the point that warned, however written, is left out"
         );
@@ -1735,7 +1743,7 @@ mod tests {
             "a point was kept off past its warning's time"
         );
         assert_eq!(
-            signals(state.around_to_choose("wlan2", now + Duration::from_secs(600))),
+            signals(state.around_to_choose("wlan2", (now + Duration::from_secs(600), booted))),
             [-52, -60],
             "and heard again once the warning's time is up"
         );
@@ -1757,7 +1765,7 @@ mod tests {
             "a warning was said to hold past its time"
         );
         assert_eq!(
-            signals(state.around_to_choose("wlan2", now)),
+            signals(state.around_to_choose("wlan2", (now, booted))),
             [-52, -60],
             "a card back on the point that warned it hears it, and the earlier point again"
         );
@@ -1927,7 +1935,9 @@ mod tests {
             "a card held on the point that warned it again was kept off it once it left"
         );
         assert_eq!(
-            state.around_to_choose("wlan2", now).len(),
+            state
+                .around_to_choose("wlan2", (now, boot::Instant::now()))
+                .len(),
             2,
             "its chooser didn't hear the point it came back to and left"
         );
@@ -1989,7 +1999,7 @@ mod tests {
         far.bssid = "02:00:00:00:03:00".into();
 
         state.at("wlan2", Some("/Interfaces/0/BSSs/3".into()));
-        state.heard("/Interfaces/0/BSSs/3", Some(far), now);
+        state.heard("/Interfaces/0/BSSs/3", Some(far), boot::Instant::now());
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
 
         assert_eq!(
@@ -2019,7 +2029,7 @@ mod tests {
 
     #[test]
     fn a_card_without_a_gateway_or_a_heard_access_point_is_not_measured() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut unheard = at_the_inn();
         unheard.heard("/Interfaces/0/BSSs/1", None, now);
         let mut unrouted = at_the_inn();
@@ -2055,7 +2065,7 @@ mod tests {
 
     #[test]
     fn no_card_roams_to_an_access_point_unheard_or_off_its_network() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = at_the_inn();
         let mut lantern = heard("Lantern", -50);
         lantern.bssid = "02:00:00:00:03:00".into();
@@ -2094,7 +2104,7 @@ mod tests {
 
     #[test]
     fn a_card_s_reading_is_kept_out_of_a_network_it_isn_t_on() {
-        let now = Instant::now();
+        let now = boot::Instant::now();
         let mut state = State::default();
         state.follow(&inn(2));
         state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -52)), now);

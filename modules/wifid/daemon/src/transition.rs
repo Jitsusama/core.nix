@@ -693,7 +693,7 @@ mod tests {
 
     /// A card on the point that warned it, as it heeds the warning.
     fn on_the_warning_point() -> State {
-        let now = Instant::now();
+        let now = crate::boot::Instant::now();
         let mut state = State::default();
         let on = Heard {
             name: "Lantern".into(),

@@ -934,7 +934,7 @@ mod tests {
                     age: 0,
                     radio: crate::radio::Radio::default(),
                 }),
-                tokio::time::Instant::now(),
+                crate::boot::Instant::now(),
             );
         });
     }

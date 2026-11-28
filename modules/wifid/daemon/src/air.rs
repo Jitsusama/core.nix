@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 
-use tokio::time::Instant;
 use zbus::zvariant::{OwnedValue, Value};
 
+use crate::boot::Instant;
 use crate::radio::Radio;
 use crate::state::Security;
 
@@ -16,7 +16,8 @@ pub struct AccessPoint {
     properties: HashMap<String, OwnedValue>,
     /// When wpa_supplicant last said its `Age`. It says one only when a
     /// look hears the point again (`wpas_notify_bss_seen`), so the age it
-    /// said grows by the time since.
+    /// said grows by the time since, on the boot clock wpa_supplicant ages
+    /// it by, so a night asleep counts.
     aged: Option<Instant>,
 }
 
