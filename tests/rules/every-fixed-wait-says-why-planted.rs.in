@@ -1,6 +1,9 @@
-// The planted tree's Rust test, one shape of sleep each. Only two neither
-// poll nor say why; the rest are told apart by reading code alone, past
-// what the strings and characters beside them hold.
+// The planted tree's Rust test, one shape of sleep each. Nine neither poll
+// nor say why, a fake's sleep among them, since reading alone can't tell a
+// fake from a real one; the rest are told apart by reading code alone, past
+// what the strings, characters and comments beside them hold, and a trait's
+// `for` or a bound's opens no loop, and a `fn sleep` defines rather than
+// waits.
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -46,4 +49,78 @@ fn for_a_constant() {
 fn saying_why() {
     // Nothing is heard for this long.
     sleep(Duration::from_millis(10));
+}
+
+struct Guard;
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        sleep(Duration::from_millis(10));
+    }
+}
+
+fn under_a_higher_ranked_bound<F>(heard: F)
+where
+    F: for<'a> Fn(&'a str),
+{
+    heard("a");
+    sleep(Duration::from_millis(10));
+}
+
+// Kept as written, since what it plants is a string's `//` on a sleep's own
+// line, which rustfmt would move to the next.
+#[rustfmt::skip]
+fn beside_an_address() {
+    sleep(Duration::from_millis(10)); let _ = "http://a";
+}
+
+fn after_a_raw_string_holding_a_brace() {
+    let s = r#"a "quoted" { "#;
+
+    sleep(Duration::from_millis(10));
+    let _ = s;
+}
+
+fn in_a_loop_past_a_commented_brace() {
+    loop {
+        /* } */
+        let _ = 1;
+        sleep(Duration::from_millis(10));
+        break;
+    }
+}
+
+fn after_a_commented_loop() {
+    /* while { */
+    let _ = 1;
+    let _ = 2;
+    sleep(Duration::from_millis(10));
+}
+
+fn naming_a_sleep_in_a_comment() {
+    // sleep(10)
+    let _ = 1;
+}
+
+fn after_a_nested_comment() {
+    /* outer /* inner */ loop { */
+    let _ = 1;
+    let _ = 2;
+    sleep(Duration::from_millis(10));
+}
+
+trait Sleeps {
+    fn sleep(&mut self, how_long: Duration);
+}
+
+impl Sleeps for Guard {
+    fn sleep(&mut self, how_long: Duration) {
+        let _ = how_long;
+    }
+}
+
+impl Guard {
+    fn rest_on_a_fake_clock(&mut self) {
+        self.sleep(Duration::from_millis(10));
+    }
 }

@@ -13,6 +13,28 @@ RAW_STRING = re.compile(r'b?r(#*)"')
 CHARACTER = re.compile(r"'(\\.[^']*|[^\\'])'")
 
 
+def block_comment_end(text: str, start: int) -> int:
+    """Give where the block comment opening at start ends, past the comments nested in it.
+
+    Rust's block comments nest, so `/* a /* b */ c */` is one comment, and
+    its first `*/` closes only the inner one.
+    """
+    depth = 0
+    index = start
+    while index < len(text):
+        if text.startswith("/*", index):
+            depth += 1
+            index += 2
+        elif text.startswith("*/", index):
+            depth -= 1
+            index += 2
+            if depth == 0:
+                return index
+        else:
+            index += 1
+    return len(text)
+
+
 def rust_code(text: str) -> str:
     """Blank out a Rust file's comments, and fill its strings and characters, keeping lines.
 
@@ -30,8 +52,7 @@ def rust_code(text: str) -> str:
             out.append(" " * (end - index))
             index = end
         elif text.startswith("/*", index):
-            end = text.find("*/", index + 2)
-            end = len(text) if end < 0 else end + 2
+            end = block_comment_end(text, index)
             out.append(re.sub(r"[^\n]", " ", text[index:end]))
             index = end
         elif raw := RAW_STRING.match(text, index):
