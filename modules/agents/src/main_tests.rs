@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
-use super::joels_acts::{AS_JOEL, NOT_AS_JOEL, ONLY_THE_SHELL};
+use super::joels_acts::{AS_JOEL, NOT_AS_JOEL, ONLY_THE_SHELL, answer_refused_line};
 use super::*;
 
 /// The daemon's own socket, served as `serve` serves it, refuses a
@@ -601,5 +601,29 @@ fn a_heard_keeps_when_joel_opened_a_drawer_apart_from_when_it_was_heard() {
         (address.as_str(), seen, at > seen),
         ("P", 5, true),
         "opened at 5 by the shell's word, heard now"
+    );
+}
+
+/// An answer the shell's check refused journals what it named cut short,
+/// as [`asker::named`] cuts it, so no asker writes more than a line. The
+/// refused act's line, `not_as_joel`'s, is asker.rs's `refused_line`,
+/// whose own case holds its cut.
+#[test]
+fn a_refused_answers_line_says_what_it_named_short_and_on_one_line() {
+    let long = format!("{}\nagents: a forged line", "x".repeat(300));
+    let line = answer_refused_line(
+        asker::REFUSED,
+        &json!({"want": "question@1", "address": long}),
+    );
+    assert!(!line.contains('\n'), "one line: {line}");
+    assert!(line.len() < 220, "the address cut short: {line}");
+    assert_eq!(
+        answer_refused_line(
+            asker::REFUSED,
+            &json!({"want": "question@1", "address": "P9R1KI"})
+        ),
+        "agents: an answer to \"question@1\" for \"P9R1KI\" wasn't taken: \
+         who asked isn't the shell",
+        "a short one whole"
     );
 }
