@@ -4880,6 +4880,49 @@ fn a_pin_its_repository_no_longer_has_leaves_a_hold_untold() {
     );
 }
 
+/// A copy that lacks a held commit fetches its main to look for it once
+/// per judgement, however many holds it lacks, and tries no more than
+/// once, since the copy already proves what it builds: a repository out
+/// of reach otherwise cost each hold a minute and a quarter of retries
+/// before any switch or grant.
+#[test]
+fn an_input_s_copy_looks_for_held_commits_once_however_many_it_lacks() {
+    let mut world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let one = main_pinning_mycelium(&world, &pinned);
+    world.system(&one);
+    held::ask(&world.config, &format!("hold {}", "d".repeat(40)), Some(1000));
+    assert_eq!(world.update().1, done(&one), "main wasn't built");
+    let fetches = world.root.join("fetches");
+    let counting = world.root.join("counting-git");
+    write_program(
+        &counting,
+        &format!(
+            "{}\ncase \" $* \" in *\" fetch \"*) echo \"$*\" >> {};; esac\nexec {} \"$@\"\n",
+            stand_in_head(),
+            fetches.display(),
+            program("git").display()
+        ),
+    );
+    world.config.tools.git = counting;
+    let mycelium = world.root.join("mycelium");
+    fs::rename(&mycelium, world.root.join("mycelium-gone")).unwrap();
+    for held in ["e", "f"] {
+        held::ask(&world.config, &format!("hold {}", held.repeat(40)), Some(1000));
+    }
+    assert_eq!(
+        held::stops(&world.config, &one, &BTreeMap::new()),
+        None,
+        "holds mycelium's copy shows it doesn't build stopped main"
+    );
+    let tried = world.read("fetches");
+    let of_mycelium = tried.lines().filter(|line| line.contains("mycelium")).count();
+    assert_eq!(
+        of_mycelium, 1,
+        "mycelium's copy wasn't fetched once for three holds it lacks: {tried}"
+    );
+}
+
 #[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
