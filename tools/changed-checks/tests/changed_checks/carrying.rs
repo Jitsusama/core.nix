@@ -191,6 +191,48 @@ fn a_keep_evaluates_whole_once_six_keeps_in_a_row_carried_though_a_gate_kept_its
 }
 
 #[test]
+fn a_keep_past_its_bound_whose_base_a_gate_kept_as_it_began_counts_one_more_carry() {
+    // A keep past its bound sets aside what a gate kept, then waits on the
+    // base's lock; a gate holding it may keep the base again first, so
+    // the keep evaluates nothing and mustn't end the bound.
+    let stand_in = past_a_carry("carry-six-raced", 6, std::time::Duration::ZERO);
+    fs::write(stand_in.path(KEPT), GATE_KEPT).expect("kept as a gate would");
+    let lock =
+        fs::File::create(stand_in.path(&KEPT.replace(".json", ".lock"))).expect("the base's lock");
+    lock.lock().expect("held as a gate holds it");
+    let aside = stand_in.path(&KEPT.replace(".json", ".gated"));
+
+    let keep = stand_in.started(&KEEPING, &[]);
+    let began = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        aside.exists() && !stand_in.path(KEPT).exists()
+    });
+    fs::write(stand_in.path(KEPT), GATE_KEPT).expect("kept again as the gate would");
+    drop(lock);
+    let ran = keep.wait_with_output().expect("changed-checks runs");
+
+    assert!(began, "the keep didn't set aside what the gate kept");
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let run = stand_in.runs().pop().expect("the keep's run");
+    assert_eq!(
+        chunks_of(&run, "base"),
+        None,
+        "a keep evaluated a base the gate kept: {run}"
+    );
+    assert_eq!(
+        alone_record(&stand_in, ALONE)["carried"],
+        7,
+        "a keep that took the gate's derivations ended the bound on carries"
+    );
+    assert!(
+        text(&ran.stderr).contains("a gate kept 0123456789ab while this keep began"),
+        "the keep didn't say a gate kept its base: {}",
+        text(&ran.stderr)
+    );
+    assert!(!aside.exists(), "what was set aside stayed");
+}
+
+#[test]
 fn a_keep_evaluates_whole_once_the_record_it_would_carry_from_is_two_hours_old() {
     let stand_in = past_a_carry("carry-old", 1, std::time::Duration::from_hours(3));
 

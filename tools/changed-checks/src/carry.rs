@@ -21,7 +21,9 @@
 //! check a carry would have given another derivation, so a carry that went
 //! wrong shows. Derivations a gate kept first may have been carried, so
 //! they count as a carry; past the bound they're set aside and the keep
-//! evaluates whole all the same, naming each check a gate kept otherwise.
+//! evaluates whole all the same, naming each check a gate kept otherwise,
+//! unless a gate keeps the base again while the keep waits on its lock,
+//! when the keep evaluated nothing and counts one more carry.
 //! On 14 November two keeps past the bound found their bases kept by gates
 //! and evaluated nothing, counting a seventh and an eighth carry.
 

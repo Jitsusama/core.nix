@@ -61,6 +61,28 @@ fn a_keep_on_a_builder_traces_the_vm_tests_beside_the_other_checks() {
         ["base", "reads", "alone"],
         "a keep's two halves are noted in order, whichever ends first"
     );
+    assert_eq!(
+        alone_record(&stand_in, ALONE)["carried"],
+        0,
+        "a keep on a builder that evaluated its base beside the trace counted a carry"
+    );
+}
+
+#[test]
+fn a_keep_on_a_builder_of_a_base_with_no_vm_tests_counts_its_evaluation() {
+    // With no VM tests, a keep on a builder evaluates the base alone, and
+    // what it says it evaluated decides whether the bound on carries ends.
+    let stand_in = traced_alone("keeps-no-vm");
+    stand_in.checks("base", r#"{"a": "a.drv", "b": "b.drv", "gone": "g.drv"}"#);
+
+    let ran = stand_in.run_told(&KEEPING, &[("CHANGED_CHECKS_HERE", "1")]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        alone_record(&stand_in, ALONE)["carried"],
+        0,
+        "a keep on a builder that evaluated a base with no VM tests counted a carry"
+    );
 }
 
 #[test]
@@ -97,6 +119,11 @@ fn a_keep_on_a_builder_traces_while_a_gate_holds_the_base_then_checks_it_against
         evaluated(runs.last().expect("a keep's line")),
         ["reads", "alone"],
         "the gate's derivations were evaluated again"
+    );
+    assert_eq!(
+        alone_record(&stand_in, ALONE)["carried"],
+        1,
+        "a keep that took the gate's derivations counted them as its own evaluation"
     );
 }
 
