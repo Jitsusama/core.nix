@@ -2,8 +2,9 @@
 //! to their one origin over a few long-lived HTTP/2 connections
 //! (src/lib.rs says why).
 //!
-//! systemd hands it its listening socket (`LISTEN_FDS`); `--socket` binds
-//! one itself, as the tests do. It takes the shape every command of ours
+//! systemd hands it its listening socket (`LISTEN_FDS`), and the lend's
+//! beside it when there's one, named `lend`; `--socket` and
+//! `--lend-socket` bind them itself, as the tests do. It takes the shape every command of ours
 //! does (docs/commands.md): its help, usage that says what to try, and
 //! failures with named exits.
 
@@ -18,7 +19,7 @@ use terminal_kit::{Exit, Failure, Help, flags};
 use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 7] = [
+const FLAGS: [&str; 8] = [
     "--origin",
     "--socket",
     "--connections",
@@ -26,7 +27,11 @@ const FLAGS: [&str; 7] = [
     "--connect-within",
     "--idle-exit",
     "--drain-within",
+    "--lend-socket",
 ];
+
+/// The name systemd gives the lend's socket (`FileDescriptorName`).
+const LEND: &str = "lend";
 
 /// How many connections it keeps to the origin unless told.
 const CONNECTIONS: usize = 4;
@@ -71,6 +76,10 @@ fn help() -> Help {
         ),
     )
     .option(
+        "--lend-socket PATH",
+        "a socket for a client that can't go direct, if systemd hands it none",
+    )
+    .option(
         "--roots FILE",
         "trust only the roots in this PEM file, not the public ones",
     )
@@ -109,14 +118,85 @@ fn named(args: &[String]) -> Result<Vec<Option<String>>, Failure> {
     Ok(given)
 }
 
-/// The socket systemd handed it, when it was started for one.
-fn handed() -> Option<std::os::unix::net::UnixListener> {
-    let ours = std::env::var("LISTEN_PID").ok()? == std::process::id().to_string();
-    let one = std::env::var("LISTEN_FDS").ok()? == "1";
-    // SAFETY: systemd passed this descriptor, open and listening, for this
-    // process alone (LISTEN_PID), and nothing else here takes it.
-    (ours && one)
-        .then(|| unsafe { std::os::unix::net::UnixListener::from_raw_fd(LISTEN_FDS_START) })
+/// The sockets systemd handed it, when it was started for them: pi's, and
+/// the lend's when a second is named `lend`.
+struct Handed {
+    agents: std::os::unix::net::UnixListener,
+    lend: Option<std::os::unix::net::UnixListener>,
+}
+
+/// Which of the descriptors systemd handed is pi's and which the lend's,
+/// by their place after `LISTEN_FDS_START`.
+#[derive(Debug, PartialEq, Eq)]
+struct Places {
+    agents: usize,
+    lend: Option<usize>,
+}
+
+/// Tells the `count` descriptors systemd handed apart by their `names`
+/// (`LISTEN_FDNAMES`), or says why it can't: one is pi's, unless it's
+/// named the lend's; of two, the one named the lend's is, in whichever
+/// order systemd hands them, and the other pi's.
+fn places(count: &str, names: &str) -> Result<Places, String> {
+    let lends: Vec<usize> = names
+        .split(':')
+        .take(2)
+        .enumerate()
+        .filter_map(|(at, name)| (name == LEND).then_some(at))
+        .collect();
+    match (count, lends.as_slice()) {
+        ("1", []) => Ok(Places {
+            agents: 0,
+            lend: None,
+        }),
+        ("1", _) => Err(format!(
+            "the one socket systemd handed it is named {LEND}, so it has none for pi"
+        )),
+        ("2", &[lend]) => Ok(Places {
+            agents: 1 - lend,
+            lend: Some(lend),
+        }),
+        ("2", _) => Err(format!(
+            "systemd handed it two sockets, but not one named {LEND} beside pi's: they're \
+             named {names:?}"
+        )),
+        _ => Err(format!(
+            "systemd handed it {count} sockets, where it answers one, or two with one named \
+             {LEND}"
+        )),
+    }
+}
+
+/// The sockets systemd handed it, when it was started for one or two, or
+/// why those it handed can't be told apart.
+fn handed() -> Result<Option<Handed>, Failure> {
+    let ours = std::env::var("LISTEN_PID").is_ok_and(|pid| pid == std::process::id().to_string());
+    let Some(count) = std::env::var("LISTEN_FDS").ok().filter(|_| ours) else {
+        return Ok(None);
+    };
+    let names = std::env::var("LISTEN_FDNAMES").unwrap_or_default();
+    let places = places(&count, &names).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            "it couldn't tell the sockets systemd handed it apart",
+        )
+        .because(why)
+        .try_this(format!(
+            "name the lend's socket {LEND} with FileDescriptorName, and leave pi's unnamed"
+        ))
+    })?;
+    let at = |place: usize| {
+        // `places` gives only 0 or 1, which fits any descriptor number.
+        let fd = LISTEN_FDS_START + i32::from(place == 1);
+        // SAFETY: systemd passed these descriptors, open and listening,
+        // for this process alone (LISTEN_PID), and nothing else here
+        // takes them.
+        unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) }
+    };
+    Ok(Some(Handed {
+        agents: at(places.agents),
+        lend: places.lend.map(at),
+    }))
 }
 
 /// Binds `path` itself, answering only the account that runs it. The
@@ -187,6 +267,38 @@ fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
     listened
 }
 
+/// What a socket that can't be listened on fails as.
+fn unlistened(why: &std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
+}
+
+/// The sockets systemd handed it, or else those it binds at `socket` and
+/// `lend`, ready to be answered without blocking.
+fn listening(socket: Option<&str>, lend: Option<&str>) -> Result<Handed, Failure> {
+    let handed = match (handed()?, socket) {
+        (Some(handed), _) => handed,
+        (None, Some(path)) => Handed {
+            agents: bound(Path::new(path))?,
+            lend: lend.map(|lend| bound(Path::new(lend))).transpose()?,
+        },
+        (None, None) => {
+            return Err(Failure::new(
+                Exit::Usage,
+                "systemd handed it no socket, and it was given none",
+            )
+            .try_this("model-relay --origin URL --socket PATH"));
+        }
+    };
+    handed
+        .agents
+        .set_nonblocking(true)
+        .map_err(|why| unlistened(&why))?;
+    if let Some(lend) = &handed.lend {
+        lend.set_nonblocking(true).map_err(|why| unlistened(&why))?;
+    }
+    Ok(handed)
+}
+
 /// A number of seconds a flag was given, or `default` when it wasn't.
 fn seconds(given: Option<&str>, flag: &str, default: Duration) -> Result<Duration, Failure> {
     given.map_or(Ok(default), |text| {
@@ -249,28 +361,21 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
-    let listener = match (handed(), given[1].as_deref()) {
-        (Some(listener), _) => listener,
-        (None, Some(path)) => bound(Path::new(path))?,
-        (None, None) => {
-            return Err(Failure::new(
-                Exit::Usage,
-                "systemd handed it no socket, and it was given none",
-            )
-            .try_this("model-relay --origin URL --socket PATH"));
-        }
-    };
-    listener
-        .set_nonblocking(true)
-        .map_err(|why| Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string()))?;
+    let Handed {
+        agents: listener,
+        lend,
+    } = listening(given[1].as_deref(), given[7].as_deref())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
     let served = runtime.block_on(async move {
-        let listener = tokio::net::UnixListener::from_std(listener).map_err(|why| {
-            Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
-        })?;
+        let listener =
+            tokio::net::UnixListener::from_std(listener).map_err(|why| unlistened(&why))?;
+        let lend = lend
+            .map(tokio::net::UnixListener::from_std)
+            .transpose()
+            .map_err(|why| unlistened(&why))?;
         // systemd stops it with SIGTERM, which it takes as its word to
         // leave once its answers end rather than at once, and a second as
         // its word to leave now. Each is heard for as long as it runs,
@@ -289,7 +394,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
                 let _ = stop.try_send(());
             }
         });
-        Ok(relay.serve_until(listener, stops).await)
+        Ok(relay.serve_until(listener, lend, stops).await)
     });
     // Dropped, the runtime would wait on a lookup for as long as it took.
     runtime.shutdown_timeout(LOOKUPS_GIVEN);
@@ -302,4 +407,92 @@ fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         serve(&context.args)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Places, places};
+
+    #[test]
+    fn one_socket_unnamed_or_named_by_its_unit_is_pis() {
+        let pis = Places {
+            agents: 0,
+            lend: None,
+        };
+        assert_eq!(
+            places("1", ""),
+            Ok(Places {
+                agents: 0,
+                lend: None
+            }),
+            "one unnamed socket wasn't taken as pi's"
+        );
+        assert_eq!(
+            places("1", "model-relay-agents.socket"),
+            Ok(pis),
+            "one socket named by its unit wasn't taken as pi's"
+        );
+    }
+
+    #[test]
+    fn one_socket_named_the_lends_is_refused_as_leaving_pi_none() {
+        let refused = places("1", "lend");
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains("so it has none for pi")),
+            "one socket named the lend's wasn't refused as leaving pi none: {refused:?}"
+        );
+    }
+
+    #[test]
+    fn two_sockets_are_told_apart_by_the_lends_name_in_either_order() {
+        assert_eq!(
+            places("2", "model-relay-agents.socket:lend"),
+            Ok(Places {
+                agents: 0,
+                lend: Some(1)
+            }),
+            "the lend's socket handed second wasn't found second"
+        );
+        assert_eq!(
+            places("2", "lend:model-relay-agents.socket"),
+            Ok(Places {
+                agents: 1,
+                lend: Some(0)
+            }),
+            "the lend's socket handed first wasn't found first"
+        );
+    }
+
+    #[test]
+    fn two_sockets_without_exactly_one_named_the_lends_are_refused_saying_their_names() {
+        for names in [
+            "a.socket:b.socket",
+            "lend:lend",
+            "",
+            "a.socket:b.socket:lend",
+        ] {
+            let refused = places("2", names);
+            assert!(
+                refused
+                    .as_ref()
+                    .is_err_and(|why| why.contains(&format!("{names:?}"))),
+                "two sockets named {names:?} weren't refused saying their names: {refused:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn any_other_count_of_sockets_is_refused_saying_how_many() {
+        for count in ["0", "3", "two"] {
+            let refused = places(count, "lend");
+            assert!(
+                refused
+                    .as_ref()
+                    .is_err_and(|why| why.contains(&format!("handed it {count} sockets"))),
+                "{count} sockets weren't refused saying how many: {refused:?}"
+            );
+        }
+    }
 }

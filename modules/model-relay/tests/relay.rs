@@ -576,6 +576,7 @@ fn resets(path: &str, heard: usize, connection: usize) -> Option<h2::Reason> {
         "/reset-once" | "/reset-then-calm-down" | "/reset-then-drop" => heard == 1,
         "/reset-on-the-first" => connection == 0,
         "/reset-but-on-the-second" => connection != 1,
+        "/reset-but-on-the-third" => connection != 2,
         _ => false,
     };
     resets.then_some(h2::Reason::PROTOCOL_ERROR)
@@ -595,6 +596,33 @@ impl Relay {
     /// connections, trusting only `roots`.
     fn start(origin: &str, roots: &Path, connections: usize) -> Relay {
         Relay::start_with(origin, roots, connections, &[])
+    }
+
+    /// Starts the relay as `start_with` does, answering the lend at the
+    /// socket it hands back too.
+    fn start_lending(
+        origin: &str,
+        roots: &Path,
+        connections: usize,
+        more: &[&str],
+    ) -> (Relay, PathBuf) {
+        let folder = tempfile::tempdir().expect("a folder for the sockets");
+        let socket = folder.path().join("agents.sock");
+        let lend = folder.path().join("lend.sock");
+        let lend_flag = lend.to_str().expect("a path in words").to_owned();
+        let mut flags = vec!["--lend-socket", lend_flag.as_str()];
+        flags.extend_from_slice(more);
+        let relay = Relay::start_at(folder, socket, origin, roots, connections, &flags);
+        // The lend's socket is bound after pi's, so it's waited on too.
+        let started = Instant::now();
+        while std::os::unix::net::UnixStream::connect(&lend).is_err() {
+            assert!(
+                started.elapsed() < LISTENS_WITHIN,
+                "the relay never listened at the lend's socket"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        (relay, lend)
     }
 
     /// Starts the relay as `start` does, with `more` flags.
@@ -1228,6 +1256,175 @@ async fn a_request_reset_then_told_to_calm_down_is_a_502() {
     assert!(
         said.contains("pi is answered 502"),
         "a request told to calm down as it went again wasn't said as a 502: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_lends_request_reset_twice_goes_alone_and_is_answered() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let (mut relay, lend) = Relay::start_lending(&format!("https://{host}"), &origin.roots, 1, &[]);
+
+    let got = ask(&lend, request(&host, "/reset-but-on-the-third", b"hi")).await;
+    // Stopped with nothing in hand, it says its last counts as it leaves.
+    relay.stop();
+    let left = relay.left_within(LISTENS_WITHIN);
+
+    // Reset on the slot's connection and on the fresh one it went once
+    // more on, it would send pi direct; the lend's goes alone instead.
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (StatusCode::CREATED, b"hi".as_slice()),
+        "the lend's request reset twice wasn't carried alone"
+    );
+    assert_eq!(
+        got.headers
+            .get("x-origin-connection")
+            .map(hyper::header::HeaderValue::as_bytes),
+        Some(b"2".as_slice()),
+        "the lend's request didn't go on a connection of its own"
+    );
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave once stopped with nothing in hand: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("the lend's request goes alone") && !said.contains("pi goes directly"),
+        "the lend's request wasn't said as going alone: {said}"
+    );
+    assert!(
+        said.contains("1 asked, 0 refused, 0 failed, 0 of them reset or left out;"),
+        "the lend's request answered alone was counted failed or reset: {said}"
+    );
+    assert!(
+        said.contains("the lend's request went alone on connection 1.1"),
+        "the connection it went alone on wasn't said as one past the slots: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_lends_request_reset_alone_too_is_a_502() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let (mut relay, lend) = Relay::start_lending(&format!("https://{host}"), &origin.roots, 1, &[]);
+
+    let got = ask(&lend, request(&host, "/reset", b"hi")).await;
+    // Stopped with nothing in hand, it says its last counts as it leaves.
+    relay.stop();
+    let left = relay.left_within(LISTENS_WITHIN);
+
+    // A 421 is the one answer the lend can't act on, so it's never one.
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (
+            StatusCode::BAD_GATEWAY,
+            b"this relay's request to its origin failed\n".as_slice()
+        ),
+        "the lend's request reset alone too wasn't a 502"
+    );
+    assert_eq!(
+        handed_to(&origin, "/reset"),
+        3,
+        "the lend's request wasn't sent on the slot's, the fresh one and its own"
+    );
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave once stopped with nothing in hand: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("the lend's request went alone on connection 1.1 and couldn't be carried"),
+        "the failure alone wasn't said: {said}"
+    );
+    assert!(
+        said.contains("1 asked, 0 refused, 1 failed,"),
+        "the lend's request that failed alone too wasn't counted failed once: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_lends_answer_in_hand_ends_whole_through_a_stop_and_its_later_connections_wait() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let (mut relay, lend) = Relay::start_lending(&format!("https://{host}"), &origin.roots, 1, &[]);
+    // Idle on the lend's socket, it's closed once the relay begins to
+    // leave, which is how the test knows it has.
+    let (kept_sender, kept) = pi_asks(&lend).await;
+    let (_lent, first, body) = longer_begun_on(&lend, &host).await;
+
+    relay.stop();
+    let closed = tokio::time::timeout(Duration::from_secs(2), kept).await;
+    drop(kept_sender);
+    // Connected once the relay leaves, the lend's waits on the socket for
+    // the relay systemd starts next, which the test has none of, so it's
+    // never answered.
+    let late_lend = tokio::spawn({
+        let (lend, host) = (lend.clone(), host.clone());
+        async move {
+            let (mut sender, _connection) = pi_asks(&lend).await;
+            answered_on(&mut sender, &host).await
+        }
+    });
+    let pis = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    let rest = body.collect().await.expect("the rest").to_bytes();
+    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    let late = tokio::time::timeout(Duration::from_secs(2), late_lend).await;
+
+    assert!(
+        closed.is_ok(),
+        "the relay never closed the lend's kept connection, so never began to leave"
+    );
+    assert_eq!(
+        &first[..],
+        b"first\n",
+        "the lend's answer's first half didn't pass"
+    );
+    assert_eq!(
+        &rest[..],
+        b"second\n",
+        "the lend's answer in hand when the relay was stopped wasn't waited on whole"
+    );
+    assert_eq!(
+        (pis.status, pis.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, LEAVING_WORDS),
+        "pi's request taken after a stop wasn't sent direct"
+    );
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave cleanly once the lend's answer ended, so the lend's later \
+         connection held it: {left:?}"
+    );
+    assert!(
+        matches!(late, Ok(Ok(None))),
+        "the lend's connection made after the stop was answered by the leaving relay, \
+         rather than left for the next: {late:?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_origin_it_cant_trust_is_a_502_to_the_lend_tried_once() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let elsewhere = tls();
+    let (relay, lend) = Relay::start_lending(&format!("https://{host}"), &elsewhere.roots, 1, &[]);
+
+    let got = ask(&lend, request(&host, "/echo", b"")).await;
+
+    // Pi's would be a 421, which the lend can't follow, and alone it would
+    // meet the same certificate.
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (
+            StatusCode::BAD_GATEWAY,
+            b"this relay can't carry a request to its origin\n".as_slice()
+        ),
+        "the lend wasn't answered a 502 for an origin the relay can't trust"
+    );
+    let said = relay.said();
+    assert!(
+        !said.contains("goes alone") && !said.contains("went alone"),
+        "the lend's request went alone to an origin the relay can't trust: {said}"
     );
 }
 
@@ -2511,7 +2708,19 @@ async fn longer_begun(
     Bytes,
     Incoming,
 ) {
-    let (mut sender, connection) = pi_asks(&relay.socket).await;
+    longer_begun_on(&relay.socket, host).await
+}
+
+/// A `/longer` answer begun as `longer_begun`'s is, on `socket`.
+async fn longer_begun_on(
+    socket: &Path,
+    host: &str,
+) -> (
+    hyper::client::conn::http1::SendRequest<Full<Bytes>>,
+    Bytes,
+    Incoming,
+) {
+    let (mut sender, connection) = pi_asks(socket).await;
     let response = sender
         .send_request(request(host, "/longer", b""))
         .await

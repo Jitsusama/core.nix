@@ -16,6 +16,12 @@
 # directly, as before. Those rules are pi's own, held where its fetch is
 # wrapped for the proxy; nothing here can make a pi keep them.
 #
+# Beside agents.sock, lend.sock answers a client of the account's that has
+# no way to the origin but the relay, such as the node's lend carrying a
+# cloud room's requests, which can't follow a 421 direct. There, where pi
+# would be sent direct, the request goes once more alone on a connection
+# of its own, and failing that it's a 502, for the client's own retry.
+#
 # The relay trusts the public roots built into it, so an origin whose
 # certificate chains to a private root isn't reached: each request is
 # answered as a 421, which sends pi direct, and the journal says why. A
@@ -96,6 +102,22 @@ in
         # A socket left with nothing behind it would be asked and refuse;
         # one removed is passed by, and pi connects directly.
         RemoveOnStop = true;
+        FileDescriptorName = "agents";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+
+    systemd.user.sockets.model-relay-lend = {
+      Unit.Description = "Where requests that can't go direct are relayed from";
+      Socket = {
+        ListenStream = "%t/${folder}/lend.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+        RemoveOnStop = true;
+        # The relay tells it from pi's by this name, which its source's
+        # LEND holds.
+        FileDescriptorName = "lend";
+        Service = "model-relay-agents.service";
       };
       Install.WantedBy = [ "sockets.target" ];
     };
@@ -103,8 +125,14 @@ in
     systemd.user.services.model-relay-agents = {
       Unit = {
         Description = "Relays the agents' model requests over a few shared connections";
-        Requires = [ "model-relay-agents.socket" ];
-        After = [ "model-relay-agents.socket" ];
+        Requires = [
+          "model-relay-agents.socket"
+          "model-relay-lend.socket"
+        ];
+        After = [
+          "model-relay-agents.socket"
+          "model-relay-lend.socket"
+        ];
         # A restart lets each answer the relay is streaming, each a turn
         # some agent is taking, end first, sending every new request direct
         # meanwhile, and cuts one still going after drainsWithin. A second
@@ -125,6 +153,11 @@ in
         X-SwitchMethod = "keep-old";
       };
       Service = {
+        # Both are handed it, whichever started it.
+        Sockets = [
+          "model-relay-agents.socket"
+          "model-relay-lend.socket"
+        ];
         ExecStart = lib.escapeShellArgs [
           (lib.getExe package)
           "--connections"
