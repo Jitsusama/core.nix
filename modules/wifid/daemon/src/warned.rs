@@ -204,6 +204,10 @@ impl Warned {
     /// Writes the warnings whole or not at all, readable by wifid alone.
     fn keep(&self) -> io::Result<()> {
         let partial = self.file.with_extension("partial");
+        // Made readable by wifid alone, so a new partial is never readable
+        // past it even for a moment; but opening one left behind, by a
+        // wifid stopped as it wrote, keeps the mode it had, which is set
+        // again below.
         let mut written = OpenOptions::new()
             .write(true)
             .create(true)
@@ -301,6 +305,26 @@ mod tests {
             fs::metadata(&file).expect("a file").permissions().mode() & 0o777,
             0o600,
             "the points a card was warned by were readable past wifid"
+        );
+    }
+
+    #[test]
+    fn a_partial_file_left_readable_is_kept_readable_by_wifid_alone() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        let partial = file.with_extension("partial");
+        fs::write(&partial, "").expect("a partial file");
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o644)).expect("readable");
+        let (now, start) = (Instant::now(), boot(600));
+
+        Warned::none(&file)
+            .warned("wlan2", DESK, now + Duration::from_secs(600), (now, start))
+            .expect("kept");
+
+        assert_eq!(
+            fs::metadata(&file).expect("a file").permissions().mode() & 0o777,
+            0o600,
+            "a partial file left readable past wifid was kept so"
         );
     }
 
