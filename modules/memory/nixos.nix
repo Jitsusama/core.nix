@@ -15,7 +15,10 @@ let
   # A value with a character systemd keeps out of unit names, as the `+`
   # in huge pages' defer+madvise, arrives escaped (defer\x2bmadvise), so
   # `write` and the description read the instance unescaped, as %I, which
-  # changes no value made of letters and digits alone.
+  # changes no value made of letters and digits alone. Unescaped, an
+  # instance can hold anything, so `write` hands it to the shell as an
+  # argument, never as part of the command: one root starts holding a `;`
+  # writes a value the kernel refuses, and runs nothing.
   tune = what: command: {
     description = "Set the kernel's ${what} to %I";
     serviceConfig = {
@@ -23,7 +26,7 @@ let
       ExecStart = command;
     };
   };
-  write = file: "${pkgs.bash}/bin/bash -c 'echo %I > ${file}'";
+  write = file: "${pkgs.bash}/bin/bash -c 'echo \"$$1\" > ${file}' write %I";
   space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
   swappiness = "${pkgs.procps}/bin/sysctl -w vm.swappiness=%i";
   pageCluster = "${pkgs.procps}/bin/sysctl -w vm.page-cluster=%i";
