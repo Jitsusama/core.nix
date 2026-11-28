@@ -471,15 +471,21 @@ in
   # and later, never asked for the 4K tiles anv draws a memory object in.
   # Read from the source of the Mesa the XPS 14's graphics drivers are,
   # with its patches, that preference no longer hangs off the branch every
-  # memory object takes first (tests/iris-tiles-memory-objects-as-anv-does.sh).
+  # memory object takes first, and anv still prefers those tiles
+  # (tests/iris-tiles-memory-objects-as-anv-does.sh).
   iris-tiles-memory-objects-as-anv-does =
     let
       mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
       resource = "src/gallium/drivers/iris/iris_resource.c";
-      file = "${patched mesa.src mesa.patches [ resource ]}/${resource}";
+      image = "src/intel/vulkan/anv_image.c";
+      source = patched mesa.src mesa.patches [
+        resource
+        image
+      ];
     in
     pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/iris-tiles-memory-objects-as-anv-does.sh} ${file}
+      ${lib.getExe pkgs.bash} ${./tests/iris-tiles-memory-objects-as-anv-does.sh} \
+        ${source}/${resource} ${source}/${image}
       touch $out
     '';
 

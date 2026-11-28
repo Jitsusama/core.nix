@@ -34,8 +34,10 @@ let
   # Chrome composites a WebGPU canvas through iris from memory anv drew it
   # in, and on Xe2 and later iris reads that memory with a different tiling
   # from the one anv wrote, so the canvas shows as a checkerboard
-  # (iris-memory-objects-prefer-4k-tiles.patch). Take the patch out once
-  # Mesa's release has the fix.
+  # (iris-memory-objects-prefer-4k-tiles.patch). nixpkgs' cache holds no
+  # Mesa with it, so each update that moves Mesa builds it again. Take the
+  # patch out, with its check, once Mesa's release has the fix; a Mesa that
+  # changes those lines stops the patch applying, which says it's time.
   mesa = pkgs.mesa.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./programs/iris-memory-objects-prefer-4k-tiles.patch ];
   });

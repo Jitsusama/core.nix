@@ -1204,10 +1204,18 @@ the same code, and the preference came in with its 9826b6081da.
 
 `programs/iris-memory-objects-prefer-4k-tiles.patch` takes the preference out
 of that chain, and the hardware file gives the graphics drivers Mesa built
-with it. `iris-tiles-memory-objects-as-anv-does` reads the patched source, so a Mesa
-that drops the patch fails it. Chrome's `--enable-features=Vulkan`, which has
-Skia composite on anv too, also avoids it, but changes all of Chrome's drawing
-to get there. The patch comes out once Mesa's release has the fix.
+with it. Only Chrome processes started after the switch load that driver.
+`iris-tiles-memory-objects-as-anv-does` reads the patched source, so a Mesa
+that drops the patch fails it, as does an anv that stops preferring 4K tiles
+for an image it exports with no modifier. Chrome's `--enable-features=Vulkan`,
+which has Skia composite on anv too, also avoids it, but changes all of
+Chrome's drawing to get there.
+
+A patched Mesa is one nixpkgs' cache doesn't hold, so each nixpkgs update that
+moves Mesa builds all of it again rather than downloading it. The patch comes
+out, and its check with it, once Mesa's release has the fix: until then it
+applies as it is, and when upstream changes those lines it stops
+applying and the build says so.
 
 ### Fixed Here Until nixpkgs Fixes It
 
