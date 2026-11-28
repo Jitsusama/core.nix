@@ -41,7 +41,9 @@
 //! are half the evaluating, so the build waits on none of them. A commit's
 //! derivations never change, so the base's are
 //! kept under `~/.cache/changed-checks`, and only the working tree is
-//! evaluated again. A run that wants a commit another run is evaluating
+//! evaluated again. They're kept by their tree too, so a commit holding a
+//! tree evaluated at another, as main does once the train lands its
+//! candidate, evaluates nothing (`by_tree.rs`). A run that wants a commit another run is evaluating
 //! waits for it rather than evaluating it too, and a working tree git
 //! calls clean is kept by its commit the same way. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
@@ -77,6 +79,7 @@
 
 mod alone;
 mod building;
+mod by_tree;
 mod carry;
 mod checks;
 mod command;
@@ -327,6 +330,7 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
     let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
     let compared = compare(options, &root, &base, &system, &held, &mut noted, out);
+    eprintln!("changed-checks: {}", noted.said());
     let log = state().join("changed-checks/runs.jsonl");
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
@@ -519,7 +523,7 @@ fn compare(
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
     if options.keep_base {
-        return kept_base(root, base, system, noted);
+        return keep::keep_base(root, base, system, noted).map(|()| Compared::Passed);
     }
     let _gating = gating::held(&gating::lock());
     eprintln!("comparing {system}'s checks at {short} with the working tree");
@@ -528,13 +532,14 @@ fn compare(
     // check neither change reaches (`alone.rs`).
     let recorded = alone::recorded(root, base, system);
     alone::note(root, base, recorded.as_ref(), noted);
-    let before = checks::kept(
-        &checks::keeping(&cache(), base, system),
-        || match alone::past(root, base, system, recorded.as_ref(), noted) {
+    let began = std::time::Instant::now();
+    let before = by_tree::kept(root, base, system, || {
+        match alone::past(root, base, system, recorded.as_ref(), noted) {
             Some(found) => Ok(found),
             None => derivations(&format!("{flake}?rev={base}"), system, "base", noted),
-        },
-    )?;
+        }
+    })?;
+    noted.phase("base", began.elapsed());
     // A working tree git calls clean is its commit, whose derivations never
     // change, so they're kept by it as a base's are, and a run again on the
     // same commit, or one whose commit is a base kept already, evaluates
@@ -554,6 +559,7 @@ fn compare(
     // after: on 11 November the 90 VM tests were 11% of core's checks but
     // half of each run's evaluating, which every build waited on.
     let beside = options.build && !options.vm;
+    let began = std::time::Instant::now();
     let (after, building) = thread::scope(|scope| {
         // Once the ordinary checks are compared, the build they began, if
         // they moved any; none for a tree kept already.
@@ -584,7 +590,7 @@ fn compare(
             Ok(after)
         };
         let after = match &commit {
-            Some(commit) => checks::kept(&checks::keeping(&cache(), commit, system), evaluate),
+            Some(commit) => by_tree::kept(root, commit, system, evaluate),
             None => evaluate(),
         };
         let building = building.map(|began| {
@@ -597,6 +603,7 @@ fn compare(
         (after, building)
     });
     let after = after?;
+    noted.phase("tree", began.elapsed());
     let comparison = checks::compare(&before, &after);
     noted.named(named(&comparison, out));
     let whole = comparison.broken.is_empty();
@@ -654,28 +661,6 @@ fn ordinarily(
     after.retain(|name, _| asked.contains(name));
     after.extend(unreached);
     Ok((after, vm))
-}
-
-/// Keep the base's checks, what its VM tests read, and what each check read
-/// alone, as keep-main asks, one keep of a base at a time. Two trace into
-/// the same files, each taking the other's away, as on 13 November, when a
-/// keep cut off from its machine by a reboot ran on through its grace and
-/// the next keep of that base began beside it; the one waiting then finds
-/// what the first kept.
-fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<Compared, String> {
-    let short = base.get(..12).unwrap_or(base);
-    let lock = cache()
-        .join("changed-checks")
-        .join(format!("{base}-{system}.keeping.lock"));
-    let _alone = turn::taken(&lock, || {
-        eprintln!("changed-checks: another keep of {short} runs here, so this waits for it");
-    })?;
-    let carried = carry::keep(root, base, system, noted, |noted| {
-        reads::keep_base(root, base, system, noted)
-    })?;
-    alone::keep(root, base, system, carried, noted);
-    eprintln!("kept {system}'s checks at {short}");
-    Ok(Compared::Passed)
 }
 
 /// The tree's VM tests' derivations: for each the change reaches nothing

@@ -35,7 +35,9 @@ fn starting() -> MutexGuard<'static, ()> {
 /// list is `quarantine.json`, once a test writes it. The working
 /// tree has a change in it, until a test writes `clean`, and then it's its
 /// commit; origin has that commit once a test writes `pushed`. A
-/// commit's tree is `tree`'s, or `basetree`, the change from the base
+/// commit's tree is `tree`'s, or `basetree`; asked to verify it, as keeping
+/// by tree does, git gives `tree.<commit>`'s, or one of the commit's own;
+/// the change from the base
 /// is `diff`, and the base holds the paths `based` lists.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
@@ -56,7 +58,11 @@ case "$1" in
           *) exit 1 ;;
         esac ;;
       ls-files) ;;
-      rev-parse) cat "$STAND_IN/tree" 2>/dev/null || echo basetree ;;
+      rev-parse)
+        if [ "$4" = --verify ]; then
+          commit="${5%%^*}"
+          cat "$STAND_IN/tree.$commit" 2>/dev/null || echo "tree-of-$commit"
+        else cat "$STAND_IN/tree" 2>/dev/null || echo basetree; fi ;;
       diff)
         if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
         else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
@@ -420,8 +426,10 @@ fn kept_behind(test: &str, head: &str, between: &str, diff: &str) -> StandIn {
     stand_in
 }
 
-/// File what was kept of the base as `head`'s.
+/// File what was kept of the base as `head`'s, and forget the base's tree,
+/// so the base keeps nothing by its tree either.
 fn filed_as(stand_in: &StandIn, head: &str) {
+    fs::remove_dir_all(stand_in.path("cache/changed-checks/trees")).expect("forgotten");
     for kept in ["json", "reads.json", "alone.reads.json"] {
         let at = |commit: &str| {
             stand_in.path(&format!(
