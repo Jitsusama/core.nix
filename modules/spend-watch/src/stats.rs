@@ -127,27 +127,23 @@ mod tests {
         let scale = mad(&values);
         assert!(
             (scale - 1.4826).abs() < 1e-9,
-            "the scale came to {scale}, not 1.4826"
+            "the scale should be 1.4826, not {scale}"
         );
     }
 
     #[test]
     fn the_normal_tail_is_right() {
-        let past_two = upper_tail(1.959_964);
-        assert!(
-            (past_two - 0.025).abs() < 1e-6,
-            "past 1.96 came to {past_two}, not 0.025"
-        );
-        let past_none = upper_tail(0.0);
-        assert!(
-            (past_none - 0.5).abs() < 1e-7,
-            "past 0 came to {past_none}, not 0.5"
-        );
-        let past_less = upper_tail(-1.0);
-        assert!(
-            (past_less - 0.841_344_7).abs() < 1e-6,
-            "past -1 came to {past_less}, not 0.8413447"
-        );
+        for (z, tail, within) in [
+            (1.959_964, 0.025, 1e-6),
+            (0.0, 0.5, 1e-7),
+            (-1.0, 0.841_344_7, 1e-6),
+        ] {
+            let got = upper_tail(z);
+            assert!(
+                (got - tail).abs() < within,
+                "the tail past {z} should be {tail}, not {got}"
+            );
+        }
     }
 
     #[test]
@@ -157,24 +153,25 @@ mod tests {
         ];
         let found = discoveries(&p, 0.05);
         assert_eq!(found.iter().filter(|&&found| found).count(), 2);
-        assert!(
-            found[0] && found[1],
-            "the two smallest weren't the two kept: {found:?}"
+        assert_eq!(
+            (found[0], found[1]),
+            (true, true),
+            "the two smallest should survive: {found:?}"
         );
     }
 
     #[test]
     fn a_sharp_forecast_on_the_mark_scores_nearly_nothing() {
-        let on_the_mark = crps(&[5.0; 100], 5.0);
+        let on = crps(&[5.0; 100], 5.0);
         assert!(
-            on_the_mark.abs() < 1e-12,
-            "a forecast on the mark scored {on_the_mark}"
+            on.abs() < 1e-12,
+            "a forecast on the mark should score nothing, not {on}"
         );
         // A point forecast's score is its error.
-        let two_off = crps(&[5.0; 100], 7.0);
+        let off = crps(&[5.0; 100], 7.0);
         assert!(
-            (two_off - 2.0).abs() < 1e-12,
-            "a forecast 2 off scored {two_off}, not 2"
+            (off - 2.0).abs() < 1e-12,
+            "a point forecast 2 off should score 2, not {off}"
         );
     }
 }

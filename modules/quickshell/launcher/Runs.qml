@@ -19,6 +19,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../PiSource.js" as Pi
 import "Order.js" as Order
+import "Presented.js" as Presented
 
 Provider {
     id: provider
@@ -229,7 +230,7 @@ Provider {
         const spent = cost(run.participants);
         const row = member({
             thing: true,
-            key: run.key,
+            key: Presented.keyServed(run.key),
             verb: session ? "go to" : "copy",
             // With no session to go to, it copies its id for want of one, as
             // a job's row does, so Return goes into its parts instead

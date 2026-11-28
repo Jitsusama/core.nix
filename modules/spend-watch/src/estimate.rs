@@ -227,14 +227,15 @@ mod tests {
         let found = shifts(&days("opus", &moved));
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].model.as_str(), found[0].since), ("opus", 20));
-        let (now, before) = (found[0].now, found[0].before);
         assert!(
-            (now - 0.55).abs() < 1e-9,
-            "the new ratio came to {now}, not 0.55"
+            (found[0].now - 0.55).abs() < 1e-9,
+            "the new ratio should be the shifted days' 0.55: {:?}",
+            found[0]
         );
         assert!(
-            (before - 0.72).abs() < 0.01,
-            "the ratio before came to {before}, not about 0.72"
+            (found[0].before - 0.72).abs() < 0.01,
+            "the old ratio should be the usual days' 0.72: {:?}",
+            found[0]
         );
         let once = [usual.clone(), vec![0.71, 0.40, 0.72]].concat();
         assert_eq!(
@@ -279,14 +280,11 @@ mod tests {
         let opus = &ratios.models["opus"];
         assert!(
             (opus.ratio - 0.83).abs() < 1e-9,
-            "opus's ratio came to {}, not 0.83",
-            opus.ratio
+            "opus should bill 0.83 of its price: {opus:?}"
         );
         assert!(
             opus.low <= 0.77 && opus.high >= 0.89,
-            "opus's spread of {} to {} doesn't hold 0.77 to 0.89",
-            opus.low,
-            opus.high
+            "opus's range should span at least 0.77 to 0.89: {opus:?}"
         );
         assert_eq!(
             ratios.of("never-billed"),
@@ -299,7 +297,7 @@ mod tests {
         let ratios = Ratios::learn(&[(0, "opus".to_owned(), 5.0, 4.0)]);
         assert!(
             ratios.models.is_empty() && ratios.overall.is_none(),
-            "$5 of spend at list taught {ratios:?}"
+            "five dollars should teach no ratio: {ratios:?}"
         );
     }
 }

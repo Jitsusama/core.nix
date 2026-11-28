@@ -344,10 +344,10 @@ mod tests {
         .unwrap();
         assert_eq!(held[0].key, "cap");
         mark(&history, "no", 1.0).unwrap();
-        let held_now = standing(&history).unwrap();
+        let kept = standing(&history).unwrap();
         assert!(
-            held_now.iter().any(|f| f.key == "note" && f.marked),
-            "marking by \"no\" left the note unmarked: {held_now:?}"
+            kept.iter().any(|f| f.key == "note" && f.marked),
+            "the note should stand marked: {kept:?}"
         );
     }
 
@@ -366,8 +366,7 @@ mod tests {
             mark(&history, "new:model:opus", 1.0).unwrap(),
             "new:model:opus"
         );
-        mark(&history, "new:tool:a%", 1.0)
-            .expect_err("new:tool:a% marked a finding, though no key starts so");
+        mark(&history, "new:tool:a%", 1.0).expect_err("a % should match no key");
         assert!(mark(&history, "new:model:op", 1.0).is_err(), "two start so");
     }
 
@@ -389,10 +388,7 @@ mod tests {
             7.0 * 86400.0,
         )
         .unwrap();
-        assert!(
-            !back[0].marked,
-            "the mark of an episode that ended held into the next"
-        );
+        assert!(!back[0].marked, "next week's near cap should ask again");
         assert_eq!(back[0].started, 7.0 * 86400.0);
     }
 }

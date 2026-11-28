@@ -1,7 +1,7 @@
 # Programs the XPS 14 Builds or Changes
 
 The programs this laptop needs that nixpkgs doesn't give it as they
-are: one it builds, and patches to three others. `../nixos.nix`
+are: one it builds, and patches to four others. `../nixos.nix`
 applies each, beside a comment saying why and when it can go.
 
 | File                              | Holds                                                    |
@@ -10,6 +10,7 @@ applies each, beside a comment saying why and when it can go.
 | `thermald-joins-its-thread.patch` | thermald, stopping without a two-second sleep            |
 | `bolt-panther-lake.patch`         | bolt, knowing Panther Lake's USB4 controllers            |
 | `power-profiles-tests-wait.patch` | power-profiles-daemon's tests, waiting for a value to settle |
+| `iris-memory-objects-prefer-4k-tiles.patch` | Mesa's iris, tiling a memory object as anv does |
 
 A patch to the kernel goes in `../kernel/`, and the camera's programs
 in `../camera/`. A patch is named for what it fixes, and goes once

@@ -44,11 +44,12 @@ use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
 use crate::air::Heard;
 use crate::calling::Calling;
-use crate::choose::{self, Chooser};
+use crate::choose::{self, Chooser, Refusal};
 use crate::echo::{Class, Echoer, LOST, Late};
 use crate::fading;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
+use crate::moves::Back;
 use crate::nl80211::{Nl80211, Station};
 use crate::service::Ask;
 use crate::state::{Joined, State};
@@ -375,7 +376,7 @@ pub async fn follow(
     let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
-    let (looked, mut ended) = mpsc::channel(1);
+    let (back, mut came) = mpsc::channel(1);
     let mut each = interval(EACH);
     each.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut told = interval(TOLD);
@@ -390,8 +391,8 @@ pub async fn follow(
                 let now = Instant::now();
                 if calling.borrow().on(now) {
                     for on in &joined {
-                        let chooser = choosers.entry(on.card.clone()).or_default();
-                        let with = (&asks, &state, &looked);
+                        let chooser = chooser_of(&mut choosers, on);
+                        let with = (&asks, &state, &back);
                         moves::give_way(chooser, now, on, &measures, with);
                     }
                 }
@@ -400,7 +401,16 @@ pub async fn follow(
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
-                choosers.retain(|card, _| joined.iter().any(|on| on.card == *card));
+                // A chooser goes only with its card: one between points as
+                // it roams, or dropped a moment, is still the card that gave
+                // way, spurned and kept off, so it keeps all it knows, but
+                // for its holds once on another network (`chooser_of`).
+                choosers.retain(|card, _| state.borrow().has_card(card));
+                for (card, chooser) in &mut choosers {
+                    if !joined.iter().any(|on| on.card == *card) {
+                        chooser.unjoined();
+                    }
+                }
                 forget_the_forgotten(&mut learned, &state.borrow().saved_names());
                 for on in joined {
                     let carried = measures.of(&on.point, now);
@@ -411,8 +421,8 @@ pub async fn follow(
                     let video = measures.video_of(&on.point, now);
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
-                    learn_from(&mut learned, &on, &carried, &around, hour);
-                    let chooser = choosers.entry(on.card.clone()).or_default();
+                    learn_from(&mut learned, &on, &carried, &around, (now, hour));
+                    let chooser = chooser_of(&mut choosers, &on);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
                     }
@@ -421,12 +431,15 @@ pub async fn follow(
                         (now, hour),
                         (&on, &carried),
                         (&measures, &learned),
-                        (&asks, &state, &looked),
+                        (&asks, &state, &back),
                         call,
                     );
                 }
             }
-            Some(card) = ended.recv() => {
+            Some(answer) = came.recv() => {
+                let Some(card) = took_back(&mut choosers, answer, Instant::now()) else {
+                    continue;
+                };
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let call = calling.borrow().on(now);
                 let joined = state.borrow().joined();
@@ -436,17 +449,65 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let chooser = choosers.entry(on.card.clone()).or_default();
+                let chooser = chooser_of(&mut choosers, &on);
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),
                     (&on, &carried),
                     (&measures, &learned),
-                    (&asks, &state, &looked),
+                    (&asks, &state, &back),
                     call,
                 );
             }
+        }
+    }
+}
+
+/// The chooser of the card `on` names, made for a card first found, and
+/// started afresh for one found on another network than it was last
+/// (`Chooser::on_network`).
+fn chooser_of<'a>(choosers: &'a mut HashMap<String, Chooser>, on: &Joined) -> &'a mut Chooser {
+    let chooser = choosers.entry(on.card.clone()).or_default();
+    chooser.on_network(&on.network);
+    chooser
+}
+
+/// Hands what came back of a move to its card's chooser, and gives back
+/// the card whose look ended, which is chosen for again at once. A refusal
+/// that undoes nothing is said as what it was, so it isn't lost unseen: of
+/// a card gone, whose chooser went with it; of a trial's way back; or of
+/// an earlier move than the chooser's last, or one the card is on already.
+/// `now` is when it came back.
+fn took_back(
+    choosers: &mut HashMap<String, Chooser>,
+    answer: Back,
+    now: Instant,
+) -> Option<String> {
+    match answer {
+        Back::Looked(card) => Some(card),
+        Back::Answered { card, to, asked } => {
+            if let Some(chooser) = choosers.get_mut(&card) {
+                chooser.answered(now, &to, asked);
+            }
+            None
+        }
+        Back::Refused { card, to, asked } => {
+            let Some(chooser) = choosers.get_mut(&card) else {
+                println!("<6>{card}'s move to {to} was refused once the card was gone");
+                return None;
+            };
+            match chooser.refused(now, &to, asked) {
+                Refusal::Undone => {}
+                Refusal::WayBack => {
+                    println!("<6>{card}'s way back to {to} was refused, so it stays where it is");
+                }
+                Refusal::Stale => println!(
+                    "<6>{card}'s refused move to {to} was of no give-way or trial still open, \
+                     so nothing it asked is undone"
+                ),
+            }
+            None
         }
     }
 }
@@ -678,8 +739,14 @@ fn counted(station: &Station) -> Option<Counts> {
 }
 
 /// Folds what the access point a card is on carried into what it's learned
-/// to carry at this hour, heard as loud as it's heard now.
-fn learn_from(learned: &mut Learned, on: &Joined, carried: &Measured, around: &[Heard], hour: u8) {
+/// to carry at this hour, heard as loud as it's heard now, as of `now`.
+fn learn_from(
+    learned: &mut Learned,
+    on: &Joined,
+    carried: &Measured,
+    around: &[Heard],
+    (now, hour): (Instant, u8),
+) {
     let Some(heard) = around.iter().find(|heard| heard.bssid == on.point) else {
         return;
     };
@@ -689,6 +756,7 @@ fn learn_from(learned: &mut Learned, on: &Joined, carried: &Measured, around: &[
         hour,
         signal: heard.signal,
         trusted: on.trusted,
+        at: now,
     };
     if let Err(error) = learned.carried(&here, carried) {
         eprintln!("<4>can't keep what {} carried: {error}", on.point);
@@ -930,8 +998,8 @@ fn per_hundred(part: usize, whole: usize) -> f64 {
 pub(crate) mod tests {
     use super::*;
 
-    const DESK: &str = "6c:ae:f6:c1:84:26";
-    const HALL: &str = "6c:ae:f6:c1:84:28";
+    const DESK: &str = "02:00:00:00:a4:00";
+    const HALL: &str = "02:00:00:00:a6:00";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -986,7 +1054,7 @@ pub(crate) mod tests {
         let now = start + Duration::from_secs(15);
 
         let lately = kept.lately(DESK, now, Duration::from_secs(10));
-        let unmeasured = kept.lately("6c:ae:f6:ba:85:86", now, Duration::from_secs(10));
+        let unmeasured = kept.lately("02:00:00:00:a1:00", now, Duration::from_secs(10));
 
         assert_eq!(
             lately,
@@ -1358,7 +1426,7 @@ pub(crate) mod tests {
         let both = (&measured, &measured);
         assert_eq!(
             said(&on, both, None, false),
-            "wlan2 on 6c:ae:f6:c1:84:26: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
+            "wlan2 on 02:00:00:00:a4:00: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
              echoes lost; video unmeasured; 1.25 in 100 frames sent again, 0.00 lost; \
              signal -47 dBm",
             "one line says all of it, and that video went unmeasured"
@@ -1812,6 +1880,69 @@ pub(crate) mod tests {
         );
     }
 
+    #[test]
+    fn a_move_refused_is_taken_back_by_its_card_s_chooser_as_never_asked() {
+        let start = Instant::now();
+        let mut gave = Chooser::default();
+        gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
+        let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
+        let refused = Back::Refused {
+            card: "wlan2".into(),
+            to: HALL.into(),
+            asked: start,
+        };
+
+        let refused_at = start + Duration::from_secs(1);
+        let chosen = took_back(&mut choosers, refused, refused_at);
+        let looked = took_back(&mut choosers, Back::Looked("wlan2".into()), start);
+        let later = start + fading::BETWEEN;
+        let chooser = choosers.get_mut("wlan2").expect("a chooser was dropped");
+        let gives_way = chooser.may_give_way(refused_at + fading::WINDOW, false);
+        chooser.followed(later, DESK);
+
+        assert_eq!(chosen, None, "a card was chosen for on a move refused");
+        // Unrefused, the give-way would still be followed, and hold the next.
+        assert!(
+            gives_way,
+            "the refusal never reached the chooser, which still followed its give-way"
+        );
+        assert_eq!(
+            looked.as_deref(),
+            Some("wlan2"),
+            "a card whose look ended wasn't chosen for again"
+        );
+        assert!(
+            !chooser.keeps_off(HALL, later),
+            "a give-way refused was followed as one never reached, keeping the hall off"
+        );
+    }
+
+    #[test]
+    fn a_move_answered_is_followed_by_its_card_s_chooser_from_the_answer() {
+        let start = Instant::now();
+        let mut gave = Chooser::default();
+        gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
+        let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
+        let answered = Back::Answered {
+            card: "wlan2".into(),
+            to: HALL.into(),
+            asked: start,
+        };
+
+        let answered_at = start + Duration::from_secs(1);
+        let chosen = took_back(&mut choosers, answered, answered_at);
+        let later = answered_at + fading::BETWEEN;
+        let chooser = choosers.get_mut("wlan2").expect("a chooser was dropped");
+        chooser.followed(later, DESK);
+
+        assert_eq!(chosen, None, "a card was chosen for on a move answered");
+        // Unanswered, the give-way would still be on its way, judged never.
+        assert!(
+            chooser.keeps_off(HALL, later),
+            "the answer never reached the chooser, so a give-way never reached was kept on"
+        );
+    }
+
     /// A card joined to Lantern through the access point given, which
     /// moves.rs's tests join through too.
     pub(crate) fn joined(point: &str) -> Joined {
@@ -1821,6 +1952,7 @@ pub(crate) mod tests {
             gateway: std::net::Ipv4Addr::new(10, 43, 0, 1),
             network: "Lantern".into(),
             trusted: true,
+            security: Some(crate::state::Security::Personal),
         }
     }
 }

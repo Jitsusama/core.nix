@@ -145,7 +145,9 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <optional>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <private/qqmldata_p.h>
 #include <private/qqmlvmemetaobject_p.h>
 #include <private/qv4context_p.h>
@@ -320,6 +322,24 @@ std::size_t givenBack(const QV4::BlockAllocator &allocator, int advice) {
     return bytes;
 }
 
+// Which limit sets where the collector starts, as standing() says it:
+// `sweep`, Qt's own, from what the last sweep kept; `room`, the room past
+// what the chunks held when it was last kept; `rooms`, the two rooms past
+// what they held at the ask; `kept`, those and what the sweeps kept since.
+QString collectsByName(QV4::MemoryManager::CollectsBy by) {
+    switch (by) {
+    case QV4::MemoryManager::CollectsBy::Sweep:
+        return QStringLiteral("sweep");
+    case QV4::MemoryManager::CollectsBy::Room:
+        return QStringLiteral("room");
+    case QV4::MemoryManager::CollectsBy::Rooms:
+        return QStringLiteral("rooms");
+    case QV4::MemoryManager::CollectsBy::Kept:
+        return QStringLiteral("kept");
+    }
+    return QString();
+}
+
 } // namespace
 
 Heap::Heap(QJSEngine *engine, QObject *parent) : QObject(parent), engine(engine) {
@@ -359,9 +379,17 @@ QVariantMap Heap::standing() const {
     const QV4::MemoryManager *manager = engine->handle()->memoryManager;
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    // Twice the room past what the chunks held at the ask, where the
+    // ceiling sits until the sweeps keep more than the sweep before the ask
+    // did; none while no room is left, as keepRoom leaves none.
+    const std::size_t room = manager->roomAfterSweep / QV4::Chunk::SlotSize;
+    const std::size_t roomsCap = manager->slotsHeldWhenRoomLeft + 2 * room;
     return {
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("roomsCapAt"),
+         manager->roomAfterSweep == 0 ? -1.0 : megabytes(roomsCap * QV4::Chunk::SlotSize)},
+        {QStringLiteral("collectsBy"), collectsByName(manager->collectsBy())},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("collecting"), manager->gcStateMachine->inProgress()},
@@ -695,21 +723,58 @@ std::vector<Marked> markedChunks(const QV4::MemoryManager *manager) {
     return chunks;
 }
 
-// The bytes of text a string keeps outside the heap that destroying it would
-// free, so a holder of long strings isn't read as small while it keeps
-// megabytes there. Qt counts a string's text into the heap's unmanaged size
-// as its length in QChars when it's made, and takes as much out when it's
-// destroyed (Heap::String::init and StringOrSymbol::destroy); one made by
-// adding or slicing others keeps no text of its own until it's flattened,
-// and the strings it's made of are items of their own. Text another QString
-// shares outlives the item, as does static text, which has no count, so
-// either is none. A symbol's text isn't counted, as Qt counts none in.
-std::size_t textFreed(const QV4::Heap::Base *item) {
-    if (item->internalClass == nullptr || item->internalClass->vtable->isString == 0)
-        return 0;
-    const auto *string = static_cast<const QV4::Heap::String *>(item);
-    return string->text().isShared() ? 0 : string->retainedTextSize();
-}
+// The bytes of text the strings among some items keep outside the heap that
+// destroying them all would free, so a holder of long strings isn't read as
+// small while it keeps megabytes there. Each string's text is its length in
+// QChars, as Qt counts it into the heap's unmanaged size when it's made and
+// out when it's destroyed (Heap::String::init and StringOrSymbol::destroy);
+// one made by adding or slicing others keeps no text of its own until it's
+// flattened, and the strings it's made of are items of their own. Text is
+// freed only with the last QString holding it, so text shared is counted
+// once, when every holder its count says it has is among the items, and
+// otherwise not at all; static text, which has no count, is never freed. A
+// symbol's text isn't counted, as Qt counts none in.
+class FreedText {
+public:
+    void add(const QV4::Heap::Base *item) {
+        if (item->internalClass == nullptr || item->internalClass->vtable->isString == 0)
+            return;
+        const auto *string = static_cast<const QV4::Heap::String *>(item);
+        const std::size_t size = string->retainedTextSize();
+        const QArrayData *data = string->text().d_ptr();
+        if (size == 0 || data == nullptr)
+            return;
+        const int holders = data->ref_.loadRelaxed();
+        if (holders == 1) {
+            unshared += size;
+            return;
+        }
+        Shared &each = shared[data];
+        each.seen += 1;
+        each.holders = holders;
+        // Each string sharing it may say a part of it; what's freed is the most.
+        each.bytes = std::max(each.bytes, size);
+    }
+
+    double bytes() const {
+        std::size_t freed = unshared;
+        for (const Shared &each : shared) {
+            if (each.seen == each.holders)
+                freed += each.bytes;
+        }
+        return static_cast<double>(freed);
+    }
+
+private:
+    struct Shared {
+        int seen = 0;
+        int holders = 0;
+        std::size_t bytes = 0;
+    };
+
+    std::size_t unshared = 0;
+    QHash<const QArrayData *, Shared> shared;
+};
 
 // Whether a tally of what's newly marked counts the text its strings keep
 // outside the heap, which only freedBy() asks for: every other count reads
@@ -736,6 +801,10 @@ public:
 
     template <Text text = Text::Skipped> void take(Tally &into) {
         using QV4::Chunk;
+        // Only a counted take keeps the text it has seen, so the others make
+        // nothing for it.
+        [[maybe_unused]] std::conditional_t<text == Text::Counted, FreedText, std::monostate>
+            freedText;
         for (std::size_t at = 0; at < chunks.size(); ++at) {
             const Marked &each = chunks[at];
             quintptr *was = &seen[at * Chunk::EntriesInBitmap];
@@ -757,13 +826,14 @@ public:
                     into.count += 1;
                     if constexpr (text == Text::Counted) {
                         if (each.strings)
-                            into.outside += static_cast<double>(
-                                textFreed(reinterpret_cast<QV4::Heap::Base *>(
-                                    each.chunk->realBase() + index)));
+                            freedText.add(reinterpret_cast<QV4::Heap::Base *>(
+                                each.chunk->realBase() + index));
                     }
                 }
             }
         }
+        if constexpr (text == Text::Counted)
+            into.outside += freedText.bytes();
     }
 
     // Leaves every mark as the sweep does, cleared, so the next collection

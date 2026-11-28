@@ -1289,7 +1289,7 @@ mod tests {
         let share = budget_share(&default, &all, from, now);
         assert!(
             (share - 0.5).abs() < 1e-9,
-            "the default's share came to {share}, not half"
+            "the default's share should be half, not {share}"
         );
     }
 

@@ -746,14 +746,15 @@ mod tests {
             &zone,
             now,
         );
-        let (cap, warn) = (clock.cap_within_day, clock.warn_within_day);
         assert!(
-            (cap - 0.5).abs() < 1e-9,
-            "the cap's chance within a day came to {cap}, not 0.5"
+            (clock.cap_within_day - 0.5).abs() < 1e-9,
+            "the cap should fall half a day in, not at {}",
+            clock.cap_within_day
         );
         assert!(
-            (warn - 0.5).abs() < 1e-9,
-            "the warning's chance within a day came to {warn}, not 0.5"
+            (clock.warn_within_day - 0.5).abs() < 1e-9,
+            "the warning should fall half a day in, not at {}",
+            clock.warn_within_day
         );
         assert_eq!(clock.frees_at, None);
     }

@@ -531,7 +531,7 @@ mod tests {
     pub fn mouse() -> Connection {
         Connection {
             handle: 0x0040,
-            address: "C3:9C:E3:2A:F3:6E".into(),
+            address: "C2:00:00:00:C3:00".into(),
             le: true,
             outgoing: false,
             mode: 0x0000,
@@ -573,10 +573,17 @@ mod tests {
             listed: vec![(0, headphones())],
             ..StandIn::default()
         };
-        assert!(
-            watch.tick(&mut controller, 10, seconds(0)).is_some(),
-            "a link seen the first time is written"
-        );
+        // The first tick writes whatever it finds, so it's the headphones
+        // in what it wrote that shows the link was seen.
+        let first = watch
+            .tick(&mut controller, 10, seconds(0))
+            .expect("a link seen the first time is written");
+        let written: Vec<&str> = first
+            .links
+            .iter()
+            .map(|link| link.address.as_str())
+            .collect();
+        assert_eq!(written, ["00:1B:66:AA:BB:CC"]);
         assert!(
             watch.tick(&mut controller, 15, seconds(5)).is_some(),
             "a link is written every tick"
@@ -646,7 +653,7 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
             concat!(
-                r#"{"at":1,"links":[{"address":"C3:9C:E3:2A:F3:6E","rssi":-58,"quality":null,"#,
+                r#"{"at":1,"links":[{"address":"C2:00:00:00:C3:00","rssi":-58,"quality":null,"#,
                 r#""power":null,"channels":null,"map":null,"le":true,"#,
                 r#""held":{"central":false,"outgoing":false,"security":"none"},"#,
                 r#""history":{"rssi":[-58],"quality":[null]}}]}"#

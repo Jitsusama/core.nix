@@ -128,10 +128,10 @@ impl Peer {
     /// it connected, with the cgroup it's in. The path is read by that pid
     /// as wifid answers, which may be up to a minute on while connections
     /// queue through a restart, so the pid could by then be another's. The
-    /// kernel's pidfd for the peer is taken first and asked after the
-    /// read: a process that hasn't exited then is the one that connected,
-    /// as a live process keeps its pid, and one that has is said as gone
-    /// rather than named by whatever may have taken its number. A pid of 0
+    /// kernel's pidfd for the peer is asked after the read: a process that
+    /// hasn't exited then is the one that connected, as a live process
+    /// keeps its pid, and one that has is said as gone rather than named
+    /// by whatever may have taken its number. A pid of 0
     /// is the kernel saying the peer is outside wifid's pid namespace,
     /// which it can't name, so it's said as none. A kernel older than 6.5
     /// gives no pidfd for a socket (`ENOPROTOOPT`), as the builders' did
@@ -147,10 +147,12 @@ impl Peer {
     /// The peer on a connection as `on` says it, its pidfd had from
     /// `pidfd` and its cgroup file read by `read` from its pid, so a test
     /// can give a pidfd any kernel makes and have the asker exit as it's
-    /// read. The pidfd is had before the read and asked after it, each a
-    /// statement of its own: the read as an argument beside `held` would
-    /// come after the poll, and an asker exiting between them would have
-    /// another's path said as its own, proven.
+    /// read. The pidfd is asked after the read, each a statement of its
+    /// own: the read as an argument beside `held` would come after the
+    /// poll, and an asker exiting between them would have another's path
+    /// said as its own, proven. When the pidfd is had needn't matter, as
+    /// the socket keeps the connecting process's pid: had after a reap,
+    /// it's refused before 6.16 and polls exited from 6.16, as `held` says.
     fn read_by(
         pidfd: impl FnOnce() -> io::Result<OwnedFd>,
         pid: Option<i32>,
@@ -278,14 +280,14 @@ fn answered(revents: libc::c_short) -> bool {
 /// show it, as `ProtectProc=invisible` would, and is said as unread, not
 /// gone. Its path's ` (deleted)` ending is taken as its cgroup's name,
 /// with no lookup that a wrong root or a long path could spoil. The
-/// kernel refuses to remove a cgroup it still lists a task in
-/// (`cgroup_destroy_locked`), and `pidfd_poll` answers only once a
-/// process's every thread has exited, holding back a leader whose other
-/// threads run (`delay_group_leader`, `fs/pidfs.c` from 6.9). So an
-/// asker still there reads so only as a threaded group's leader, exited
-/// in one cgroup while its threads run in another, on a kernel that
-/// stops listing such a leader there, and that path is still one the
-/// asker ran in.
+/// kernel refuses to remove a cgroup while a task that hasn't exited is
+/// in it (`cgroup_destroy_locked` asks `cgroup_is_populated`, which an
+/// exited task no longer counts toward), and `pidfd_poll` answers only
+/// once a process's every thread has exited, holding back a leader
+/// whose other threads run, as it has since a pidfd could be polled, in
+/// 5.3. So an asker still there reads so only as a threaded group's
+/// leader, exited in a cgroup since removed while its threads run in
+/// another, and that path is still one the asker ran in.
 /// With no pidfd, the file not found says the asker was reaped, and the
 /// ending is looked up by `named`.
 fn judged(held: Held, read: io::Result<Vec<u8>>, named: impl Fn(&[u8]) -> bool) -> Cgroup {
@@ -810,10 +812,11 @@ mod tests {
     }
 
     /// A child forked by `a_child_connected`, killed and reaped by `gone`,
-    /// or when dropped, so a test that fails leaves no child paused. Its
-    /// pid is killed on drop only while nothing but `gone` or `left` can
-    /// reap it, which holds while no test waits on any child or ignores
-    /// `SIGCHLD`: one that did could let its pid go to another.
+    /// or when dropped, so a test that fails leaves no child paused, and
+    /// killed by the kernel should the thread that forked it end first.
+    /// Dropped, it kills its pid unless `gone` or `left` reaped it, which
+    /// is safe only while no test waits on any child or ignores `SIGCHLD`:
+    /// one that did could reap it first and let its pid go to another.
     struct Forked {
         pid: libc::pid_t,
         reaped: std::cell::Cell<bool>,
@@ -841,21 +844,31 @@ mod tests {
         }
 
         /// Fails the test if the child has exited, with how it did, as a
-        /// child that can't connect exits 1 for no socket and 2 for a
-        /// connect refused.
+        /// child that can't connect exits 1 for no socket, 2 for a connect
+        /// refused and 3 for a parent gone before it could ask to be
+        /// killed with it. Fails it too if the child can't be waited on,
+        /// as one reaped elsewhere would otherwise cost the whole wait.
         fn left(&self) {
             let mut status = 0;
             // SAFETY: it takes only numbers and the one int written, and
             // waits for nothing.
             let reaped = unsafe { libc::waitpid(self.pid, &raw mut status, libc::WNOHANG) };
+            if reaped < 0 {
+                let error = io::Error::last_os_error();
+                self.reaped.set(true);
+                panic!("the child can't be waited on, so another reaped it: {error}");
+            }
             if reaped == self.pid {
                 self.reaped.set(true);
-                panic!(
-                    "the child exited before it connected, exit {} (1: no socket, 2: refused), \
-                     signal {}",
-                    libc::WEXITSTATUS(status),
-                    libc::WTERMSIG(status)
-                );
+                let how = if libc::WIFEXITED(status) {
+                    format!(
+                        "exit {} (1: no socket, 2: refused, 3: orphaned)",
+                        libc::WEXITSTATUS(status)
+                    )
+                } else {
+                    format!("killed by signal {}", libc::WTERMSIG(status))
+                };
+                panic!("the child exited before it connected, {how}");
             }
         }
     }
@@ -895,13 +908,23 @@ mod tests {
         }
         let length = libc::socklen_t::try_from(mem::size_of::<libc::sockaddr_un>())
             .expect("an address's length fits");
-        // SAFETY: the child calls only socket, connect, pause and _exit,
-        // each safe after a fork in a process of many threads, and never
-        // returns into the test.
+        // SAFETY: it takes nothing and gives a number.
+        let parent = unsafe { libc::getpid() };
+        // SAFETY: the child calls only prctl, getppid, socket, connect,
+        // pause and _exit, each safe after a fork in a process of many
+        // threads, and never returns into the test.
         let pid = unsafe { libc::fork() };
         if pid == 0 {
             // SAFETY: as above; the address was made before the fork.
             unsafe {
+                // A test process that dies without unwinding never drops
+                // the child, so the kernel kills it then instead. It's
+                // asked of the forking thread's end, which comes after the
+                // drop, and a parent gone before the ask leaves it orphaned.
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                if libc::getppid() != parent {
+                    libc::_exit(3);
+                }
                 let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
                 if fd < 0 {
                     libc::_exit(1);

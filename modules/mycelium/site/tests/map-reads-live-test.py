@@ -524,6 +524,63 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
+# On 26 November Joel asked why the map wasn't working, then said "oh, it's
+# just really, really slow": the node took 14 s to first answer its watch of
+# messages, 12,179 of them, and the map drew nothing until it had. Where the
+# node serves the ties the map draws talk from, it draws without them, and
+# says it is still reading them.
+READING_TALK = "Reading what passed between cells."
+
+
+@pytest.fixture
+def slow_talk_node(tmp_path: Path) -> Iterator[StandIn]:
+    heard = int(datetime.now(UTC).timestamp() * 1000)
+    tie = {"key": f"tie:HERON1~{HEARD}", "heard": heard, "strength": 1, "today": [3, 0]}
+    stand_in = StandIn(tmp_path / "slow.sock", "node", {**talking(), "tie": [tie]}).start()
+    stand_in.withhold("message")
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def slow_talk_served(tmp_path: Path, slow_talk_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, slow_talk_node)
+
+
+def test_the_map_draws_before_the_node_says_what_passed(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map waited for the messages to draw the realm")
+    expect(page.locator("#asof"), "the map didn't say it was reading what passed").to_contain_text(
+        READING_TALK
+    )
+    box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
+    assert box, "the map drew no TERN01 to open"
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
+    slow_talk_node.answer("message")
+    expect(
+        page.locator("#asof"), "the map still said it was reading what passed"
+    ).not_to_contain_text(READING_TALK, timeout=PACE_MS)
+    # The drawer open as the messages first answer lists them, rather than
+    # saying nothing passed until the next change draws it again.
+    expect(
+        drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
+    ).to_have_count(TALKERS["HERON1"])
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
@@ -658,13 +715,9 @@ def middle(box: list[float]) -> tuple[float, float]:
     return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
-def in_view(page: Page, cell: str) -> bool:
-    """Say whether a cell's disc is wholly inside the map's view."""
-    boxes: list[list[float] | None] = page.evaluate(BOXES, [cell])
-    view, _, disc = boxes
-    assert view, "the map drew no view"
-    assert disc, f"the map drew no {cell}"
-    left, top, right, bottom = disc
+def inside(view: list[float], box: list[float]) -> bool:
+    """Say whether a box measured as left, top, right and bottom is wholly inside the view's."""
+    left, top, right, bottom = box
     return view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
 
 
@@ -684,8 +737,12 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         HERONS_TITLE
     )
     settled(page, "the heron's network never stood still once opened")
-    out = [cell for cell in SKIFF_JOINS if not in_view(page, cell)]
-    assert out, "the heron's network, opened, left every cell of the skiff's in view"
+    view, _, *joins = drawn_boxes(page, list(SKIFF_JOINS), "opening the heron's left cells")
+    out = [cell for cell, box in zip(SKIFF_JOINS, joins, strict=True) if not inside(view, box)]
+    assert out, (
+        "the heron's network, opened, left every cell of the skiff's in view: opening a "
+        "network no longer fits the view to it, or the stand-in's skiff no longer lies outside"
+    )
     page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
     expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
         SKIFF_TITLE
@@ -693,8 +750,8 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
     settled(page, "the skiff's network never stood still once opened")
     view, drawer, *boxes = drawn_boxes(page, list(SKIFF_JOINS), "opening the skiff left cells")
     for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
-        inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
-        assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
+        box = [left, top, right, bottom]
+        assert inside(view, box), f"opening the skiff left {cell} at {box} outside {view}"
         under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
         assert not under, f"opening the skiff left {cell} under its drawer at {drawer}"
         assert strongest(page, cell) >= STRONG_ALPHA, f"{cell}, joined to the skiff, stepped back"

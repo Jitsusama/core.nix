@@ -241,6 +241,7 @@
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         local-sites = ./modules/local-sites/home.nix;
+        lock-follows = ./modules/lock-follows/home.nix;
         lsd = ./modules/lsd/home.nix;
         machine = ./modules/machine/home.nix;
         margin-cat = moduleFrom ./modules/margin-cat/home.nix {
@@ -578,6 +579,11 @@
       # `(core.lib.clippy pkgs).passes { name = ...; package = ...; }` is a
       # check that the package passes, with its lints and core's settings.
       lib.clippy = pkgs: pkgs.callPackage ./modules/clippy/clippy.nix { };
+
+      # How a repository built on core builds pi as a windowed session runs
+      # it, with core's windowed patches: `core.lib.windowedPi pkgs` is that
+      # pi, built from the pi pkgs gives.
+      lib.windowedPi = pkgs: import ./modules/pi/windowed-pi { inherit pkgs; };
 
       # How a repository built on core holds its docs to naming only what
       # exists, as core does: `core.lib.docsNameWhatExists pkgs { src = ./.;

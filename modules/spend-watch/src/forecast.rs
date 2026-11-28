@@ -380,15 +380,15 @@ mod tests {
     #[test]
     fn a_shape_is_a_days_shares() {
         let shape = Shape::learn(&[(2, 9, 30.0), (2, 15, 10.0)]);
-        let whole = shape.shares[2].iter().sum::<f64>();
         assert!(
-            (whole - 1.0).abs() < 1e-9,
-            "a day's shares came to {whole}, not 1"
+            (shape.shares[2].iter().sum::<f64>() - 1.0).abs() < 1e-9,
+            "a day's shares should sum to one: {:?}",
+            shape.shares[2]
         );
-        let by_noon = shape.before(2, 12);
+        let before = shape.before(2, 12);
         assert!(
-            by_noon > 0.7 && by_noon < 0.8,
-            "{by_noon} of the day came before noon, not between 0.7 and 0.8"
+            before > 0.7 && before < 0.8,
+            "about three quarters should fall before noon, not {before}"
         );
     }
 }

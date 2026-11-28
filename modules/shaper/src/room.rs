@@ -60,9 +60,14 @@ impl Room {
     /// declares none. A hold is kept only on the network it began on and
     /// at the line it filled: a link that moves to another network, even
     /// one declaring the same line, or whose line changes, lets it go
-    /// unless the download fills the new one, so a hold is never carried
-    /// to a line it didn't fill (download hold round 2's F7 and F24, round
-    /// 3's F5). A link the recorder doesn't follow carries nothing known
+    /// unless the download fills the new one, so a hold begun here is never
+    /// carried to a line it didn't fill (download hold round 2's F7 and F24,
+    /// round 3's F5). The one exception is a hold `follow` gave a link while
+    /// it followed, unmeasured, which it keeps on the same network and line
+    /// as it leads for the rest of the call, whether or not it fills it, a
+    /// tenth under its line, rather than let a download it couldn't hear go a
+    /// second (a link's own line round 4's F2 and F12, round 9's F8). A
+    /// link the recorder doesn't follow carries nothing known
     /// and isn't cut, so it starts no hold, but keeps one it has, as it
     /// does through a second the recorder missed: a call held through a
     /// spell costs the download a tenth, where one let go a second costs
@@ -356,7 +361,11 @@ mod tests {
         assert_eq!((held, said), (None, None), "no call, no hold");
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
         assert_eq!(held, Some(18_000), "held unmeasured, under its own line");
-        assert!(said.is_some(), "the journal says the hold began");
+        let said = said.expect("the journal says the hold began");
+        assert!(
+            said.contains("following eth1's, isn't measured") && said.contains("held to 18000"),
+            "for why, and following which: {said}"
+        );
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
         assert_eq!((held, said), (Some(18_000), None), "said once");
         let (held, said) = room.step("wlan0", HOME, true, UNKNOWN, Some(20_000));
@@ -372,11 +381,35 @@ mod tests {
             "a leader turned follower isn't said to be let go while held"
         );
         let (held, said) = room.follow(wifi, HOME, true, None);
+        // Each transition is checked for its own line, not just for one
+        // (a link's own line round 5's F2, F3 and F6).
         assert_eq!(held, None, "a follower with no line");
-        assert!(said.is_some(), "is said to be let go");
+        assert_eq!(
+            said.as_deref(),
+            Some("wlan0: the download is no longer held for a call"),
+            "a follower whose line goes is said to be let go"
+        );
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
-        assert_eq!(held, Some(18_000), "a line declared again is held under");
-        assert!(said.is_some(), "the hold taken again is said");
+        let said = said.expect("the journal says the hold was taken again");
+        assert_eq!(
+            held,
+            Some(18_000),
+            "a line declared again holds it under that line again: {said}"
+        );
+        assert!(
+            said.contains("following eth1's, isn't measured") && said.contains("held to 18000"),
+            "the hold taken again is said as one beginning: {said}"
+        );
+        // A follower that roams mid-call to another router declaring the
+        // same line takes its hold there anew, as a leader does (a link's
+        // own line round 7's F9, round 9's F7).
+        let (held, said) = room.follow(wifi, "office", true, Some(20_000));
+        let said = said.expect("the journal says the hold was taken on the new network");
+        assert_eq!(held, Some(18_000), "held under the same line there: {said}");
+        assert!(
+            said.contains("following eth1's, isn't measured"),
+            "the hold on the new network is said as one beginning: {said}"
+        );
         let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
         assert_eq!(held, None, "the call's end lets it go");
         assert_eq!(

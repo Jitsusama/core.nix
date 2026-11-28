@@ -129,8 +129,8 @@ fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
         )
     );
     assert_eq!(keys(&rows("slack-recent"))[0], "row:slack-recent:C3");
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
+    forget(&path);
 }
 
 #[test]
@@ -222,9 +222,7 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
         (&health["watches"], &health["sources"]["slack"]["state"]),
         (&serde_json::json!(0), &serde_json::json!("answering"))
     );
-    program.kill().unwrap();
-    program.wait().unwrap();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    program.stop();
     forget(&path);
 }
 
@@ -356,9 +354,7 @@ fn the_messages_are_said_whole_only_once_every_history_wanted_was_read() {
         texts(&run),
         ["@someone can you look", "are you there?", "hello, new here"]
     );
-    program.kill().unwrap();
-    program.wait().unwrap();
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    program.stop();
     forget(&path);
 }
 
@@ -446,8 +442,7 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     until("Slack wasn't asked again", || {
         times(&stand_in, "client.counts") >= rounds + 3
     });
-    program.kill().unwrap();
-    program.wait().unwrap();
+    program.stop();
     let asked = [
         "conversations.history?channel=D1",
         "conversations.history?channel=C2",
@@ -461,7 +456,6 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         heard.iter().all(|one| one.line.starts_with("GET /api/")),
         "{heard:?}"
     );
-    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
     forget(&path);
 }
 

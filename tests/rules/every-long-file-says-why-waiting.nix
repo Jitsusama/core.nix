@@ -43,7 +43,6 @@
   "modules/spend-watch/src/detect.rs"
   "modules/spend-watch/src/history.rs"
   "modules/spend-watch/src/picture.rs"
-  "modules/spend-watch/src/report.rs"
   "modules/spend-watch/src/series.rs"
   "modules/spend-watch/src/standing.rs"
   "modules/spend-watch/src/tokens.rs"

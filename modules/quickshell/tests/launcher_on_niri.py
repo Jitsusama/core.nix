@@ -40,6 +40,16 @@ if TYPE_CHECKING:
 
 Json = dict[str, Any]
 
+
+class ShowingError(RuntimeError):
+    """The launcher's showing call answered what threw in the shell, or nothing to read.
+
+    Never an AssertionError, which the waits that press again or judge a miss catch as time
+    running out and would press past, as tests/desktop/heard.py's reader says of its own. The
+    wrappers that add what they saw catch it beside AssertionError and raise it again as itself.
+    """
+
+
 # How long the shell may take to start, and what a wait allows by default.
 STARTING = timedelta(seconds=60)
 WAITING = timedelta(seconds=30)
@@ -200,12 +210,17 @@ class Shell:
                 stderr=subprocess.STDOUT,
             )
         deadline = time.monotonic() + STARTING.total_seconds()
+        said = ""
         while time.monotonic() < deadline:
             status, said = self.execute(self.ipc("showing"))
-            if status == 0 and not json.loads(said)["open"]:
-                return
+            # An answer that came empty or says what threw, as one may while the shell's objects
+            # still load, isn't yet one: the wait goes on, and fails saying it and the log.
+            with contextlib.suppress(ValueError):
+                shown = json.loads(said) if status == 0 else None
+                if isinstance(shown, dict) and "threw" not in shown and not shown["open"]:
+                    return
             time.sleep(POLL * 2)
-        failed = f"the shell never answered:\n{self.tail()}"
+        failed = f"the shell never answered closed, last saying {said!r}:\n{self.tail()}"
         raise AssertionError(failed)
 
     def daemon(self, name: str, program: str, *given: str, socket: Path | None = None) -> None:
@@ -322,8 +337,26 @@ class Shell:
         self.as_account(f"{wlrctl} pointer click left")
 
     def showing(self) -> Json:
-        """Give what the launcher shows, from its showing call."""
-        return cast("Json", json.loads(self.as_account(self.ipc("showing"))))
+        """Give what the launcher shows, from its showing call, failing as a read that threw.
+
+        A read that throws in the shell answers what threw (launcher/Held.js's answered) at exit
+        0, and an answer once came empty (vm-desktop-looks, 2026-11-22). Either fails as
+        ShowingError naming it, which no wait presses past and the wrappers that add what they
+        saw carry, rather than as a missing field's KeyError or a bare JSON error.
+        """
+        said = self.as_account(self.ipc("showing"))
+        if not said.strip():
+            message = "the launcher's showing answered nothing"
+            raise ShowingError(message)
+        try:
+            shown = cast("Json", json.loads(said))
+        except ValueError as unread:
+            message = f"the launcher's showing answered {said!r}, not what it shows"
+            raise ShowingError(message) from unread
+        if "threw" in shown:
+            message = f"the launcher's showing threw: {shown['threw']}"
+            raise ShowingError(message)
+        return shown
 
     def made(self) -> Json:
         """Give what each place has made since the shell started (Provider.qml's tally)."""
@@ -479,22 +512,41 @@ class Shell:
         """
         try:
             self.launcher_until(lambda shown: shown["open"] and shown["keys"])
-        except AssertionError as failed:
+        except (AssertionError, ShowingError) as failed:
             _, layers = self.execute("niri msg layers")
             _, window = self.execute("niri msg focused-window")
             message = f"{failed}\nniri's layers:\n{layers}\nniri's focused window:\n{window}"
-            raise AssertionError(message) from failed
+            raise type(failed)(message) from failed
 
     def launcher_closed(self) -> None:
         """Wait until the launcher has closed."""
         self.launcher_until(lambda shown: not shown["open"], timedelta(seconds=10))
 
     def launcher_left_closed(self) -> None:
-        """Close the launcher if a test left it open, so the next test starts as every test does."""
-        if self.showing()["open"]:
-            print("the launcher was left open, so it's closed for the next test")
-            self.as_account(self.ipc("toggle"))
-            self.launcher_closed()
+        """Close the launcher if a test left it open, so the next test starts as every test does.
+
+        While its card is still opening the launcher doesn't yet say it's open, so the opening is
+        waited out first. One that never ends is unopened by a toggle, and then closed if it had
+        already opened, as the launcher's own shut does; the wait's failure is still said. This
+        was margin-cat-on-niri-test.py's alone, so a case anywhere else that failed mid-opening
+        left the launcher to open for the next (core.nix#7026's round, 2026-11-27). A launcher
+        neither opening nor open, as nearly every case leaves it, is read once.
+        """
+        if not any(self.showing()[state] for state in ("opening", "open")):
+            return
+        try:
+            self.launcher_until(lambda shown: not shown["opening"])
+        finally:
+            try:
+                if self.showing()["opening"]:
+                    print("the launcher was left opening, so it's unopened for the next test")
+                    self.as_account(self.ipc("toggle"))
+                    self.launcher_until(lambda shown: not shown["opening"], timedelta(seconds=10))
+            finally:
+                if self.showing()["open"]:
+                    print("the launcher was left open, so it's closed for the next test")
+                    self.as_account(self.ipc("toggle"))
+                    self.launcher_closed()
 
     def normal(self) -> None:
         """Put the launcher's line in normal mode, by Escape from the find, and wait for it."""
@@ -513,7 +565,7 @@ class Shell:
         self.send_chars("A")
         self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
-    def close_launcher(self) -> None:
+    def close_launcher(self) -> int:
         """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
         Escape gives normal from the find, lets the key list go if it's shown, and cancels a
@@ -523,7 +575,11 @@ class Shell:
         A launcher opened to say something Joel didn't ask for, as a Go To's why it couldn't
         go (Launcher.qml's toldHere), drops every key for its first LINK_QUIET, so a key it
         dropped is counted as an answer and sent again once that's over, never left to wait on
-        a move it can't make, nor a :q's Return let through alone to act on the row.
+        a move it can't make. Such a launcher opens on the find, so the first key is always
+        Escape, and :q follows only an Escape it took, past the quiet: a :q never lands inside
+        one while links open on the find or in insert (#7157's first round, 3 and 17). It says
+        how many it sent again, since closing lets the quiet's count go and nothing after the
+        close can read it.
         """
 
         def where(shown: Json) -> tuple[object, ...]:
@@ -540,10 +596,11 @@ class Shell:
         def moved(was: tuple[object, ...], shown: Json) -> bool:
             return where(shown) != was
 
+        again = 0
         for _ in range(12):
             was = where(self.showing())
             if not was[0]:
-                return
+                return again
             _, mode, _, listing, commanding, pending, dropped = was
             if mode == "normal" and not (listing or commanding or pending):
                 self.send_chars(":q")
@@ -551,7 +608,10 @@ class Shell:
             else:
                 self.send_key("esc")
             self.launcher_until(functools.partial(moved, was))
-            if self.showing()["quietDropped"] != dropped:
+            # Closing lets the count go to 0, so only a launcher still open says a drop.
+            now = self.showing()
+            if now["open"] and now["quietDropped"] != dropped:
+                again += 1
                 time.sleep(LINK_QUIET)
         still = self.showing()
         message = f"the launcher was still open after 12 Escapes: {still}"
@@ -853,3 +913,14 @@ def shell() -> Iterator[Shell]:
     """Give the shell, started once for the cases of a file that names this its `shell`."""
     with running() as started_once:
         yield started_once
+
+
+@pytest.fixture(autouse=True)
+def launcher_closed_after(shell: Shell) -> Iterator[None]:
+    """Close the launcher after each case of a file that names this, so one failing fails alone.
+
+    Closed after the case rather than in it, a cleanup that fails is said as the case's teardown
+    and never takes the place of the case's own failure.
+    """
+    yield
+    shell.launcher_left_closed()

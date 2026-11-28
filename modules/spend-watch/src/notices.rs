@@ -462,7 +462,7 @@ mod tests {
         let changes = plan(&history, &held, 3, 60.0).unwrap();
         assert!(
             matches!(changes.as_slice(), [Change::Withdraw { .. }]),
-            "marking the finding planned {changes:?}, not one withdrawal"
+            "a marked finding's notice should be withdrawn alone: {changes:?}"
         );
         apply(&history, &mut desk, changes, 60.0).unwrap();
         assert_eq!(desk.shown, [] as [(u32, std::string::String); 0]);

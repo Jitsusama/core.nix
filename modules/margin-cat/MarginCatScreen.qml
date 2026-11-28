@@ -371,6 +371,16 @@ PanelWindow {
                 leaving.stop();
                 floors();
             } else if (place !== null) {
+                // niri can say the window it sits on scrolled wholly off
+                // the screen before it says the keys went to the column
+                // that scroll brings in, the keys still in that window
+                // and its seat gone: it rides off with that window now,
+                // since the move is taken here and never heard again, and
+                // left, it walked to the keys from where the window had
+                // been, over the air (merge-net's gates, 2026-11-26 and
+                // 27, the window said at 1276 with the cat at 950).
+                if (going === null)
+                    carriedOff(saw);
                 leaving.restart();
             }
             return;
@@ -409,12 +419,13 @@ PanelWindow {
             // or held short of its seat as a scroll caught its walk
             // (heldShortOn), rides with its window from where it's drawn,
             // sits there at once, or lets a ride under way run on
-            // (Carried.backOn).
+            // (Carried.backOn). The screen is read through `present`, as
+            // the cut visit's is, since an event woke this.
             const back = Carried.backOn(place, there, {
                 wide: size,
-                across: modelData.width,
+                across: present.width,
                 riding: carry !== null,
-                scrolling: scrolling(),
+                scrolling: slides(wanted),
                 reshaped,
                 held: heldShortOn !== null && heldShortOn === wanted
             });
@@ -456,8 +467,10 @@ PanelWindow {
                 // cat goes as far as niri carries it, as carried() does.
                 tell("puppy");
                 halt();
+                // The screen read through `present`, since an event woke
+                // this; never null here, as `there` is null once it goes.
                 const cut = Carried.visitCut(seat(tile(sat)), place, by,
-                    { wide: size, across: modelData.width, scrolling: scrolling() });
+                    { wide: size, across: present.width, scrolling: slides(sat) });
                 if (cut?.how === "rides")
                     rideTo(cut.to);
                 else if (cut !== null)
@@ -507,6 +520,17 @@ PanelWindow {
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
     }
+    // Carried wholly off the screen by its window, as niri scrolls the
+    // strip with the keys still in it (follow), never by one gone
+    // fullscreen, resized or to another workspace, which it leaves
+    // (Carried.scrolledOff).
+    function carriedOff(saw: var): void {
+        const on = Carried.carriedBy(landedOn, sat);
+        const by = Carried.scrolledOff((saw ?? []).find(one => one.id === on),
+            (tilesOf(space?.id) ?? []).find(one => one.id === on));
+        if (by !== null)
+            rideTo({ x: place.x + by.x, y: place.y });
+    }
     // Whether its place is `to` already, within half a pixel, as a cut
     // puppy visit asks of its seat.
     function placedAt(to: var): bool {
@@ -530,11 +554,39 @@ PanelWindow {
         return Tiles.runs(scrollHeard, now, slideMs);
     }
     property var scrollHeard: null
+    // Whether niri's spring slides the window `on` as a column beside it
+    // opens, closes or resizes ("ColumnMove"), heard as scrolling() hears
+    // a scroll. niri draws that move on the spring its scroll rides
+    // (modules/niri/home.nix's window-movement), so the cat rides it the
+    // same way rather than sitting at once ahead of its window as it
+    // slides, which only a drag or a gesture, which niri says no word of,
+    // does. Only `on`'s own word counts, since niri puts a column's move on
+    // every column it moves (Tiles.heardOf).
+    function columnMoving(on: var): bool {
+        columnsHeard();
+        return Tiles.runs(Tiles.heardOf(columnHeard, on), Date.now(), slideMs);
+    }
+    // Every window's word of its column's move, heard as each layout
+    // comes, with scrolling()'s, so each is dated as near as it can be to
+    // when niri said it. Heard only as the cat asked, a word left on a
+    // still window was dated then, as a slide just begun, and had the cat
+    // ride a full spring to a window long at rest (#7194's round, F4).
+    function columnsHeard(): void {
+        columnHeard = Tiles.hears(columnHeard, Tiles.told(Niri.windows, space?.id, "ColumnMove"),
+            Date.now());
+    }
+    property var columnHeard: null
+    // Whether niri's spring slides the window `on` under the cat: the
+    // strip scrolled, or that window's column moved beside another.
+    function slides(on: var): bool {
+        return scrolling() || columnMoving(on);
+    }
     Connections {
         target: Niri
 
         function onRevisionChanged() {
             window.scrolling();
+            window.columnsHeard();
         }
     }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
@@ -553,12 +605,15 @@ PanelWindow {
             return;
         }
         const now = Date.now();
-        // As far into the scroll as niri says, by its latest begin rather
-        // than an old scroll's word left on another window, or a guess at
-        // how late it hears of one where niri says nothing or tells of one
-        // ended.
-        const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
-            ? now - scrollHeard.at : null);
+        // As far into the scroll, or the move of the column it's carried
+        // by, as niri says, by its latest begin rather than an old word
+        // left on another window, or a guess at how late it hears of one
+        // where niri says nothing or tells of one ended.
+        const carrier = Carried.carriedBy(landedOn, sat);
+        const began = scrolling() ? scrollHeard.at
+            : columnMoving(carrier) ? Tiles.heardOf(columnHeard, carrier).at : null;
+        const behind = MarginCat.behindTold(frameMs, "slide", began === null ? null
+            : now - began);
         carry = Carried.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
@@ -1403,6 +1458,7 @@ PanelWindow {
         }
         function onSettledChanged() {
             window.scrolling();
+            window.columnsHeard();
         }
     }
 
