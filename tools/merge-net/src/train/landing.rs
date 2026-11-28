@@ -430,6 +430,13 @@ fn reverted(hub: &dyn Hub, made: &[(&Merging, String)], mut why: String) -> Land
 /// the train excused as main's or a flake's speaks as a pass would, from
 /// the record it kept beside `checkout` (`excused`).
 fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
+    // The excused records are found beside the checkout, so its path is made
+    // whole before the process moves into it: a relative one, as a relative
+    // `MERGE_NET_STATE` gives, would then name a folder inside it.
+    let Ok(checkout) = std::path::absolute(checkout) else {
+        return false;
+    };
+    let checkout = checkout.as_path();
     let Ok(here) = std::env::current_dir() else {
         return false;
     };
@@ -457,5 +464,7 @@ fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
     judged.is_ok_and(|judged| judged.before.speaks_for_the_head())
 }
 
+#[cfg(test)]
+mod still_passes_tests;
 #[cfg(test)]
 mod tests;

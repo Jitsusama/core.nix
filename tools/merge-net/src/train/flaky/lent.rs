@@ -17,8 +17,9 @@ use crate::state::short;
 /// What the train asks of lent builders to judge a red: the real ones are
 /// `Lenders`, and a test's record what each build asks for.
 pub(in crate::train) trait Lent {
-    /// Build `checks` of `flake`, at `commit`, from `checkout`, their
-    /// words in `log`: the exit code and the words.
+    /// Build `checks` of `flake` from `checkout`, their words in `log`:
+    /// the exit code and the words. The flake alone decides which commit
+    /// is built; `commit` only labels the log line saying the build.
     fn build(
         &mut self,
         checkout: &Path,
@@ -52,8 +53,9 @@ impl Lent for Lenders {
     }
 }
 
-/// Build `checks` of `flake`, at `commit`, from the train's `checkout`, on
-/// a lent builder only, their words in `log`: its exit code and its words.
+/// Build `checks` of `flake` from the train's `checkout`, on a lent builder
+/// only, their words in `log`: its exit code and its words. `commit` only
+/// names, in the train's log, what the flake builds.
 fn build(
     checkout: &Path,
     flake: &str,

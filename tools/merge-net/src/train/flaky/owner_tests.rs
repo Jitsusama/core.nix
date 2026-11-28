@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use super::super::folder;
+use super::super::checkout_in;
 use super::super::tests::git_in as git;
-use super::{MOST_OWNER_MERGES, Red, owner_in};
+use super::Red;
+use super::owner::{MOST_OWNER_MERGES, Unowned, owner_in};
 
 /// A merge onto main of one empty commit on `side`, said by `subject`,
 /// in `checkout`; its commit.
@@ -25,7 +26,7 @@ fn merged(checkout: &Path, side: &str, subject: &str) -> String {
 fn net_past_twelve(name: &str) -> (PathBuf, PathBuf, String, String) {
     let root = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
-    let checkout = folder(&root).join("checkout");
+    let checkout = checkout_in(&root);
     fs::create_dir_all(&checkout).unwrap();
     git(&checkout, &["init", "-q", "-b", "main"]).unwrap();
     git(
@@ -63,8 +64,8 @@ fn keep_drv(root: &Path, commit: &str, which: &str) {
 }
 
 /// The owner of `a`, failed alone, of a red at `base` in `checkout`, by
-/// the net under `root`.
-fn owner_at(root: &Path, checkout: &Path, base: &str) -> Option<u64> {
+/// the net under `root`, or why none is named.
+fn owner_at(root: &Path, checkout: &Path, base: &str) -> Result<u64, Unowned> {
     let log = root.join("gate.log");
     let red = Red {
         checkout,
@@ -88,7 +89,7 @@ fn a_reds_owner_is_read_where_the_train_fetched_its_base() {
     let (root, checkout, _, twelve) = net_past_twelve("merge-net-owner");
     assert_eq!(
         owner_at(&root, &checkout, &twelve),
-        Some(12),
+        Ok(12),
         "the merge that moved the check wasn't named its owner"
     );
     fs::remove_dir_all(&root).unwrap();
@@ -100,20 +101,98 @@ fn a_reds_owner_is_read_where_the_train_fetched_its_base() {
 #[test]
 fn an_owner_is_looked_for_among_the_newest_merges_alone() {
     let (root, checkout, _, _) = net_past_twelve("merge-net-owner-far");
+    let base = later(&root, &checkout, &["now"].repeat(MOST_OWNER_MERGES));
+    assert_eq!(
+        owner_at(&root, &checkout, &base),
+        Err(Unowned::NoMerge {
+            looked: MOST_OWNER_MERGES,
+            since: MOST_OWNER_MERGES + 1,
+        }),
+        "an owner was looked for past the newest merges"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// Merges onto main after #12 in `checkout`, one for each of `drvs`, #20
+/// on, each keeping `a`'s derivation as its `drvs` names it; the last.
+fn later(root: &Path, checkout: &Path, drvs: &[&str]) -> String {
     let mut base = String::new();
-    for later in 0..MOST_OWNER_MERGES {
+    for (later, which) in drvs.iter().enumerate() {
         let side = format!("later-{later}");
         base = merged(
-            &checkout,
+            checkout,
             &side,
             &format!("Merge pull request #{} from x/{side}", 20 + later),
         );
-        keep_drv(&root, &base, "now");
+        keep_drv(root, &base, which);
     }
+    base
+}
+
+/// The newest four merges are read whole, however many more came since
+/// the net last passed: an owner the oldest of them is still found. Four,
+/// not `MOST_OWNER_MERGES`, so a bound that shrank fails it.
+#[test]
+fn an_owner_among_the_newest_merges_is_found_past_older_ones() {
+    let (root, checkout, _, _) = net_past_twelve("merge-net-owner-newest");
+    let drvs = ["newer"].repeat(4);
+    let base = later(&root, &checkout, &drvs);
     assert_eq!(
         owner_at(&root, &checkout, &base),
-        None,
-        "an owner was looked for past the newest merges"
+        Ok(20),
+        "the oldest of the newest merges wasn't read for an owner"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A net that passed four merges back reads every one of them, the
+/// oldest included.
+#[test]
+fn an_owner_as_far_back_as_is_read_is_found() {
+    let (root, checkout, _, _) = net_past_twelve("merge-net-owner-edge");
+    let drvs = ["now"].repeat(3);
+    let base = later(&root, &checkout, &drvs);
+    assert_eq!(
+        owner_at(&root, &checkout, &base),
+        Ok(12),
+        "the oldest merge since the net last passed wasn't read for an owner"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A finding names no owner for one of three reasons, and the train's log
+/// says which: a net that has passed nothing, and a base git can't count
+/// from, read no merges at all, so they aren't said as merges read in vain.
+#[test]
+fn why_no_owner_is_named_is_told_apart() {
+    let (root, checkout, _, twelve) = net_past_twelve("merge-net-owner-unread");
+    assert_eq!(
+        owner_at(&root, &checkout, &"0".repeat(40)),
+        Err(Unowned::Uncounted),
+        "a base the checkout lacks wasn't said uncounted"
+    );
+    fs::write(root.join("state.json"), json!({}).to_string()).unwrap();
+    assert_eq!(
+        owner_at(&root, &checkout, &twelve),
+        Err(Unowned::NothingPassed),
+        "a net that passed nothing wasn't said to have passed nothing"
+    );
+    let said = [
+        Unowned::NothingPassed,
+        Unowned::Uncounted,
+        Unowned::NoMerge {
+            looked: 1,
+            since: 1,
+        },
+    ]
+    .map(|unowned| unowned.said("a"));
+    assert!(
+        said[0].contains("passed no head") && said[1].contains("couldn't count"),
+        "a range never read was said as read: {said:?}"
+    );
+    assert!(
+        said[2].contains("no merge of the 1 since") && !said[0].contains("no merge"),
+        "merges read in vain weren't told from none read: {said:?}"
     );
     fs::remove_dir_all(&root).unwrap();
 }

@@ -1,7 +1,5 @@
 //! Whose a red candidate's failed checks are, read from its gate's words.
 
-use serde_json::Value;
-
 use super::*;
 
 /// What a builder says when `name` fails, as nix's `-L` prefixes it.
@@ -148,7 +146,7 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
         BTreeMap::from([("treefmt-check".to_owned(), "formatting".to_owned())])
     };
     assert_eq!(
-        checks_of(&failed, &built, &named),
+        checks_of(&failed, &built, &BTreeSet::new(), &named),
         Some(
             ["a-theme-changes-everything", "vm-pi", "formatting"]
                 .map(str::to_owned)
@@ -162,7 +160,7 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
     );
     let unnamed = |_: &[String]| BTreeMap::new();
     assert_eq!(
-        checks_of(&failed, &built, &unnamed),
+        checks_of(&failed, &built, &BTreeSet::new(), &unnamed),
         None,
         "a failed derivation no check names was passed over, so the riders were excused for it"
     );
@@ -217,11 +215,13 @@ fn a_check_excused_as_a_flake_twice_in_a_ride_is_the_riders_on_its_third_red() {
     );
     built_again.set(false);
     built_at_base.set(false);
+    let spent = judged(&said, &at_base, &again, MOST_EXCUSED).unwrap();
     assert_eq!(
-        judged(&said, &at_base, &again, MOST_EXCUSED).unwrap(),
+        spent,
         [("vm-pi".to_owned(), Blame::Spent)],
         "a check's third red in a ride was excused as a flake"
     );
+    assert!(!excused(&spent), "a check out of excuses landed its red");
     assert!(!built_again.get(), "a check out of excuses was built again");
     assert!(
         !built_at_base.get(),
@@ -239,11 +239,13 @@ fn a_rule_out_of_excuses_can_still_be_mains() {
         [(RULE.to_owned(), Blame::Main)],
         "main's own red in a rule out of flake excuses wasn't main's"
     );
+    let spent = judged(&said, &passes_at_base, &passes, MOST_EXCUSED).unwrap();
     assert_eq!(
-        judged(&said, &passes_at_base, &passes, MOST_EXCUSED).unwrap(),
+        spent,
         [(RULE.to_owned(), Blame::Spent)],
         "a rule out of excuses, passing at the base, was excused as a flake"
     );
+    assert!(!excused(&spent), "a rule out of excuses landed its red");
 }
 
 #[test]
@@ -291,10 +293,15 @@ fn mains_red_in_a_rule_the_riders_moved_is_theirs() {
         rules_moved: true,
         held: &BTreeSet::new(),
     };
+    let ruled = judge(&said, &mut judging).unwrap();
     assert_eq!(
-        judge(&said, &mut judging).unwrap(),
+        ruled,
         [(RULE.to_owned(), Blame::RuleMoved)],
         "main's red in a rule the riders moved was excused as main's"
+    );
+    assert!(
+        !excused(&ruled),
+        "main's red in a rule the riders moved landed"
     );
     let moved = |files: &[&str]| {
         let files: Vec<String> = files.iter().map(|file| (*file).to_owned()).collect();
@@ -387,11 +394,13 @@ fn mains_formatting_red_is_never_mains() {
         rules_moved: false,
         held: &BTreeSet::new(),
     };
+    let masked = judge(&said, &mut judging).unwrap();
     assert_eq!(
-        judge(&said, &mut judging).unwrap(),
+        masked,
         [("formatting".to_owned(), Blame::Masked)],
         "main's formatting red was excused, though treefmt may stop before a rider's"
     );
+    assert!(!excused(&masked), "main's formatting red landed");
 }
 
 /// A nix killed mid-run says nothing of the checks it never reached, and a
@@ -502,10 +511,15 @@ fn a_red_without_changed_checks_verdict_on_its_builds_is_never_judged() {
 fn a_check_that_may_stop_at_its_first_error_is_never_mains() {
     let said = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
     let at_base = |_: &str| as_before("vm-test-run-vm-pi");
+    let masked = judged(&said, &at_base, &passes, 0).unwrap();
     assert_eq!(
-        judged(&said, &at_base, &passes, 0).unwrap(),
+        masked,
         [("vm-pi".to_owned(), Blame::Masked)],
         "a check not known to report every failure was excused as main's"
+    );
+    assert!(
+        !excused(&masked),
+        "a check not known to report every failure landed main's red"
     );
 }
 
@@ -689,99 +703,6 @@ fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
         Err(Declined::NoLongerEvaluates),
         "unmarked words that a check no longer evaluates were passed over beside a flake"
     );
-}
-
-/// Lent builders that keep each build asked of them, as (flake, checks,
-/// commit), and pass each.
-#[derive(Default)]
-struct Asked(Vec<(String, Vec<String>, String)>);
-
-impl Lent for Asked {
-    fn build(
-        &mut self,
-        _: &Path,
-        flake: &str,
-        _: &Path,
-        checks: &[&str],
-        commit: &str,
-    ) -> (Option<i32>, String) {
-        let checks = checks.iter().map(|check| (*check).to_owned()).collect();
-        self.0.push((flake.to_owned(), checks, commit.to_owned()));
-        (Some(0), String::new())
-    }
-
-    fn named(&self, _: &Path, _: &str, _: &[String]) -> BTreeMap<String, String> {
-        BTreeMap::new()
-    }
-}
-
-/// Which commit each build is at is the whole of the scheme's safety: a
-/// rider's red rebuilt at the base would pass, and land as a flake.
-#[test]
-fn a_flake_is_built_at_the_base_then_at_the_candidate_and_its_finding_names_the_red() {
-    let root = std::env::temp_dir().join(format!("merge-net-excuses-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    let (base, candidate) = ("b".repeat(40), "c".repeat(40));
-    let log = super::super::folder(&root).join(format!("{candidate}.log"));
-    fs::create_dir_all(super::super::folder(&root)).unwrap();
-    State::at(root.clone()).make().unwrap();
-    fs::write(&log, words(&["a", "other"], &["a"])).unwrap();
-    let red = Red {
-        checkout: &root,
-        base: &base,
-        candidate: &candidate,
-        log: &log,
-    };
-    let mut asked = Asked::default();
-    let landed = excuses(
-        &root,
-        "https://github.com/someone/core.git",
-        &red,
-        &mut Flakes::default(),
-        &mut asked,
-    );
-    assert!(
-        landed,
-        "a flake, passing at the base and again, split the train"
-    );
-    let at = |flake: &str, checks: &[&str], commit: &str| {
-        (
-            flake.to_owned(),
-            checks
-                .iter()
-                .map(|check| (*check).to_owned())
-                .collect::<Vec<_>>(),
-            commit.to_owned(),
-        )
-    };
-    assert_eq!(
-        asked.0,
-        [
-            at(&format!("github:someone/core/{base}"), &["a"], &base),
-            at(".", &["a"], &candidate),
-            at(".", &["a", "other"], &candidate),
-        ],
-        "a build wasn't at the commit its judging needs"
-    );
-    let findings: Vec<Value> = fs::read_dir(root.join("findings"))
-        .unwrap()
-        .map(|entry| serde_json::from_slice(&fs::read(entry.unwrap().path()).unwrap()).unwrap())
-        .collect();
-    assert_eq!(findings.len(), 1, "a flake's finding wasn't written once");
-    assert_eq!(findings[0]["kind"], "train-flaky");
-    assert_eq!(
-        findings[0]["log"],
-        log.display().to_string(),
-        "a flake's finding didn't name the gate's log, which holds its red"
-    );
-    assert_eq!(
-        findings[0]["rebuilt_log"],
-        built_log(&root, &candidate, "a", "again")
-            .display()
-            .to_string(),
-        "a flake's finding didn't name the rebuild that passed"
-    );
-    fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

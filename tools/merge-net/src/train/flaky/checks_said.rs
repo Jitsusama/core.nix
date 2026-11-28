@@ -56,6 +56,16 @@ pub(super) fn quarantined(words: &str, held: &BTreeSet<String>) -> BTreeSet<Stri
 /// The checks main's quarantine list excuses whole at `base`, read in the
 /// train's `checkout`, as changed-checks reads it from main; none where it
 /// doesn't read, so nothing is then left out of the judging.
+///
+/// changed-checks reads its list at main as the far side fetched it, which
+/// may be newer than `base`, but the train believes the base's alone: the
+/// candidate was cut from the base, and a line counts only when the base
+/// holds its check too, so a rider, who can print any line from its own
+/// evaluation and write any list into its own commits, excuses nothing main
+/// didn't hold. When main's list moves between the two, a check it took in
+/// since the base is judged anyway, so its red may split the train as the
+/// riders' until a base holds it; one it let go since gets no line from
+/// changed-checks, so its red is judged as any other is.
 pub(super) fn held_at(checkout: &Path, base: &str) -> BTreeSet<String> {
     Command::new("git")
         .args(["show", &format!("{base}:{QUARANTINE}")])

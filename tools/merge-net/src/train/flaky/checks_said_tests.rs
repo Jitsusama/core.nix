@@ -1,6 +1,7 @@
 //! A red as changed-checks' own words shape its judging: beside a check
 //! main's quarantine excused, judged without it, but only one main's list
-//! holds; and of a check the riders added, which is theirs.
+//! holds; and of a check the riders added, which is theirs, even where it
+//! builds a derivation named like another check.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -8,17 +9,20 @@ use std::fs;
 
 use super::super::tests::git_in as git;
 use super::tests::{passes, words};
-use super::{Blame, Declined, Gated, Judging, held_at, judge, quarantined};
+use super::{Blame, Declined, Gated, Judging, checks_of, excused, held_at, judge, quarantined};
 use crate::world::QUARANTINE;
 
 /// A check broken at every base, which main's quarantine holds.
 const HELD: &str = "the-launcher-lists-inkscapes-drawings-lately";
 
 /// What changed-checks says of `check` when the quarantine excuses its
-/// failure.
-fn excused_by_quarantine(check: &str) -> String {
+/// failure, word for word as its `building::built` prints it for an entry
+/// holding the whole test, its why from `Held::said` and its reason as the
+/// quarantine list words one, so the fixture is a line it really prints.
+pub(super) fn excused_by_quarantine(check: &str) -> String {
     format!(
-        "changed-checks: {check} failed, but main's quarantine holds it, so it blocks nothing\n"
+        "changed-checks: {check} failed, but main quarantines it (failed, then passed, at \
+         042387bc604a; #3304 owns it), so it blocks nothing\n"
     )
 }
 
@@ -42,12 +46,24 @@ fn judged(
     whole: &dyn Fn(&[String]) -> Gated,
     held: &[&str],
 ) -> Result<Vec<(String, Blame)>, Declined> {
+    judged_named(words, &|_| BTreeMap::new(), at_base, again, whole, held)
+}
+
+/// `judged`, nix naming the derivations of checks as `named` says.
+fn judged_named(
+    words: &str,
+    named: &dyn Fn(&[String]) -> BTreeMap<String, String>,
+    at_base: &dyn Fn(&str) -> (Gated, String),
+    again: &dyn Fn(&str) -> Gated,
+    whole: &dyn Fn(&[String]) -> Gated,
+    held: &[&str],
+) -> Result<Vec<(String, Blame)>, Declined> {
     let mut base_build = |check: &str| at_base(check);
     let mut built_again = |check: &str| again(check);
     let mut built_whole = |checks: &[String]| whole(checks);
     let held: BTreeSet<String> = held.iter().map(|&check| check.to_owned()).collect();
     let mut judging = Judging {
-        named: &|_| BTreeMap::new(),
+        named,
         at_base: &mut base_build,
         again: &mut built_again,
         whole: &mut built_whole,
@@ -186,9 +202,104 @@ fn a_check_the_riders_added_is_theirs_and_built_no_more() {
     let not_again = |check: &str| -> Gated {
         panic!("{check}, which the riders added, was built again at the candidate")
     };
+    let added = judged(&said, &never, &not_again, &|_| Gated::Passed, &[]);
     assert_eq!(
-        judged(&said, &never, &not_again, &|_| Gated::Passed, &[]),
+        added,
         Ok(vec![("a-theme".to_owned(), Blame::Added)]),
         "a check the riders added wasn't taken as theirs"
+    );
+    assert!(
+        !excused(&added.unwrap()),
+        "a red of a check the riders added landed"
+    );
+}
+
+/// A flake beside a check the riders added lands nothing: the red is still
+/// theirs for the check they added.
+#[test]
+fn a_flake_beside_a_check_the_riders_added_lands_nothing() {
+    let said = words(&["vm-pi"], &["vm-test-run-vm-pi", "a-theme"])
+        .replace("kind     check\n", "kind     check\nadded    a-theme\n");
+    let at_base = |check: &str| {
+        assert_eq!(
+            check, "vm-pi",
+            "a check the riders added was built at the base"
+        );
+        (Gated::Passed, String::new())
+    };
+    let again = |check: &str| {
+        assert_eq!(check, "vm-pi", "a check the riders added was built again");
+        Gated::Passed
+    };
+    let judged = judged(&said, &at_base, &again, &|_| Gated::Passed, &[]).unwrap();
+    assert_eq!(
+        judged,
+        [
+            ("vm-pi".to_owned(), Blame::Flaky),
+            ("a-theme".to_owned(), Blame::Added)
+        ],
+        "a flake beside a check the riders added wasn't judged check by check"
+    );
+    assert!(
+        !excused(&judged),
+        "a flake beside a check the riders added landed with it"
+    );
+}
+
+/// Words of a red in which the riders changed `a-theme` and added
+/// `new-check`, and a derivation named `a-theme` failed.
+fn added_beside_changed() -> String {
+    words(&["a-theme"], &["a-theme"])
+        .replace("kind     check\n", "kind     check\nadded    new-check\n")
+}
+
+/// A check the riders added may build a derivation named like a check main
+/// has, so a failure of that name may be the added check's: judged as main's
+/// check, its flake would land. The red is then declined, and so is one
+/// whose added check nix can't say the derivation of.
+#[test]
+fn a_check_the_riders_added_named_like_another_is_never_judged_as_it() {
+    let built: Vec<String> = ["a-theme", "new-check"].map(str::to_owned).to_vec();
+    let failed = vec!["a-theme".to_owned()];
+    let added = BTreeSet::from(["new-check".to_owned()]);
+    let collides = |checks: &[String]| {
+        assert_eq!(
+            checks,
+            ["new-check"],
+            "nix was asked the names of checks already placed"
+        );
+        BTreeMap::from([("a-theme".to_owned(), "new-check".to_owned())])
+    };
+    let unsaid = |_: &[String]| BTreeMap::new();
+    let apart = |_: &[String]| BTreeMap::from([("new-check".to_owned(), "new-check".to_owned())]);
+    assert_eq!(
+        checks_of(&failed, &built, &added, &collides),
+        None,
+        "a failure the added check may have built was placed on another"
+    );
+    assert_eq!(
+        checks_of(&failed, &built, &added, &unsaid),
+        None,
+        "a failure was placed though nix couldn't say what the added check builds"
+    );
+    assert_eq!(
+        checks_of(&failed, &built, &added, &apart),
+        Some(vec!["a-theme".to_owned()]),
+        "an added check building a name of its own kept a failure off its own check"
+    );
+    let never = |check: &str| -> (Gated, String) {
+        panic!("{check} was built at the base, though its failure may be the added check's")
+    };
+    assert_eq!(
+        judged_named(
+            &added_beside_changed(),
+            &collides,
+            &never,
+            &|_| Gated::Passed,
+            &|_| Gated::Passed,
+            &[]
+        ),
+        Err(Declined::Unplaced),
+        "a red whose failure an added check may have built was judged"
     );
 }
