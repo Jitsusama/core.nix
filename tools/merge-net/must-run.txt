@@ -8,11 +8,17 @@
 # whose change moves none of them: it asks for one VM test sent through
 # the change itself, end to end. A path opening `check:` is a check whose
 # derivation moved, rather than a file: what moves a machine's initrd can
-# be anything it builds from, as the kit was for #4513.
+# be anything it builds from, as the kit was for #4513. A `system` among
+# the tests marks a build that takes a builder past half an hour, such as
+# a kernel or Qt: its change builds a machine's system on a builder before
+# it merges, and `merge-net built` records it, which `ready` asks for. On
+# 26 November #6748's kernel held every switch from 17:14 to about 22:15,
+# since each main after it compiled it again.
 boot: modules/plymouth/* modules/console/* modules/kmscon/* modules/systemd/* tests/vm/boot/plymouth* tests/vm/boot/shutdown* => vm-boot-* vm-reboot-cannot-hang
 a machine's initrd: check:example-*-initrd => vm-boot-* vm-hibernation-*
 initrd: modules/bluetooth-disk-prompt/* tests/vm/boot/bluetooth-disk-prompt* => vm-boot-* vm-bluetooth-types-at-the-disk-prompt
 kernel: modules/kernel/* hardware/* => vm-boot-* vm-reboot-cannot-hang vm-hibernation-*
+long builds: check:example-*-kernel check:example-*-qt => system
 disk: modules/disko/* modules/btrfs/* modules/disk-guard/* modules/disk-loss-panic/* modules/hibernate/* tests/vm/disks/disk-* tests/vm/disks/hibernate* => vm-disk-* vm-boot-asks-* vm-hibernation-*
 tpm: modules/tpm/* modules/tpm-signing/* modules/ssh-tpm-agent/* modules/signing/* tests/vm/keys/signing* => vm-passkeys-come-from-the-tpm vm-commits-are-signed vm-boot-asks-*
 secure boot: modules/lanzaboote/* => vm-secure-boot-installs vm-boot-*

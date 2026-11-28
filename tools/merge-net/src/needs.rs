@@ -106,7 +106,11 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
-    if found.tests.is_empty() && found.there.is_empty() && owning.is_empty() {
+    if found.tests.is_empty()
+        && found.there.is_empty()
+        && found.system.is_empty()
+        && owning.is_empty()
+    {
         println!(
             "no: none of the VM tests the change touches moved from {base}, so each would \
              give main's result; the net runs the rest after"
@@ -118,16 +122,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     if found.touched.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
-    println!("the change touches");
-    for (area, hits) in &found.touched {
-        println!("  {area}: {}", hits.join(" "));
-    }
-    for area in &found.there {
-        println!(
-            "send one VM test through the changed {area}, end to end: run one VM test's \
-             subtests with run-subtests --there, with the change's own {area} first on PATH"
-        );
-    }
+    say_touched(&found);
     if found.tests.is_empty() {
         println!("no VM test it runs moved from {base}, so none runs whole first");
         return Ok(ExitCode::SUCCESS);
@@ -140,6 +135,30 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Say which areas `found` touches and what each asks before the merge
+/// beyond its VM tests: a machine's system built, or one VM test sent
+/// through the change.
+fn say_touched(found: &rules::Needs) {
+    println!("the change touches");
+    for (area, hits) in &found.touched {
+        println!("  {area}: {}", hits.join(" "));
+    }
+    for area in &found.system {
+        println!(
+            "build a machine's system with the change on a builder before merging, since it \
+             moves {area}, which takes a builder past half an hour: build it with core at \
+             the head, then run merge-net built DRV here with the system's derivation, which \
+             ready asks for"
+        );
+    }
+    for area in &found.there {
+        println!(
+            "send one VM test through the changed {area}, end to end: run one VM test's \
+             subtests with run-subtests --there, with the change's own {area} first on PATH"
+        );
+    }
 }
 
 /// Whether `needs` may answer no without asking changed-checks which VM

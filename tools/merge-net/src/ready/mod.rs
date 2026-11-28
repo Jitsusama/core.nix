@@ -18,6 +18,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub mod built;
+
 use crate::apart::{
     LISTS, apart, cases_apart, checks_apart, descriptions_apart, is_cases, is_prose, lines_apart,
     prose_apart,

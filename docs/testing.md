@@ -203,7 +203,14 @@ read from the change's merge base, so a change asked against main from a
 clean tree can't widen it for itself, and `merge-net needs` says why a
 lock it keeps runs first. A
 change to nix-offload, which moves none, sends one VM test's subtests
-through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
+through itself with `run-subtests --there` instead. A change that moves
+an example machine's kernel or Qt, whose builds each take a builder past
+half an hour, builds a machine's system with it on a builder before it
+merges, since on 26 November one kernel change held every switch for five
+hours while each main after it compiled it again. The machine repository's
+own command builds it, since core names no machine, and
+`merge-net built DRV` on the branch records its derivation under the head.
+`merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main
 as it is now, or at which no `changed-checks` run that built what it named
 passed, from nix-offload's record of what passed at each commit. It refuses

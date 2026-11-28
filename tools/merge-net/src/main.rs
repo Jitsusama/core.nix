@@ -92,6 +92,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use command::Asked;
+use ready::built;
 use state::{State, short};
 use watch::Round;
 use world::Real;
@@ -124,6 +125,7 @@ fn main() -> ExitCode {
         } => watching(from, branch, once, follow),
         Asked::Needs { base } => needs::needs(&base),
         Asked::Ready { commit } => ready(&commit),
+        Asked::Built { drv } => built::built(&drv),
         Asked::Status => Ok(status()),
         Asked::RunAgain { commit } => rerun::again(&commit),
         Asked::Ride => {
@@ -349,6 +351,10 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
 /// was asked of it, and refuse it until then.
 fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: &str) -> ExitCode {
     if needs_heard(commit, main, passes, files) {
+        if let Some(said) = long_builds_wait(commit, main, passes, files) {
+            eprintln!("merge-net: {said}");
+            return ExitCode::FAILURE;
+        }
         mark_skipped_macs(commit, passes);
         // A change held for an earlier gate sharing its files stays held,
         // rather than board the train and land ahead of it.
@@ -386,6 +392,35 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
         short(commit)
     );
     ExitCode::FAILURE
+}
+
+/// Why `commit` waits for a machine's system built with it, when a pass
+/// speaking for it, its own or one of `passes`', moved a build that takes a
+/// builder past half an hour (`ready/built.rs`). A system built at an earlier
+/// commit of the same change speaks for it, as its pass does.
+fn long_builds_wait(commit: &str, main: &str, passes: &[&str], files: &[String]) -> Option<String> {
+    let mut commits: Vec<String> = passes.iter().map(|&at| at.to_owned()).collect();
+    let records: Vec<String> = passes
+        .iter()
+        .chain([&commit])
+        .map(|at| ready::record(at))
+        .collect();
+    let needed = built::needed(&records, files);
+    if needed.is_empty() {
+        return None;
+    }
+    commits.extend(earlier::same::same_change(
+        commit,
+        main,
+        files,
+        &ready::recent_records(),
+        patch_id,
+    ));
+    commits.push(commit.to_owned());
+    built::refused(
+        &needed,
+        &commits.iter().map(String::as_str).collect::<Vec<_>>(),
+    )
 }
 
 /// Mark `commit` for the net to compare a Mac's checks at its merge, when
@@ -512,6 +547,12 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             // The train merges what it carries, so a head no round read
             // boards no more than it merges through may_merge.
             if let Err(said) = earlier::same::read_by_a_round(commit, main, &files) {
+                eprintln!("merge-net: {said}");
+                return Ok(ExitCode::FAILURE);
+            }
+            // Nor does one whose long build no system has paid for yet,
+            // since the train merges it as may_merge would.
+            if let Some(said) = long_builds_wait(commit, main, &[commit, &checked], &files) {
                 eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);
             }

@@ -12,6 +12,12 @@
   self,
   ...
 }:
+let
+  appleLaptop = import ./apple-laptop.nix {
+    core = self;
+    inherit nixpkgs;
+  };
+in
 {
   example-nixos = evaluates "example-nixos" (
     import ./nixos.nix {
@@ -29,6 +35,36 @@
   example-laptop-initrd = pkgs.writeText "example-laptop-initrd" (
     builtins.unsafeDiscardStringContext exampleLaptop.config.system.build.initialRamdisk.drvPath
   );
+  # The laptop's kernel and Qt alone, by their derivations, as its initrd is,
+  # so changed-checks says when a change moves a build that takes a builder
+  # past half an hour: merge-net needs then asks for a machine's system built
+  # with the change before it merges. #6748's kernel held every switch from
+  # 17:14 to about 22:15 on 26 November, as each main after it compiled it
+  # again. A nixpkgs bump or an overlay under every package moves these too.
+  example-laptop-kernel = pkgs.writeText "example-laptop-kernel" (
+    builtins.unsafeDiscardStringContext exampleLaptop.config.boot.kernelPackages.kernel.drvPath
+  );
+  # The Qt is the shell's own, patched, which no cache holds, read from what
+  # its Quickshell is built with: nixpkgs' stock qt6 is cached, so watching
+  # it would miss every patch. Both are asserted found, so a Quickshell no
+  # longer naming them fails here rather than watching nothing.
+  example-laptop-qt =
+    let
+      shellQt = lib.filter (
+        input:
+        lib.elem (input.pname or "") [
+          "qtbase"
+          "qtdeclarative"
+        ]
+      ) exampleLaptop.pkgs.quickshell.buildInputs;
+      found = toString (lib.length shellQt);
+    in
+    assert lib.assertMsg (
+      lib.length shellQt == 2
+    ) "example-laptop-qt: Quickshell is built with ${found} of qtbase and qtdeclarative, not 2";
+    pkgs.writeText "example-laptop-qt" (
+      builtins.unsafeDiscardStringContext (lib.concatMapStringsSep "\n" (qt: qt.drvPath) shellQt)
+    );
 
   # A system account whose manager runs, as one lingering for a builder's
   # logins does, starts none of a person's services: their home is
@@ -77,11 +113,10 @@
     holds "system-accounts-start-no-persons-services"
       "every account's manager starts these, a system account's too, with no ConditionUser saying whose they are: ${lib.concatStringsSep ", " found}"
       (found == [ ]);
-  example-apple-laptop = evaluates "example-apple-laptop" (
-    import ./apple-laptop.nix {
-      core = self;
-      inherit nixpkgs;
-    }
+  example-apple-laptop = evaluates "example-apple-laptop" appleLaptop;
+  # Asahi's kernel, as example-laptop-kernel is the XPS's.
+  example-apple-laptop-kernel = pkgs.writeText "example-apple-laptop-kernel" (
+    builtins.unsafeDiscardStringContext appleLaptop.config.boot.kernelPackages.kernel.drvPath
   );
   example-darwin = evaluates "example-darwin" (
     import ./darwin.nix {

@@ -28,6 +28,8 @@ pub enum Asked {
     Needs { base: String },
     /// Say whether a commit may merge.
     Ready { commit: String },
+    /// Record a machine's system built with the change at the head.
+    Built { drv: String },
     /// Say where the net is.
     Status,
     /// Run changed-checks again at a commit, as `ready` starts it.
@@ -58,6 +60,7 @@ pub fn help() -> Help {
     .subcommand(watch())
     .subcommand(needs())
     .subcommand(ready())
+    .subcommand(built())
     .subcommand(status())
     .subcommand(run_again())
     .subcommand(ride())
@@ -122,6 +125,22 @@ fn ready() -> Help {
     )
 }
 
+fn built() -> Help {
+    Help::new(
+        "built",
+        "records that a machine's system was built with this change, DRV its derivation",
+    )
+    .example(
+        "merge-net built /nix/store/...-nixos-system-NAME.drv",
+        "once the system built on a builder with core at the head",
+    )
+    .argument("DRV", "the system's derivation, in this machine's store")
+    .exit(
+        Exit::Failed,
+        "DRV isn't a system's derivation here, or the tree has changes; stderr says which",
+    )
+}
+
 fn status() -> Help {
     Help::new("status", "says where the net is: its heads, holds and runs")
         .example("merge-net status", "what it's running and what it holds")
@@ -161,7 +180,7 @@ fn ride() -> Help {
 pub fn asked(words: &[String]) -> Result<Asked, Failure> {
     let Some((first, rest)) = words.split_first() else {
         return Err(Failure::new(Exit::Usage, "merge-net needs a subcommand")
-            .because("watch, needs, ready, status, run-again or ride")
+            .because("watch, needs, ready, built, status, run-again or ride")
             .try_this("merge-net --help"));
     };
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
@@ -179,6 +198,13 @@ pub fn asked(words: &[String]) -> Result<Asked, Failure> {
         },
         "ready" => commit(&rest, "ready").map(|commit| Asked::Ready { commit }),
         "run-again" => commit(&rest, "run-again").map(|commit| Asked::RunAgain { commit }),
+        "built" => match rest.as_slice() {
+            [drv] if !drv.starts_with('-') => Ok(Asked::Built {
+                drv: (*drv).to_owned(),
+            }),
+            [] => Err(short_of("built needs the DRV of the system built", "built")),
+            [word, ..] => Err(unknown(word, &SHARED, "built")),
+        },
         // The kit refuses a word a subcommand with no arguments doesn't
         // take, so only a flag reaches here.
         "status" => match rest.as_slice() {
@@ -290,6 +316,15 @@ mod tests {
         assert!(
             matches!(asking(&["run-again", "c1"]), Asked::RunAgain { commit } if commit == "c1"),
             "run-again COMMIT, as ready starts it, didn't run COMMIT"
+        );
+        assert!(
+            matches!(asking(&["built", "/nix/store/a.drv"]), Asked::Built { drv }
+                if drv == "/nix/store/a.drv"),
+            "built DRV didn't record DRV"
+        );
+        assert!(
+            asked(&["built".to_owned()]).is_err(),
+            "built with no DRV was taken"
         );
         assert!(
             matches!(asking(&["status"]), Asked::Status),
