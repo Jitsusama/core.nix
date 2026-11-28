@@ -21,7 +21,8 @@
 }
 
 /* The page stays unseen until it first draws (site.ts), and a second at most, so a script
-   that never runs can't leave it blank.
+   that never runs can't leave it blank. This second is the only cap: index.html takes the
+   mark away as it ends, so no script holds a timer of its own to agree.
    Faded out rather than hidden, so a link keeps its focus while it waits. */
 .waits body {
   opacity: 0;
