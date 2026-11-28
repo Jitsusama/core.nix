@@ -1536,9 +1536,8 @@ fn known_systems(general: [&PathBuf; 2], vm_dirs: &[PathBuf]) -> Vec<String> {
 /// journalled as unbuilt, so the run ends unbuilt rather than as nix
 /// there fails it, on the platform, which reads as the check failing:
 /// under `--lent-only` a Mac's checks would go to a builder for Linux
-/// alone. A run asked to build here keeps it
-/// all, as `there::lent_builds` does, since Nix here may have builders of
-/// its own.
+/// alone. A run asked to build here keeps it all, as `there::lent_builds`
+/// does, since Nix here may have builders of its own.
 fn unbuilt_left(
     left: Option<there::Asked>,
     mut owed: Vec<String>,
