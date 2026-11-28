@@ -625,7 +625,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // Held through the landing, whose recuts a change merged alone
         // would send back to run again.
         right_of_way::run_ends(&root);
-        after_landing(&root, landing, &done.merged, began, &mut splitting);
+        after_landing(
+            &root,
+            landing,
+            &candidate,
+            &done.merged,
+            began,
+            &mut splitting,
+        );
         println!("merge-net: the landing of {} ends", short(&candidate));
     }
 }
@@ -642,12 +649,13 @@ fn red_is_excused(
     gated::ran_whole(code) && flaky::excuses(root, url, red, flakes, &mut flaky::Lenders)
 }
 
-/// After `landing` the `merged` riders of a run begun at `began`: those
-/// that landed alight and are kept, the rest fall saying why, and the
-/// right of way and `splitting` go on from there.
+/// After `landing` the `merged` riders of a run begun at `began` over
+/// `candidate`: those that landed alight and are kept, the rest fall
+/// saying why, and the right of way and `splitting` go on from there.
 fn after_landing(
     root: &Path,
     landing: Landing,
+    candidate: &str,
     merged: &[String],
     began: u64,
     splitting: &mut Splitting,
@@ -665,7 +673,8 @@ fn after_landing(
             for head in merged {
                 alight(root, head);
             }
-            keep_landed(root, &landed, merged, &boarded, crate::state::now() - began);
+            let seconds = crate::state::now() - began;
+            keep_landed(root, &landed, candidate, merged, &boarded, seconds);
             println!("merge-net: the train landed {} on main", short(&landed));
             let left = !riders(root).is_empty();
             way(root, &Ended::Landed { left });
@@ -686,7 +695,8 @@ fn after_landing(
             for head in &kept {
                 alight(root, head);
             }
-            keep_landed(root, &landed, &kept, &boarded, crate::state::now() - began);
+            let seconds = crate::state::now() - began;
+            keep_landed(root, &landed, candidate, &kept, &boarded, seconds);
             let (before, stay) = match kept.len() {
                 1 => ("the rider before it".to_owned(), "stays"),
                 riders => (format!("the {riders} riders before it"), "stay"),
