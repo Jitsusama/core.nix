@@ -2,7 +2,8 @@
 # only with a real loopback and programs of another account holding it: the
 # file names each one, by its program's own name even when Nix wraps it,
 # leaves out the relay that fills the camera by its unit, however a program
-# names itself, keeps each name to one line, catches a holder that changes
+# names itself, yet names a reader in a person's own unit of the relay's
+# name, keeps each name to one line, catches a holder that changes
 # without an open or close, empties when they close it, stays in a folder
 # that outlives the camera's service and says nobody while it's down,
 # follows the camera to its next loopback, takes no loopback of another
@@ -77,9 +78,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         script = ''exec ${pkgs.lib.getExe relay} "$(cat /run/stand-in/device)"'';
         postStop = ''${loopback} delete "$(cat /run/stand-in/device)" || true'';
       };
+      # Lingers, so it has a manager of its own with no login for a test to
+      # start a unit named as the relay's under.
       users.users.someone = {
         isNormalUser = true;
         extraGroups = [ "video" ];
+        linger = true;
       };
       environment.systemPackages = [
         pkgs.v4l-utils
