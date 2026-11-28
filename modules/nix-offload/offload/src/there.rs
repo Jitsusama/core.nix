@@ -1139,11 +1139,22 @@ pub fn paths_up(
     nix: &str,
     within: std::time::Duration,
     cuts: &Cuts,
-) -> Result<(), String> {
+) -> Result<(), Unsent> {
     sent_up(sent, lent, nix, within, &cuts.alive()).map_err(|uncopied| {
         cuts.heard(&uncopied);
-        uncopied.why
+        Unsent {
+            why: uncopied.why,
+            lost: uncopied.lost,
+        }
     })
+}
+
+/// Why store paths couldn't go up ([`paths_up`]), and whether ssh lost
+/// the builder under them, which a builder standing again may take where
+/// any other failure would come again.
+pub struct Unsent {
+    pub why: String,
+    pub lost: bool,
 }
 
 /// [`paths_up`], its ssh given the keepalive `alive`, saying whether ssh
@@ -1351,6 +1362,12 @@ fn up(
 /// from can be outputs a cache holds, which the builder fetches itself
 /// rather than being sent: on 10 November one run's 1.1 GB took 77
 /// minutes to go up, 290 MB of it from cache.nixos.org.
+///
+/// A copy that waited for its turn asks again what the builder lacks,
+/// since the builder may have let go of what it held meanwhile: on 28
+/// November a copy to nix-offload-more waited 105 minutes, sent the one
+/// derivation the builder had said it lacked, and was refused, since one
+/// it had said it held, which that derivation is built from, was gone.
 fn derivations_up(
     paths: &[&str],
     lent: &Builder,
@@ -1359,60 +1376,19 @@ fn derivations_up(
     [ssh, nix]: [&str; 2],
     alive: &str,
 ) -> Result<(), Uncopied> {
-    let mut copying = upload(nix, alive);
-    // Only what the closure holds goes, so a builder's answer can't name
-    // other paths of this store to send, and each is named once.
-    let size = match closure(paths, nix).and_then(|closure| {
-        let within: std::collections::HashSet<&String> = closure.iter().collect();
-        lacking(lent, &closure, scratch, ssh).map(|lacking| {
-            let (asked, beyond): (BTreeSet<_>, BTreeSet<_>) =
-                lacking.into_iter().partition(|path| within.contains(path));
-            let named = match beyond.len() {
-                0 => None,
-                1 => Some(
-                    "1 path it lacks that isn't among what was asked, which doesn't go".to_owned(),
-                ),
-                count => Some(format!(
-                    "{count} paths it lacks that aren't among what was asked, which don't go"
-                )),
-            };
-            if let Some(named) = named {
-                eprintln!("nix-offload: the lent builder {} named {named}", lent.host);
-            }
-            asked.into_iter().collect::<Vec<_>>()
-        })
-    }) {
-        Some(lacking) if lacking.is_empty() => return Ok(()),
-        Some(lacking) => {
-            let (count, them) = match lacking.len() {
-                1 => ("1 derivation".to_owned(), "it"),
-                count => (format!("{count} derivations"), "them"),
-            };
-            eprintln!(
-                "nix-offload: copying {count} up to the lent builder {}, which lacks {them}",
-                lent.host
-            );
-            let size = stored_size(
-                Command::new(nix)
-                    .args(["path-info", "--json"])
-                    .args(&lacking),
-            );
-            copying
-                .args(["copy", "--no-recursive", "--substitute-on-destination"])
-                .args(["--to", &lent.store])
-                .args(lacking);
-            Some(size)
+    let closure = closure(paths, nix);
+    let asked = |closure: &Vec<String>| lacking_within(lent, closure, scratch, ssh);
+    let lacks = closure.as_ref().and_then(asked);
+    let size = match &lacks {
+        Some(lacks) if lacks.is_empty() => return Ok(()),
+        Some(lacks) => {
+            say_copying(lacks, lent);
+            Some(stored_size(
+                Command::new(nix).args(["path-info", "--json"]).args(lacks),
+            ))
         }
         None => {
-            eprintln!(
-                "nix-offload: copying the derivations up to the lent builder {} with all \
-                 they're built from, since what it lacks is unknown",
-                lent.host
-            );
-            copying
-                .args(["copy", "--derivation", "--substitute-on-destination"])
-                .args(["--to", &lent.store])
-                .args(paths);
+            say_copying_whole(lent);
             // Its size would take a second walk of a closure the first
             // couldn't read, so its turn is leased for the least instead.
             None
@@ -1423,7 +1399,37 @@ fn derivations_up(
         Some(0) => format!("to {}, of a size this machine couldn't read,", lent.host),
         Some(size) => format!("of {} to {}", sized(size), lent.host),
     };
+    let waiting = std::time::Instant::now();
     let turn = uplink_turn(rank, &about);
+    let lacks = match (lacks, &closure) {
+        (Some(_), Some(closure)) if waiting.elapsed() >= ASKED_HOLDS => {
+            eprintln!(
+                "nix-offload: this waited {} for its turn, so it asks the lent builder {} again \
+                 what it lacks, since it may have let go of some of what it held",
+                lasting(waiting.elapsed()),
+                lent.host
+            );
+            let again = asked(closure);
+            match &again {
+                Some(lacks) if lacks.is_empty() => return Ok(()),
+                Some(lacks) => say_copying(lacks, lent),
+                None => say_copying_whole(lent),
+            }
+            again
+        }
+        (lacks, _) => lacks,
+    };
+    let mut copying = upload(nix, alive);
+    match lacks {
+        Some(lacks) => copying
+            .args(["copy", "--no-recursive", "--substitute-on-destination"])
+            .args(["--to", &lent.store])
+            .args(lacks),
+        None => copying
+            .args(["copy", "--derivation", "--substitute-on-destination"])
+            .args(["--to", &lent.store])
+            .args(paths),
+    };
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
         .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
@@ -1436,6 +1442,60 @@ fn derivations_up(
             &copied,
         )),
     }
+}
+
+/// How long a copy may wait for its turn before what the builder said it
+/// lacks is asked again. A turn free is taken at once, and one waited for
+/// is tried every 100 ms, so a copy a second past asking waited. Asking
+/// costs one round trip, about 4 s through the tunnel, where the waits
+/// it guards ran to 105 minutes.
+const ASKED_HOLDS: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Which of `closure` the lent builder lacks, or none when it couldn't
+/// say. Only what the closure holds goes, so a builder's answer can't name
+/// other paths of this store to send, and each is named once.
+fn lacking_within(
+    lent: &Builder,
+    closure: &[String],
+    scratch: &Path,
+    ssh: &str,
+) -> Option<Vec<String>> {
+    let within: std::collections::HashSet<&String> = closure.iter().collect();
+    let lacking = lacking(lent, closure, scratch, ssh)?;
+    let (asked, beyond): (BTreeSet<_>, BTreeSet<_>) =
+        lacking.into_iter().partition(|path| within.contains(path));
+    let named = match beyond.len() {
+        0 => None,
+        1 => Some("1 path it lacks that isn't among what was asked, which doesn't go".to_owned()),
+        count => Some(format!(
+            "{count} paths it lacks that aren't among what was asked, which don't go"
+        )),
+    };
+    if let Some(named) = named {
+        eprintln!("nix-offload: the lent builder {} named {named}", lent.host);
+    }
+    Some(asked.into_iter().collect())
+}
+
+/// Says that the derivations `lacks` names go up to `lent`.
+fn say_copying(lacks: &[String], lent: &Builder) {
+    let (count, them) = match lacks.len() {
+        1 => ("1 derivation".to_owned(), "it"),
+        count => (format!("{count} derivations"), "them"),
+    };
+    eprintln!(
+        "nix-offload: copying {count} up to the lent builder {}, which lacks {them}",
+        lent.host
+    );
+}
+
+/// Says that the derivations go up to `lent` with all they're built from.
+fn say_copying_whole(lent: &Builder) {
+    eprintln!(
+        "nix-offload: copying the derivations up to the lent builder {} with all they're \
+         built from, since what it lacks is unknown",
+        lent.host
+    );
 }
 
 /// How many bytes the store paths `nix path-info --json` prints from

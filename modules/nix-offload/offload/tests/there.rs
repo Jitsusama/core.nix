@@ -579,7 +579,21 @@ fn a_run_goes_to_the_second_builder_while_root_vouches_only_for_it() {
 /// the test holds every turn at sending up for `held_for`, with how long
 /// it took.
 fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Output, Duration) {
+    let (ran, took, _) = sent_up_while_the_uplink_is_taken_then(before, held_for, "", |_| ());
+    (ran, took)
+}
+
+/// [`sent_up_while_the_uplink_is_taken`], the derivation's closure besides
+/// itself `closure`, with `meanwhile` given the stand-ins' folder just
+/// before the turns are let go, and the folder given back.
+fn sent_up_while_the_uplink_is_taken_then(
+    before: &[&str],
+    held_for: Duration,
+    closure: &str,
+    meanwhile: impl FnOnce(&Path) + Send + 'static,
+) -> (Output, Duration, tempfile::TempDir) {
     let folder = tempfile::tempdir().unwrap();
+    fs::write(folder.path().join("closure"), closure).unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
@@ -594,10 +608,12 @@ fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Ou
             file
         })
         .collect();
+    let stand_ins = folder.path().to_owned();
     let letting_go = std::thread::spawn(move || {
         // Long enough for the run to reach its copy and find every turn
         // taken, which takes it well under a second.
         std::thread::sleep(held_for);
+        meanwhile(&stand_ins);
         drop(held);
     });
     let began = std::time::Instant::now();
@@ -608,7 +624,46 @@ fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Ou
         .unwrap();
     let took = began.elapsed();
     letting_go.join().unwrap();
-    (ran, took)
+    (ran, took, folder)
+}
+
+#[test]
+fn a_copy_up_that_waited_its_turn_asks_again_what_the_builder_lacks() {
+    // On 28 November a copy waited 105 minutes for its turn and sent the
+    // one derivation the builder had said it lacked, which was refused:
+    // another, which that one is built from, was gone from it by then.
+    let (ran, _, folder) = sent_up_while_the_uplink_is_taken_then(
+        &[],
+        Duration::from_secs(2),
+        "/nix/store/bbbb-y.drv\n",
+        |stand_ins| {
+            fs::write(
+                stand_ins.join("says"),
+                "/nix/store/aaaa-x.drv\n/nix/store/bbbb-y.drv\n",
+            )
+            .unwrap();
+        },
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("for its turn, so it asks the lent builder nix-offload again what it lacks"),
+        "{said}"
+    );
+    assert!(
+        said.contains("copying 2 derivations up to the lent builder nix-offload, which lacks them"),
+        "{said}"
+    );
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    let copy = format!(
+        "copy --no-recursive --substitute-on-destination --to {} /nix/store/aaaa-x.drv \
+         /nix/store/bbbb-y.drv",
+        STORE.trim()
+    );
+    assert!(
+        calls.lines().any(|call| call == copy),
+        "it didn't send what the builder lacked after its wait: {calls}"
+    );
 }
 
 #[test]
@@ -6822,6 +6877,22 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
         !bin.join("ssh-was-given").exists(),
         "it ran without its paths"
     );
+    // Nor do they wait for a builder to stand again while one is lent: a
+    // copy cut on a slow uplink went round that way, waiting, copying
+    // and being cut again, until its wait ran out.
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("and it isn't sent again, so nothing ran"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("waits for one to stand"),
+        "paths that couldn't go waited for a builder: {said}"
+    );
+    fs::remove_file(offload.join("lender")).unwrap();
     fs::remove_file(bin.join("nix-status")).unwrap();
 
     // With no builder lent, nothing runs, here or anywhere.
