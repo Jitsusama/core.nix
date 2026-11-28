@@ -7,13 +7,15 @@
 # alone and not as an else, and the preference must follow it. Both sides
 # are read, since the canvas breaks whichever of them drifts: anv must
 # still prefer 4K tiles for an image it exports with no modifier, and
-# iris must keep the constant-bandwidth branch the patch moved.
+# iris must keep the constant-bandwidth branch the patch moved. The same
+# read of Mesa as released must then fail for that else and nothing else,
+# so each run shows the check catches the bug, not some other failure.
 # usage: iris-tiles-memory-objects-as-anv-does.sh <iris_resource.c> <anv_image.c>
+#          <released iris_resource.c> <released anv_image.c>
 set -euo pipefail
 
-resource=$1
-image=$2
 memoryObject='(!res->mod_info && res->external_format != PIPE_FORMAT_NONE) {'
+shadowed="iris prefers 4K tiles for a memory object only when no branch before it matched"
 # The source no longer reads as this check expects, which says nothing
 # yet about the canvas: read the function again and fit the check to it.
 unreadable() {
@@ -35,27 +37,49 @@ between() {
   ' "$3"
 }
 
-configure=$(between 'iris_resource_configure_main(' '}' "$resource")
-[[ -n $configure ]] || unreadable "iris_resource.c has no iris_resource_configure_main"
-if grep -qF "else if $memoryObject" <<<"$configure"; then
-  broken "iris prefers 4K tiles for a memory object only when no branch before it matched"
-fi
-grep -qxF "   if $memoryObject" <<<"$configure" ||
-  unreadable "iris_resource_configure_main has no branch for a memory object as it was written"
-branch=$(grep -A3 -xF "   if $memoryObject" <<<"$configure")
-grep -qxF '      usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;' <<<"$branch" ||
-  broken "iris doesn't prefer 4K tiles for a memory object"
-grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' <<<"$branch" ||
-  broken "iris compresses a memory object anv wrote uncompressed"
-grep -A1 -xF '   else if (templ->bind & PIPE_BIND_CONST_BW)' <<<"$configure" |
-  grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' ||
-  broken "iris lost the constant-bandwidth branch the patch moved"
+# Judges one iris_resource.c and anv_image.c, printing why and exiting 1
+# at the first thing that would leave the canvas a checkerboard.
+judge() {
+  local resource=$1 image=$2 configure branch init exported condition
+  configure=$(between 'iris_resource_configure_main(' '}' "$resource")
+  [[ -n $configure ]] || unreadable "iris_resource.c has no iris_resource_configure_main"
+  if grep -qF "else if $memoryObject" <<<"$configure"; then
+    broken "$shadowed"
+  fi
+  grep -qxF "   if $memoryObject" <<<"$configure" ||
+    unreadable "iris_resource_configure_main has no branch for a memory object as it was written"
+  branch=$(grep -A3 -xF "   if $memoryObject" <<<"$configure")
+  grep -qxF '      usage |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;' <<<"$branch" ||
+    broken "iris doesn't prefer 4K tiles for a memory object"
+  grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' <<<"$branch" ||
+    broken "iris compresses a memory object anv wrote uncompressed"
+  grep -A1 -xF '   else if (templ->bind & PIPE_BIND_CONST_BW)' <<<"$configure" |
+    grep -qxF '      usage |= ISL_SURF_USAGE_DISABLE_AUX_BIT;' ||
+    broken "iris lost the constant-bandwidth branch the patch moved"
 
-init=$(between 'anv_image_init(' '}' "$image")
-[[ -n $init ]] || unreadable "anv_image.c has no anv_image_init"
-exported=$(between '   if (image->vk.external_handle_types != 0 &&' '   }' <(echo "$init"))
-[[ -n $exported ]] || unreadable "anv_image_init has no branch for an image it exports"
-grep -qxF '       image->vk.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {' <<<"$exported" ||
-  unreadable "anv_image_init's branch for an exported image no longer asks only for no modifier"
-grep -qxF '      isl_extra_usage_flags |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;' <<<"$exported" ||
-  broken "anv no longer prefers 4K tiles for an image it exports with no modifier"
+  init=$(between 'anv_image_init(' '}' "$image")
+  [[ -n $init ]] || unreadable "anv_image.c has no anv_image_init"
+  exported=$(between '   if (image->vk.external_handle_types != 0 &&' '   }' <(echo "$init"))
+  [[ -n $exported ]] || unreadable "anv_image_init has no branch for an image it exports"
+  # The condition's two lines, together and whole, so no third can narrow it.
+  condition=$(head -n 2 <<<"$exported")
+  [[ $condition == "   if (image->vk.external_handle_types != 0 &&
+       image->vk.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {" ]] ||
+    unreadable "anv_image_init's branch for an exported image no longer asks only for no modifier"
+  grep -qxF '      isl_extra_usage_flags |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;' <<<"$exported" ||
+    broken "anv no longer prefers 4K tiles for an image it exports with no modifier"
+}
+
+judge "$1" "$2"
+status=0
+# shellcheck disable=SC2310 # judge failing is the result sought here, and it exits on its own.
+released=$(judge "$3" "$4") || status=$?
+if ((status == 0)); then
+  echo "The check passes on Mesa as released, so it can't tell the patch is there."
+  exit 1
+fi
+[[ $released == "$shadowed, "* ]] || {
+  echo "On Mesa as released the check failed for another reason: $released"
+  echo "So it can't tell the patch is there."
+  exit 1
+}

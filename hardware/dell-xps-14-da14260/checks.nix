@@ -473,8 +473,8 @@ in
   # with its patches, that preference no longer hangs off the branch every
   # memory object takes first, and anv still prefers those tiles
   # (tests/iris-tiles-memory-objects-as-anv-does.sh). The same read of
-  # Mesa's own source must fail, so the check is seen to catch the bug
-  # each time it runs, not only once by hand.
+  # Mesa's own source must fail for that bug and no other, so the check is
+  # seen to catch it each time it runs, not only once by hand.
   iris-tiles-memory-objects-as-anv-does =
     let
       mesa = (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.hardware.graphics.package;
@@ -486,12 +486,8 @@ in
       ];
     in
     pkgs.runCommandLocal "iris-tiles-memory-objects-as-anv-does" { } ''
-      check=${./tests/iris-tiles-memory-objects-as-anv-does.sh}
-      ${lib.getExe pkgs.bash} "$check" ${source}/${resource} ${source}/${image}
-      if ${lib.getExe pkgs.bash} "$check" ${mesa.src}/${resource} ${mesa.src}/${image}; then
-        echo "The check passes on Mesa's own source, so it can't tell the patch is there." >&2
-        exit 1
-      fi
+      ${lib.getExe pkgs.bash} ${./tests/iris-tiles-memory-objects-as-anv-does.sh} \
+        ${source}/${resource} ${source}/${image} ${mesa.src}/${resource} ${mesa.src}/${image}
       touch $out
     '';
 

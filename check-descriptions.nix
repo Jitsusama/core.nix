@@ -1934,7 +1934,7 @@
   iris-tiles-memory-objects-as-anv-does = ''
     the patched source of the XPS 14's Mesa has iris prefer 4K tiles for every memory object, in a
     branch no earlier one can shadow, and anv still prefers them for an image it exports with no
-    modifier
+    modifier, while Mesa's own source fails the same read for that shadowing alone
   '';
   jobs-broker-passes-clippy = ''
     clippy finds nothing in the jobs broker or its tests
