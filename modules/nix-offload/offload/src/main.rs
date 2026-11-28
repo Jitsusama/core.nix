@@ -1787,15 +1787,40 @@ fn unsent(why: &str) -> Failure {
 /// work away, and an evaluation here holds about 5 GB beside the
 /// person's work: on 7 November a tunnel that died had every run
 /// evaluate here for 8 minutes. So none runs here unasked.
-fn none_answered(lending: bool) -> Failure {
+fn none_answered(lending: bool, why: &str) -> Failure {
     if lending {
         return ended::backs_off(
             left_unbuilt(),
-            "no builder or evaluator answered, and a lender runs, so nothing was evaluated \
-             here; changed-checks --here runs it on this machine",
+            format!(
+                "{why}, and a lender runs, so nothing was evaluated here; changed-checks \
+                 --here runs it on this machine"
+            ),
         );
     }
-    unsent("no builder or evaluator answered")
+    unsent(why)
+}
+
+/// Why nothing took a changed-checks run for `system` with `lenders`: no
+/// builder or evaluator answered, and when it can be told, that none is
+/// lent to this machine or none lent builds for `system`. On 28 November
+/// a Mac's run for its own system ended at once twice saying only that
+/// none answered, which read as builders down rather than as none there
+/// to ask.
+fn untaken(system: Option<&str>, lenders: [&Path; 2]) -> String {
+    let answered = "no builder or evaluator answered";
+    if !lenders
+        .iter()
+        .any(|lender| standing(lender).is_some() || there::lends(lender))
+    {
+        return format!("{answered}, and no builder is lent to this machine");
+    }
+    let lent = there::lent_systems(lenders[0]);
+    match system {
+        Some(system) if !lent.is_empty() && !lent.iter().any(|built| built == system) => {
+            format!("{answered}, and no lent builder builds for {system}")
+        }
+        _ => answered.to_owned(),
+    }
 }
 
 /// The table's exit for [`changed::NOT_TAKEN`], which a run nothing else
@@ -1963,7 +1988,10 @@ fn changed_there(
     let finished = sent.for_its_system(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
-        return Err(none_answered(there::lends(&dir) || there::lends(&more_dir)));
+        let lenders = [dir.as_path(), more_dir.as_path()];
+        let lending = lenders.iter().any(|lender| there::lends(lender));
+        let why = untaken(wanted.system.as_deref(), lenders);
+        return Err(none_answered(lending, &why));
     };
     if let Err(code) = kept_after_a_mac(
         &passed,
@@ -4487,6 +4515,50 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn a_run_nothing_took_says_whether_any_builder_was_there_to_ask() {
+        let lent = tempfile::tempdir().expect("a lender's folder");
+        let more = tempfile::tempdir().expect("the other lender's folder");
+        let lenders = [lent.path(), more.path()];
+        assert_eq!(
+            untaken(Some("aarch64-darwin"), lenders),
+            "no builder or evaluator answered, and no builder is lent to this machine",
+            "with no lender running, it says none is lent"
+        );
+        // This process stands in for the lender, whose builder builds for
+        // Intel Linux alone, as the lent builders do.
+        fs::write(
+            lent.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .expect("the lender's pid");
+        fs::write(
+            lent.path().join("store"),
+            "ssh-ng://nix-offload?ssh-key=/k\n",
+        )
+        .expect("the store");
+        fs::write(
+            lent.path().join("machines"),
+            "ssh-ng://hook@nix-offload x86_64-linux /k 8 1 - - K\n",
+        )
+        .expect("the machines");
+        assert_eq!(
+            untaken(Some("aarch64-darwin"), lenders),
+            "no builder or evaluator answered, and no lent builder builds for aarch64-darwin",
+            "a Mac's system, which no lent builder builds for, is named"
+        );
+        assert_eq!(
+            untaken(Some("x86_64-linux"), lenders),
+            "no builder or evaluator answered",
+            "a system the lent builder builds for adds nothing"
+        );
+        assert_eq!(
+            untaken(None, lenders),
+            "no builder or evaluator answered",
+            "a run naming no system adds nothing"
+        );
     }
 
     #[test]
