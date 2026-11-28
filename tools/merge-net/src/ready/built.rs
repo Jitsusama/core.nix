@@ -111,6 +111,8 @@ fn keep(root: &Path, head: &str, drv: &str, at: u64) -> std::io::Result<()> {
 /// The derivation kept under `root` as built with any of `commits`.
 fn recorded(root: &Path, commits: &[&str]) -> Option<String> {
     commits.iter().find_map(|commit| {
+        // No record, or one that can't be read, only means the system is
+        // built again, which costs a build and never passes a change unbuilt.
         let text = fs::read_to_string(root.join("built").join(commit)).ok()?;
         let said: serde_json::Value = serde_json::from_str(&text).ok()?;
         said["drv"].as_str().map(str::to_owned)
