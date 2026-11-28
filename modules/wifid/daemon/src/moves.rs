@@ -57,8 +57,9 @@ enum Whence {
     Lately,
     /// Learned at this hour, heard about as loud.
     Learned,
-    /// Learned at this hour and the hour just gone, heard about as loud,
-    /// as the card was on it within the hour (`Learned::just_left`).
+    /// Learned at this hour and the hour just gone, the worse of the two,
+    /// heard about as loud, as the card was on it within the hour
+    /// (`Learned::just_left`).
     JustLeft,
     /// Learned while the card brought a download down, heard about as
     /// loud.
@@ -743,7 +744,7 @@ fn tried(
         }
         (Some(known), Some(Whence::JustLeft)) => {
             format!(
-                "carried {} at p95 at this hour and the one before",
+                "carried {} at p95 at worst, over this hour and the one before",
                 measure::ms(known.p95)
             )
         }
@@ -1381,8 +1382,8 @@ mod tests {
         let (left, whence) = known_then(LEFT_AT_TEN, -44, IDLE).expect("left 26 minutes before");
         assert_eq!(
             left.p95.map(|p95| p95.as_millis()),
-            Some(41),
-            "hour 9's sixty minutes of 35 ms and hour 10's two of 250, by their minutes"
+            Some(250),
+            "the worse of hour 9's sixty minutes of 35 ms and hour 10's two of 250"
         );
         assert_eq!(
             whence,
@@ -1478,6 +1479,22 @@ mod tests {
             "the point left 26 minutes before carried 35 ms all of hour 9 and 250 since, \
              so 42.9 ms is no reason to try it as untried"
         );
+        // Weighed by their minutes, hour 9's sixty drown hour 10's two, and
+        // the point left for 250 ms reads as 41 ms, quicker than 60 by the
+        // margin, so the card would go back to it as known better. The
+        // middle stays slow, so the wider band may yield as it did then.
+        let slower = Measured {
+            p95: Some(ms(60)),
+            ..slow
+        };
+        let third = choose(past_nine(90, 44), TRIED_AT_TEN, &slower);
+        let fourth = choose(past_nine(91, 44), TRIED_AT_TEN, &slower);
+        let back = Some(Next::Move(LEFT_AT_TEN.into()));
+        assert!(
+            third != back && fourth != back,
+            "60 ms sent the card back within the half hour to the point it left for 250, \
+             as {third:?} then {fourth:?}"
+        );
     }
 
     fn other(point: &str, measured: Option<Measured>) -> Other {
@@ -1514,7 +1531,7 @@ mod tests {
                 &other(HALL, quick.clone()),
                 Some(Whence::JustLeft)
             ),
-            format!("{why} carried 10.0 ms at p95 at this hour and the one before"),
+            format!("{why} carried 10.0 ms at p95 at worst, over this hour and the one before"),
             "a move made on what was learned of a point just left says over which hours"
         );
         assert_eq!(
