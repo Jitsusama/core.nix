@@ -91,6 +91,7 @@ import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
 import "launcher/ActsSaid.js" as ActsSaid
 import "launcher/ChangesPresented.js" as ChangesPresented
+import "launcher/Thrown.js" as Thrown
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -6291,7 +6292,7 @@ Scope {
             } catch (error) {
                 threw = true;
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + Held.thrown(error));
+                    + Thrown.shown(error));
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -7723,8 +7724,13 @@ Scope {
         const due = afterFramesDrawing.concat(afterFrames);
         afterFramesDrawing = [];
         afterFrames = [];
-        for (const then of due)
-            then();
+        afterFramesRun(due);
+    }
+    // Each in turn, one that throws said and the rest run still
+    // (launcher/Thrown.js's runEach).
+    function afterFramesRun(due) {
+        Thrown.runEach(due, said => console.warn(
+            `launcher: what waited on a frame threw: ${said}`));
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -14295,13 +14301,14 @@ Scope {
             // said as the key's (Joel's down onto Slack, 28 ms before the
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
+            // Each is run as what waits on the frame is, so a throw timing
+            // one holds none of it back.
             function onFrameSwapped() {
-                root.keysFrameSwapped();
-                root.actsFrameSwapped();
+                Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
+                    said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
-                for (const then of due)
-                    then();
+                root.afterFramesRun(due);
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }

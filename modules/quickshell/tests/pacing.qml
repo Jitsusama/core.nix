@@ -6,8 +6,9 @@
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's
-// act is said shown by the first frame begun after its refresh; and an
-// opening says its parts slowest first, and weighs the foot's verbs only
+// act is said shown by the first frame begun after its refresh, and what
+// waits on a frame runs each in turn, one that throws said and the rest
+// run still; and an opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
 // work it ran into, each frame's rows laid out and its sync apart, and its
@@ -32,6 +33,7 @@ import "Makings.js" as Makings
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
 import "Spots.js" as Spots
+import "Thrown.js" as Thrown
 import "Thread.js" as Thread
 import "Wanted.js" as Wanted
 
@@ -790,6 +792,28 @@ QtObject {
             names(swapped.acts.waiting), "wifi");
         check(failures, "which the next frame shows",
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
+        // What waited on the frame runs each in turn, one that throws said
+        // in a line, its kind and place but never its message, which could
+        // carry what a source served, and the rest run still, as Quests'
+        // rows made ahead, queued after it, clear their wait only as they run.
+        const ran = [];
+        const said = [];
+        Thrown.runEach([() => ran.push("first"), () => {
+            throw new TypeError("joel's secret\nits second line");
+        }, () => ran.push("last")], line => said.push(line));
+        check(failures, "one that throws stops none after it", ran.join(" "), "first last");
+        check(failures, "and is said once, in one line, by its kind and where it was thrown",
+            [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
+                said[0]?.includes("secret")].join(), "1,true,false");
+        // A value thrown with no prototype to say it by is said by its type
+        // alone.
+        const unsaid = [];
+        Thrown.runEach([() => {
+            throw Object.create(null);
+        }, () => ran.push("after")], line => unsaid.push(line));
+        check(failures, "one thrown with no prototype is said by its type, the rest run still",
+            [unsaid.join(), ran[ran.length - 1]].join(" / "),
+            "Error: object thrown / after");
     }
 
     // Keys refreshed into one frame are all shown by it, the newest last,

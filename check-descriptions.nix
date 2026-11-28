@@ -5180,11 +5180,14 @@
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
-    ahead of the step back, after a frame, and one told while already there, making no row on the
-    step back, though none as an opening fills in at home or in another place, under a viewer's
-    command line, or shut with a step held, and sees one made since, remaking only the quests a change
-    names and none a list written again leaves the same, and breaking each title into the pieces
-    A to Z reads once, again only when it changes
+    ahead of the step back, after a frame, and one told while already there once its sources have
+    woken, making no row on the step back, a turn's worth a frame, one at least, felt as Quests'
+    ahead, one that throws once made let go, not left made, and made whole at its step back, and
+    the rest made still, though none as an opening fills in at home, holds another place's step
+    or wakes its sources, under a viewer's command line, shut with a step held, owing a row told
+    then, or as a close runs a batch waiting on its frame, and sees one made since, remaking only
+    the quests a change names and none a list written again leaves the same, and breaking each
+    title into the pieces A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -5328,9 +5331,11 @@
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, and none over a viewer, so a change nobody
     sees builds none; and a key's act is said shown by the first frame begun after its refresh,
-    which another act refreshed while that frame is drawn never holds back; and an opening says what its own work
-    went on slowest first, and weighs the foot's room for Return's verbs again only once the
-    words file or the face has changed; and a daemon's changes are timed from the first line
+    which another act refreshed while that frame is drawn never holds back, and the helper the
+    launcher hands what waits on a frame runs each in turn, one that throws said in a line by
+    its kind and where, never its message, and the rest run still; and an opening says what its
+    own work went on slowest first, and weighs the foot's room for Return's verbs again only once
+    the words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is, a refresh
     held for home's find said apart from the pace and held from when it was first due; and y's
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
