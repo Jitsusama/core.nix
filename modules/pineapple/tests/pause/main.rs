@@ -30,9 +30,10 @@ struct Unit {
 /// thaws what it's asked to, refuses whatever `refusing` names, and
 /// answers as mycelium does a command it never ran for what `unreached`
 /// names, and one whose link dropped once it began for what `dropped`
-/// names. When `peek` names a file, what it holds as the Mac is asked is
-/// kept in `peeked`, and when `block` names one, a folder is made there as
-/// the Mac is asked, so no file can be written in its place. How many
+/// names; mycelium lists no session on the machine `unlisted` names.
+/// When `peek` names a file, what it holds as the Mac is asked is kept in
+/// `peeked`, and when `block` names one, a folder is made there as the
+/// Mac is asked, so no file can be written in its place. How many
 /// programs each batch run together held is kept in `batches`.
 #[derive(Default)]
 struct Machine {
@@ -43,6 +44,7 @@ struct Machine {
     refusing: Option<&'static str>,
     unreached: Option<&'static str>,
     dropped: Option<&'static str>,
+    unlisted: Option<&'static str>,
     peek: Option<PathBuf>,
     peeked: Option<String>,
     block: Option<PathBuf>,
@@ -58,6 +60,22 @@ const DROPPED: &str = "mycelium: the node hung up before the run ended (exit sta
 impl Machine {
     fn unit(&mut self, id: &str) -> Option<&mut Unit> {
         self.units.iter_mut().find(|unit| unit.id == id)
+    }
+
+    /// mycelium's `listing` of sessions, without those on the machine
+    /// `unlisted` names.
+    fn listed(&self, listing: &str) -> String {
+        let Some(gone) = self.unlisted else {
+            return listing.to_owned();
+        };
+        let mut listed: Value = serde_json::from_str(listing).expect("a listing");
+        if let Some(sessions) = listed
+            .pointer_mut("/Ok/Sessions")
+            .and_then(Value::as_array_mut)
+        {
+            sessions.retain(|one| one["machine"] != gone);
+        }
+        listed.to_string()
     }
 
     /// Each unit as `systemctl show` says it, its keys in an order other
@@ -152,16 +170,18 @@ impl Runs for Machine {
                 }
                 String::new()
             }
-            ["sessions", "--realm", "personal"] => r#"{"Ok":{"Sessions":[
+            ["sessions", "--realm", "personal"] => self.listed(
+                r#"{"Ok":{"Sessions":[
                 {"id":"p1","machine":"builder","state":"idle"},
-                {"id":"p2","machine":"here","state":"ended"}]}}"#
-                .to_owned(),
-            ["sessions", ..] => r#"{"Ok":{"Sessions":[
+                {"id":"p2","machine":"here","state":"ended"}]}}"#,
+            ),
+            ["sessions", ..] => self.listed(
+                r#"{"Ok":{"Sessions":[
                 {"id":"a","machine":"here","state":"busy"},
                 {"id":"b","machine":"here","state":"idle"},
                 {"id":"c","machine":"here","state":"ended"},
-                {"id":"d","machine":"mac","state":"idle"}]}}"#
-                .to_owned(),
+                {"id":"d","machine":"mac","state":"idle"}]}}"#,
+            ),
             ["starts", "list", ..] => format!(
                 r#"{{"Ok":{{"Starts":{{"stopped":{},"newest":[]}}}}}}"#,
                 self.starts_stopped

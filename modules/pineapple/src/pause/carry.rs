@@ -21,6 +21,18 @@
 //! it was given is tried again after a minute, never sooner, for every
 //! stop at once, so one out of reach costs a run a minute.
 //!
+//! A machine is gone from the mesh while a give to it never runs there
+//! and mycelium lists no session on it, as a cloud room released or a
+//! Mac asleep is, so whom it lists is asked once a minute at most while
+//! one may be gone, a stop standing or not. Once one has been gone for
+//! an hour, it's parked for what follows a stop: noted as gone beside
+//! what it may hold, and asked nothing more till mycelium lists it
+//! again, when it's given what it lacks, so a room released costs a
+//! listing a minute and no runs, and a Mac that wakes is given its
+//! resume at once. A stop standing is never parked, since one coming
+//! back with agents must be stopped. One that runs a give, or is listed
+//! again, is no longer taken for gone.
+//!
 //! A stop is kept there under the same file name as here, never its id:
 //! a stop read from an answer that couldn't be read is kept apart from
 //! the stop of the same message (src/bin/pineapple-slack/round.rs), and
@@ -48,6 +60,13 @@ pub const CARRIED: &str = "carried";
 /// How long a machine that couldn't take a stop waits to be tried again,
 /// in milliseconds.
 pub const AGAIN_MS: u64 = 60_000;
+
+/// How long a machine is gone from the mesh, in milliseconds, before it's
+/// parked for what follows a stop: longer than a link takes to be made
+/// again or a node to restart, so one briefly away is still tried each
+/// minute, and short against a day of a run a minute to a room that was
+/// released.
+pub const GONE_MS: u64 = 60 * 60 * 1000;
 
 /// The ids Joel's stop on everything goes by (src/pause/mod.rs), which
 /// reaches the other machines itself.
@@ -87,15 +106,49 @@ pub struct Carried {
     pub gift: Gift,
     /// Why it couldn't be given, said plainly; none when it was.
     pub failed: Option<String>,
+    /// What became of the machine gone from the mesh, if it is or was.
+    pub away: Option<Away>,
+}
+
+/// What a give says of a machine gone from the mesh.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Away {
+    /// Gone for [`GONE_MS`], so it's asked nothing more of the stop until
+    /// mycelium lists it again.
+    Parked,
+    /// Listed again once parked, so it's given what it lacks.
+    Back,
+}
+
+/// What a machine was given of a stop, as noted under `carried/`: null
+/// for one whose give failed, which may hold it or not; and since when
+/// it has been gone from the mesh, in milliseconds, once it's parked.
+#[derive(Clone, Debug)]
+struct Held {
+    reached: Reached,
+    holds: Value,
+    gone_since: Option<u64>,
+}
+
+/// Why a machine couldn't take what it was given, said plainly, and
+/// whether the run never began there.
+struct Untaken {
+    why: String,
+    never_ran: bool,
 }
 
 /// Gives each machine the stops it lacks, remembering when to try again a
-/// machine that couldn't take one.
+/// machine that couldn't take one, and since when one has been gone.
 #[derive(Debug, Default)]
 pub struct Carrier {
     /// When each machine that couldn't take a stop may be tried again, by
     /// its name.
     again: BTreeMap<String, u64>,
+    /// When each machine was first found gone from the mesh, by its name:
+    /// a give to it never ran there, and mycelium listed no session on it.
+    gone_since: BTreeMap<String, u64>,
+    /// The machines mycelium last listed in every realm, and when.
+    listed: Option<(u64, Vec<String>)>,
 }
 
 /// Where a look of the carrier stands: the plan, the state folder, this
@@ -128,8 +181,17 @@ impl Carrier {
         if plan.mycelium.is_none() || (stops.is_empty() && gone.is_empty()) {
             return (Vec::new(), listing);
         }
-        let machines = if stops.iter().any(|(_, record)| stands(record)) {
-            reach::others(plan, host, runs, &mut listing)
+        let held: Vec<Held> = stops
+            .iter()
+            .map(|(name, _)| name)
+            .chain(&gone)
+            .flat_map(|name| given(state, name))
+            .collect();
+        // Only a machine still held is remembered as gone.
+        self.gone_since
+            .retain(|machine, _| held.iter().any(|one| one.reached.machine == *machine));
+        let machines = if stops.iter().any(|(_, record)| stands(record)) || self.unsure(&held, at) {
+            self.list(plan, host, at, runs, &mut listing)
         } else {
             Vec::new()
         };
@@ -154,18 +216,99 @@ impl Carrier {
         self.again.get(machine).is_some_and(|again| at < *again)
     }
 
-    /// Notes whether `machine` took what it was given at `at`.
-    fn took(&mut self, machine: &str, at: u64, failed: bool) {
-        if failed {
-            self.again.insert(machine.to_owned(), at + AGAIN_MS);
-        } else {
-            self.again.remove(machine);
+    /// The machines mycelium listed in every realm within the minute, or
+    /// none when it wasn't asked, or not every realm answered.
+    fn listed_lately(&self, at: u64) -> Option<&[String]> {
+        let (when, names) = self.listed.as_ref()?;
+        (at < when + AGAIN_MS).then_some(names.as_slice())
+    }
+
+    /// Whether mycelium, asked within the minute, listed `machine` as
+    /// running a session; none when it can't say.
+    fn listed_now(&self, machine: &str, at: u64) -> Option<bool> {
+        self.listed_lately(at)
+            .map(|names| names.iter().any(|name| name == machine))
+    }
+
+    /// Whether a machine `held` notes as given a stop may be gone, with
+    /// mycelium not asked within the minute whom it lists: one parked, or
+    /// one to be tried now whose give failed or that was found gone.
+    fn unsure(&self, held: &[Held], at: u64) -> bool {
+        self.listed_lately(at).is_none()
+            && held.iter().any(|one| {
+                let machine = &one.reached.machine;
+                one.gone_since.is_some()
+                    || ((one.holds.is_null()
+                        || self.again.contains_key(machine)
+                        || self.gone_since.contains_key(machine))
+                        && !self.waits(machine, at))
+            })
+    }
+
+    /// The other machines a stop reaches, as [`reach::others`] lists them;
+    /// when every realm answered, each is noted as listed at `at`, and no
+    /// longer taken for gone.
+    fn list(
+        &mut self,
+        plan: &Plan,
+        host: &str,
+        at: u64,
+        runs: &mut dyn Runs,
+        listing: &mut Vec<String>,
+    ) -> Vec<Reached> {
+        let unlisted = listing.len();
+        let machines = reach::others(plan, host, runs, listing);
+        self.listed = None;
+        if listing.len() == unlisted {
+            let names: Vec<String> = machines.iter().map(|one| one.machine.clone()).collect();
+            self.gone_since
+                .retain(|machine, _| !names.contains(machine));
+            self.listed = Some((at, names));
         }
+        machines
+    }
+
+    /// Notes how `machine` took what it was given at `at`, and answers
+    /// since when it has been gone from the mesh, once that's
+    /// [`GONE_MS`] or more: the give never ran there, mycelium listed no
+    /// session on it within the minute, and neither has been otherwise
+    /// since it was first found gone.
+    fn took(&mut self, machine: &str, at: u64, answer: &Result<(), Untaken>) -> Option<u64> {
+        if answer.is_ok() {
+            self.again.remove(machine);
+        } else {
+            self.again.insert(machine.to_owned(), at + AGAIN_MS);
+        }
+        let never_ran = answer.as_ref().is_err_and(|untaken| untaken.never_ran);
+        if !never_ran {
+            self.gone_since.remove(machine);
+            return None;
+        }
+        if self.listed_now(machine, at) != Some(false) {
+            return None;
+        }
+        let since = *self.gone_since.entry(machine.to_owned()).or_insert(at);
+        (at >= since + GONE_MS).then_some(since)
+    }
+
+    /// Each machine parked in `held` that mycelium lists again at `at`,
+    /// no longer parked, so it's given what it lacks.
+    fn back(&self, held: &mut [Held], at: u64) -> Vec<String> {
+        held.iter_mut()
+            .filter(|one| {
+                one.gone_since.is_some() && self.listed_now(&one.reached.machine, at) == Some(true)
+            })
+            .map(|one| {
+                one.gone_since = None;
+                one.reached.machine.clone()
+            })
+            .collect()
     }
 
     /// Gives the stop `record`, kept here under `name`, to each machine
     /// lacking it as it stands: each of `machines` while it stands, and
-    /// each that may hold it already, whatever it has become.
+    /// each that may hold it already, whatever it has become, but one
+    /// parked.
     fn give_each(
         &mut self,
         here: Here<'_>,
@@ -175,7 +318,8 @@ impl Carrier {
         machines: &[Reached],
     ) -> Vec<Carried> {
         let mut held = given(here.state, name);
-        let mut targets: Vec<Reached> = held.iter().map(|(reached, _)| reached.clone()).collect();
+        let back = self.back(&mut held, here.at);
+        let mut targets: Vec<Reached> = held.iter().map(|one| one.reached.clone()).collect();
         if stands(record) {
             targets.extend(machines.iter().cloned());
         }
@@ -187,30 +331,38 @@ impl Carrier {
         let lacking: Vec<Reached> = one_each(&targets)
             .into_iter()
             .filter(|target| {
-                let holds = held
+                let noted = held
                     .iter()
-                    .find(|(reached, _)| reached.machine == target.machine)
-                    .map(|(_, holds)| holds);
-                holds != Some(record) && !self.waits(&target.machine, here.at)
+                    .find(|one| one.reached.machine == target.machine);
+                noted.is_none_or(|one| one.holds != *record && one.gone_since.is_none())
+                    && !self.waits(&target.machine, here.at)
             })
             .collect();
         let answers = give(here.plan, runs, &lacking, &script(name, record, here.host));
         let mut carried = Vec::new();
         for (target, answer) in lacking.into_iter().zip(answers) {
-            let failed = answer.err();
-            self.took(&target.machine, here.at, failed.is_some());
+            let gone = self.took(&target.machine, here.at, &answer);
+            let failed = answer.err().map(|untaken| untaken.why);
             // One that answered it couldn't may still have written it, so it
             // is noted as holding something no record equals, given again
-            // and given whatever follows.
+            // and given whatever follows. One long gone is parked, unless
+            // the stop stands, since one coming back with agents must be
+            // stopped.
             let holds = if failed.is_none() {
                 record.clone()
             } else {
                 Value::Null
             };
-            held.retain(|(reached, _)| reached.machine != target.machine);
-            held.push((target.clone(), holds));
+            let gone_since = gone.filter(|_| gift != Gift::Stop);
+            held.retain(|one| one.reached.machine != target.machine);
+            held.push(Held {
+                reached: target.clone(),
+                holds,
+                gone_since,
+            });
             carried.push(Carried {
                 name: name.to_owned(),
+                away: away(gone_since, &back, &target.machine),
                 machine: target.machine,
                 gift,
                 failed,
@@ -226,23 +378,27 @@ impl Carrier {
 
     /// Takes the stop kept under `name` away from each machine it was
     /// given to, since it is kept here no longer, and forgets each machine
-    /// it was taken from.
+    /// it was taken from; one parked keeps it till it's listed again.
     fn take_away(&mut self, here: Here<'_>, runs: &mut dyn Runs, name: &str) -> Vec<Carried> {
-        let (mut kept, taking): (Vec<_>, Vec<_>) = given(here.state, name)
+        let mut held = given(here.state, name);
+        let back = self.back(&mut held, here.at);
+        let (mut kept, taking): (Vec<Held>, Vec<Held>) = held
             .into_iter()
-            .partition(|(target, _)| self.waits(&target.machine, here.at));
-        let targets: Vec<Reached> = taking.iter().map(|(target, _)| target.clone()).collect();
+            .partition(|one| one.gone_since.is_some() || self.waits(&one.reached.machine, here.at));
+        let targets: Vec<Reached> = taking.iter().map(|one| one.reached.clone()).collect();
         let answers = give(here.plan, runs, &targets, &taken_away(name));
         let mut carried = Vec::new();
-        for ((target, holds), answer) in taking.into_iter().zip(answers) {
-            let failed = answer.err();
-            self.took(&target.machine, here.at, failed.is_some());
+        for (one, answer) in taking.into_iter().zip(answers) {
+            let gone_since = self.took(&one.reached.machine, here.at, &answer);
+            let failed = answer.err().map(|untaken| untaken.why);
+            let machine = one.reached.machine.clone();
             if failed.is_some() {
-                kept.push((target.clone(), holds));
+                kept.push(Held { gone_since, ..one });
             }
             carried.push(Carried {
                 name: name.to_owned(),
-                machine: target.machine,
+                away: away(gone_since, &back, &machine),
+                machine,
                 gift: Gift::Removal,
                 failed,
             });
@@ -259,6 +415,18 @@ impl Carrier {
             carried.push(unnoted(name, Gift::Removal, &error));
         }
         carried
+    }
+}
+
+/// What a give says of `machine` gone from the mesh: parked, when it has
+/// been gone since `gone_since`, or back, when it's among those `back`.
+fn away(gone_since: Option<u64>, back: &[String], machine: &str) -> Option<Away> {
+    if gone_since.is_some() {
+        Some(Away::Parked)
+    } else if back.iter().any(|one| one == machine) {
+        Some(Away::Back)
+    } else {
+        None
     }
 }
 
@@ -299,13 +467,21 @@ pub fn taken_away(name: &str) -> String {
 /// Asks mycelium to run `script` on each machine `at` names, sixteen at
 /// a time, so one out of reach holds the others up by a run's limit at
 /// most; answers each in the order named.
-fn give(plan: &Plan, runs: &mut dyn Runs, at: &[Reached], script: &str) -> Vec<Result<(), String>> {
+fn give(
+    plan: &Plan,
+    runs: &mut dyn Runs,
+    at: &[Reached],
+    script: &str,
+) -> Vec<Result<(), Untaken>> {
     if at.is_empty() {
         return Vec::new();
     }
     let Some(mycelium) = &plan.mycelium else {
-        let unnamed = "this machine names no mycelium to reach it";
-        return at.iter().map(|_| Err(unnamed.to_owned())).collect();
+        let unnamed = || Untaken {
+            why: "this machine names no mycelium to reach it".to_owned(),
+            never_ran: false,
+        };
+        return at.iter().map(|_| Err(unnamed())).collect();
     };
     let asked: Vec<Vec<String>> = at
         .iter()
@@ -317,7 +493,12 @@ fn give(plan: &Plan, runs: &mut dyn Runs, at: &[Reached], script: &str) -> Vec<R
         .collect();
     runs.run_all(&each)
         .into_iter()
-        .map(|answer| answer.map(|_| ()).map_err(|why| reach::without_begun(&why)))
+        .map(|answer| {
+            answer.map(|_| ()).map_err(|why| Untaken {
+                never_ran: reach::didnt_run(&why),
+                why: reach::without_begun(&why),
+            })
+        })
         .collect()
 }
 
@@ -329,6 +510,7 @@ fn unnoted(name: &str, gift: Gift, error: &io::Error) -> Carried {
         machine: String::new(),
         gift,
         failed: Some(format!("couldn't note what was given: {error}")),
+        away: None,
     }
 }
 
@@ -407,9 +589,8 @@ fn one_each(machines: &[Reached]) -> Vec<Reached> {
     each
 }
 
-/// What each machine was given of the stop `name`, as last noted; null
-/// for one whose give failed, which may hold it or not.
-fn given(state: &Path, name: &str) -> Vec<(Reached, Value)> {
+/// What each machine was given of the stop `name`, as last noted.
+fn given(state: &Path, name: &str) -> Vec<Held> {
     let kept = fs::read_to_string(state.join(CARRIED).join(format!("{name}.json")))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok());
@@ -417,20 +598,29 @@ fn given(state: &Path, name: &str) -> Vec<(Reached, Value)> {
         .and_then(|kept| kept["machines"].as_array())
         .into_iter()
         .flatten()
-        .filter_map(|one| Some((Reached::from_kept(one)?, one.get("holds")?.clone())))
+        .filter_map(|one| {
+            Some(Held {
+                reached: Reached::from_kept(one)?,
+                holds: one.get("holds")?.clone(),
+                gone_since: one["gone_since"].as_u64(),
+            })
+        })
         .collect()
 }
 
 /// Notes what each machine was given of the stop `name`, written whole
 /// and renamed into place.
-fn keep_given(state: &Path, name: &str, given: &[(Reached, Value)]) -> io::Result<()> {
+fn keep_given(state: &Path, name: &str, given: &[Held]) -> io::Result<()> {
     let folder = state.join(CARRIED);
     fs::create_dir_all(&folder)?;
     let machines: Vec<Value> = given
         .iter()
-        .map(|(reached, holds)| {
-            let mut one = reached.kept();
-            one["holds"] = holds.clone();
+        .map(|held| {
+            let mut one = held.reached.kept();
+            one["holds"] = held.holds.clone();
+            if let Some(since) = held.gone_since {
+                one["gone_since"] = json!(since);
+            }
             one
         })
         .collect();
