@@ -1780,6 +1780,21 @@ fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch
     }
 }
 
+/// Forgets a network saved for a join that didn't happen, from the store
+/// and from the saved networks the state shows. The state takes the store's
+/// listing afresh rather than dropping the name itself, so it holds what
+/// the store holds, as it does after every other change, and the next time
+/// the cards are given their networks changes nothing in it.
+fn forget_unjoined(store: &Store, state: &watch::Sender<State>, name: &str) {
+    if let Err(error) = store.forget(name) {
+        eprintln!("<4>can't forget {name} again: {error:?}");
+    }
+    match store.networks() {
+        Ok(listing) => change(state, |state| state.saved(&listing.saved)),
+        Err(error) => eprintln!("<3>can't read the saved networks: {error}"),
+    }
+}
+
 /// Tells everyone listening what changed, if anything did.
 fn change(state: &watch::Sender<State>, change: impl FnOnce(&mut State)) {
     state.send_if_modified(|state| {
@@ -2804,12 +2819,14 @@ impl Wifid<'_> {
             Err(refused) => {
                 println!("<5>{card} couldn't join {name}: {refused:?}");
                 self.picked.borrow_mut().remove(card);
-                // Forgotten before the refusal is said, so whoever asked
-                // finds nothing saved once told: told first, a test's
-                // Describe read the network still saved 0.1 s later
-                // (2026-11-27).
-                if *new && let Err(error) = self.store.forget(name) {
-                    eprintln!("<4>can't forget {name} again: {error:?}");
+                // Forgotten from the store and from what Describe reads
+                // before the refusal is said, so whoever asked finds it
+                // saved nowhere once told. The state used to change only
+                // as the cards were given their networks again, after the
+                // refusal and networkd's reload, so a test's Describe read
+                // the network still saved 0.1 s after it (2026-11-27).
+                if *new {
+                    forget_unjoined(self.store, self.state, name);
                 }
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
@@ -4119,6 +4136,58 @@ mod tests {
             .and_then(|error| error.build(said))
             .expect("a refusal of the roam couldn't be built");
         zbus::Error::from(reply)
+    }
+
+    /// A network the launcher saves, open, so it keeps no password.
+    fn open(name: &str) -> network::Network {
+        network::Network {
+            name: name.to_owned(),
+            security: network::Security::Open,
+            secret: None,
+            priority: 0,
+            hidden: false,
+            address: network::Address::Network,
+            trusted: false,
+            account: None,
+        }
+    }
+
+    // That the refusal is said only after this is seen in the joins-when-
+    // asked VM test alone, whose wrong password reaches wpa_supplicant.
+    #[test]
+    fn a_network_saved_for_a_join_that_didn_t_happen_is_saved_nowhere_once_forgotten() {
+        let root = tempfile::TempDir::new().expect("no directory for the store");
+        let store = Store {
+            declared: root.path().join("etc"),
+            saved: root.path().join("var"),
+            runtime: root.path().join("run"),
+            defaults: root.path().join("etc/90-wifi.network"),
+        };
+        for directory in [&store.declared, &store.saved, &store.runtime] {
+            fs::create_dir(directory).expect("no directory in the store");
+        }
+        fs::write(&store.defaults, "[Match]\nType=wlan\n").expect("no defaults");
+        for name in ["Lantern", "Roadside Inn"] {
+            store
+                .save(&open(name))
+                .expect("a network couldn't be saved");
+        }
+        let (state, _shell) = watch::channel(State::default());
+        let listing = store.networks().expect("the store couldn't be read");
+        change(&state, |state| state.saved(&listing.saved));
+
+        forget_unjoined(&store, &state, "Lantern");
+
+        assert_eq!(
+            state.borrow().saved_names(),
+            vec!["Roadside Inn".to_owned()],
+            "a network whose join was refused still read as saved once forgotten, \
+             so Describe would show it saved after the refusal"
+        );
+        assert!(
+            !store.saved.join("lantern.network").exists(),
+            "the refused network's file was kept"
+        );
     }
 
     #[test]
