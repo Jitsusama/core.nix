@@ -323,6 +323,7 @@
     "Fuzzy.js"
     "PiSource.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
   ];
   "launcher/Showing.js" = [ "launcher/Order.js" ];
   "launcher/Sound.qml" = [
