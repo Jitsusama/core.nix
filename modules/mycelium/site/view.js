@@ -3094,11 +3094,15 @@ import {
     broken: "Couldn't read the node's latest messages.",
   };
   const unreadHint = () => `<p class="hint">${UNREAD_WORDS[current.unread] || UNREAD_WORDS.reading}</p>`;
+  // Where the node serves no waits, who owes an answer is guessed from the
+  // messages (owing), so until they are read nobody owing one is unknown,
+  // not all clear.
+  const owedUnknown = `<h3>Answers Owed</h3><p class="hint">Not known until the node's latest messages are read: the page guesses who owes an answer from them.</p>`;
   const heldUp = (cells) => {
     const held = heldFirst(cells);
     const holding = holdingFirst(cells);
     return (
-      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
+      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : !current.judged && !current.messagesHeard ? owedUnknown : "") +
       (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")
     );
   };

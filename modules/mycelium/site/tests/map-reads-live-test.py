@@ -85,9 +85,11 @@ CELLS = 8
 # once what each cell split from is read, about 0.9 KB more once new work
 # keeps to the machine chosen, and a little more once the kit draws a field's
 # placeholder in muted, and 689.1 KB once a failed draw's line gives way and
-# a lone blank name takes its id, under the 690 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=690, elements=620)
+# a lone blank name takes its id, a little more once the drawers say unread
+# messages as the line does, and 690.1 KB once Now says who owes an answer is
+# unknown until they're read, under the 691 KB allowed; new work's line and
+# its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=691, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
