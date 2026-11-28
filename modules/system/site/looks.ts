@@ -141,8 +141,8 @@ function keptOf(system: System): string {
  * after those in reach, so many gone at once read as one thing to know and
  * leave room for the few that need Joel; anything else their sides say
  * stays a look of its own. A builder, which has no section here, leads to
- * itself on the map, by the name the map knows it by, after the machines in
- * reach.
+ * itself on the map after the machines in reach. Whatever leads to the map
+ * goes by the name the map knows it by, the node's own.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   const machines = thingsOf(part, "machine");
@@ -158,7 +158,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
     }
     return at < drawn
       ? `#machine-${at + 1}`
-      : `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
+      : `../mycelium/#machine=${encodeURIComponent(thing.called ?? thing.name)}`;
   };
   const own = (thing: Thing): readonly Look[] => {
     const looks = lookedOf(thing);

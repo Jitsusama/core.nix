@@ -21,8 +21,8 @@ interface Thing {
   readonly name: string;
   /**
    * The name the node gave it, where the daemon shows it by another made
-   * plain: the map knows a builder by the node's own, so a link there goes
-   * by this one. Never shown.
+   * plain: the map knows a machine or a builder by the node's own, so a link
+   * there goes by this one. Never shown.
    */
   readonly called?: string;
   readonly health: Health;

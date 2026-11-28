@@ -247,7 +247,11 @@ impl Said {
 /// only when it's worth saying, with the words of what is worth a look in
 /// it, its worst first. Its name is made plain as a builder's is, and said
 /// unnamed where nothing of it is left, so the node's text never reaches
-/// the page unplain and a machine that can't be named is still seen.
+/// the page unplain and a machine that can't be named is still seen. The
+/// map draws a machine by the node's own name, so where the plain one
+/// differs the machine is called by that too, for the page to find it
+/// there; a name the map can't find it by, an empty one, it is called by
+/// none.
 fn machine(
     said: &Value,
     sessions: Option<&Value>,
@@ -275,14 +279,18 @@ fn machine(
     if let Some(sessions) = sessions {
         line.push(format!("runs {}", sessions_said(sessions)));
     }
+    let name = plain_name(said);
+    let called = Some(name_of(said))
+        .filter(|own| !own.is_empty() && *own != name)
+        .map(str::to_owned);
     let thing = Thing {
         kind: "machine",
-        name: plain_name(said),
+        name,
         health,
         says: line.join(", "),
         side,
         looks,
-        called: None,
+        called,
         address: None,
         ties: Value::Null,
     };
