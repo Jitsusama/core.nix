@@ -26,6 +26,15 @@
   // A visit with no room kept waits unseen until the repositories draw (page.ts), so its
   // first sight is the page whole rather than one that drops as each part arrives.
   document.documentElement.classList.add("waits");
+  // A reader who presses a key, points or moves focus while it waits sees it at once, so the
+  // first Tab's skip link is seen where it lands, its ring with it, and nothing is acted on
+  // unseen.
+  for (const act of ["keydown", "pointerdown", "focusin"]) {
+    addEventListener(act, () => document.documentElement.classList.remove("waits"), {
+      capture: true,
+      once: true,
+    });
+  }
   try {
     const room = JSON.parse(localStorage.getItem("code-room") ?? "null");
     if (room?.width === innerWidth) {
