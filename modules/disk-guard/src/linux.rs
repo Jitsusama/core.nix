@@ -727,7 +727,7 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     if read.stx_mask & STATX_SUBVOL == 0 {
         // A kernel before 6.10 doesn't say a file's subvolume, so Btrfs
         // itself is asked, through a reading open.
-        return btrfs_id(path).map(|id| pool_of(fsid_halves(id)));
+        return btrfs_id_of(&held, path).map(|id| pool_of(fsid_halves(id)));
     }
     let fsid = rustix::fs::fstatvfs(&held)?.f_fsid;
     Ok(pool_of(statfs_halves(fsid, read.stx_subvol)))
@@ -841,14 +841,24 @@ fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
 /// A Btrfs filesystem's 16-byte id, the same from every subvolume.
 fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     use rustix::fs::OFlags;
-    // Found without opening it, and opened only as a file or a folder, through
-    // what was found, so nothing swapped in between is opened: a pipe's open
-    // would wait for a writer. A file a writer holds a lease on refuses the
-    // open at once, rather than holding the guard while the lease breaks,
-    // though its holder is still asked to break it.
+    // Found without opening it for reading; btrfs_id_of opens it only through
+    // this handle.
+    let found = rustix::fs::open(
+        path,
+        OFlags::PATH | OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )?;
+    btrfs_id_of(&found, path)
+}
+
+/// The 16-byte id of the Btrfs filesystem holding `found`, a handle
+/// opened without reading, named `path` in what it says. Read through
+/// that handle, so the name is never looked up again: a process's open
+/// file may be closed and its number reused between two lookups.
+fn btrfs_id_of(found: &rustix::fd::OwnedFd, path: &Path) -> io::Result<[u8; 16]> {
+    use rustix::fs::OFlags;
     let none = rustix::fs::Mode::empty();
-    let found = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
-    let kind = rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&found)?.st_mode);
+    let kind = rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(found)?.st_mode);
     if !matches!(
         kind,
         rustix::fs::FileType::Directory | rustix::fs::FileType::RegularFile
@@ -858,6 +868,11 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
             format!("{} is neither a file nor a folder", path.display()),
         ));
     }
+    // Opened only as a file or a folder, through the handle's own link, so
+    // nothing swapped in under the name is opened: a pipe's open would wait
+    // for a writer. A file a writer holds a lease on refuses the open at
+    // once, rather than holding the guard while the lease breaks, though its
+    // holder is still asked to break it.
     let again = format!("/proc/self/fd/{}", found.as_raw_fd());
     let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
     let fd = rustix::fs::open(again, flags, none)?;
@@ -1059,25 +1074,84 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+    #[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't, \
+                and Linux 6.10 or later, which says a file's subvolume: \
                 run with --ignored and TMPDIR on a Btrfs folder"]
     fn a_folder_s_pool_read_by_statx_is_the_one_btrfs_s_ioctl_names() {
         let dir = tempfile::tempdir().unwrap();
+        on_btrfs(dir.path());
+        // Worked out here from statx's own read, as pool works it out on
+        // 6.10 and later, since pool's fallback to the ioctl would agree
+        // with the ioctl whatever statx said.
+        let subvolume = rustix::fs::StatxFlags::from_bits_retain(super::STATX_SUBVOL);
+        let read = rustix::fs::statx(
+            rustix::fs::CWD,
+            dir.path(),
+            rustix::fs::AtFlags::empty(),
+            subvolume,
+        )
+        .unwrap();
+        assert_ne!(
+            read.stx_mask & super::STATX_SUBVOL,
+            0,
+            "this kernel doesn't say a file's subvolume"
+        );
+        let fsid = rustix::fs::statvfs(dir.path()).unwrap().f_fsid;
+        let by_statx = pool_of(super::statfs_halves(fsid, read.stx_subvol));
         let ioctl = super::btrfs_id(dir.path()).map(|id| pool_of(fsid_halves(id)));
         assert_eq!(
-            super::pool(dir.path()).ok(),
+            Some(by_statx),
             ioctl.ok(),
             "{} by statx and by the ioctl",
+            dir.path().display()
+        );
+        assert_eq!(
+            super::pool(dir.path()).ok(),
+            Some(by_statx),
+            "{} as pool reads it",
             dir.path().display()
         );
     }
 
     #[test]
-    fn two_pools_read_apart() {
-        assert_ne!(
-            pool_of(fsid_halves(IDS[0])),
-            pool_of(fsid_halves(IDS[1])),
-            "two pools with different ids"
+    #[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+                run with --ignored and TMPDIR on a Btrfs folder"]
+    fn a_pool_s_id_is_read_through_its_handle_after_its_name_is_taken() {
+        use rustix::fs::{CWD, FileType, Mode, OFlags};
+        let dir = tempfile::tempdir().unwrap();
+        on_btrfs(dir.path());
+        let name = dir.path().join("file");
+        std::fs::write(&name, "").unwrap();
+        let found = rustix::fs::open(&name, OFlags::PATH | OFlags::CLOEXEC, Mode::empty()).unwrap();
+        // A pipe in its place, whose open asked by name would read as no
+        // Btrfs id, or wait for a writer without NONBLOCK.
+        let pipe = dir.path().join("pipe");
+        rustix::fs::mknodat(CWD, &pipe, FileType::Fifo, Mode::from_raw_mode(0o600), 0).unwrap();
+        std::fs::rename(&pipe, &name).unwrap();
+
+        let read = super::btrfs_id_of(&found, &name);
+
+        assert_eq!(
+            read.as_ref().ok(),
+            super::btrfs_id(dir.path()).as_ref().ok(),
+            "{} read through the handle, then by its folder: {read:?}",
+            name.display()
+        );
+        assert!(
+            read.is_ok(),
+            "{} read through the handle: {read:?}",
+            name.display()
+        );
+    }
+
+    /// Fails, saying so, unless `dir` is on Btrfs, so a case run with
+    /// TMPDIR elsewhere doesn't blame the kernel.
+    fn on_btrfs(dir: &std::path::Path) {
+        let stats = rustix::fs::statfs(dir).unwrap();
+        assert!(
+            super::is_btrfs(&stats),
+            "{} isn't on Btrfs; set TMPDIR to a Btrfs folder",
+            dir.display()
         );
     }
 }

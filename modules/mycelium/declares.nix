@@ -81,6 +81,79 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
+      # The realm's other machines take new work first, so the person's own
+      # use of this one stays quick: placement ranks it after every other
+      # machine heard with room, and past its ceiling after every machine
+      # heard, never refusing a start nothing else takes.
+      keptLively = lib.mkOption {
+        type = lib.types.nullOr (
+          lib.types.submodule {
+            options = {
+              cpu = lib.mkOption {
+                type = lib.types.ints.between 0 100;
+                description = ''
+                  The processor pressure it stays at or under, in percent of
+                  the last minute some work waited on a processor,
+                  machine-wide, or of the last ten seconds where its node
+                  says no minute.
+                '';
+              };
+              memoryAvailable = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.unsigned;
+                default = null;
+                description = "The memory it keeps available at least, in bytes.";
+              };
+              memoryFull = lib.mkOption {
+                type = lib.types.nullOr (lib.types.ints.between 0 100);
+                default = null;
+                description = ''
+                  The memory pressure it stays at or under, in percent of
+                  the last minute all work at once waited on memory,
+                  machine-wide; null where it holds to none. A node that
+                  measures no memory stall, a Mac's or one whose kernel
+                  keeps no pressure files, is never past it, and a mycelium
+                  that predates it ignores it.
+                '';
+              };
+              ioFull = lib.mkOption {
+                type = lib.types.nullOr (lib.types.ints.between 0 100);
+                default = null;
+                description = ''
+                  The disk pressure it stays at or under, in percent of the
+                  last minute all work at once waited on its disks,
+                  machine-wide or in the groups of ioFullFrom; null where it
+                  holds to none. A node that measures no disk stall, a Mac's
+                  or one whose kernel keeps no pressure files, is never past
+                  it, and a mycelium that predates it ignores it.
+                '';
+              };
+              ioFullFrom = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                example = [ "agents.slice" ];
+                description = ''
+                  The control groups, as paths below the kernel's root of
+                  them, whose disk pressure is read in place of the
+                  machine's, the worst of them; empty reads the machine's.
+                  Machine-wide counts a task held back by its own cap, as a
+                  capped disk survey, so a machine can read past a ceiling
+                  its work never feels.
+                '';
+              };
+            };
+          }
+        );
+        default = null;
+        example = {
+          cpu = 28;
+          memoryAvailable = 24 * 1024 * 1024 * 1024;
+        };
+        description = ''
+          The ceiling this machine is kept lively under, where the person
+          works at it and the realm's other machines are to take new work
+          first; null where it is ranked as any machine is.
+        '';
+      };
       # A Mac's pi in pi-fence's launcher can't reach its own state, so the
       # realm's agent program, pi unless `agents` names another, held there
       # for a fenced kind starts alone where the machine declares pi fences

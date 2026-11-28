@@ -12,6 +12,9 @@ publish = false
 jiff = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The subjects' hubs the realm's node names, and the needs put to them,
+# read and kept one way with pain-points (../subject-hubs).
+subject-hubs = { path = "../subject-hubs" }
 # The shape every command of ours takes: its flags, help, errors and exits.
 terminal-kit = { path = "../terminal-kit" }
 

@@ -269,9 +269,13 @@ or launchd, and [`home.nix`][2] the account's.
   (`read`) and what its survey did (`survey_read`), from Linux's count for
   the thread each ran on, or null on a Mac; what a pass hands a thread of
   its own, a command, a Nix delete or an ask of the system daemon, isn't
-  counted. The two walks no pass takes, measuring what holds the disks
-  and marking the builds, each journal a `walk` line saying which, its
-  seconds and what it read. On 25 November the account's guard read
+  counted, nor are the git commands a survey runs. A read is what a walk
+  pulled from the disk past the cache, so walks running at once split
+  one cost by which came first. The two walks no pass takes, measuring
+  what holds the disks and marking the builds, each journal a `walk`
+  line saying which, its seconds and what it read; the machine guard's
+  listing of the store's garbage and its dedupe of the store read too,
+  and journal no read yet. On 25 November the account's guard read
   15.4 GB of the disk in 24 minutes, and no line said which walk it was.
   Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
@@ -602,6 +606,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/plan.rs`, `pass.rs`  | the order, the windows, and a pass that measures as it goes |
 | `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
+| `src/survey/`             | what builds and every other kind of source offer         |
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |

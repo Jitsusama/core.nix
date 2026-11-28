@@ -191,7 +191,7 @@ fn absent_as_none(path: &Path) -> Result<String, String> {
 }
 
 /// Where pi keeps its sessions' logs, as the pis here run.
-fn agent_folder() -> Option<PathBuf> {
+pub fn agent_folder() -> Option<PathBuf> {
     env::var_os("PI_CODING_AGENT_DIR")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".pi/agent")))

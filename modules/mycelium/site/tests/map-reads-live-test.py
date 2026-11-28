@@ -80,9 +80,10 @@ CELLS = 8
 # once a cloud machine says it's kept, a little more once a long lease counts
 # days, about 0.4 KB more once every label is kept apart and in its room,
 # about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, and about 0.9 KB more once new
-# work keeps to the machine chosen, under the 689 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
+# once what each cell split from is read, about 0.9 KB more once new work
+# keeps to the machine chosen, and a little more once the kit draws a field's
+# placeholder in muted, under the 689 KB allowed; new work's line and its
+# hidden controls draw about 20 elements of the 611.
 BUDGET = Budget(files=33, kilobytes=689, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
@@ -523,6 +524,63 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
+# On 26 November Joel asked why the map wasn't working, then said "oh, it's
+# just really, really slow": the node took 14 s to first answer its watch of
+# messages, 12,179 of them, and the map drew nothing until it had. Where the
+# node serves the ties the map draws talk from, it draws without them, and
+# says it is still reading them.
+READING_TALK = "Reading what passed between cells."
+
+
+@pytest.fixture
+def slow_talk_node(tmp_path: Path) -> Iterator[StandIn]:
+    heard = int(datetime.now(UTC).timestamp() * 1000)
+    tie = {"key": f"tie:HERON1~{HEARD}", "heard": heard, "strength": 1, "today": [3, 0]}
+    stand_in = StandIn(tmp_path / "slow.sock", "node", {**talking(), "tie": [tie]}).start()
+    stand_in.withhold("message")
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def slow_talk_served(tmp_path: Path, slow_talk_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, slow_talk_node)
+
+
+def test_the_map_draws_before_the_node_says_what_passed(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map waited for the messages to draw the realm")
+    expect(page.locator("#asof"), "the map didn't say it was reading what passed").to_contain_text(
+        READING_TALK
+    )
+    box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
+    assert box, "the map drew no TERN01 to open"
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
+        "Still reading"
+    )
+    slow_talk_node.answer("message")
+    expect(
+        page.locator("#asof"), "the map still said it was reading what passed"
+    ).not_to_contain_text(READING_TALK, timeout=PACE_MS)
+    # The drawer open as the messages first answer lists them, rather than
+    # saying nothing passed until the next change draws it again.
+    expect(
+        drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
+    ).to_have_count(TALKERS["HERON1"])
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
@@ -576,14 +634,224 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     )
     assert window[1] <= window[0], f"the map's page scrolls: {window[1]} px in {window[0]}"
     assert window[2] <= window[0], f"the map runs {window[2]} px down a {window[0]} px window"
-    box = page.locator('#world circle.cell[data-key="c:TERN03"]').bounding_box()
-    assert box, "the map drew no TERN03 to click"
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    left, top, right, bottom = drawn_boxes(page, ["TERN03"], "the map drew no TERN03 to click")[2]
+    page.mouse.click((left + right) / 2, (top + bottom) / 2)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
         "a click on a cell left its drawer shut",
     ).to_be_visible()
+
+
+# On 15 November 2026 Joel said of the map: "clicking on networks is
+# confusing, often the entire line isn't put into view", and "when I select a
+# network lane, nodes directly connected to it should be more prominent". The
+# skiff's network, opened from the heron's, which leaves it out of view, is
+# fitted whole with its branch, clear of its drawer; the cells it joins stay
+# strong while the heron's step back. Opened from the whole map instead, the
+# whole map's own fit would hold it in view with no network fit at all.
+SKIFF_TITLE = "Rig the Skiff for the Season"
+SKIFF_JOINS = ("SKIFF1", "TERN01", "TERN02", "GULL01", "TERN03")
+SKIFF_LEAVES = ("HERON1", "HERON2")
+HERONS = "orchestration.heron1"
+HERONS_TITLE = "Chart the Harbour"
+# The alpha a cell's marks are drawn at, strong and stepped back (site.css's
+# .focused .far is 0.22), with room either side for a mark's own opacity.
+STRONG_ALPHA = 0.9
+STEPPED_BACK_ALPHA = 0.5
+# The view's box, the drawer's and each named cell's, read in one task. A cell
+# found in one call and measured in the next can be redrawn between the two,
+# and a circle taken out of the page measures all zeros, as on 27 November.
+BOXES = """(keys) => [document.getElementById('map-view'), document.getElementById('panel'),
+  ...keys.map((key) => document.querySelector(`#world circle.cell[data-key="c:${key}"]`))]
+  .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
+    return [r.left, r.top, r.right, r.bottom]; })"""
+DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
+# A health said for one thing: its verdict, then why.
+HEALTH_SAID = re.compile(r"^(Well|Watch|Tend): \S")
+# A mark on the map, found and measured in one go: a reading's redraw
+# between finding a mark and measuring it measures one no longer drawn, at 0.
+MARK_BOX = """(selector) => {
+  const r = document.querySelector(selector)?.getBoundingClientRect();
+  return r ? [r.left, r.top, r.right, r.bottom] : null;
+}"""
+
+
+def drawn_boxes(page: Page, cells: list[str], why: str) -> list[list[float]]:
+    """Give the view's box, the drawer's and each cell's, once every cell is drawn.
+
+    A cell that never draws, or one redrawn away between the wait and the read,
+    fails by name.
+    """
+    try:
+        page.wait_for_function(DRAWN, arg=cells, timeout=PACE_MS)
+    except PlaywrightTimeoutError as undrawn:
+        boxes = page.evaluate(BOXES, cells)[2:]
+        missing = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+        message = f"{why}: {missing or cells} undrawn"
+        raise AssertionError(message) from undrawn
+    view, drawer, *boxes = page.evaluate(BOXES, cells)
+    assert view, f"{why}: the map's view went from the page"
+    assert drawer, f"{why}: the drawer went from the page"
+    gone = [cell for cell, box in zip(cells, boxes, strict=True) if not box]
+    assert not gone, f"{why}: {gone} redrawn away once drawn"
+    return [view, drawer, *boxes]
+
+
+def strongest(page: Page, cell: str) -> float:
+    """Say the alpha of the strongest mark a cell is drawn with."""
+    return max(float(mark["alpha"] or 0) for mark in marks_of(page, f"c:{cell}"))
+
+
+def drawn_at(page: Page, selector: str, what: str) -> list[float]:
+    """Where a mark on the map is drawn on the page, failing when it isn't."""
+    box: list[float] | None = page.evaluate(MARK_BOX, selector)
+    assert box, f"the map drew no {what}"
+    return box
+
+
+def middle(box: list[float]) -> tuple[float, float]:
+    """Find the middle of a box measured as left, top, right and bottom."""
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+
+
+def inside(view: list[float], box: list[float]) -> bool:
+    """Say whether a box measured as left, top, right and bottom is wholly inside the view's."""
+    left, top, right, bottom = box
+    return view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
+
+
+def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell} stepped back with nothing open"
+    page.evaluate(f"location.hash = '#net={HERONS}'")
+    expect(page.locator("#panel-title"), "the heron's drawer never opened").to_contain_text(
+        HERONS_TITLE
+    )
+    settled(page, "the heron's network never stood still once opened")
+    view, _, *joins = drawn_boxes(page, list(SKIFF_JOINS), "opening the heron's left cells")
+    out = [cell for cell, box in zip(SKIFF_JOINS, joins, strict=True) if not inside(view, box)]
+    assert out, (
+        "the heron's network, opened, left every cell of the skiff's in view: opening a "
+        "network no longer fits the view to it, or the stand-in's skiff no longer lies outside"
+    )
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    settled(page, "the skiff's network never stood still once opened")
+    view, drawer, *boxes = drawn_boxes(page, list(SKIFF_JOINS), "opening the skiff left cells")
+    for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
+        box = [left, top, right, bottom]
+        assert inside(view, box), f"opening the skiff left {cell} at {box} outside {view}"
+        under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom
+        assert not under, f"opening the skiff left {cell} under its drawer at {drawer}"
+        assert strongest(page, cell) >= STRONG_ALPHA, f"{cell}, joined to the skiff, stepped back"
+    for cell in SKIFF_LEAVES:
+        assert strongest(page, cell) <= STEPPED_BACK_ALPHA, (
+            f"{cell}, joined to nothing of the skiff's, stood out as strong as its cells"
+        )
+    hub = page.locator(f'#world .hub[data-key="h:{HERONS}"]')
+    expect(hub, "the heron's network stood out beside the skiff's").to_have_class(
+        re.compile(r"\bfar\b")
+    )
+    branch = page.locator(f'#world .hub[data-key="h:{BRANCH}"]')
+    expect(branch, "the skiff's branch stepped back").not_to_have_class(re.compile(r"\bfar\b"))
+
+
+# The same day: "i want to be able to hover over a network and have some small
+# bit hover giving me awareness of its purpose without drilling in." Pointing
+# at the heron's network says its name, what it is for and how it stands,
+# and opens nothing.
+def test_a_network_pointed_at_says_what_it_is_for_and_how_it_stands_unopened(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    peek = page.locator("#peek")
+    expect(peek, "a peek stood with nothing pointed at").to_be_hidden()
+    # The map taking focus walks to the first thing the feed names, with
+    # the machines hidden the skiff's network, and peeks at it in the
+    # corner, so only the heron's name in the peek shows the pointer's.
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    said = peek.locator("p")
+    expect(said.first, "the walk's own peek already named the heron's").not_to_have_text(
+        HERONS_TITLE
+    )
+    before = page.url
+    ring = f'#world .hub[data-key="h:{HERONS}"] .m-hub'
+    page.mouse.move(*middle(drawn_at(page, ring, "ring for the heron's network")))
+    expect(said.first, "pointing at the heron's network never peeked at it").to_have_text(
+        HERONS_TITLE
+    )
+    expect(peek, "the pointer's peek was hidden").to_be_visible()
+    expect(said, "the peek should say a name, a purpose and a health").to_have_count(3)
+    expect(said.nth(1), "the peek said nothing of what it is for").to_have_text(re.compile(r"\S"))
+    expect(said.nth(2), "the peek said nothing of how it stands").to_have_text(re.compile(r": \S"))
+    assert page.url == before, f"pointing at a network went from {before} to {page.url}"
+
+
+# The same day: "i need to be able to get an overview at any cell about its
+# purpose, what is is doing, it's health at various levels and other stuff.
+# this also includes networks, and collections of cells that are celled off
+# of a parent." A cell's drawer and a network's each open on its purpose,
+# what it is doing and its health, the network's by its own cells, each
+# branch and the whole.
+def test_a_cell_and_a_network_each_open_on_its_purpose_doing_and_health(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    glance = page.locator("#panel-body dl.glance").first
+    page.evaluate("location.hash = '#cell=TERN01'")
+    # A cell's drawer is titled by its window's name, which node.json writes
+    # "Mend The Sails" for TERN02 too; what it's doing tells the two apart.
+    expect(page.locator("#panel-title"), "TERN01's drawer never opened").to_contain_text(
+        "Mend The Sails"
+    )
+    expect(glance.locator("dt"), "a cell's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    told = glance.locator("dd")
+    expect(told.nth(1), "the cell's glance missed what it's doing").to_contain_text(
+        "Stitch the jib"
+    )
+    expect(told.nth(0), "the cell's glance said nothing of what it's for").to_have_text(
+        re.compile(r"\S")
+    )
+    expect(told.nth(2), "the cell's glance said no health").to_have_text(HEALTH_SAID)
+    page.evaluate(f"location.hash = '#net={BRANCHED_FROM}'")
+    expect(page.locator("#panel-title"), "the skiff's drawer never opened").to_have_text(
+        SKIFF_TITLE
+    )
+    expect(glance.locator("dt"), "a network's drawer opened on no glance").to_have_text(
+        ["Purpose", "Doing", "Health"]
+    )
+    for n, what in ((0, "what it's for"), (1, "what it's doing")):
+        said = glance.locator("dd").nth(n)
+        expect(said, f"the skiff's glance said nothing of {what}").to_have_text(re.compile(r"\S"))
+    levels = glance.locator("dd").nth(2).locator(".row .name")
+    expect(levels, "the skiff's health wasn't said by its cells, its branch and all").to_have_text(
+        [
+            re.compile(r"^Its own \d+ cells?$"),
+            re.compile(r", \d+ cells?$"),
+            re.compile(r"^All \d+ together$"),
+        ]
+    )
+    glance.locator(f'dd .row[data-go="net={BRANCH}"]').click()
+    expect(page, "the branch's health row didn't open the branch").to_have_url(
+        re.compile(rf"#net={re.escape(BRANCH)}$")
+    )
 
 
 def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
@@ -2339,6 +2607,36 @@ def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened
     )
 
 
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
+FED_NETWORK = "orchestration.skiff1"
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
+
+
+def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
+    body = page.locator("#panel-body")
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    )
+    # A network belongs to no machine, so its drawer lists every one that
+    # feeds it, its branch's cells counted in.
+    rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
+    expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
+    lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
+    assert lines == FED_BY, f"Its Machines read {lines}, not {FED_BY}"
+    # Each opens that machine's own drawer.
+    rows.nth(1).get_by_role("button").click()
+    expect(page.locator("#panel-title"), "osprey's row didn't open osprey").to_have_text("osprey")
+
+
 def test_a_kept_cloud_machine_says_so_and_opens_its_row(
     browser: Browser, lent_served: Served
 ) -> None:
@@ -2501,6 +2799,8 @@ def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
     expect(page.locator("#sprout-on-words"), "new words didn't take the open machine").to_have_text(
         "On kestrel"
     )
+    page.evaluate("window.talkedTo = null")
+    sent_as(page, "mended", "mycelium:sprout?words=mended&on=kestrel")
 
 
 def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
@@ -2824,6 +3124,42 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         the_map_counts(opened.page, COUNTED, "the map didn't draw")
         opened.keeps_to(BUDGET)
         the_map_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+# Every raster the page fetched, shows as an image or paints from a style, by
+# its address: a file of a raster kind, or a raster's data written inline.
+RASTERS = r"""() => {
+  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
+  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
+    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+  const url = /url\("?([^")]*)"?\)/gu;
+  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
+    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  );
+  return {
+    fetched: fetched.filter((each) => raster.test(each)),
+    shown: shown.filter((each) => raster.test(each)),
+    painted: painted.filter((each) => raster.test(each)),
+  };
+}"""
+
+
+def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    """The map is drawn from shapes, never a picture (Joel, 14 November: "stick to svgs")."""
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        found = opened.page.evaluate(RASTERS)
+        assert found == {"fetched": [], "shown": [], "painted": []}, (
+            f"the map fetched, showed or painted a raster picture: {found}"
+        )
     finally:
         opened.close()
 

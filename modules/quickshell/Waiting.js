@@ -89,9 +89,10 @@ function served(held) {
 }
 
 // The to do daemon's verdicts, from its `verdict` records by key, as
-// { items: { identity: { state, at, how } } }.
+// { items: { identity: { state, at, how } } }, with no prototype, so an
+// item named "__proto__" or "constructor" is an item of its own.
 function verdictsOf(held) {
-    const items = {};
+    const items = Object.create(null);
     for (const key of Object.keys(held ?? {})) {
         if (key.startsWith(VERDICT)) {
             items[key.slice(VERDICT.length)] = unheard(held[key]);

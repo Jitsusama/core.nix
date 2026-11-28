@@ -166,7 +166,11 @@ pub fn descends(repo: &Repo, older: &str, newer: &str) -> Result<bool, Failure> 
     if !has(repo, older) {
         return Ok(false);
     }
+    // No commit graph is read: a hosted copy borrows a checkout's objects,
+    // where its account could write a graph naming parents of its own, and
+    // git trusts a graph's parents without reading the commits they name.
     let status = git(repo)
+        .args(["-c", "core.commitGraph=false"])
         .args(["merge-base", "--is-ancestor", older, newer])
         .stderr(std::process::Stdio::null())
         .status()

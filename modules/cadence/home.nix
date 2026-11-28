@@ -74,6 +74,13 @@
 # record (the priority workflow's outcomes, nix-offload's sends, the merge
 # train's landings) against a target for its p90, with its flow beside it,
 # and asks the owner of the worst one for its next change once a day.
+# It also reads what the sessions met on their way out: the model calls
+# pi made and how they ended, from the tail of each session's log; the
+# model relay's counts from its journal; and, given `origins`, the path to
+# each, which cadence-path (./path.sh) samples every ten minutes, said
+# beside the calls so a red of them names the route. Given `site`, it
+# reads how long the node's site took to come live, which cadence-site
+# (./site.sh) samples every ten minutes as the site's page opens its feed.
 #
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
@@ -94,6 +101,28 @@ let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
   spec = pkgs.callPackage ./spec/package.nix { };
+  # The path's sampler, shellcheck run on it as it builds.
+  probe = pkgs.writeShellApplication {
+    name = "cadence-path";
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.getent
+      pkgs.gawk
+      pkgs.iproute2
+      pkgs.jq
+    ];
+    text = builtins.readFile ./path.sh;
+  };
+  # The site's sampler, shellcheck run on it as it builds.
+  watcher = pkgs.writeShellApplication {
+    name = "cadence-site";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.websocat
+    ];
+    text = builtins.readFile ./site.sh;
+  };
   # Who Friday's review goes to: the orchestrator, and the owner of `review`.
   reviewed = lib.filter (address: address != null) [
     cfg.orchestrator
@@ -216,6 +245,28 @@ in
         its `main`. Only the hourly card fetches, and only mycelium's
         `origin/main`, with `--no-write-fetch-head` so the checkout's
         `FETCH_HEAD` stays its own; every other main is read as it stands.
+      '';
+    };
+    origins = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "github.com" ];
+      description = ''
+        The hosts the sessions reach whose path cadence-path samples every
+        ten minutes over HTTPS, as path.sh says, for the hour to hold each
+        one's median TLS setup to its ceiling and say it beside the
+        sessions' failed model calls; none samples nothing.
+      '';
+    };
+    site = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "ws://sites.localhost:8484/feed/node";
+      description = ''
+        The node's feed as the site's page opens it, which cadence-site
+        samples every ten minutes, as site.sh says, for the hour to hold
+        the median wait for the watches the page waits on to its
+        ceiling; none samples nothing.
       '';
     };
     path = lib.mkOption {
@@ -382,7 +433,7 @@ in
     # the tick's.
     systemd.user.services.cadence-spec = {
       Unit = {
-        Description = "Serves the axes to the launcher's Spec";
+        Description = "Serves the axes and what Joel asked for to the launcher";
         X-SwitchMethod = "restart";
         # Its socket is systemd's, handed to it as it starts.
         Requires = [ "cadence-spec.socket" ];
@@ -418,6 +469,12 @@ in
     jitsusama.quickshell.launcher.providers.spec = {
       order = 54;
       source = ./Spec.qml;
+    };
+    # Asked For, answering "asked" or "promised": what Joel asked for that
+    # hasn't landed, served by the same daemon as Spec.
+    jitsusama.quickshell.launcher.providers.asked = {
+      order = 55;
+      source = ./Asked.qml;
     };
 
     # Its socket, held by systemd whether or not the daemon runs, so the
@@ -472,7 +529,15 @@ in
               ]
             )
           }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"
-        ];
+        ]
+        # The origins path.sh samples, so the hour measures each named one
+        # whether or not a sample came, a comma apart as systemd would split
+        # a space. Named even when empty, since an hour with no list at all
+        # is one run by hand, which measures what was sampled instead.
+        ++ [ "CADENCE_ORIGINS=${lib.concatStringsSep "," cfg.origins}" ]
+        # The feed cadence-site samples, so the hour measures the site only
+        # where it's sampled, and every hour it is, a sample come or not.
+        ++ lib.optional (cfg.site != null) "CADENCE_SITE=${cfg.site}";
         Slice = "background.slice";
         # The hour's ten days of journals and World's history pass through
         # this unit as file pages: at 23:10 on 19 November it peaked at
@@ -487,6 +552,49 @@ in
         # so the next hour's run starts rather than being skipped behind it.
         TimeoutStartSec = "30min";
       };
+    };
+    systemd.user.services.cadence-path = lib.mkIf (cfg.origins != [ ]) {
+      Unit.Description = "Samples the path to each origin the sessions reach";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs ([ (lib.getExe probe) ] ++ cfg.origins);
+        Slice = "background.slice";
+        # A sample waits 20 s at most for each origin, beside its lookup and
+        # route, so a minute each bounds a run however many are named.
+        TimeoutStartSec = "${toString (60 + 60 * builtins.length cfg.origins)}s";
+      };
+    };
+    systemd.user.timers.cadence-path = lib.mkIf (cfg.origins != [ ]) {
+      Unit.Description = "Samples the path to each origin every ten minutes";
+      Timer = {
+        OnCalendar = "*:0/10";
+        AccuracySec = "30s";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+    systemd.user.services.cadence-site = lib.mkIf (cfg.site != null) {
+      Unit.Description = "Samples how long the node's site takes to come live";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe watcher)
+          cfg.site
+        ];
+        Slice = "background.slice";
+        # The hello, then the watches together, wait 20 s each at most,
+        # so a minute and a half bounds a run.
+        TimeoutStartSec = "90s";
+      };
+    };
+    systemd.user.timers.cadence-site = lib.mkIf (cfg.site != null) {
+      Unit.Description = "Samples the node's site every ten minutes";
+      Timer = {
+        # At five past each ten minutes, off the hour's run at ten past,
+        # so no sample is timed under the hour's own load.
+        OnCalendar = "*:05/10";
+        AccuracySec = "30s";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
     systemd.user.timers.cadence-hour = {
       Unit.Description = "Measures the hour at ten past each hour";

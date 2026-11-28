@@ -21,12 +21,13 @@ const RUNTIME_CONTROL: &str = "/systemd/user.control/";
 /// The properties the sorter sets on a host's or a conversation's unit
 /// (`crate::hosts::rank_call`), each kept by systemd as `50-<name>.conf`
 /// in the unit's folder under the runtime control folder.
-pub const SET: [&str; 5] = [
+pub const SET: [&str; 6] = [
     "CPUWeight",
     "MemoryLow",
     "MemoryZSwapWriteback",
     "ManagedOOMPreference",
     "MemoryMin",
+    "IOWeight",
 ];
 
 /// The file the sorter leaves in a unit's folder under the runtime
@@ -382,13 +383,14 @@ MemoryLow=10%
     fn only_a_gone_units_settings_the_sorter_marked_are_taken_back_and_anothers_left() {
         let control = std::env::temp_dir().join(format!("own-control-{}", std::process::id()));
         let _ = fs::remove_dir_all(&control);
-        // The five files systemd writes for the settings the sorter sets, spelled as it does.
+        // The six files systemd writes for the settings the sorter sets, spelled as it does.
         let ours = [
             "50-CPUWeight.conf",
             "50-MemoryLow.conf",
             "50-MemoryZSwapWriteback.conf",
             "50-ManagedOOMPreference.conf",
             "50-MemoryMin.conf",
+            "50-IOWeight.conf",
         ];
         let folder = |unit: &str, files: &[&str], marked: bool| {
             let dir = control.join(format!("{unit}.d"));
@@ -456,7 +458,7 @@ MemoryLow=10%
         );
         assert_eq!(
             (taken, linked),
-            ([5, 0, 1, 5], 0),
+            ([6, 0, 1, 6], 0),
             "every one of the sorter's settings is taken, and none through a link"
         );
         assert_eq!(

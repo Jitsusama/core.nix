@@ -167,6 +167,9 @@ QtObject {
         expect("an item holds no heard", "heard" in Waiting.served(heardAt(1))[0], false);
         expect("nor does a verdict", "heard" in Waiting.verdictsOf({ "verdict:Q:x":
             { state: "ready", heard: 1 } }).items["Q:x"], false);
+        expect("an item named as what every object inherits is one of its own",
+            Object.keys(Waiting.verdictsOf({ "verdict:Q:x": { state: "done" },
+                "verdict:__proto__": { state: "ready" } }).items), ["Q:x", "__proto__"]);
         const was = {};
         const kept = Waiting.kept(was, "asked", Waiting.served(heardAt(1)));
         expect("told again with only heard moved, it's the one kept",

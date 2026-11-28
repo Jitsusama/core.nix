@@ -8,7 +8,8 @@
 
 // The line's own edits and caret moves, and Ctrl+Y's completion, which
 // change only what's typed and where its caret stands, as a letter typed
-// does.
+// does; but for Ctrl+Y on a command's row in a place, which puts its start
+// in the field out at the top (`fillLeaves`), leaving the place.
 const typing = ["caretLeft", "caretRight", "caretStart", "caretEnd", "deleteBack", "deleteWord",
     "deleteToStart", "complete"];
 
@@ -44,9 +45,19 @@ function reselectHere(mode, rows, chosen) {
 // alone (`intoHere`), since the launcher runs a search held back first.
 function nowhere(act, line) {
     return (act === "drawer" && !line.drawerHere)
-        || (act === "into" && line.mode !== "find" && !line.intoHere())
+        || (act === "into" && line.mode !== "find" && !line.intoHere(line.mode))
         || (act === "out" && !line.upHere)
         || (act === "reselect" && !line.reselectHere);
+}
+
+// Whether a key that acted only moved through the rows, so the launcher
+// tells it apart (Prompt.qml's keyMoved): the table's moves, and the
+// find's Tab where it has no row to go into, which goes on to the next
+// row as Down does (Launcher.qml's tabbedIn), asked of Tab alone, in the
+// mode it came in (`intoHere`).
+function moves(act, line) {
+    return QueryKeys.repeats(act)
+        || (act === "into" && line.mode === "find" && !line.intoHere(line.mode));
 }
 
 // Whether a key acted, given what QueryKeys.read made of it (`read`) and
@@ -89,6 +100,9 @@ function acts(read, line) {
     }
     if (line.mode === "normal" && editing.includes(read.act)) {
         return false;
+    }
+    if (read.act === "complete" && line.fillLeaves()) {
+        return true;
     }
     const emptied = read.act === "deleteBack" && line.mode === "find" && line.text === "";
     return emptied || !typing.includes(read.act);

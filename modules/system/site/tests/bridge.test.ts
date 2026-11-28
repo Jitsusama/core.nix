@@ -16,6 +16,7 @@ const DOT = /cx="(?<x>[\d.]+)" cy="(?<y>[\d.]+)"/gu;
 
 function machine(name: string, busy: number, idle: number, health: Thing["health"]): Thing {
   return {
+    kind: "machine",
     name,
     health,
     says: "",

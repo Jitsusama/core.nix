@@ -240,7 +240,7 @@ mod tests {
         let report = command(WATCH, 1);
         assert_eq!(report.len(), 33);
         assert_eq!(report[..3], [0, 0x81, 1]);
-        assert!(report[3..].iter().all(|byte| *byte == 0));
+        assert_eq!(report[3..], [0; 30], "the rest of a report is zeros");
     }
 
     #[test]
