@@ -783,6 +783,7 @@ gather {
     ./tests/vm/sound/checks.nix
     ./tools/changed-checks/checks.nix
     ./tools/merge-net/checks.nix
+    ./tools/rules-here/checks.nix
     ./tools/run-subtests/checks.nix
     ./tools/shell-preview/checks.nix
   ];
