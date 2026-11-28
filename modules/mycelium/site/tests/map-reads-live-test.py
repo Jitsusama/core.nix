@@ -40,6 +40,7 @@ import copy
 import json
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -84,9 +85,11 @@ CELLS = 8
 # once what each cell split from is read, about 0.9 KB more once new work
 # keeps to the machine chosen, and a little more once the kit draws a field's
 # placeholder in muted, and 689.1 KB once a failed draw's line gives way and
-# a lone blank name takes its id, under the 690 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=690, elements=620)
+# a lone blank name takes its id, a little more once the drawers say unread
+# messages as the line does, and 690.1 KB once Now says who owes an answer is
+# unknown until they're read, under the 691 KB allowed; new work's line and
+# its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=691, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -545,6 +548,10 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
 # node serves the ties the map draws talk from, it draws without them, and
 # says it is still reading them.
 READING_TALK = "Reading what passed between cells."
+# A pair the node serves no tie for, so its drawer counts the talk from the
+# messages, and the words its drawer says that in.
+UNTIED = f"c:HERON2|c:{HEARD}"
+UNTIED_TALK = "Talk on the mesh in the last ten minutes"
 
 
 @pytest.fixture
@@ -580,6 +587,16 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(drawer, "a cell's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
     )
+    # HERON2 has no tie, so its talk is counted from the messages alone, and
+    # the counts line stays hidden rather than saying none passed.
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
+    expect(drawer, "an untied talk's drawer didn't open").to_contain_text(UNTIED_TALK)
+    expect(
+        drawer, "an untied talk's drawer said nothing passed before it was heard"
+    ).to_contain_text("Still reading")
+    expect(
+        drawer.locator(".counts"), "an untied talk counted messages before they were heard"
+    ).to_have_count(0)
     page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
     expect(drawer, "a talk's drawer said nothing passed before it was heard").to_contain_text(
         "Still reading"
@@ -593,6 +610,37 @@ def test_the_map_draws_before_the_node_says_what_passed(
     expect(
         drawer.locator(".lately li"), "a talk's drawer open as messages answered listed none"
     ).to_have_count(TALKERS["HERON1"])
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('{UNTIED}')")
+    expect(drawer.locator(".counts"), "an untied talk didn't count what was heard").to_have_text(
+        re.compile(rf"^{TALKERS['HERON2']} message\b")
+    )
+    opened.close()
+
+
+# A node that serves no waits leaves who owes an answer to be guessed from
+# its messages (view.js), so before they answer Now says it doesn't know yet
+# rather than that nobody owes one.
+OWED_UNKNOWN = "Not known until the node's latest messages are read"
+
+
+def test_now_says_who_owes_an_answer_is_unknown_until_messages_answer(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    page.keyboard.press(".")
+    expect(page.locator("#panel-title"), ". didn't open Now").to_have_text("Now")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "Now said nobody owed an answer before it could know").to_contain_text(
+        OWED_UNKNOWN
+    )
+    slow_talk_node.answer("message")
+    expect(drawer, "Now still didn't know who owed once the messages answered").not_to_contain_text(
+        OWED_UNKNOWN, timeout=PACE_MS
+    )
+    expect(drawer, "Now said owed answers where none are owed").not_to_contain_text("Answers Owed")
     opened.close()
 
 
@@ -601,6 +649,10 @@ def test_the_map_draws_before_the_node_says_what_passed(
 # busy node took 14 s on 26 November, so a slow one is said as waited on too.
 WAITING_TALK = "Still waiting on what passed between cells."
 TALK_PATIENCE_MS = 10_000
+# What a drawer says of messages yet to answer, as the line says it (view.js).
+DRAWER_READING = "Still reading the node's latest messages."
+DRAWER_WAITING = "Still waiting on the node's latest messages."
+DRAWER_BROKEN = "Couldn't read the node's latest messages."
 
 
 def test_the_map_says_it_still_waits_on_messages_that_never_answer(
@@ -612,6 +664,10 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    # A drawer open as the line passes its patience says what the line says.
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     expect(asof, "the map still said it was reading what never answered").to_contain_text(
         WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
     )
@@ -619,6 +675,16 @@ def test_the_map_says_it_still_waits_on_messages_that_never_answer(
         READING_TALK
     )
     expect(asof, "a map waiting on its messages wasn't said live").to_contain_text("Live from")
+    expect(drawer, "a cell's drawer was still reading what the line waits on").to_contain_text(
+        DRAWER_WAITING, timeout=PACE_MS
+    )
+    expect(drawer, "a cell's drawer said reading and waiting at once").not_to_contain_text(
+        DRAWER_READING
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer was still reading what the line waits on").to_contain_text(
+        DRAWER_WAITING
+    )
     opened.close()
 
 
@@ -672,9 +738,148 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     the_map_stands(page, "live")
     asof = page.locator("#asof")
     expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
     opened.loses(server)
     the_map_stands(page, "stale")
     expect(asof, "a stale map said it was reading what it can't").not_to_contain_text(READING_TALK)
+    expect(drawer, "a stale map's drawer said it was reading what it can't").to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
+    opened.close()
+
+
+def asked_of(node: StandIn, kind: str) -> dict[str, object]:
+    """Give what the server's watch of `kind` asked `node`, once it has, within PACE_MS."""
+    deadline = time.monotonic() + PACE_MS / 1000
+    while (asked := node.asked.get(kind)) is None:
+        assert time.monotonic() < deadline, f"the server never watched {kind} on the node"
+        time.sleep(0.05)
+    return asked
+
+
+# The map keeps the latest LATEST_MESSAGES messages (model.ts), and the node
+# feed asks the node for its `latest` (home.nix), so a node with 12,179 of
+# them sends only those. The two numbers live in two files, so the watch the
+# server opens is held to what the served page keeps: a node asked for fewer
+# leaves the map short of talk, and one asked for more sends what it drops.
+KEPT = re.compile(r"const LATEST_MESSAGES = (\d+);")
+
+
+def test_the_message_watch_asks_for_as_many_as_the_map_keeps(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    kept = KEPT.search((Path(os.environ["MYCELIUM_SITE"]) / "model.js").read_text())
+    assert kept, "the served model.js keeps no LATEST_MESSAGES"
+    asked = asked_of(slow_talk_node, "message")
+    assert asked.get("latest") == int(kept[1]), (
+        f"the message watch asked {asked} of the node, but the map keeps {kept[1]}"
+    )
+    opened.close()
+
+
+# A node too old to serve ties gives the map its talk only from its messages,
+# so there the map waits for them before it draws, as every map did before it
+# learnt to draw ahead of them: a map drawn without them would say nobody
+# talked rather than that it hadn't heard yet.
+@pytest.fixture
+def tieless_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "tieless.sock", "node", talking()).start()
+    stand_in.withhold("message")
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def tieless_served(tmp_path: Path, tieless_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, tieless_node)
+
+
+def test_a_node_serving_no_ties_has_the_map_wait_for_its_messages(
+    browser: Browser, tieless_served: Served, tieless_node: StandIn
+) -> None:
+    root, _ = tieless_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    for kind in ("network", "cell", "machine"):
+        asked_of(tieless_node, kind)
+    # Past one hand-over a map that drew without its messages would show.
+    page.wait_for_timeout(REDRAWN_MS)
+    expect(
+        page.locator("#world .hub"), "the map drew before the messages it draws talk from"
+    ).to_have_count(0)
+    expect(
+        page.locator("#asof"), "a map not yet drawn said it was reading what passed"
+    ).not_to_contain_text(READING_TALK)
+    tieless_node.answer("message")
+    the_map_counts(page, COUNTED, "the map never drew once its messages answered")
+    expect(page.locator("#world .hub").first, "the map drew no network").to_be_visible()
+    opened.close()
+
+
+# What the standing line says of a watch that isn't live (kit/status.ts).
+NOT_LIVE = "Not live since"
+
+
+# A message watch that breaks before it first answers leaves the map drawn
+# from its ties, and the line says the map isn't live and why, as it says any
+# broken watch, rather than that it is reading or waiting on what passed: the
+# server tells it broken until the node answers a watch asked again.
+def test_messages_broken_before_they_answer_are_said_broken(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it was reading what passed").to_contain_text(READING_TALK)
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    expect(drawer, "a cell's drawer didn't say it was reading").to_contain_text(DRAWER_READING)
+    slow_talk_node.cut("message")
+    the_map_stands(page, "broken")
+    expect(asof, "broken messages weren't said as not live").to_contain_text(NOT_LIVE)
+    expect(asof, "broken messages were said as read for").not_to_contain_text(READING_TALK)
+    expect(asof, "broken messages were said as waited on").not_to_contain_text(WAITING_TALK)
+    the_map_counts(page, COUNTED, "the map dropped the realm when its messages broke")
+    # The drawer open as they broke says so, as the line does, and one opened since.
+    expect(drawer, "a cell's drawer was still reading what broke").to_contain_text(
+        DRAWER_BROKEN, timeout=PACE_MS
+    )
+    page.evaluate(f"location.hash = '#talk=' + encodeURIComponent('c:HERON1|c:{HEARD}')")
+    expect(drawer, "a talk's drawer was still reading what broke").to_contain_text(DRAWER_BROKEN)
+    expect(drawer, "a talk's drawer said reading what broke").not_to_contain_text(DRAWER_READING)
+    opened.close()
+
+
+# Messages that answered and then lose their watch, as when the node drops it,
+# are said broken while the server watches again, and live once they answer
+# again. They were read once, so the line never says it is reading them.
+def test_messages_watched_again_after_answering_are_said_broken_then_live(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    slow_talk_node.answer("message")
+    expect(asof, "messages that answered were still read for").not_to_contain_text(
+        READING_TALK, timeout=PACE_MS
+    )
+    slow_talk_node.withhold("message")
+    slow_talk_node.cut("message")
+    the_map_stands(page, "broken")
+    expect(asof, "a dropped message watch wasn't said as not live").to_contain_text(NOT_LIVE)
+    expect(asof, "messages read once were said as read for again").not_to_contain_text(READING_TALK)
+    slow_talk_node.answer("message")
+    the_map_stands(page, "live", timeout=BACK_MS)
+    expect(asof, "messages back weren't said live").to_contain_text("Live from")
+    expect(asof, "messages back were said as read for").not_to_contain_text(READING_TALK)
     opened.close()
 
 
