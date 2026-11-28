@@ -11223,14 +11223,28 @@ Scope {
             return;
         if (landOn === lookLanding.wanted)
             landOn = null;
-        const told = lookLanding.told;
-        lookLanding = null;
-        collections.find(one => one.settings.name === "on")?.awaitLook("");
-        untell(told);
+        lookLetGo();
         if (!open)
             return;
         const words = Words.of("on:waiting").said ?? {};
         toldBeside(words.neverHeard ?? "", words.neverHeardWhy ?? "");
+    }
+    // Lets a look a link named before the looks were told go whole: its
+    // word that it opens once For You has heard them goes from the foot
+    // and from what waits for the next opening, lookUnheard stops and Now
+    // awaits it no more. Let go by the landing alone, as a chord, a click
+    // on a row or another link's opening did, the word stayed in the foot
+    // and lookNeverHeard, finding no landing, never said otherwise, so the
+    // foot promised a walk that never came (#6583's stack round of 28 Nov,
+    // 42, 92 and 96).
+    function lookLetGo() {
+        if (lookLanding === null)
+            return;
+        const told = lookLanding.told;
+        lookLanding = null;
+        lookUnheard.stop();
+        collections.find(one => one.settings.name === "on")?.awaitLook("");
+        untell(told);
     }
     // Closed, it draws the place as it kept it, as a chord does
     // (intoKept), landing there and again once the fill has stepped into
@@ -11244,7 +11258,7 @@ Scope {
     // pulls him out of where this took him (#6583's ninth round, 58, 67
     // and 69).
     function intoOn(name, wanted, normal) {
-        lookLanding = null;
+        lookLetGo();
         const asked = !open && !opening && openAsked < 0;
         if (asked)
             askedToOpen();
@@ -11785,7 +11799,7 @@ Scope {
             drafts.flush();
             drawerMakingsKeep();
             landOn = null;
-            lookLanding = null;
+            lookLetGo();
             toldInto = "";
         }
         else {
@@ -12783,7 +12797,7 @@ Scope {
     // first review, F41, F51 and F52).
     function cursorTaken() {
         landOn = Steady.landing(landOn, { key: true }).waiting;
-        lookLanding = null;
+        lookLetGo();
     }
 
     // Brings a card shown from what it kept up to now: open, every source
@@ -13134,10 +13148,7 @@ Scope {
         opening = false;
         // Nor does a look link it was opened for wait into the next, nor
         // its word, which waited for this opening.
-        if (lookLanding !== null)
-            untell(lookLanding.told);
-        lookLanding = null;
-        lookUnheard.stop();
+        lookLetGo();
         openInto = "";
         landsOnFill = null;
         spotsLater.restart();

@@ -2449,6 +2449,27 @@ def test_a_key_pressed_while_a_look_link_waits_keeps_the_cursor_where_it_put_it(
         assert (after["selected"] or {}).get("name") == stood, (moved, after)
 
 
+def test_a_chord_while_a_look_link_waits_takes_its_word_from_the_foot(shell: Shell) -> None:
+    """A chord while a look link waits on For You's looks lets the link go whole.
+
+    Its word, that the look opens once For You has heard them, goes from the foot with it, so
+    the foot never promises a walk that never comes (#6583's stack round of 28 Nov, 42, 92
+    and 96).
+    """
+    with waited_look(), looks_unheard(shell):
+        did = followed(shell, "look", "waited")
+        assert did == {"done": True, "said": UNHEARD}, did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"] and shown["lookLink"] == "waiting" and UNHEARD in foot(shown)
+            )
+        )
+        shell.as_account(shell.ipc("collection", "forYou"))
+        shell.launcher_until(lambda shown: shown["lookLink"] == "")
+        let_go = shell.showing()
+        assert UNHEARD not in foot(let_go), f"the foot still promises the walk: {let_go}"
+
+
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:
     """A link while Joel has the launcher or the line up opens nothing: talkTo, network, machine.
 
