@@ -16,11 +16,11 @@
 //! too. A kitty outside those slices, the one from the package the
 //! daemon's kitten comes from, is asked what runs in its focused window
 //! instead, since every kitty window shares the one kitty process, once
-//! the abstract address it's asked at is shown to be held by its own
-//! socket: refused when another program holds it or nothing does, when
-//! what it names isn't its own, when an agent runs in it or below it,
-//! when a multiplexer stands in front, past which kitty can't see, and
-//! when kitty can't say.
+//! the abstract address it's asked at is shown to be listened at by kitty
+//! itself, as the kernel says of a connection there: refused when another
+//! program listens there or nothing does, when what it names isn't its
+//! own, when an agent runs in it or below it, when a multiplexer stands
+//! in front, past which kitty can't see, and when kitty can't say.
 //! An X11 window is refused, since niri knows only xwayland-satellite
 //! behind it, and any X program can read its keys.
 //!
@@ -31,9 +31,19 @@
 //! type straight to the daemon through the shell's own pipes; and it can
 //! drive the launcher through its IPC and a virtual keyboard, pressing
 //! Return itself. The fence that keeps the shell's pipes, its IPC socket,
-//! Wayland and niri's socket from agents closes all three.
+//! Wayland and niri's socket from agents closes all three. The daemon
+//! looks at the window a second time just before it types, which narrows
+//! the race in which the keys move, to another window or to another of
+//! kitty's, while the typist types, and doesn't close it: nothing here
+//! holds the keys where they were found, so they can still move between
+//! that look and the last key typed (findings 33 and 34 on #6643).
+//!
+//! Long because whether a window may be typed into is one rule, a chain of
+//! looks that refuses at the first that fails, and split by look a reader
+//! would lose which refusal comes before which.
 
 use std::io::{BufRead, BufReader, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -451,70 +461,80 @@ pub const OPENLY: &str = "that kitty listens where any program of yours could an
 /// Why a kitty is refused whose abstract address another holds, or nothing does.
 pub const UNHELD: &str = "that kitty's address isn't held by kitty";
 
-/// `__SO_ACCEPTCON`, among a socket's flags in /proc/net/unix while it listens.
-const ACCEPTING: u32 = 0x0001_0000;
-
-/// The inode of the socket listening at `name`, an abstract address as
-/// /proc/net/unix writes it (`@` and its name), in that file's text
-/// `unix`, or none where nothing listens there. Each row is a socket's
-/// slot, references, protocol, flags, type, state, inode and path; one
-/// listening has `__SO_ACCEPTCON` among its flags and is unconnected
-/// (state 01), where a connection it accepted shows its name too. A
-/// socket's file is never found, since any program may bind it again,
-/// and a torn row, or one whose path holds a space, is passed over.
-#[must_use]
-pub fn listening_at(unix: &str, name: &str) -> Option<u64> {
-    if !name.starts_with('@') {
+/// The process listening at the abstract `name`, as the kernel says of a
+/// connection to it: none where nothing listens there or none is let in
+/// at once, as while its queue is full, so a listener that never accepts
+/// can't hold a type up. A listening socket's peer is the process that
+/// listened on it, and only one socket can listen at an abstract name, so
+/// no table of names written as text is read, which a name holding a
+/// newline could forge a row of (findings 26, 28 and 31 on #6643). The
+/// connection is closed as soon as it's answered.
+fn listener(name: &[u8]) -> Option<u32> {
+    // SAFETY: socket only makes a descriptor, owned by `socket` below.
+    let made = unsafe {
+        libc::socket(
+            libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+            0,
+        )
+    };
+    if made == -1 {
         return None;
     }
-    unix.lines().find_map(|row| {
-        let fields: Vec<&str> = row.split_whitespace().collect();
-        let [_, _, _, flags, _, state, inode, path] = fields[..] else {
-            return None;
-        };
-        let flags = u32::from_str_radix(flags, 16).ok()?;
-        if path != name || state != "01" || flags & ACCEPTING == 0 {
-            return None;
-        }
-        inode.parse().ok()
-    })
+    // SAFETY: `made` is the socket just made, which nothing else owns.
+    let socket = unsafe { OwnedFd::from_raw_fd(made) };
+    let mut at = libc::sockaddr_un {
+        sun_family: libc::sa_family_t::try_from(libc::AF_UNIX).ok()?,
+        sun_path: [0; 108],
+    };
+    // An abstract name follows a nul in the path, and nothing ends it.
+    let path = at.sun_path.get_mut(1..=name.len())?;
+    for (slot, byte) in path.iter_mut().zip(name) {
+        *slot = libc::c_char::from_ne_bytes([*byte]);
+    }
+    let length = std::mem::offset_of!(libc::sockaddr_un, sun_path) + 1 + name.len();
+    let length = libc::socklen_t::try_from(length).ok()?;
+    // SAFETY: connect reads `length` bytes of `at`, all within it.
+    let connected = unsafe { libc::connect(socket.as_raw_fd(), (&raw const at).cast(), length) };
+    if connected != 0 {
+        return None;
+    }
+    let mut peer = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let whole = std::mem::size_of::<libc::ucred>();
+    let mut size = libc::socklen_t::try_from(whole).ok()?;
+    // SAFETY: getsockopt writes at most `size` bytes into `peer`, its own
+    // size, and says how many it wrote in `size`.
+    let asked = unsafe {
+        libc::getsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&raw mut peer).cast(),
+            &raw mut size,
+        )
+    };
+    if asked != 0 || usize::try_from(size).ok() != Some(whole) {
+        return None;
+    }
+    // A listener outside the daemon's pid namespace is said as pid 0.
+    u32::try_from(peer.pid).ok().filter(|pid| *pid != 0)
 }
 
-/// Whether the socket at `inode` is among a process's open files, `links`
-/// being what each in its /proc fd folder links to, a socket's
-/// `socket:[<inode>]`.
-#[must_use]
-pub fn holds_socket(links: &[String], inode: u64) -> bool {
-    let socket = format!("socket:[{inode}]");
-    links.contains(&socket)
-}
-
-/// Whether kitty at `pid` itself holds the socket listening at its
-/// abstract `address`, as /proc says. An abstract name can be bound first
-/// by any program of Joel's, as kitty's is foretold by its pid, or be free
-/// since that kitty listens nowhere, and whoever answers kitten there
-/// picks the window and what runs in it; none can bind it while kitty
-/// holds it (finding 23 on #6643).
+/// Whether kitty at `pid` itself listens at its abstract `address`, as
+/// the kernel says of a connection there. An abstract name can be bound
+/// first by any program of Joel's, as kitty's is foretold by its pid, or
+/// be free since that kitty listens nowhere, and whoever answers kitten
+/// there picks the window and what runs in it; none can listen at it
+/// while kitty does (finding 23 on #6643).
 fn kitty_holds(pid: u32, address: &str) -> bool {
-    let Some(name) = address.strip_prefix("unix:") else {
-        return false;
-    };
-    // A socket table that can't be read finds no socket listening, so the
-    // kitty is refused.
-    let unix = std::fs::read_to_string("/proc/net/unix").unwrap_or_default();
-    let Some(inode) = listening_at(&unix, name) else {
-        return false;
-    };
-    // A kitty whose open files can't be read, or one of them, is taken to
-    // hold nothing there, so it's refused too.
-    let links: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
-        .map(|link| link.to_string_lossy().into_owned())
-        .collect();
-    holds_socket(&links, inode)
+    address
+        .strip_prefix("unix:@")
+        .and_then(|name| listener(name.as_bytes()))
+        == Some(pid)
 }
 
 /// What kitty's `ls` says runs in the window that has its keys: each
@@ -657,7 +677,7 @@ fn kitty_says(kitty: &str, address: &str) -> Result<String, String> {
 /// program that opened it is gone, an agent reads it, or it's a terminal
 /// that runs an agent, a multiplexer, or can't say what it runs, a kitty
 /// listening where another could answer, or a kitty window another may
-/// lie over, or a kitty whose address its own socket doesn't hold.
+/// lie over, or a kitty that doesn't itself listen at its address.
 pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit, (String, String)> {
     let unknown = |why: String| (String::new(), why);
     let Some(focused) = focused_now(niri).map_err(unknown)? else {

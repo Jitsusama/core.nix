@@ -63,112 +63,68 @@ fn only_a_kitty_listening_at_an_abstract_address_answers_alone() {
     }
 }
 
-/// /proc/net/unix's head, as Linux writes it above its rows.
-const UNIX_HEAD: &str = "Num       RefCount Protocol Flags    Type St Inode Path";
-
-/// A row of /proc/net/unix: a socket's flags, state, inode and path. Linux
-/// pads the inode to five, but rows are read by their whitespace alone, so
-/// it's written bare, as commands-agree asks of every column in a command.
-fn unix_row(flags: &str, state: &str, inode: u64, path: &str) -> String {
-    format!("0000000000000000: 00000002 00000000 {flags} 0001 {state} {inode} {path}")
-}
-
 #[test]
-fn a_socket_listening_at_an_abstract_name_is_found_by_it() {
-    let unix = [
-        UNIX_HEAD.to_owned(),
-        unix_row("00010000", "01", 4100, "@kitty-90"),
-        unix_row("00010000", "01", 41001, "@kitty-9"),
-        unix_row("00000000", "01", 41002, ""),
-    ]
-    .join("\n");
-    assert_eq!(
-        listening_at(&unix, "@kitty-9"),
-        Some(41001),
-        "kitty-9's listening socket wasn't found by its name in {unix}"
-    );
-}
-
-#[test]
-fn a_connected_socket_at_the_name_isnt_taken_for_the_listening_one() {
-    // A connection kitty accepted shows its listener's name too.
-    let unix = [
-        UNIX_HEAD.to_owned(),
-        unix_row("00000000", "03", 41002, "@kitty-9"),
-        unix_row("00010000", "03", 41003, "@kitty-9"),
-    ]
-    .join("\n");
-    assert_eq!(
-        listening_at(&unix, "@kitty-9"),
-        None,
-        "a connected socket was taken for one listening in {unix}"
-    );
-}
-
-#[test]
-fn a_socket_file_is_never_found_listening() {
-    // A socket's file can be removed and bound again by any program.
-    let unix = [
-        UNIX_HEAD.to_owned(),
-        unix_row("00010000", "01", 41004, "/run/user/1000/kitty-9"),
-    ]
-    .join("\n");
-    for name in ["/run/user/1000/kitty-9", "@kitty-9", "kitty-9"] {
-        assert_eq!(
-            listening_at(&unix, name),
-            None,
-            "the socket file was found listening at {name:?}"
-        );
-    }
-}
-
-#[test]
-fn a_torn_row_of_the_socket_table_is_passed_over() {
-    let unix = [
-        UNIX_HEAD.to_owned(),
-        "0000000000000000: 00000002 00000000 00010000 0001 01".to_owned(),
-        "0000000000000000: 00000002 00000000 0001".to_owned(),
-        "0000000000000000: 00000002 00000000 zz010000 0001 01 41005 @kitty-9".to_owned(),
-        unix_row("00010000", "01", 41006, "@kitty-9"),
-    ]
-    .join("\n");
-    assert_eq!(
-        listening_at(&unix, "@kitty-9"),
-        Some(41006),
-        "a torn row wasn't passed over for the whole one in {unix}"
-    );
-    assert_eq!(
-        listening_at(
-            "0000000000000000: 00000002 00000000 00010000 0001 01 410",
-            "@kitty-9"
-        ),
-        None,
-        "a row torn before its path was found"
-    );
-}
-
-#[test]
-fn only_a_socket_among_kittys_own_files_is_held_by_it() {
-    let links = [
-        "/dev/null",
-        "pipe:[7]",
-        "socket:[41001]",
-        "anon_inode:[eventfd]",
-    ]
-    .map(str::to_owned);
+fn only_the_process_listening_at_kittys_address_holds_it() {
+    // A squatter binds kitty's foretold name first, then a second name
+    // whose tail, written byte for byte into /proc/net/unix, forges a row
+    // naming kitty's address and a socket kitty does hold, put ahead of
+    // the squatter's own row (findings 26, 28 and 31 on #6643). Here the
+    // test is the squatter, and a shell holding one end of a socket pair
+    // is the kitty.
+    use std::os::fd::{AsRawFd, OwnedFd};
+    use std::os::linux::net::SocketAddrExt;
+    use std::os::unix::net::{SocketAddr, UnixListener};
+    let bound = |name: &str| {
+        SocketAddr::from_abstract_name(name).and_then(|at| UnixListener::bind_addr(&at))
+    };
+    let name = format!("squat-{}", std::process::id());
+    let address = format!("unix:@{name}");
+    let _squatter = bound(&name).expect("the test binds kitty's address first");
+    let (held, kept) = UnixStream::pair().unwrap();
+    let socket = std::fs::read_link(format!("/proc/self/fd/{}", held.as_raw_fd())).unwrap();
+    let inode = socket
+        .to_string_lossy()
+        .trim_start_matches("socket:[")
+        .trim_end_matches(']')
+        .to_owned();
+    // The shell reads its end until the test's goes, as the test ends.
+    let mut kitty = Command::new("/bin/sh")
+        .args(["-c", "read held"])
+        .stdin(Stdio::from(OwnedFd::from(held)))
+        .spawn()
+        .expect("the kitty starts");
+    let fake = format!("0: 2 0 10000 1 01 {inode} @{name}");
+    let _forging = (0..256)
+        .find_map(|nth| {
+            let forging = bound(&format!("f{nth}\n{fake}")).ok()?;
+            let unix = std::fs::read_to_string("/proc/net/unix").ok()?;
+            let rows: Vec<&str> = unix.lines().collect();
+            let at_forged = rows.iter().position(|at| *at == fake)?;
+            let at_squatter = rows
+                .iter()
+                .position(|at| *at != fake && at.ends_with(&format!(" @{name}")))?;
+            (at_forged < at_squatter).then_some(forging)
+        })
+        .expect("a forged row comes ahead of the squatter's");
+    let kittys = kitty_holds(kitty.id(), &address);
+    let squatters = kitty_holds(std::process::id(), &address);
+    drop(kept);
+    kitty.wait().expect("the kitty ends with its socket");
     assert!(
-        holds_socket(&links, 41001),
-        "kitty's own socket wasn't found among its files"
+        !kittys,
+        "a forged row of the socket table was taken for kitty's listener"
     );
-    for inode in [4100, 410_011, 7] {
-        assert!(
-            !holds_socket(&links, inode),
-            "socket {inode} was taken for one among kitty's files"
-        );
-    }
     assert!(
-        !holds_socket(&[], 41001),
-        "a kitty whose files couldn't be read was taken to hold its socket"
+        squatters,
+        "the process listening at the address wasn't found to hold it"
+    );
+    assert!(
+        !kitty_holds(std::process::id(), &format!("unix:@{name}-free")),
+        "an address nothing listens at was taken to be held"
+    );
+    assert!(
+        !kitty_holds(std::process::id(), "unix:/run/user/1000/kitty.sock"),
+        "a socket's file was taken to be held"
     );
 }
 

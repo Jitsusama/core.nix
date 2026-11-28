@@ -1475,12 +1475,15 @@ fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window:
 /// id and the detail's label, or the app id as far as it was known and
 /// why it wasn't typed. The window is checked before the secret is read,
 /// so a refused type reads none, and again just before the typist runs,
-/// so the keys can't have moved while its manager answered: in a kitty,
-/// to the same window of its own as the first look found, with nothing
-/// over it. That second check waits a moment for the keys to come back,
-/// since 1Password may have asked Joel's leave in a window of its own
-/// meanwhile, and a type more than `RETURN_PATIENCE` after it was asked
-/// is refused (ISXEG8's (2) and (68), 2026-11-25).
+/// so a type is refused where the keys moved while its manager answered:
+/// in a kitty, to another window of its own than the first look found, or
+/// one with another over it. The second look narrows the race in which
+/// the keys move and doesn't close it, since they can still move between
+/// it and the typist's last key (findings 33 and 34 on #6643). That
+/// second check waits a moment for the keys to come back, since 1Password
+/// may have asked Joel's leave in a window of its own meanwhile, and a
+/// type more than `RETURN_PATIENCE` after it was asked is refused
+/// (ISXEG8's (2) and (68), 2026-11-25).
 fn typed(
     shared: &Shared,
     key: &str,
@@ -1520,8 +1523,9 @@ fn typed(
             Err(refused) => return Err(refused),
         }
     };
-    // Nothing but the typist starting comes after these, so what they
-    // found is what the keys go to.
+    // Nothing but the typist starting comes after these, which narrows
+    // the race in which the keys move and doesn't close it: they can still
+    // move to another window, or another of kitty's, while it types.
     if now.kitty != first.kitty {
         return Err((now.app, KITTY_MOVED.to_owned()));
     }
