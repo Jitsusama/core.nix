@@ -847,3 +847,40 @@ fn what_he_hits_most_leads_the_hour() {
         "{hour:?}"
     );
 }
+
+#[test]
+fn a_void_session_quiet_for_a_day_is_still_followed_while_its_cell_lives() {
+    let place = Place::new("void-quiet");
+    place.routes();
+    // A void session's log, followed before, written no later than a day
+    // ago, so the logs read since then don't hold it (#7022's round, F18).
+    let quiet = || {
+        BTreeMap::from([(
+            "void/quiet.jsonl".to_owned(),
+            Following {
+                session: "s-void2".into(),
+                void: true,
+                ..Following::default()
+            },
+        )])
+    };
+    for (state, followed) in [("idle", true), ("ended", false)] {
+        let cells = route::cells(&format!(
+            r#"{{"Ok":{{"Sessions":[{{"id":"s-void2","address":"VOID02","state":"{state}"}}]}}}}"#
+        ));
+        let ears = place.ears();
+        let mut following = quiet();
+        hear_logs(
+            &ears,
+            &mut following,
+            &mut Vec::new(),
+            (&[], &cells, &Routes::read(&ears.state)),
+            ears.at - DAY_MS,
+        );
+        assert_eq!(
+            voids_of(&following).contains("s-void2"),
+            followed,
+            "its cell {state}, the quiet void session was followed wrongly"
+        );
+    }
+}

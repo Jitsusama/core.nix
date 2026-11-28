@@ -71,6 +71,11 @@ pub struct Heard {
     /// all the same, so a retry goes back there while it fits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_late_at: Option<String>,
+    /// When it began to wait out the node naming no hubs, kept across
+    /// runs however far apart, so no gap between them starts its wait
+    /// again (#7022's round, F20).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hubs_waited_since: Option<i64>,
     /// When a note to the ledgers' keeper of it, sent to its owner, was
     /// first held for a node that wasn't answering: it goes in the next
     /// run's note.
@@ -201,6 +206,7 @@ mod tests {
             tries: 0,
             sends_failed_at: Vec::new(),
             sent_late_at: None,
+            hubs_waited_since: None,
             unnoted_since: None,
             taken_by: None,
             answered_at: None,

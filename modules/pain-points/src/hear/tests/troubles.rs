@@ -128,6 +128,20 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn the_nodes_words_in_the_hours_troubles_are_quoted_as_its_own() {
+    let trouble = super::super::troubles::Hubless {
+        at: AT,
+        sent: 2,
+        why: "refused\n\"all clear\"".into(),
+    }
+    .trouble();
+    assert!(
+        trouble.ends_with("to the fallback: \"refused 'all clear'\""),
+        "the node's words weren't quoted as its own: {trouble}"
+    );
+}
+
+#[test]
 fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
     let place = Place::new("hubless-node");
     place.routes();
@@ -164,8 +178,15 @@ fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
          {hour:?}"
     );
     assert_eq!(hour.hubless_since, Some(AT), "the outage wasn't counted");
-    let (to, said, _) = run(AT + 10 * minute, refused);
+    let (to, said, hour) = run(AT + 10 * minute, refused);
     assert!(to.is_empty() && !said, "within the grace: {to:?}");
+    // The card says the grace, as it does a node naming no sessions
+    // (#7022's round, F8).
+    let line = super::super::said(&hour);
+    assert!(
+        line.contains("named no hubs for 10 minutes, so pains a hub would take wait"),
+        "the grace isn't said: {line}"
+    );
     let (to, said, hour) = run(AT + 15 * minute, refused);
     assert_eq!(to, ["ORCH01"], "past a blink it didn't go to the fallback");
     assert!(
@@ -188,6 +209,44 @@ fn a_pain_a_hub_would_take_waits_out_a_blink_then_goes_to_the_fallback_said() {
     assert!(
         to.is_empty() && !said && hour.hubless_since.is_none(),
         "a listener nobody set up counted or said the node out: {hour:?}"
+    );
+}
+
+#[test]
+fn a_pain_waits_out_one_blink_however_far_apart_the_runs_are() {
+    let place = Place::new("hubless-gap");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    let run = |at: i64| {
+        let ears = Ears {
+            at,
+            hubless: Some("connection refused".into()),
+            ..place.ears()
+        };
+        let mut to = Vec::new();
+        let hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER)
+            {
+                to.push(owner.to_owned());
+            }
+            true
+        })
+        .expect("a run");
+        (to, hour)
+    };
+    let (to, _) = run(AT);
+    assert!(
+        to.is_empty(),
+        "the void's pain didn't wait out the blink: {to:?}"
+    );
+    // Runs skipped between, so the outage's count starts again.
+    let (to, hour) = run(AT + 15 * minute);
+    assert_eq!(hour.hubless_since, Some(AT + 15 * minute), "{hour:?}");
+    assert_eq!(
+        to,
+        ["ORCH01"],
+        "a gap between runs started the pain's wait again: {hour:?}"
     );
 }
 
@@ -223,6 +282,7 @@ fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
     a_day(&place);
     let minute = 60_000;
     let mut hour = Hour::default();
+    let mut tried = Vec::new();
     // Runs five minutes apart, as its timer runs them, so the outage is
     // carried from each to the next until it is past a blink.
     for at in [AT, AT + 5 * minute, AT + 10 * minute, AT + 15 * minute] {
@@ -231,8 +291,18 @@ fn a_pain_for_want_of_hubs_whose_send_failed_is_not_said_to_have_gone() {
             hubless: Some("connection refused".into()),
             ..place.ears()
         };
-        hour = hear(&ears, CELLS, &mut |owner, _| owner != "ORCH01").expect("a run");
+        hour = hear(&ears, CELLS, &mut |owner, text| {
+            if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER)
+            {
+                tried.push(owner.to_owned());
+            }
+            owner != "ORCH01"
+        })
+        .expect("a run");
     }
+    // It was tried at the fallback, so the absence below is of a claim,
+    // not of a send (#7022's round, F7).
+    assert_eq!(tried, ["ORCH01"], "the fallback was never tried: {hour:?}");
     assert!(
         !hour.troubles.iter().any(|t| t.contains("named no hubs")),
         "a fallback send that failed was said to have gone for want of hubs: {hour:?}"
@@ -290,6 +360,53 @@ fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
         hubs_named(&place.root, None, Some("nowhere".into())),
         (Vec::new(), None),
         "a machine with no runtime folder read as a node that couldn't be asked"
+    );
+}
+
+#[test]
+fn pains_sent_for_want_of_hubs_add_up_over_the_hour() {
+    let place = Place::new("hubless-adds");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    // The run before, past a blink already, sent two there.
+    let before = Hour {
+        at: AT,
+        hubless_since: Some(AT - 15 * minute),
+        hubless: Some(Hubless {
+            at: AT,
+            sent: 2,
+            why: "connection refused".into(),
+        }),
+        ..Hour::default()
+    };
+    fs::write(
+        place.root.join("state/hour.json"),
+        serde_json::to_string(&before).expect("an hour"),
+    )
+    .expect("hour.json");
+    let ears = Ears {
+        at: AT + 5 * minute,
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let mut to = Vec::new();
+    let hour = hear(&ears, CELLS, &mut |owner, text| {
+        if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER) {
+            to.push(owner.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert_eq!(to, ["ORCH01"], "the void's pain didn't go to the fallback");
+    assert_eq!(
+        hour.hubless.as_ref().map(|h| h.sent),
+        Some(3),
+        "this run's count replaced the hour's rather than adding to it: {hour:?}"
+    );
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("3 pains")),
+        "the card didn't say the hour's count: {hour:?}"
     );
 }
 
