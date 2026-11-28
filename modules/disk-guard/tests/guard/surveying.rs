@@ -241,6 +241,36 @@ fn upkeep_again_for_an_unheard_system_daemon_waits_out_the_spacing() {
 }
 
 #[test]
+fn a_retry_that_kept_unvouched_again_is_not_retried_after_a_disk_that_kept_nothing() {
+    // Each disk's upkeep in the retry step is judged against the upkeep
+    // before it, which went unheard, not against the disk before it's.
+    let (first, second) = two_disks();
+    let scratch = first.path().join("scratch");
+    let home = Home::within(second);
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let config = with_scratch(owned_trees(&home), &scratch);
+    let start = wall();
+    let mut guard = Guard::new(crate::unpaced(config), &places).unwrap();
+    guard.step(&after(start, 0.0), &CALM).unwrap();
+    guard.step(&after(start, 660.0), &CALM).unwrap();
+    assert!(built.exists(), "kept while nothing vouches for process 300");
+    let _heard = fake_system(&socket, false);
+    guard.step(&after(start, 1320.0), &CALM).unwrap();
+    assert!(
+        built.exists(),
+        "a retry that went unheard again was retried, as the disk before kept nothing"
+    );
+}
+
+#[test]
 fn a_guard_marks_every_disk_it_watches_when_it_starts_with_spent_builds_unjudged() {
     // Which disk held them isn't kept, so each judges its own again.
     let (first, second) = two_disks();
