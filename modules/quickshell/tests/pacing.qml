@@ -97,7 +97,7 @@ QtObject {
             Presented.shownFirst([], 41), null);
         let answers = [];
         for (let frame = 1; frame <= 12; frame += 1)
-            answers = Presented.answered(answers, { frame, at: frame * 16 });
+            answers = Presented.answersWith(answers, { frame, at: frame * 16 });
         check(failures, "only the newest answers are kept", answers.length, 8);
         check(failures, "the newest kept is the last answered", answers[7].frame, 12);
         check(failures, "the oldest kept is the eighth from the end", answers[0].frame, 5);

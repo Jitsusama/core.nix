@@ -13385,7 +13385,7 @@ Scope {
     property int presentedShown: -1
     property bool presentedTimed: false
     // Niri's answers before the opening's frame is known, each
-    // `{frame, at}`, which may hold that frame's (Presented.answered).
+    // `{frame, at}`, which may hold that frame's (Presented.answersWith).
     property var presentedAnswers: []
     // Whether the journal has said niri gives no presentation times, said
     // once a shell: without them no opening, key or change says when niri
@@ -13453,7 +13453,7 @@ Scope {
             return;
         }
         if (presentedFrame < 0) {
-            presentedAnswers = Presented.answered(presentedAnswers, { frame, at });
+            presentedAnswers = Presented.answersWith(presentedAnswers, { frame, at });
             return;
         }
         // Taken once, by the first at or after the opening's frame.

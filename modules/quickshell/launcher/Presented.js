@@ -160,7 +160,7 @@ function shownFirst(answers, frame) {
 // frame the window draws, so it hears an opening's frame swapped before more than a frame or two
 // after it are answered, and a few are enough.
 const answersKept = 8;
-function answered(answers, answer) {
+function answersWith(answers, answer) {
     return answers.concat([answer]).slice(-answersKept);
 }
 
