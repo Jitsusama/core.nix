@@ -290,3 +290,31 @@
   font-style: italic;
   color: var(--text);
 }
+
+/* ---- The sentence over the work, and the grove beside it. ---- */
+
+.over {
+  inline-size: var(--page);
+  margin-inline: auto;
+}
+
+/* On a wide window the grove stands beside the sentence rather than under
+   it, so the list starts high enough to read a screen of it at once. It comes
+   last here, after the figure's and caption's own rules, as it did when it
+   stood in site.css. */
+@media (min-width: 75rem) {
+  .over {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 44rem);
+    align-items: end;
+  }
+
+  .over .grove-figure {
+    inline-size: auto;
+    padding-block-end: var(--items);
+  }
+
+  .over .caption {
+    padding-inline-start: 0;
+  }
+}

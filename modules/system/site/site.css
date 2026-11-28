@@ -20,6 +20,20 @@
   --said: color-mix(in oklab, var(--tint) 62%, var(--strong));
 }
 
+/* The page stays unseen until it first draws (site.ts), and a second at most, so a script
+   that never runs can't leave it blank.
+   Faded out rather than hidden, so a link keeps its focus while it waits. */
+.waits body {
+  opacity: 0;
+  animation: shown 0s 1s forwards;
+}
+
+@keyframes shown {
+  to {
+    opacity: 1;
+  }
+}
+
 /* In the dark, the last of the light still sits over the deck. */
 html:not([data-theme="light"]) body {
   background-image: radial-gradient(

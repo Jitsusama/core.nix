@@ -121,5 +121,21 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
   };
 }
 
+/**
+ * Keeps whatever the cursor lands on clear of `mast`, however many lines it
+ * wraps to. On a phone it scrolls away with the page, so nothing need clear
+ * it there.
+ */
+function clearOf(mast: HTMLElement): void {
+  new ResizeObserver(() => {
+    const sticks = getComputedStyle(mast).position === "sticky";
+    // Its height rounded up, since offsetHeight rounds a fraction down and
+    // leaves a row that sliver under it.
+    document.documentElement.style.scrollPaddingBlockStart = sticks
+      ? `${Math.ceil(mast.getBoundingClientRect().height)}px`
+      : "0px";
+  }).observe(mast);
+}
+
 export type { Cursor };
-export { cursorOver };
+export { clearOf, cursorOver };

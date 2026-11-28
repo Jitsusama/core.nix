@@ -15,7 +15,7 @@ row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, open on a headline and lede holding two lines,
 the lines the live ones take and those head.ts writes for counts up to 999
 repositories and for one thing worth a look of each kind but a gone folder,
-not shift as its feeds arrive on a reload, nor hold room for what a reload
+not shift as its feeds arrive on a first visit or a reload, nor hold room for what a reload
 forgets or at another width, draw a second's burst of records a few times
 rather than each, draw a thread for each cell joining two repositories on the
 map under the work and walk it by keys, and pass the web-design skill's page
@@ -56,6 +56,16 @@ ASKED_AGAIN_MS = 20_000
 STILL = 0.01
 # How long page.ts holds the last visit's room before letting it go anyway.
 ROOM_HELD_MS = 3000
+# The longest a first visit is held unseen, as page.ts's ROOM_WAIT_MS and site.css's fallback
+# hold it. The first visit's still test passes only if the stand-in draws inside it: past it,
+# the page is shown before it has drawn, so neither its stillness nor its draw showing it is
+# what the test reads.
+UNSEEN_MS = 1000
+# What site.css makes of the body's opacity while a first visit is held, and once it is shown.
+UNSEEN = "0"
+SEEN = "1"
+# The mark index.html sets on a first visit and page.ts clears once the repositories draw.
+WAITS = re.compile(r"\bwaits\b")
 # A phone's window short enough that an open drawer runs past its foot.
 SHORT_PHONE = 360
 # Core's resting tree, in a season that stays folded until opened.
@@ -76,9 +86,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
 # every page reads, one keeps a name with nowhere to wrap inside its stand and the find's
-# placeholder upright under more contrast, and one is the head's opening words and the lines it
-# holds for its live ones.
-BUDGET = Budget(files=37, kilobytes=538, elements=276)
+# placeholder upright under more contrast, one is the head's opening words and the lines it
+# holds for its live ones, and one is what holds a first visit unseen until it draws.
+BUDGET = Budget(files=37, kilobytes=539, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -699,6 +709,74 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
+# Every shift of the page the reader didn't cause, from its first paint on.
+SHIFTS = """globalThis.shifted = 0;
+new PerformanceObserver((list) => {
+  for (const each of list.getEntries()) {
+    globalThis.shifted += each.hadRecentInput ? 0 : each.value;
+  }
+}).observe({ type: "layout-shift", buffered: true });"""
+
+
+# How a first visit is held, read the way the page sets it: the mark index.html sets and page.ts
+# clears, what site.css makes of the body's opacity under it, whether a row is drawn, and when.
+# It's read once as the page loads, before a feed can draw, and once as the mark goes, since a
+# row can draw before every kind has come, and by the time a test looks the cap may have shown
+# the page anyway.
+HELD = """const heldOf = () => ({
+  waits: document.documentElement.classList.contains("waits"),
+  opacity: getComputedStyle(document.body).opacity,
+  drawn: document.querySelector("#list .row") !== null,
+  at: performance.now(),
+});
+document.addEventListener("DOMContentLoaded", () => {
+  globalThis.loaded = heldOf();
+});
+new MutationObserver((_, watching) => {
+  const waits = document.documentElement.classList.contains("waits");
+  if (globalThis.loaded !== undefined && !waits) {
+    globalThis.shown = heldOf();
+    watching.disconnect();
+  }
+}).observe(document, { attributes: true, attributeFilter: ["class"], subtree: true });"""
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_first_visit_holds_the_page_still(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    root, _ = code_served
+    width, height = size
+    context = browser.new_context(viewport={"width": width, "height": height})
+    try:
+        page = context.new_page()
+        page.add_init_script(SHIFTS)
+        page.add_init_script(HELD)
+        page.goto(f"{root}code/")
+        says_it_stands(page, "live")
+        expect(row(page, "github:owl/core"), "a first visit drew no row").to_be_visible()
+        html = page.locator("html")
+        expect(html, "a first visit was never shown").not_to_have_class(WAITS, timeout=PACE_MS)
+        loaded = page.evaluate("() => globalThis.loaded")
+        assert loaded is not None, "a first visit was never read as it loaded"
+        assert not loaded["drawn"], "a first visit drew as it loaded, so its hold went unread"
+        assert loaded["waits"], "a first visit wasn't marked to wait as it loaded"
+        opacity = loaded["opacity"]
+        assert opacity == UNSEEN, f"a first visit was at opacity {opacity} before it drew"
+        shown = page.evaluate("() => globalThis.shown")
+        assert shown is not None, "a first visit's mark went before the page had loaded"
+        at = shown["at"]
+        assert at < UNSEEN_MS, f"a first visit was shown at {at:.0f} ms, by the cap, not its draw"
+        assert shown["drawn"], "a first visit was shown before its repositories drew"
+        opacity = shown["opacity"]
+        assert opacity == SEEN, f"a first visit was at opacity {opacity} once shown"
+        page.wait_for_timeout(1000)
+        shifted = page.evaluate("() => globalThis.shifted")
+        assert shifted < STILL, f"a first visit at {width} px shifted {shifted} as it drew"
+    finally:
+        context.close()
+
+
 # What the stand-in's grove holds worth a look, its one change failing, as the live lede says it.
 FAILING = "has 1 change whose checks fail."
 # The headlines and ledes head.ts writes for groves the stand-in's doesn't hold, by the page's
@@ -802,14 +880,9 @@ def test_the_opening_words_take_the_lines_the_head_will(
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
-    # Every shift of the page the reader didn't cause, from the reload's first paint on.
     code_page.add_init_script(
-        """globalThis.shifted = 0;
-        new PerformanceObserver((list) => {
-          for (const each of list.getEntries()) {
-            globalThis.shifted += each.hadRecentInput ? 0 : each.value;
-          }
-        }).observe({ type: "layout-shift", buffered: true });
+        SHIFTS
+        + """
         document.addEventListener("DOMContentLoaded", () => {
           globalThis.held = document.documentElement.style.getPropertyValue("--room-list");
         });"""

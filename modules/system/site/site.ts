@@ -17,7 +17,7 @@ import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { askedOf, landingOf, recordsOf, type Watch } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
-import { cursorOver } from "./cursor.ts";
+import { clearOf, cursorOver } from "./cursor.ts";
 import {
   awayOf,
   headlineOf,
@@ -52,20 +52,7 @@ const bridge = element("#bridge", HTMLElement);
 const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
 const keys = element("#keys", HTMLDialogElement);
-const mast = element(".mast", HTMLElement);
-
-// Whatever the keys land on stays clear of the masthead, however many lines
-// it wraps to. On a phone it scrolls away with the page, so nothing need
-// clear it there.
-const clearOfMast = new ResizeObserver(() => {
-  const sticks = getComputedStyle(mast).position === "sticky";
-  // Its height rounded up, since offsetHeight rounds a fraction down and
-  // leaves a row that sliver under it.
-  document.documentElement.style.scrollPaddingBlockStart = sticks
-    ? `${Math.ceil(mast.getBoundingClientRect().height)}px`
-    : "0px";
-});
-clearOfMast.observe(mast);
+clearOf(element(".mast", HTMLElement));
 
 const KINDS = ["summary", "part", "machine", "builder"] as const;
 // What each watch holds: the Held its follow keeps, which is the one it
@@ -83,6 +70,10 @@ const told = new Set<string>();
 // How long the page waits for every watch before it draws what it has, so
 // one stuck connecting never leaves it blank.
 const PATIENCE = 5000;
+// The longest the page stays unseen for its first draw, as site.css's fallback does.
+const UNSEEN_MS = 1000;
+const show = (): void => document.documentElement.classList.remove("waits");
+setTimeout(show, UNSEEN_MS);
 let waiting = true;
 setTimeout(() => {
   waiting = false;
@@ -341,6 +332,7 @@ function draw(): void {
   drawParts(system);
   landAsked(system);
   markPlace();
+  show();
 }
 
 ask();
