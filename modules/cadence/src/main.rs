@@ -95,7 +95,8 @@ use mesh::{Mesh, Message};
 use net::Round;
 use watch::{Landing, Snapshot, down};
 
-/// The address cadence's questions come from.
+/// The address cadence's questions come from, which the measure of
+/// claims of his rule reads its own asks back by.
 const FROM: &str = "CADENCE";
 /// Where a question of cadence's says its answer goes. No peer goes by
 /// CADENCE, so the mesh tells whoever answers that it reaches no one, and

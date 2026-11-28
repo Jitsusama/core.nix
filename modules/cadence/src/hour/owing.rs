@@ -3,9 +3,9 @@
 //! filed before closed once it is back in.
 //!
 //! Long because each kind of drag, Joel's misses, a merge's rounds, dates
-//! told late, the work system's findings, the worst queue and each
-//! measure's lines by owner, is filed and closed by rules of its own, and
-//! its tests sit beside them.
+//! told late, the work system's findings, the worst queue, claims of his
+//! rule with nothing behind them and each measure's lines by owner, is
+//! filed and closed by rules of its own, and its tests sit beside them.
 
 use std::collections::BTreeMap;
 
@@ -18,12 +18,41 @@ use super::measures::queues::{self, QUEUE};
 use super::measures::way_out::{calls, path, relay};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
-    held_for_good, held_unseen, rounds, site, told_late,
+    held_for_good, held_unseen, rounds, ruled, site, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
 /// dated change it asks for to land.
 const QUEUE_DUE: i64 = 7 * DAY;
+
+/// How long the ask about a claim of his rule is given. Its claim is at
+/// most a day old when it's filed and leaves the count a day after it was
+/// sent, so the first hour a day after the ask closes it by its age alone,
+/// whatever the mesh reads. The day's run marks late what's past due
+/// before any hour has run, as on a machine waking from a weekend asleep,
+/// so the ask is given a week: only a week with no hour run leaves one
+/// open to go late.
+const RULED_DUE: i64 = 7 * DAY;
+
+/// How many senders one hour asks about a claim of his rule, the oldest
+/// claims first, the rest left to the hours after. The first hour after
+/// the measure starts finds a day's backlog, some few dozen senders on
+/// 26 November, and each ask wakes its cell if it's parked, so the wakes
+/// are spread over the hours rather than sent at once.
+pub(super) const RULED_HOURLY: usize = 6;
+
+/// How far back the asks about a claim of his rule count against
+/// [`RULED_HOURLY`]: a second run in the same hour, the timer's and one
+/// by hand, finds the first's asks and sends only what is left of the
+/// cap. Shorter than an hour, since the asks are stamped when a run
+/// sends them: the timer starts a run late by up to its half-minute
+/// accuracy, never early, and a run reads the hour before it sends, so a
+/// spell of an hour to the second could find the last hour's asks in the
+/// next timer's run and send none. Ten minutes short leaves room for that
+/// lateness. The cost: the asks of a run by hand in the ten minutes after
+/// the timer's fall out of the next timer's count too, so that hour may
+/// send up to its cap again.
+const RULED_SPELL: i64 = 50 * 60;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -166,6 +195,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key.starts_with(told_late::KEY) {
         return told_late_asked(m, &says);
     }
+    if m.key == ruled::KEY {
+        return ruled_asked(m);
+    }
     if m.key == causes::KEY {
         return causes_asked(m);
     }
@@ -302,6 +334,50 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
         .collect()
 }
 
+/// The ask to its sender about each message claiming a rule or wish of
+/// Joel's with no word of his behind it, filed message by message, each
+/// line opening with the message's short id in brackets and naming its
+/// sender last. It closes once its line is gone: when its sender answers,
+/// which settles every claim it sent before, replaces the message, or a
+/// day after it was sent. Each sender is asked about its oldest ones, as
+/// [`ruled::asked_of_each`] gives them, and at most once a day, as
+/// [`asked_lately`] holds it, so a day's backlog wakes a cell once rather
+/// than for every message in it, and at most [`RULED_HOURLY`] senders an
+/// hour, as [`ask_claims`] holds it. Only [`back_in`] and the age close
+/// in [`file`] close these, by this measure's key, so a revert of the
+/// measure must first settle every open `hour:rulings-unsourced:` entry,
+/// as `cadence owe --done hour:rulings-unsourced:` does, or each goes late
+/// and stays open.
+fn ruled_asked(m: &Measure) -> Vec<Filed> {
+    ruled::asked_of_each(&m.behind)
+        .into_iter()
+        .filter_map(|line| line.rsplit_once(" · "))
+        .filter_map(|(claim, owner)| {
+            let (id, said) = claim.strip_prefix('[')?.split_once("] ")?;
+            Some(Filed {
+                key: format!("hour:{}:{owner}:{id}", m.key),
+                says: format!(
+                    "a claim of his rule with no word of his, yours: {}",
+                    ruled::quoted(said)
+                ),
+                text: ruled::ask(id, said),
+                owner: owner.to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// Whether `prefix` names musts `cadence owe --done` may close at once:
+/// the asks [`ruled_asked`] files, every sender's or one sender's, since
+/// it files one a message. Any other prefix is refused, since one such as
+/// `hour:` would close every owner's musts, each told nothing.
+#[must_use]
+pub fn closed_together(prefix: &str) -> bool {
+    prefix
+        .strip_prefix(&format!("hour:{}:", ruled::KEY))
+        .is_some_and(|owner| owner.split(':').count() <= 2)
+}
+
 /// The ask to each class's owner about a cause found on three or more
 /// changes in a week, filed class by class, so each owner fixes the cause
 /// once rather than each change's reviewer fixing it again. It closes once
@@ -404,6 +480,31 @@ fn routed(class: Class) -> bool {
     matches!(class, Class::Clean | Class::Cells)
 }
 
+/// Whether the ask about a claim of his rule filed as `key`, an hour's
+/// key with its `hour:` taken off, is back in, or none when `key` is no
+/// such ask. A claim is its sender's until its message's line is gone
+/// from the measure, read; with the mesh unread it says nothing, so it
+/// stays open.
+fn claim_back_in(key: &str, measures: &[Measure]) -> Option<bool> {
+    let (owner, id) = key
+        .strip_prefix(ruled::KEY)?
+        .strip_prefix(':')?
+        .rsplit_once(':')?;
+    let (opens, ends) = (format!("[{id}] "), format!(" · {owner}"));
+    Some(
+        measures
+            .iter()
+            .find(|m| m.key == ruled::KEY)
+            .is_some_and(|m| {
+                m.target.is_some()
+                    && !m
+                        .behind
+                        .iter()
+                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+            }),
+    )
+}
+
 /// Whether the drag filed as `key` is back in: its miss no longer open,
 /// or its measure read and within its target; a drag filed for each line's
 /// owner carries that owner after its measure's key, and a cells one is
@@ -450,6 +551,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .split_once(':')
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
+    }
+    if let Some(back) = claim_back_in(key, measures) {
+        return back;
     }
     // A path is measured for each origin the deployer names, sampled or
     // not, so a path gone from the hour is an origin no longer named, and
@@ -565,6 +669,20 @@ fn fixed_lately(ledger: &[Entry], key: &str, now: i64) -> bool {
         })
 }
 
+/// Whether `owner` was asked about a claim of his rule within the day
+/// before `now`, open or closed: each ask wakes it if it's parked, and
+/// one answer settles every claim it sent before, so it's asked at most
+/// once a day however many it made. When an ask was filed is when it was
+/// last sent, as the age close in [`file`] reads it too, rather than its
+/// due less [`RULED_DUE`], so a ledger saved under another due still reads
+/// right.
+fn asked_lately(ledger: &[Entry], owner: &str, now: i64) -> bool {
+    let keyed = format!("hour:{}:{owner}:", ruled::KEY);
+    ledger
+        .iter()
+        .any(|e| e.key.starts_with(&keyed) && e.last_to > now - DAY)
+}
+
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
@@ -588,6 +706,7 @@ pub fn file(
         .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
         .filter(|e| match e.key.strip_prefix("hour:") {
             Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
+            Some(key) if key.starts_with(ruled::KEY) && e.last_to + DAY <= now => true,
             _ => back_in(&e.key, measures),
         })
         .map(|e| e.key.clone())
@@ -595,6 +714,7 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
+    forget_spent_claims(ledger, now);
     let rest: Vec<Measure> = measures
         .iter()
         .filter(|m| m.class != Class::Apps)
@@ -646,10 +766,9 @@ pub fn file(
                 // A queue's ask is answered by a change weighed against
                 // others, which takes longer than a day to land.
                 due: now
-                    + if m.class == Class::Queues {
-                        QUEUE_DUE
-                    } else {
-                        DAY
+                    + match m.class {
+                        Class::Queues => QUEUE_DUE,
+                        _ => DAY,
                     },
                 says: one.says,
                 kind: "drag".to_owned(),
@@ -662,10 +781,98 @@ pub fn file(
     told
 }
 
+/// Files the asks about claims of his rule, once [`file`] has closed
+/// those back in, and says what to tell each sender. Each sender is asked
+/// at most once a day, as [`asked_lately`] holds it, and at most
+/// [`RULED_HOURLY`] senders are asked in any [`RULED_SPELL`], counted
+/// from the asks the ledger holds rather than within one run, so a second
+/// run in the hour asks only what is left of the cap. The hour keeps the
+/// ledger before it sends these, unlike its other asks, so a run stopped
+/// after sending them doesn't ask the same senders again the next hour:
+/// each wakes its cell, and one ask lost costs less than a cell woken
+/// twice, since its claim leaves the count within the day all the same.
+pub fn ask_claims(
+    ledger: &mut Vec<Entry>,
+    measures: &[Measure],
+    date: &str,
+    now: i64,
+) -> Vec<(String, String)> {
+    let Some(m) = measures
+        .iter()
+        .find(|m| m.key == ruled::KEY && m.past().is_some())
+    else {
+        return Vec::new();
+    };
+    let keyed = format!("hour:{}:", ruled::KEY);
+    let spent = ledger
+        .iter()
+        .filter(|e| e.key.starts_with(&keyed) && e.last_to > now - RULED_SPELL)
+        .count();
+    let mut left = RULED_HOURLY.saturating_sub(spent);
+    let mut told = Vec::new();
+    for one in ruled_asked(m) {
+        if left == 0 {
+            break;
+        }
+        if ledger.iter().any(|e| e.open && e.key == one.key)
+            || asked_lately(ledger, &one.owner, now)
+        {
+            continue;
+        }
+        left -= 1;
+        owe::owe(
+            ledger,
+            Owed {
+                key: one.key,
+                axis: m.class.name().to_owned(),
+                owner: one.owner.clone(),
+                // A claim's ask closes by its age a day after it was
+                // filed, so its due is only ever reached with no hour run
+                // for a week.
+                due: now + RULED_DUE,
+                says: one.says,
+                kind: "drag".to_owned(),
+            },
+            date,
+            now,
+        );
+        told.push((one.owner, one.text));
+    }
+    told
+}
+
+/// Drops the asks about claims of his rule that are closed and were last
+/// sent more than a day before `now`. Each claim is asked under a key of
+/// its own, never filed again once its claim has left the count, so the
+/// ledger would otherwise grow by every ask for good; [`asked_lately`]
+/// looks back a day and no further, and every other kind of entry is kept.
+fn forget_spent_claims(ledger: &mut Vec<Entry>, now: i64) {
+    let keyed = format!("hour:{}:", ruled::KEY);
+    ledger.retain(|e| {
+        e.open
+            || e.kind.as_deref() != Some("drag")
+            || !e.key.starts_with(&keyed)
+            || e.last_to > now - DAY
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::measure;
     use super::*;
+
+    /// What the hour files and tells, the asks about claims of his rule
+    /// after the rest, as the hour files them.
+    fn file_all(
+        ledger: &mut Vec<Entry>,
+        measures: &[Measure],
+        date: &str,
+        now: i64,
+    ) -> Vec<(String, String)> {
+        let mut told = file(ledger, measures, date, now);
+        told.extend(ask_claims(ledger, measures, date, now));
+        told
+    }
 
     #[test]
     fn a_miss_cadence_cant_see_running_isnt_put_to_its_owner() {
@@ -1595,6 +1802,286 @@ mod tests {
                 ),
             ],
             "a move closed while its line stood, or stayed open once it was gone"
+        );
+    }
+
+    /// On 26 November two cells passed a caution on as Joel's rule, with
+    /// no word of his; each is asked of its own sender, and closes only
+    /// once its message has left the measure, read.
+    #[test]
+    fn a_claim_of_his_rule_goes_to_its_sender_and_closes_once_its_line_is_gone() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 2.0, Some(0.0));
+        claims.behind = vec![
+            "[1f2e3d4c] I broke Joel's rule · T6E7X6".to_owned(),
+            "[5a6b7c8d] That breaks Joel's rule · 5UTLKM".to_owned(),
+        ];
+        let median = measure(rounds::KEY, Class::Ship, 2.0, Some(rounds::TARGET));
+        let both = [median, claims.clone()];
+        assert!(drag(&both).is_none(), "a claim of his rule led the drag");
+        let mut ledger = Vec::new();
+        let told = file_all(&mut ledger, &both, "2026-11-26", 1000);
+        let asked: Vec<&(String, String)> = told
+            .iter()
+            .filter(|(_, text)| text.contains("a rule or wish of Joel's"))
+            .collect();
+        let mut senders: Vec<&str> = asked.iter().map(|(to, _)| to.as_str()).collect();
+        senders.sort_unstable();
+        assert_eq!(senders, ["5UTLKM", "T6E7X6"], "a sender wasn't asked apart");
+        let broke = asked
+            .iter()
+            .find(|(to, _)| to == "T6E7X6")
+            .map(|(_, text)| text.as_str())
+            .unwrap_or_default();
+        assert!(
+            broke.contains("your message 1f2e3d4c") && broke.contains("\"I broke Joel's rule\""),
+            "the sender wasn't told which message and claim: {broke}"
+        );
+        let filed = ledger
+            .iter()
+            .find(|e| e.key.ends_with("T6E7X6:1f2e3d4c"))
+            .expect("the claim's ask wasn't in the ledger");
+        assert_eq!(
+            filed.due,
+            1000 + 7 * DAY,
+            "the ask fell due within a week, so a weekend asleep could mark it late before an \
+             hour closed it"
+        );
+        let late = format!("Late: {}, open since 26 Nov, with T6E7X6", filed.words);
+        assert_eq!(
+            ruled::unbacked(&late),
+            None,
+            "the day's late line, passed on, read as its relayer's claim"
+        );
+        let mut unread = claims.clone();
+        unread.behind.clear();
+        unread.target = None;
+        file_all(&mut ledger, &[unread], "2026-11-26", 4600);
+        let open = |ledger: &[Entry]| {
+            let mut keys: Vec<String> = ledger
+                .iter()
+                .filter(|e| e.open && e.key.contains(ruled::KEY))
+                .map(|e| e.key.clone())
+                .collect();
+            keys.sort_unstable();
+            keys
+        };
+        assert_eq!(
+            open(&ledger).len(),
+            2,
+            "a claim closed while the mesh went unread"
+        );
+        claims.behind.remove(0);
+        file_all(&mut ledger, &[claims], "2026-11-26", 8200);
+        assert_eq!(
+            open(&ledger),
+            [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
+            "a claim closed while its line stood, or stayed open once it was gone"
+        );
+        let mut unread = measure(ruled::KEY, Class::Cells, 0.0, None);
+        unread.behind.clear();
+        file_all(
+            &mut ledger,
+            std::slice::from_ref(&unread),
+            "2026-11-27",
+            1000 + DAY - 1,
+        );
+        assert_eq!(
+            open(&ledger),
+            [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
+            "an ask closed by its age before a day had passed"
+        );
+        file_all(&mut ledger, &[unread], "2026-11-27", 1000 + DAY);
+        assert_eq!(
+            open(&ledger),
+            Vec::<String>::new(),
+            "an ask a day old, its claim gone from the count by its age, stayed open while \
+             the mesh went unread"
+        );
+    }
+
+    /// A day's backlog of one sender's claims asks about its oldest one,
+    /// and the next only a day after that ask, however soon it closes, so
+    /// a cell isn't woken for every message of a day.
+    #[test]
+    fn a_sender_is_asked_about_one_claim_at_a_time_and_once_a_day() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 5.0, Some(0.0));
+        claims.behind = ["0000000a", "0000000b", "0000000c", "0000000d"]
+            .iter()
+            .map(|id| format!("[{id}] Joel wants it. · T6E7X6"))
+            .chain(["[0000000e] Joel wants it. · 5UTLKM".to_owned()])
+            .collect();
+        let mut ledger = Vec::new();
+        let asked = |told: &[(String, String)]| {
+            let mut ids: Vec<String> = told
+                .iter()
+                .filter_map(|(_, text)| text.strip_prefix("cadence hour: your message "))
+                .filter_map(|text| text.split_once(' ').map(|(id, _)| id.to_owned()))
+                .collect();
+            ids.sort_unstable();
+            ids
+        };
+        let told = file_all(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(
+            asked(&told),
+            ["0000000a", "0000000e"],
+            "a sender was asked about more than its oldest, or another sender not at all"
+        );
+        claims.behind.remove(0);
+        let told = file_all(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            4600,
+        );
+        assert_eq!(
+            asked(&told),
+            Vec::<String>::new(),
+            "a sender answering was asked about its next claim within the day of its last ask"
+        );
+        assert!(
+            ledger
+                .iter()
+                .all(|e| !e.key.ends_with("0000000a") || !e.open),
+            "the answered claim's ask stayed open"
+        );
+        let told = file_all(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-27",
+            1000 + DAY - 1,
+        );
+        assert_eq!(
+            asked(&told),
+            Vec::<String>::new(),
+            "a sender was asked again before a day had passed since its last ask"
+        );
+        // A day on, the other sender's claim has left the count by its age.
+        claims.behind.retain(|line| !line.ends_with("5UTLKM"));
+        let told = file_all(&mut ledger, &[claims], "2026-11-27", 1000 + DAY);
+        assert_eq!(
+            asked(&told),
+            ["0000000b"],
+            "the next claim wasn't asked a day after the last ask, or one was asked again"
+        );
+    }
+
+    /// The first hour finds a day's backlog, so it asks at most
+    /// [`RULED_HOURLY`] senders, the oldest claims first, and the rest in
+    /// the hours after, rather than waking every one at once.
+    #[test]
+    fn an_hour_asks_only_so_many_senders_the_oldest_first() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 8.0, Some(0.0));
+        claims.behind = (0..8)
+            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{}", 7 - n))
+            .collect();
+        // Named against the claims' order, so asking by name rather than
+        // by age asks the wrong ones; sorted, since the order told isn't
+        // what's tested.
+        let senders = |told: Vec<(String, String)>| -> Vec<String> {
+            let mut to: Vec<String> = told
+                .into_iter()
+                .filter(|(_, text)| text.contains("a rule or wish of Joel's"))
+                .map(|(to, _)| to)
+                .collect();
+            to.sort();
+            to
+        };
+        let mut ledger = Vec::new();
+        let first = file_all(
+            &mut ledger,
+            std::slice::from_ref(&claims),
+            "2026-11-26",
+            1000,
+        );
+        assert_eq!(
+            senders(first),
+            (8 - RULED_HOURLY..8)
+                .map(|n| format!("SENDER{n}"))
+                .collect::<Vec<_>>(),
+            "an hour asked more senders than its cap, or not the oldest claims' first"
+        );
+        let next = file_all(&mut ledger, &[claims], "2026-11-26", 4600);
+        assert_eq!(
+            senders(next),
+            ["SENDER0", "SENDER1"],
+            "the senders past the first hour's cap weren't asked in the next"
+        );
+    }
+
+    /// A second run in the same hour, the timer's and one by hand, finds
+    /// the first's asks in the ledger and asks only what is left of the
+    /// cap; the next hour's run, though a little early, asks a full cap.
+    #[test]
+    fn a_second_run_in_the_hour_asks_no_senders_past_the_cap() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 8.0, Some(0.0));
+        claims.behind = (0..8)
+            .map(|n| format!("[0000000{n}] Joel wants it. · SENDER{n}"))
+            .collect();
+        let mut ledger = Vec::new();
+        let read = std::slice::from_ref(&claims);
+        let first = file_all(&mut ledger, read, "2026-11-26", 1000);
+        let again = file_all(&mut ledger, read, "2026-11-26", 1000 + 1800);
+        assert_eq!(
+            (first.len(), again.len()),
+            (RULED_HOURLY, 0),
+            "a second run in the hour asked more senders than the first left of the cap"
+        );
+        let next = file_all(&mut ledger, read, "2026-11-26", 1000 + 3600 - 30);
+        assert_eq!(
+            next.len(),
+            8 - RULED_HOURLY,
+            "the next hour's run, started a little early, counted the last hour's asks \
+             against its cap"
+        );
+    }
+
+    /// Each claim is asked under a key of its own, so the hour forgets
+    /// the asks closed and last sent more than a day ago, which no hour
+    /// reads again, and keeps every other entry, a closed miss's included.
+    #[test]
+    fn the_hour_forgets_closed_claims_asks_a_day_old_and_nothing_else() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 2.0, Some(0.0));
+        claims.behind = vec![
+            "[0000000a] Joel wants it. · T6E7X6".to_owned(),
+            "[0000000b] Joel wants it. · 5UTLKM".to_owned(),
+        ];
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec!["the map had no network · KNURBN".to_owned()];
+        let mut ledger = Vec::new();
+        let both = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &both, "2026-11-26", 1000);
+        claims.behind.remove(0);
+        misses.behind.clear();
+        misses.now = 0.0;
+        let settled = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &settled, "2026-11-26", 2000);
+        let kept = |ledger: &[Entry]| -> Vec<(String, bool)> {
+            ledger.iter().map(|e| (e.key.clone(), e.open)).collect()
+        };
+        let (miss, answered, open) = (
+            ("hour:miss:the map had no network".to_owned(), false),
+            (format!("hour:{}:T6E7X6:0000000a", ruled::KEY), false),
+            (format!("hour:{}:5UTLKM:0000000b", ruled::KEY), true),
+        );
+        let within = [claims.clone(), misses.clone()];
+        file_all(&mut ledger, &within, "2026-11-27", 1000 + DAY - 1);
+        assert_eq!(
+            kept(&ledger),
+            [miss.clone(), answered, open],
+            "an ask was forgotten within the day of its sending, which holds its sender's next"
+        );
+        claims.behind.clear();
+        let gone = [claims, misses];
+        file_all(&mut ledger, &gone, "2026-11-27", 1000 + DAY + 1);
+        assert_eq!(
+            kept(&ledger),
+            [miss],
+            "a closed ask a day old was kept for good, or another kind of entry was dropped"
         );
     }
 

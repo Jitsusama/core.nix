@@ -7,6 +7,11 @@ use serde_json::Value;
 
 use super::{Class, Measure, count};
 
+/// What the measure counts, as the card says it. The measure of claims
+/// of his rule reads it out of a card passed on, since its "Joel said"
+/// is cadence's own words.
+pub const SAYS: &str = "pains Joel said that nobody has taken up";
+
 /// The oldest the hearer's summary may be, in seconds: it writes every five
 /// minutes, so three missed writes mean it has stopped.
 const STALE_AFTER: i64 = 15 * 60;
@@ -87,7 +92,7 @@ pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     let mut measure = Measure {
         key: "pains-open".to_owned(),
         class: Class::Pains,
-        says: "pains Joel said that nobody has taken up".to_owned(),
+        says: SAYS.to_owned(),
         now: 0.0,
         target: Some(0.0),
         owner: owner.to_owned(),

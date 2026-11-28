@@ -1,6 +1,9 @@
 //! What the hour measures, each against its target, read from text the
 //! machine already keeps, so every rule here is tested without a machine.
 //! Every target is a most: lower is better for each of them.
+//!
+//! Long because the measures too small for a file of their own sit here
+//! with their tests, which are over a third of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,6 +33,7 @@ mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;
+pub mod ruled;
 pub mod site;
 #[cfg(test)]
 mod slipped;
@@ -146,19 +150,36 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
 /// nor a cause found again and again, each class of which is filed with its own owner apart.
+/// A claim of Joel's rule with nothing behind it is asked of its sender apart, and never leads:
+/// only its sender's answer, its sender replacing it, or its day passing, moves it.
 /// Nor does a count of the way the calls go out (the relay, pi's calls and
 /// the path), filed to its keeper apart each hour it is past, so it never
 /// takes the place of what else drags.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
+    let apart = [rounds::FRUITLESS, told_late::KEY, ruled::KEY];
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| !apart.iter().any(|key| m.key.starts_with(key)))
         .filter(|m| m.key != causes::KEY && !way_out::on_the_way(&m.key))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
+}
+
+/// The measures read from the mesh's messages under `state_home`: the
+/// holds no ask in `asks` dates, over the last two hours, and the claims
+/// of Joel's rule with no word of his, judged over the last day from two
+/// days read. Each reads the messages itself, since each reads a
+/// different span; they're gathered in one call so the hour's gather
+/// stays within clippy's hundred.
+#[must_use]
+pub fn from_mesh(state_home: &std::path::Path, asks: &str, now: i64) -> [Measure; 2] {
+    [
+        holds::read(state_home, asks, now),
+        ruled::read(state_home, now),
+    ]
 }
 
 fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
@@ -285,10 +306,27 @@ fn median(sorted: &[f64]) -> f64 {
     }
 }
 
+/// How many words [`short`] and [`short_from`] give.
+const SHORT: usize = 9;
+
 /// The first few words of an ask, enough to know it by.
 fn short(words: &str) -> String {
-    let mut said: Vec<&str> = words.split_whitespace().take(9).collect();
-    if words.split_whitespace().nth(9).is_some() {
+    short_from(words, 0)
+}
+
+/// A few words of `words`, enough to know them by, from its word `from`,
+/// or from nearer its start when fewer than [`SHORT`] words follow that,
+/// so a window opened near the end still gives as many as it can. Three
+/// dots stand for the words left out on either side.
+fn short_from(words: &str, from: usize) -> String {
+    let all: Vec<&str> = words.split_whitespace().collect();
+    let from = from.min(all.len().saturating_sub(SHORT));
+    let mut said: Vec<&str> = Vec::new();
+    if from > 0 {
+        said.push("...");
+    }
+    said.extend(all.iter().skip(from).take(SHORT));
+    if all.len() > from + SHORT {
         said.push("...");
     }
     said.join(" ")

@@ -47,8 +47,8 @@ use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_w
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
-use owing::file;
-pub use owing::held_when_fixed;
+use owing::{ask_claims, file};
+pub use owing::{closed_together, held_when_fixed};
 use records::{RECORD_READ, aboard, tail};
 
 /// Who moves the measures no file names an owner for: the merge net's
@@ -181,6 +181,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let _held = findings::lock(&ledger_at)?;
     let mut ledger = findings::read(&ledger_at);
     let told = file(&mut ledger, &measures, &today(now), now);
+    let claims = ask_claims(&mut ledger, &measures, &today(now), now);
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
@@ -194,9 +195,17 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     }
     // Kept once the card has gone, so a send that fails tells its findings
     // and "fixed" lines again next hour rather than never: an owner told
-    // twice is cheaper than one never told.
+    // twice is cheaper than one never told. The asks about claims of his
+    // rule are the one exception, sent after, as below.
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
+    // The asks about claims of his rule go only once the ledger holding
+    // them is kept, so a run stopped while sending them doesn't ask the
+    // same senders again next hour: each wakes its cell, and its claim
+    // leaves the count within the day, asked or not.
+    for (owner, text) in claims.into_iter().filter(|(owner, _)| !owner.is_empty()) {
+        mesh.send(&message(&owner, "finding", text))?;
+    }
     Ok(())
 }
 
@@ -298,7 +307,7 @@ fn gather(
         &today(now),
         orchestrator,
     ));
-    all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(measures::from_mesh(state_home, &asks, now));
     // Only the hour that files keeps what it read of the mesh; a look by
     // hand names no orchestrator, and keeps nothing.
     let keeps = orchestrator.is_some();

@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod named;
+
 /// Where the harness keeps the mesh and its parked sessions.
 #[derive(Debug, Clone)]
 pub struct Mesh {
