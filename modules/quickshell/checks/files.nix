@@ -42,6 +42,25 @@
         touch $out
       '';
 
+  # A program's filter in the launcher's chooser of files passes a file by a
+  # glob, or by its kind as the desktop's shared-mime-info names it, as
+  # modules/quickshell/tests/file-kinds.qml holds open-with's FileKinds.js to
+  # it in Qt's own engine, past the few kinds the chooser's own check reads.
+  a-filter-passes-a-file-by-its-kind =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-filter-passes-a-file-by-its-kind" { } ''
+      cp ${../tests/file-kinds.qml} file-kinds.qml
+      cp ${../../open-with/FileKinds.js} FileKinds.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml file-kinds.qml
+      touch $out
+    '';
+
   # The launcher chooses the files a program opens or saves, as open-with asks
   # it (modules/quickshell/tests/file-chooser.qml): in folders made here, with
   # the files opened lately listed by a stand-in for recent-files, the desktop's
@@ -85,6 +104,8 @@
         "launcher/words.json"
       ]}
       cp ${../../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${../../open-with/FilePreview.qml} launcher/FilePreview.qml
+      cp ${../../open-with/FileKinds.js} launcher/FileKinds.js
       cp ${../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR

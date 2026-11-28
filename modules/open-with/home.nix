@@ -49,6 +49,13 @@ in
     orderIn = "${config.xdg.stateHome}/open-with/order";
   };
 
+  # The pieces the chooser of files makes and imports, beside it in the
+  # launcher's folder, where QML finds a type and an import by their own
+  # folder: the file-preview it keeps for an ask, and the desktop's kinds
+  # of file its filters are matched by.
+  xdg.configFile."quickshell/launcher/FilePreview.qml".source = ./FilePreview.qml;
+  xdg.configFile."quickshell/launcher/FileKinds.js".source = ./FileKinds.js;
+
   # Capture's Recent asks the same of what was taken, for a picture's
   # dimensions and a recording's length and frame in its drawer, through
   # the programs daemon, which keeps one (../programs/src/preview.rs).
