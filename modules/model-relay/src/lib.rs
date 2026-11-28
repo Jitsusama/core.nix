@@ -114,15 +114,21 @@
 //! relay for its whole answer. A request on one taken before goes alone,
 //! and its answer is waited on as any other is.
 //!
-//! A switch leaves a running relay be, since a restart would send every
-//! request direct until each answer still streaming ended, and cut those
-//! that outlast the drain. So it leaves on its own once nothing has been
-//! forwarded for a while, with no answer in flight: it stops taking
-//! connections, gives one it took just then a moment to say its request,
-//! then closes each as its answer ends. systemd keeps the socket, so
-//! whoever asks next is answered by whatever build and origin the machine
-//! now names. A request refused as another host's isn't counted, so a
-//! relay left naming an origin the machine no longer does still leaves.
+//! A switch doesn't restart a running relay, since a restart would send
+//! every request direct until each answer still streaming ended, and cut
+//! those that outlast the drain. It hands it over instead (src/main.rs
+//! says how): the build the machine now names starts beside it on the same
+//! sockets, and once that one listens, this one takes no more connections
+//! and closes each it holds as its answer ends, carrying every request on
+//! them meanwhile, so no pi is sent direct and no answer is cut but one
+//! still streaming after `HANDED_OVER_ANSWERS_WITHIN`. It also leaves on
+//! its own once nothing has been forwarded for a while, with no answer in
+//! flight: it stops taking connections, gives one it took just then a
+//! moment to say its request, then closes each as its answer ends. systemd
+//! keeps the socket, so whoever asks next is answered by whatever build
+//! and origin the machine now names. A request refused as another host's
+//! isn't counted, so a relay left naming an origin the machine no longer
+//! does still leaves.
 //!
 //! Long because the pool, the drain and the forwarding each read and set
 //! the same few counters and slots under one relay, and split apart they
@@ -151,7 +157,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::net::{TcpStream, UnixListener};
-use tokio::sync::{Mutex, Notify, mpsc, watch};
+use tokio::sync::{Mutex, Notify, mpsc, oneshot, watch};
 use tokio_rustls::TlsConnector;
 
 /// The port an https origin names when it names none.
@@ -249,6 +255,10 @@ const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
 /// How long a connection taken just as the relay leaves has to say its
 /// request, which pi sends as it connects.
 const LEAVING_GRACE: Duration = Duration::from_millis(500);
+/// How long a relay handed over waits on the answers it holds before it
+/// cuts them. Nothing waits on it to leave, so it's longer than a stop's
+/// drain: a model's answer that streams for ten minutes is a stuck one.
+pub const HANDED_OVER_ANSWERS_WITHIN: Duration = Duration::from_secs(600);
 /// How far the wall clock may run ahead of the relay's own between two
 /// requests before the machine is taken to have slept.
 const SLEPT_AT_LEAST: Duration = Duration::from_secs(10);
@@ -885,6 +895,16 @@ enum NotCarried {
     GoesAlone,
 }
 
+/// Why a relay stops taking connections as it did.
+enum Ends {
+    /// It has had nothing in hand for its idle time.
+    Idle,
+    /// systemd stopped it.
+    Stopped,
+    /// Another build took its sockets over.
+    HandedOver,
+}
+
 /// How far a relay is through leaving, as each connection it took hears.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Leave {
@@ -1456,12 +1476,14 @@ impl Relay {
     ///
     /// `lend`, when given, is answered alike, except that a request taken
     /// there goes alone where one of `listener`'s would go direct, as the
-    /// module's documentation says.
+    /// module's documentation says. Once `handed_over` says so, it leaves
+    /// as `leave_handed_over` says.
     pub async fn serve_until(
         self,
         listener: UnixListener,
         lend: Option<UnixListener>,
         mut stops: mpsc::Receiver<()>,
+        handed_over: oneshot::Receiver<()>,
     ) -> LastWord {
         let listener = Ears {
             agents: listener,
@@ -1476,16 +1498,33 @@ impl Relay {
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
         tokio::spawn(notice_sleeps(Arc::downgrade(&relay)));
         let (leave, leaving) = watch::channel(Leave::Not);
+        // A sender dropped unsent is a hand-over that never comes.
+        let handed_over = async move {
+            if handed_over.await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        };
+        tokio::pin!(handed_over);
         let was_stopped = loop {
-            let stopping = tokio::select! {
+            let ends = tokio::select! {
                 never = relay.accept(&listener, &leaving) => match never {},
-                () = relay.idle() => false,
-                () = stopped(&mut stops) => true,
+                () = relay.idle() => Ends::Idle,
+                () = stopped(&mut stops) => Ends::Stopped,
+                () = &mut handed_over => Ends::HandedOver,
             };
-            // A stop leaves whatever comes, so it gives nothing more the
-            // moment to begin an answer it would then wait on.
-            if stopping {
-                break true;
+            match ends {
+                // A stop leaves whatever comes, so it gives nothing more the
+                // moment to begin an answer it would then wait on.
+                Ends::Stopped => break true,
+                Ends::HandedOver => {
+                    relay.counts.say();
+                    let last_word = LastWord(Arc::clone(&relay.counts));
+                    relay
+                        .leave_handed_over(&listener, &leave, &leaving, &mut stops)
+                        .await;
+                    return last_word;
+                }
+                Ends::Idle => {}
             }
             // Taking no more, it gives a connection it took just now the
             // moment pi needs to say its request, which then holds it here.
@@ -1544,6 +1583,52 @@ impl Relay {
         }
         // Those refused while it left are said in its last word.
         last_word
+    }
+
+    /// Leaves once handed over to another build: it takes no more
+    /// connections, since the build it handed over to takes them on the
+    /// same sockets, and closes each it holds as its answer ends, carrying
+    /// every request on them meanwhile, as nothing about its origin has
+    /// changed. It cuts what's left after `HANDED_OVER_ANSWERS_WITHIN`, and
+    /// stopped meanwhile, it leaves as a stopped relay does.
+    async fn leave_handed_over(
+        self: &Arc<Relay>,
+        listener: &Ears,
+        leave: &watch::Sender<Leave>,
+        leaving: &watch::Receiver<Leave>,
+        stops: &mut mpsc::Receiver<()>,
+    ) {
+        eprintln!(
+            "model-relay: handed over, so it takes no more connections and leaves once the {} \
+             it holds have answered, {} s at most",
+            self.connections.now.load(Ordering::SeqCst),
+            HANDED_OVER_ANSWERS_WITHIN.as_secs()
+        );
+        // Nobody is left to tell when every connection has gone already.
+        let _ = leave.send(Leave::AsAnswersEnd);
+        let began = Instant::now();
+        let ended = tokio::select! {
+            () = self.connections.none_held() => Some(true),
+            () = tokio::time::sleep(HANDED_OVER_ANSWERS_WITHIN) => Some(false),
+            () = stopped(stops) => None,
+        };
+        match ended {
+            Some(true) => eprintln!(
+                "model-relay: the connections it held ended within {} s",
+                began.elapsed().as_secs()
+            ),
+            Some(false) => {
+                eprintln!(
+                    "model-relay: {} connections it held hadn't ended within {} s, so they're cut",
+                    self.connections.now.load(Ordering::SeqCst),
+                    HANDED_OVER_ANSWERS_WITHIN.as_secs()
+                );
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                // Nobody is left to tell when every connection has gone.
+                let _ = leave.send(Leave::Now);
+            }
+            None => self.leave_as_stopped(listener, leave, leaving, stops).await,
+        }
     }
 
     /// Leaves as `serve_until` says once stopped, leaving its last counts

@@ -73,6 +73,19 @@ let
   # one connection they took 10 to 17 s and some were reset, over four
   # 7 to 9 s, and over ten 3 to 4 s with none reset.
   connections = 16;
+  # What it serves with, started or handed over to: a reload runs the new
+  # build with these, so whatever flags a switch changes come with it.
+  flags = [
+    "--connections"
+    (toString connections)
+    "--drain-within"
+    (toString drainsWithin)
+    "--origin"
+    cfg.origin
+  ];
+  # Where it's asked to hand over, bound into its sandbox, which hides the
+  # runtime folder, so the reload, run in the same sandbox, reaches it.
+  control = "%t/${folder}/control.sock";
 in
 {
   options.jitsusama.model-relay.origin = lib.mkOption {
@@ -122,16 +135,35 @@ in
       Install.WantedBy = [ "sockets.target" ];
     };
 
+    # Only the reload asks here, as the relay's own new build; another of
+    # the account's could, but it could ptrace any pi just as well.
+    systemd.user.sockets.model-relay-control = {
+      Unit.Description = "Where the model relay is asked to hand over to a new build";
+      Socket = {
+        ListenStream = control;
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+        RemoveOnStop = true;
+        # The relay tells it from pi's by this name, which its source's
+        # CONTROL holds.
+        FileDescriptorName = "control";
+        Service = "model-relay-agents.service";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+
     systemd.user.services.model-relay-agents = {
       Unit = {
         Description = "Relays the agents' model requests over a few shared connections";
         Requires = [
           "model-relay-agents.socket"
           "model-relay-lend.socket"
+          "model-relay-control.socket"
         ];
         After = [
           "model-relay-agents.socket"
           "model-relay-lend.socket"
+          "model-relay-control.socket"
         ];
         # A restart lets each answer the relay is streaming, each a turn
         # some agent is taking, end first, sending every new request direct
@@ -142,31 +174,40 @@ in
         # doesn't linger, gives it only the user manager's own stop timeout,
         # 5 s under this repository's systemd module, so a busy relay is
         # killed mid-drain, with what it cuts and its last counts unsaid. A
-        # lingering account's logout leaves it running. A restart sends a busy machine's
-        # agents past the relay for as long as its longest answer, so a
-        # switch leaves it be. It leaves on its own once it has forwarded
-        # nothing for two minutes,
-        # and its socket starts the new build and origin at the next
-        # request. Agents busy enough never to leave it two quiet minutes
-        # keep the old one until they do, or until it's restarted by hand
-        # with systemctl --user restart model-relay-agents.
-        X-SwitchMethod = "keep-old";
+        # lingering account's logout leaves it running. A restart sends a
+        # busy machine's agents past the relay for as long as its longest
+        # answer, so a switch reloads it instead, and the reload hands it
+        # over to the new build, which starts beside it on the same sockets:
+        # it then takes no more connections and leaves once those it holds
+        # have answered, sending none direct. A new build that doesn't say
+        # it listens within 30 s is stopped, and the old one carries on.
+        X-SwitchMethod = "reload";
       };
       Service = {
-        # Both are handed it, whichever started it.
+        # Each is handed it, whichever started it.
         Sockets = [
           "model-relay-agents.socket"
           "model-relay-lend.socket"
+          "model-relay-control.socket"
         ];
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe package)
-          "--connections"
-          (toString connections)
-          "--drain-within"
-          (toString drainsWithin)
-          "--origin"
-          cfg.origin
-        ];
+        ExecStart = lib.escapeShellArgs ([ (lib.getExe package) ] ++ flags);
+        # The new build, run as the reload, asks the running one to hand
+        # over to it, and fails the reload saying why if it isn't taken.
+        ExecReload = lib.escapeShellArgs (
+          [
+            (lib.getExe package)
+            "--hand-over"
+            control
+          ]
+          ++ flags
+        );
+        # The relay handing over makes the new build the main process, and
+        # only it may say so.
+        NotifyAccess = "main";
+        # A reload is held to the start timeout, and the new build has 30 s
+        # (its source's READY_WITHIN) to say it listens, and the ask five
+        # more (ASKED_WITHIN) to arrive.
+        TimeoutStartSec = 60;
         TimeoutStopSec = drainsWithin + 10;
         # The agents' lane, never app.slice, where it would ride Joel's.
         Slice = "background.slice";
@@ -177,10 +218,16 @@ in
         # its own making. A user manager takes these by putting it in a
         # user namespace of its own, so a kernel refusing unprivileged ones
         # fails the unit, and its socket, after a few tries, refuses pi, who
-        # then goes direct. Its socket comes from systemd, so the runtime
-        # folder it hides isn't needed.
+        # then goes direct. Its sockets come from systemd, so of the runtime
+        # folder it hides it sees only systemd's notify socket, to say a
+        # build it hands over to is the main process now, and its control
+        # socket, for the reload to ask on.
         ProtectSystem = "strict";
-        ProtectHome = true;
+        ProtectHome = "tmpfs";
+        BindPaths = [
+          "%t/systemd/notify"
+          control
+        ];
         PrivateTmp = true;
         CapabilityBoundingSet = "";
         RestrictNamespaces = true;

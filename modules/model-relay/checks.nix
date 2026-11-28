@@ -62,7 +62,9 @@ onLinux {
   # would kill it, keeps more connections than its default and no more
   # than it takes, and tells every pi the folder its sockets are in. The
   # lend's socket beside pi's is the account's alone too, handed the same
-  # relay under the name its source tells it apart by.
+  # relay under the name its source tells it apart by, and so is the one
+  # it's asked to hand over on. A switch reloads it, and the reload runs
+  # the same build and flags as its start, asking it to hand over.
   model-relay-runs-in-background-slice =
     let
       named = account (bareNixos [
@@ -74,18 +76,35 @@ onLinux {
       bare = account workstation;
       listens = named.systemd.user.sockets.model-relay-agents.Socket;
       lends = named.systemd.user.sockets.model-relay-lend.Socket;
-      # The name the relay finds the lend's socket by, read from its
-      # source so neither side moves alone.
-      lendName = lib.pipe ./src/main.rs [
-        builtins.readFile
-        (lib.splitString "\n")
-        (lib.findFirst (lib.hasPrefix "const LEND:") "")
-        (lib.match ".*= \"([a-z]+)\";")
-      ];
+      controls = named.systemd.user.sockets.model-relay-control.Socket;
+      # The names the relay finds the lend's and the control's sockets by,
+      # read from its source so neither side moves alone.
+      nameOf =
+        constant:
+        lib.pipe ./src/main.rs [
+          builtins.readFile
+          (lib.splitString "\n")
+          (lib.findFirst (lib.hasPrefix "const ${constant}:") "")
+          (lib.match ".*= \"([a-z]+)\";")
+        ];
+      lendName = nameOf "LEND";
+      controlName = nameOf "CONTROL";
       sockets = [
         "model-relay-agents.socket"
         "model-relay-lend.socket"
+        "model-relay-control.socket"
       ];
+      # The reload is the start's build and flags, asking on the control
+      # socket to be handed over to.
+      words = command: lib.splitString " " (lib.concatStringsSep " " (lib.toList command));
+      started = words service.ExecStart;
+      reloaded = words (service.ExecReload or "");
+      reloadsAsAHandOver =
+        lib.length reloaded == lib.length started + 2
+        && lib.head reloaded == lib.head started
+        && lib.elemAt reloaded 1 == lib.escapeShellArg "--hand-over"
+        && lib.elemAt reloaded 2 == lib.escapeShellArg controls.ListenStream
+        && lib.drop 3 reloaded == lib.tail started;
       unit = named.systemd.user.services.model-relay-agents.Unit;
       service = named.systemd.user.services.model-relay-agents.Service;
       drain = lib.match ".* --drain-within ([0-9]+) --origin https://models\\.example" (
@@ -123,10 +142,11 @@ onLinux {
       needs = lib.toInt (lib.head drain) + lib.toInt (lib.head goodbyes) + spare;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, hands the relay no lend's socket by its source's name, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, keeps no more connections than its source's default or more than it takes, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, hands the relay no lend's or control's socket by its source's name, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, isn't reloaded as a hand-over to the build and flags it starts with, can't tell systemd its new main process, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, keeps no more connections than its source's default or more than it takes, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
         && !(bare.systemd.user.sockets ? model-relay-lend)
+        && !(bare.systemd.user.sockets ? model-relay-control)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
         && listens.ListenStream == "%t/model-relay/agents.sock"
         && listens.SocketMode == "0600"
@@ -140,9 +160,21 @@ onLinux {
         && lendName != null
         && lends.FileDescriptorName == lib.head lendName
         && lends.Service == "model-relay-agents.service"
+        && controls.ListenStream == "%t/model-relay/control.sock"
+        && controls.SocketMode == "0600"
+        && controls.DirectoryMode == "0700"
+        && controls.RemoveOnStop
+        && controlName != null
+        && controls.FileDescriptorName == lib.head controlName
+        && controls.Service == "model-relay-agents.service"
         && unit.Requires == sockets
         && service.Sockets == sockets
-        && unit.X-SwitchMethod == "keep-old"
+        # A switch hands it over to the new build rather than leaving it
+        # be or cutting what it streams.
+        && unit.X-SwitchMethod == "reload"
+        && reloadsAsAHandOver
+        && service.NotifyAccess or null == "main"
+        && service.TimeoutStartSec or 0 >= 35
         && service.Slice == "background.slice"
         # Its drain, then its goodbyes, end inside the stop timeout, so it
         # leaves on its own and says its counts.
@@ -159,7 +191,14 @@ onLinux {
         # It holds every agent's key while it carries a request, so it
         # sees no more of the machine than reaching the origin needs.
         && service.ProtectSystem or null == "strict"
-        && service.ProtectHome or null == true
+        # Of the runtime folder it sees only systemd's notify socket and
+        # its control socket.
+        && service.ProtectHome or null == "tmpfs"
+        &&
+          service.BindPaths or null == [
+            "%t/systemd/notify"
+            controls.ListenStream
+          ]
         && service.PrivateTmp or null == true
         && service.CapabilityBoundingSet or null == ""
         && service.RestrictNamespaces or null == true

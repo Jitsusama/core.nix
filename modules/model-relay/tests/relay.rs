@@ -20,7 +20,9 @@
 //! does a failure outlast the origin coming back, the relay leaves once
 //! idle but never mid-answer, even while refusing other hosts, stopped it
 //! ends its answers whole and sends the rest direct, within its drain time
-//! or at once at a second stop, its socket
+//! or at once at a second stop, handed over to a new build it ends its
+//! answers whole while the new build takes the next, a build that can't
+//! serve is refused and it carries on, its socket
 //! is the account's alone and never taken from a relay that answers it,
 //! and nothing of a header or a body reaches the relay's log, a failure
 //! included.
@@ -625,6 +627,33 @@ impl Relay {
         (relay, lend)
     }
 
+    /// Starts the relay as `start` does, over one connection, answering
+    /// hand-overs at the control socket it hands back too.
+    fn start_handing(origin: &str, roots: &Path) -> (Relay, PathBuf) {
+        let folder = tempfile::tempdir().expect("a folder for the sockets");
+        let socket = folder.path().join("agents.sock");
+        let control = folder.path().join("control.sock");
+        let control_flag = control.to_str().expect("a path in words").to_owned();
+        let relay = Relay::start_at(
+            folder,
+            socket,
+            origin,
+            roots,
+            1,
+            &["--control-socket", control_flag.as_str()],
+        );
+        // The control socket is bound after pi's, so it's waited on too.
+        let started = Instant::now();
+        while std::os::unix::net::UnixStream::connect(&control).is_err() {
+            assert!(
+                started.elapsed() < LISTENS_WITHIN,
+                "the relay never listened at its control socket"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        (relay, control)
+    }
+
     /// Starts the relay as `start` does, with `more` flags.
     fn start_with(origin: &str, roots: &Path, connections: usize, more: &[&str]) -> Relay {
         let folder = tempfile::tempdir().expect("a folder for the socket");
@@ -643,6 +672,11 @@ impl Relay {
         more: &[&str],
     ) -> Relay {
         let mut child = Command::new(env!("CARGO_BIN_EXE_model-relay"))
+            // Run under systemd, as by a session's own unit, the tests'
+            // relay would tell that unit a build it hands over to is its
+            // main process.
+            .env_remove("NOTIFY_SOCKET")
+            .env_remove("INVOCATION_ID")
             .arg("--socket")
             .arg(&socket)
             .arg("--origin")
@@ -1425,6 +1459,160 @@ async fn an_origin_it_cant_trust_is_a_502_to_the_lend_tried_once() {
     assert!(
         !said.contains("goes alone") && !said.contains("went alone"),
         "the lend's request went alone to an origin the relay can't trust: {said}"
+    );
+}
+
+/// A build a hand-over started, stopped once the test is done with it, as
+/// nothing else is left to: the relay that started it has gone.
+struct Successor(u32);
+
+impl Drop for Successor {
+    fn drop(&mut self) {
+        // One already gone has nothing left to stop. Its log is the
+        // relay's, which `said` reads to its end once it has gone too.
+        let _ = Command::new("kill")
+            .arg("-KILL")
+            .arg(self.0.to_string())
+            .status();
+    }
+}
+
+/// Runs this build as a reload does, asking the relay answering `control`
+/// to hand over to it, serving `origin` and trusting `roots`, with `more`
+/// flags; and what it said, with the build that took over when one did.
+async fn hand_over(
+    control: &Path,
+    origin: &str,
+    roots: &Path,
+    more: &[&str],
+) -> (std::process::Output, Option<Successor>) {
+    let mut asked = Command::new(env!("CARGO_BIN_EXE_model-relay"));
+    asked
+        .arg("--hand-over")
+        .arg(control)
+        .args(["--origin", origin, "--connections", "1", "--roots"])
+        .arg(roots)
+        .args(more)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    // Run off the test's thread, which serves the origin meanwhile.
+    let ran = tokio::task::spawn_blocking(move || asked.output().expect("a hand-over runs"))
+        .await
+        .expect("the hand-over's thread");
+    let successor = said_of(&ran)
+        .split("running as pid ")
+        .nth(1)
+        .and_then(|pid| pid.split_whitespace().next()?.parse().ok())
+        .map(Successor);
+    (ran, successor)
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_hand_over_ends_the_answer_in_hand_whole_and_the_next_ask_goes_to_the_new_build() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let (mut relay, control) = Relay::start_handing(&format!("https://{host}"), &origin.roots);
+    let (_pi, _first, body) = longer_begun(&relay, &host).await;
+
+    let (handed, successor) =
+        hand_over(&control, &format!("https://{host}"), &origin.roots, &[]).await;
+    let next = ask(&relay.socket, request(&host, "/echo", b"next")).await;
+    let rest = body.collect().await.expect("the rest").to_bytes();
+
+    assert!(
+        handed.status.success() && successor.is_some(),
+        "the hand-over wasn't taken: {}",
+        said_of(&handed)
+    );
+    assert_eq!(
+        (next.status, next.body.as_slice()),
+        (StatusCode::CREATED, b"next".as_slice()),
+        "the request after the hand-over wasn't carried"
+    );
+    // The relay handed over takes no more connections, so the new build
+    // took the next ask, on a connection of its own to the origin.
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        2,
+        "the request after the hand-over wasn't the new build's"
+    );
+    assert_eq!(
+        &rest[..],
+        b"second\n",
+        "the answer in hand didn't end whole"
+    );
+    let left = relay.left_within(SAYS_WITHIN);
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay handed over didn't leave cleanly once its answer ended: {left:?}"
+    );
+    drop(successor);
+    let said = relay.said();
+    assert!(
+        said.contains("handed over, so it takes no more connections"),
+        "the hand-over wasn't said: {said}"
+    );
+    assert!(
+        !said.contains("go direct"),
+        "a request was sent direct through the hand-over: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_hand_over_to_a_build_that_cant_serve_is_refused_and_the_relay_carries_on() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let (mut relay, control) = Relay::start_handing(&format!("https://{host}"), &origin.roots);
+
+    // Past the most connections it takes, the new build fails at its start.
+    let (handed, successor) = hand_over(
+        &control,
+        &format!("https://{host}"),
+        &origin.roots,
+        &["--connections", "17"],
+    )
+    .await;
+    let after = ask(&relay.socket, request(&host, "/echo", b"after")).await;
+
+    assert!(
+        !handed.status.success() && successor.is_none(),
+        "a build that can't serve was handed over to: {}",
+        said_of(&handed)
+    );
+    assert!(
+        said_of(&handed).contains("the new build left before it listened"),
+        "the refusal didn't say why: {}",
+        said_of(&handed)
+    );
+    assert_eq!(
+        (after.status, after.body.as_slice()),
+        (StatusCode::CREATED, b"after".as_slice()),
+        "the relay didn't carry on once the hand-over was refused"
+    );
+    assert!(
+        relay.left().is_none(),
+        "the relay left as the hand-over was refused"
+    );
+}
+
+#[test]
+fn a_hand_over_with_no_relay_to_ask_fails_saying_so() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let control = folder.path().join("control.sock");
+
+    let ran = Command::new(env!("CARGO_BIN_EXE_model-relay"))
+        .arg("--hand-over")
+        .arg(&control)
+        .args(["--origin", "https://models.example"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("a hand-over runs");
+
+    let said = said_of(&ran);
+    assert!(
+        !ran.status.success() && said.contains("nothing answers"),
+        "a hand-over with nobody to ask didn't fail saying so: {said}"
     );
 }
 
