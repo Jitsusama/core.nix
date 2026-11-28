@@ -42,12 +42,15 @@ pub fn kept(
     kept_in(&crate::cache(), (commit, tree.as_deref()), system, evaluate)
 }
 
-/// Keep `commit`'s derivations by its tree too, once they're kept by it.
+/// Keep `commit`'s derivations by its tree in place of whatever its tree
+/// kept, once a keep evaluated them whole. What a tree keeps first is
+/// often a gate's or a bounded keep's, carried from an earlier commit
+/// (`carry.rs`); a whole keep corrects the commit's own, and unless it
+/// corrects the tree's too, every later commit holding the tree takes the
+/// carried ones back.
 pub fn index(root: &str, commit: &str, system: &str) {
-    let cache = crate::cache();
-    let kept = checks::read_kept(&checks::keeping(&cache, commit, system));
-    if let (Ok(tree), Ok(Some(found))) = (tree_of(root, commit), kept) {
-        indexed(&cache, &tree, system, &found);
+    if let Ok(tree) = tree_of(root, commit) {
+        reindexed(&crate::cache(), commit, &tree, system);
     }
 }
 
@@ -89,9 +92,11 @@ fn kept_in(
 /// Keep `commit`'s derivations by it from those kept by `tree`, unless
 /// they're kept by it already or `tree`'s aren't, saying so when it does.
 /// One that can't be kept is said and left for the run to evaluate.
+/// None is seeded while a keep has set the commit's aside to evaluate it
+/// whole, or the keep would take the seeded ones as its own evaluation.
 fn seeded(cache: &Path, commit: &str, tree: &str, system: &str) -> bool {
     let path = checks::keeping(cache, commit, system);
-    if path.exists() {
+    if path.exists() || crate::carry::set_aside(&path).exists() {
         return false;
     }
     let found = match checks::read_kept(&keeping(cache, tree, system)) {
@@ -127,6 +132,21 @@ fn indexed(cache: &Path, tree: &str, system: &str, found: &Derivations) {
         return;
     }
     if let Err(why) = written(&path, found) {
+        eprintln!("changed-checks: couldn't keep the derivations by their tree: {why}");
+    }
+}
+
+/// Keep by `tree` what `commit` keeps, in place of what `tree` kept.
+fn reindexed(cache: &Path, commit: &str, tree: &str, system: &str) {
+    let found = match checks::read_kept(&checks::keeping(cache, commit, system)) {
+        Ok(Some(found)) => found,
+        Ok(None) => return,
+        Err(why) => {
+            eprintln!("changed-checks: couldn't read what a keep kept: {why}");
+            return;
+        }
+    };
+    if let Err(why) = written(&keeping(cache, tree, system), &found) {
         eprintln!("changed-checks: couldn't keep the derivations by their tree: {why}");
     }
 }
@@ -235,6 +255,48 @@ mod tests {
         assert!(
             !cache.join("changed-checks/trees").exists(),
             "a commit with no tree was kept by a tree anyway"
+        );
+    }
+
+    #[test]
+    fn a_whole_keep_replaces_what_its_tree_kept() {
+        let cache = Scratch::new("by-tree-whole");
+        let carried = derivations(&[("a", "carried.drv")]);
+        let whole = derivations(&[("a", "whole.drv")]);
+        written(&keeping(&cache, "t1", "x"), &carried).expect("written");
+        written(&checks::keeping(&cache, "c", "x"), &whole).expect("written");
+        reindexed(&cache, "c", "t1", "x");
+        assert_eq!(
+            checks::read_kept(&keeping(&cache, "t1", "x")),
+            Ok(Some(whole.clone()))
+        );
+        let later = kept_in(&cache, ("later", Some("t1")), "x", || {
+            panic!("a commit holding the tree was evaluated again")
+        });
+        assert_eq!(
+            later,
+            Ok(whole),
+            "a later commit took the carried ones back"
+        );
+    }
+
+    #[test]
+    fn a_commit_a_keep_set_aside_is_not_seeded() {
+        let cache = Scratch::new("by-tree-aside");
+        let path = checks::keeping(&cache, "c", "x");
+        written(&keeping(&cache, "t1", "x"), &derivations(&[("a", "t.drv")])).expect("written");
+        written(
+            &crate::carry::set_aside(&path),
+            &derivations(&[("a", "gated.drv")]),
+        )
+        .expect("written");
+        assert!(
+            !seeded(&cache, "c", "t1", "x"),
+            "a commit a keep is evaluating whole was seeded from its tree"
+        );
+        assert!(
+            !path.exists(),
+            "the seeded derivations were kept by the commit"
         );
     }
 

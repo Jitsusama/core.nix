@@ -319,8 +319,9 @@ pub fn replaced(installed: io::Result<PathBuf>, running: io::Result<PathBuf>) ->
 /// keep cut off from its machine by a reboot ran on through its grace and
 /// the next keep of that base began beside it; the one waiting then finds
 /// what the first kept. A base holding a tree the train already evaluated
-/// takes its derivations (`by_tree.rs`), and the ones kept are kept by
-/// their tree too.
+/// takes its derivations (`by_tree.rs`), and the ones a keep evaluated
+/// whole replace what their tree kept, since what was carried there would
+/// otherwise outlast the correction.
 pub fn keep_base(
     root: &str,
     base: &str,
@@ -338,7 +339,9 @@ pub fn keep_base(
     let carried = crate::carry::keep(root, base, system, noted, |noted| {
         crate::reads::keep_base(root, base, system, noted)
     })?;
-    crate::by_tree::index(root, base, system);
+    if carried == 0 {
+        crate::by_tree::index(root, base, system);
+    }
     crate::alone::keep(root, base, system, carried, noted);
     eprintln!("kept {system}'s checks at {short}");
     Ok(())

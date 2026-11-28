@@ -51,6 +51,12 @@ struct Record {
     refused: Option<String>,
 }
 
+/// Where a keep that may not carry sets a base's kept derivations aside
+/// while it evaluates the base whole, from `path`, where they're kept.
+pub fn set_aside(path: &std::path::Path) -> std::path::PathBuf {
+    path.with_extension("gated")
+}
+
 /// Keep `base`'s derivations, carried from the newest record when they may
 /// be, or else as `whole` keeps them, and give how many keeps in a row have
 /// carried to them.
@@ -76,7 +82,7 @@ pub fn keep(
         }
     }
     let path = checks::keeping(&crate::cache(), base, system);
-    let aside = path.with_extension("gated");
+    let aside = set_aside(&path);
     let bounded = record
         .as_ref()
         .is_some_and(|record| record.refused.is_some());

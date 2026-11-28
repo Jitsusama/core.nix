@@ -560,7 +560,7 @@ fn compare(
     // half of each run's evaluating, which every build waited on.
     let beside = options.build && !options.vm;
     let began = std::time::Instant::now();
-    let (after, building) = thread::scope(|scope| {
+    let (after, building, took) = thread::scope(|scope| {
         // Once the ordinary checks are compared, the build they began, if
         // they moved any; none for a tree kept already.
         let mut building = None;
@@ -593,6 +593,9 @@ fn compare(
             Some(commit) => by_tree::kept(root, commit, system, evaluate),
             None => evaluate(),
         };
+        // The tree's phase ends here, before the build beside it is waited
+        // for, which the run says as the build's own.
+        let took = began.elapsed();
         let building = building.map(|began| {
             began.map(|build| {
                 build
@@ -600,10 +603,10 @@ fn compare(
                     .unwrap_or_else(|_| Err("the build beside the evaluation panicked".to_owned()))
             })
         });
-        (after, building)
+        (after, building, took)
     });
     let after = after?;
-    noted.phase("tree", began.elapsed());
+    noted.phase("tree", took);
     let comparison = checks::compare(&before, &after);
     noted.named(named(&comparison, out));
     let whole = comparison.broken.is_empty();
