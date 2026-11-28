@@ -1786,12 +1786,16 @@ Scope {
             // starts, so For You opens saying so and the look is judged once
             // they're told (lookLinkHeard), never said unheld before it's known.
             const wanted = row => steadyId(row) === `on:look:${id}`;
+            // Told before intoOn, which opens a launcher For You isn't kept
+            // in at once, so the opening says it beside what was told while
+            // shut (sayTold) rather than over it; kept, to be taken back
+            // alone (#6583's stack round, 90).
+            const told = toldWhence(words.unheard ?? "");
             intoOn("forYou", wanted);
             // After intoOn, which lets any waiting look go.
-            lookLanding = { id: id, wanted: wanted };
+            lookLanding = { id: id, wanted: wanted, told: told };
             now.awaitLook(id);
             lookUnheard.restart();
-            toldWhence(words.unheard ?? "");
             prompt.linked();
             return { done: true, said: words.unheard ?? "" };
         }
@@ -1842,7 +1846,9 @@ Scope {
     // does; so nothing's done then. Told while an opening from a kept place
     // still draws, `open` not yet set, it's judged once it is (onOpenChanged),
     // rather than let go with the foot still promising the walk (#6583's
-    // stack round, 82).
+    // stack round, 82). Only the link's own word is taken back, and one
+    // saying the look is unheld said beside the rest, since the foot may
+    // say what was told while shut with it (#6583's stack round, 90).
     function lookLinkHeard(id) {
         if (lookLanding === null || lookLanding.id !== id)
             return;
@@ -1853,18 +1859,19 @@ Scope {
         }
         if (landOn === lookLanding.wanted)
             landOn = null;
+        const told = lookLanding.told;
         lookLanding = null;
         lookUnheard.stop();
+        untell(told);
         const now = collections.find(one => one.settings.name === "on") ?? null;
         if (!open || now === null)
             return;
         const found = now.lookPlace(id);
         if (found === null) {
             const words = Words.of("on:waiting").said ?? {};
-            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            toldBeside(words.unlisted ?? "", words.unlistedWhy ?? "");
             return;
         }
-        say([]);
         walkToLook(now, id, found);
     }
 
@@ -3793,6 +3800,20 @@ Scope {
         const said = ToldShut.said(tells);
         say(said, tells.length > 0 && tells.every(one => one.loose));
         toldSaid = { tells, said };
+    }
+    // Says `told` beside the tells the opening said, while the foot says
+    // them still, as if it had waited with them, else as tellOnOpen says
+    // it: under the keys they were said under, so it goes at the key they
+    // go at, never saying again what a key let go.
+    function tellBeside(told, loose, about) {
+        if (!open || !sayingNow || saying !== toldSaid.said) {
+            tellOnOpen(told, loose, about);
+            return;
+        }
+        const keys = sayingKeys;
+        sayTells(ToldShut.waiting(toldSaid.tells,
+            ToldShut.tell(told, loose, about, Date.now())));
+        sayingKeys = keys;
     }
     // Says what waits to be told as the launcher opens, but for what lapsed,
     // which the journal counts, never its words, which a source served.
@@ -6572,8 +6593,16 @@ Scope {
     // That `what` wasn't done, and `why`, said as toldNot says it: the failed
     // mark beside it in the alert, why muted.
     function toldThat(what, why) {
-        tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
-            { what: Theme.alert, why: Theme.muted }), true, what);
+        tellOnOpen(failedTold(what, why), true, what);
+    }
+    // As toldThat, but beside what the opening said, where the foot says
+    // it still (tellBeside).
+    function toldBeside(what, why) {
+        tellBeside(failedTold(what, why), true, what);
+    }
+    function failedTold(what, why) {
+        return Becoming.told({ mark: Theme.glyph.failed, what, why },
+            { what: Theme.alert, why: Theme.muted });
     }
     // Says where words in the field came from, which nothing failed, and
     // gives what it said.
@@ -10605,6 +10634,12 @@ Scope {
             // or "not here", in the foot's order, until the next key.
             saying: root.sayingNow ? root.saying.slice(1).concat([root.saying[0]])
                 .map(key => root.saidKey(key)) : [],
+            // How many tells wait for the next opening (tellOnOpen), never
+            // their words, and how a look link waits: "waiting" on the
+            // looks, "heard" while its opening still draws, else "".
+            toldWaiting: root.toldOnOpen.length,
+            lookLink: root.lookLanding === null ? ""
+                : root.lookLanding.heard === true ? "heard" : "waiting",
             // The places Ctrl+O and Ctrl+I go back and forward through.
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             // And those Ctrl+] left, which Ctrl+T comes back through.
@@ -11188,12 +11223,14 @@ Scope {
             return;
         if (landOn === lookLanding.wanted)
             landOn = null;
+        const told = lookLanding.told;
         lookLanding = null;
         collections.find(one => one.settings.name === "on")?.awaitLook("");
+        untell(told);
         if (!open)
             return;
         const words = Words.of("on:waiting").said ?? {};
-        toldThat(words.neverHeard ?? "", words.neverHeardWhy ?? "");
+        toldBeside(words.neverHeard ?? "", words.neverHeardWhy ?? "");
     }
     // Closed, it draws the place as it kept it, as a chord does
     // (intoKept), landing there and again once the fill has stepped into
@@ -13095,7 +13132,10 @@ Scope {
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
         opening = false;
-        // Nor does a look link it was opened for wait into the next.
+        // Nor does a look link it was opened for wait into the next, nor
+        // its word, which waited for this opening.
+        if (lookLanding !== null)
+            untell(lookLanding.told);
         lookLanding = null;
         lookUnheard.stop();
         openInto = "";
