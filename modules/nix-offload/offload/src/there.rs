@@ -1269,6 +1269,48 @@ pub fn lent_builds(part: &Asked, dir: &Path) -> (Option<Asked>, Vec<String>) {
     (goes, stays)
 }
 
+/// What of `part` a lent builder whose lender's record says it builds for
+/// `lent` can't build, each with the system it's for, in the order asked.
+/// An attribute's system is its second word, but only where `known`, the
+/// systems some builder or machine nearby is known to build for, names it:
+/// `nixosConfigurations.<name>` names a machine there, which says nothing
+/// of where it builds. A derivation's is the one its file says, read by
+/// `read`; one that can't be read is taken as buildable, as [`foreign`]
+/// takes it, since `there` let the run through to the lent builders on
+/// that same reading. None while `lent` isn't known, as [`lent_builds`]
+/// sends all then. Sent anyway, nix there fails it on the platform, which
+/// reads as the check failing when nothing of it was built.
+pub fn unbuildable(
+    part: &Asked,
+    lent: &[String],
+    known: &[String],
+    read: impl Fn(&str) -> Option<String>,
+) -> Vec<(String, String)> {
+    if lent.is_empty() {
+        return Vec::new();
+    }
+    part.attributes
+        .iter()
+        .filter_map(|word| {
+            let system = if part.derivations {
+                derivation_system(&read(word.split('^').next().unwrap_or(word))?)?
+            } else {
+                system_of(word)
+                    .filter(|system| known.iter().any(|named| named == system))?
+                    .to_owned()
+            };
+            (!lent.contains(&system)).then(|| (word.clone(), system))
+        })
+        .collect()
+}
+
+/// The systems of what [`unbuildable`] found, once each, as a line says
+/// them.
+pub fn systems_of(unbuilt: &[(String, String)]) -> String {
+    let systems: BTreeSet<&str> = unbuilt.iter().map(|(_, system)| system.as_str()).collect();
+    systems.into_iter().collect::<Vec<_>>().join(", ")
+}
+
 /// For a run of derivations, the first that no lent builder builds for,
 /// what it builds for and what they build for instead.
 pub fn foreign_derivation(asked: &Asked, dir: &Path) -> Option<(String, String, Vec<String>)> {
@@ -6010,22 +6052,33 @@ pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &
     if let Some(waited) = waited {
         line["waited"] = waited.into();
     }
-    let written = journal
-        .parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| {
-            fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(journal)
-        })
-        .and_then(|mut file| writeln!(file, "{line}"));
-    if let Err(error) = written {
-        eprintln!(
-            "nix-offload: couldn't journal the build in {}: {error}",
-            journal.display()
-        );
-    }
+    journalled(journal, &line);
+}
+
+/// Adds a line for the attributes of `asked` that no lent builder it
+/// would go to builds for, each `unbuilt` with its system, as
+/// [`unbuildable`] found them: sent nowhere, nothing of them was built,
+/// so the line says the systems it wanted and ends `status`, never 0.
+pub fn note_unbuilt(
+    journal: &Path,
+    at: u64,
+    asked: &Asked,
+    unbuilt: &[(String, String)],
+    status: i32,
+) {
+    let attributes: Vec<&str> = unbuilt.iter().map(|(word, _)| word.as_str()).collect();
+    let systems: BTreeSet<&str> = unbuilt.iter().map(|(_, system)| system.as_str()).collect();
+    let line = serde_json::json!({
+        "at": at,
+        "seconds": 0,
+        "flake": asked.flake,
+        "attributes": attributes,
+        "on": null,
+        "status": status,
+        "sent": null,
+        "unbuilt": systems,
+    });
+    journalled(journal, &line);
 }
 
 /// Adds a line for checks `asked` names that weren't built, having passed
@@ -6041,6 +6094,12 @@ pub fn note_already(journal: &Path, at: u64, asked: &Asked, already: &[String]) 
         "sent": null,
         "already": true,
     });
+    journalled(journal, &line);
+}
+
+/// Adds `line` to `journal`, saying so where it can't be written, since a
+/// build's journal is its record and not the build itself.
+fn journalled(journal: &Path, line: &serde_json::Value) {
     let written = journal
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -10050,6 +10109,53 @@ mod tests {
             "a Mac's own system is built where it is"
         );
         assert!(left.is_some(), "a Mac's own system was left unasked");
+    }
+
+    #[test]
+    fn what_a_lent_builder_cant_build_is_found_by_the_systems_known() {
+        let asked = asked(&words(
+            "path:/z checks.x86_64-linux.a checks.aarch64-darwin.b checks.x.c \
+             nixosConfigurations.box.config.system.build.toplevel",
+        ))
+        .unwrap();
+        let known = words("x86_64-linux aarch64-darwin");
+        let lent = words("x86_64-linux");
+        let read = |_: &str| None;
+        assert_eq!(
+            unbuildable(&asked, &lent, &known, read),
+            vec![(
+                "checks.aarch64-darwin.b".to_owned(),
+                "aarch64-darwin".to_owned()
+            )],
+            "only a system something is known to build for is judged one"
+        );
+        assert!(
+            unbuildable(&asked, &[], &known, read).is_empty(),
+            "a lender whose systems aren't known is sent all"
+        );
+    }
+
+    #[test]
+    fn a_derivation_a_lent_builder_cant_build_is_found_by_its_file() {
+        let asked = asked(&words(
+            "/nix/store/a-boot.bin.drv^* /nix/store/y-gone.drv^*",
+        ))
+        .unwrap();
+        let read = |path: &str| path.ends_with("a-boot.bin.drv").then(|| AARCH64.to_owned());
+        let unbuilt = unbuildable(&asked, &words("x86_64-linux"), &[], read);
+        assert_eq!(
+            unbuilt,
+            vec![(
+                "/nix/store/a-boot.bin.drv^*".to_owned(),
+                "aarch64-linux".to_owned()
+            )],
+            "a derivation says its own system, and one unread is taken as buildable"
+        );
+        assert_eq!(
+            systems_of(&unbuilt),
+            "aarch64-linux",
+            "its system is said once"
+        );
     }
 
     #[test]

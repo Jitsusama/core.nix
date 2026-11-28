@@ -939,20 +939,21 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     // The rest goes to a second builder while the first is full, when a
     // lender runs to make one.
     let more_dir = more_dir();
-    let first_dir = dir;
-    let general = [&first_dir, &more_dir];
+    let general = [&dir, &more_dir];
+    let (left, unbuilt, known) = unbuilt_left(left, owed, general, &vm_dirs, &journal);
     let room = vm_room();
     // The spill's claim holds its lane's room for as long as the run goes.
     let (left_dir, spill, _spill_claim) = left_to(
-        left.is_some(),
+        left.as_ref(),
         general,
         (&vm_dirs, &vm_parts),
+        &known,
         room,
         &scratch,
     );
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
-    let fallbacks = fallbacks(spill.as_ref(), &first_dir, &more_dir, &vm_dirs);
+    let fallbacks = fallbacks(spill.as_ref(), &dir, &more_dir, &vm_dirs);
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
     let sends = Sends {
         vm_dirs: &vm_dirs,
@@ -975,9 +976,10 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
             status = ran.status;
         }
     }
-    // What's owed hasn't passed, so the run says it's unbuilt, as a
-    // changed run with no builder does, and isn't kept.
-    if status == 0 && !owed.is_empty() {
+    // What's owed, or what no lent builder builds for, hasn't passed, so
+    // the run says it's unbuilt, as a changed run with no builder does, and
+    // isn't kept.
+    if status == 0 && !unbuilt.is_empty() {
         status = i32::from(changed::UNBUILT);
     }
     // Which of a build that failed passed isn't known, so only a whole
@@ -1508,27 +1510,91 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> (PathBuf, bool) {
     }
 }
 
+/// The systems some builder or machine is known to build for: this one's,
+/// each lent builder's in `general` and `vm_dirs`, as its lender's record
+/// says, and each machine nearby's, as listed, `--lent-only` or not, since
+/// a machine left out still builds for its own.
+fn known_systems(general: [&PathBuf; 2], vm_dirs: &[PathBuf]) -> Vec<String> {
+    let mut known: Vec<String> = std::iter::once(this_system())
+        .chain(general.iter().flat_map(|dir| there::lent_systems(dir)))
+        .chain(vm_dirs.iter().flat_map(|dir| there::lent_systems(dir)))
+        .chain(
+            nearby_listed()
+                .into_iter()
+                .flat_map(|machine| machine.systems),
+        )
+        .collect();
+    known.sort();
+    known.dedup();
+    known
+}
+
+/// `left` without what the first lent builder of `general` can't build,
+/// as its lender's record says and `there::unbuildable` reads it of the
+/// systems `known_systems` names, which are said too, and `owed` with it
+/// added. What it can't build goes nowhere: said with its systems and
+/// journalled as unbuilt, so the run ends unbuilt rather than as nix
+/// there fails it, on the platform, which reads as the check failing:
+/// under `--lent-only` a Mac's checks would go to a builder for Linux
+/// alone. A run asked to build here keeps it all, as `there::lent_builds`
+/// does, since Nix here may have builders of its own.
+fn unbuilt_left(
+    left: Option<there::Asked>,
+    mut owed: Vec<String>,
+    general: [&PathBuf; 2],
+    vm_dirs: &[PathBuf],
+    journal: &Path,
+) -> (Option<there::Asked>, Vec<String>, Vec<String>) {
+    let known = known_systems(general, vm_dirs);
+    let part = match left {
+        Some(part) if !part.builds_here() => part,
+        kept => return (kept, owed, known),
+    };
+    let lends_for = there::lent_systems(general[0]);
+    // A derivation whose file can't be read is taken as buildable, as
+    // `foreign` takes it, so the builder it goes to says why it fails.
+    let read = |path: &str| fs::read_to_string(path).ok();
+    let unbuilt = there::unbuildable(&part, &lends_for, &known, read);
+    if unbuilt.is_empty() {
+        return (Some(part), owed, known);
+    }
+    let words: Vec<String> = unbuilt.iter().map(|(word, _)| word.clone()).collect();
+    eprintln!(
+        "nix-offload: the lent builders build for {} alone, so {}, for {}, went nowhere \
+         and nothing of it was built",
+        lends_for.join(", "),
+        words.join(" "),
+        there::systems_of(&unbuilt)
+    );
+    there::note_unbuilt(journal, now(), &part, &unbuilt, i32::from(changed::UNBUILT));
+    let left = part.without(&words);
+    owed.extend(words);
+    (left, owed, known)
+}
+
 /// The lender's folder what's left of a run goes to, when anything is: the
 /// second's while the first is full, as `more_than` decides, else the
-/// first's, unless both stand full and a VM builder of `vms` is idle,
-/// whose folder is said too, with the claim on its `room` that keeps VM
-/// tests off it while the run goes.
+/// first's, unless both stand full and a VM builder of `vms` is idle that
+/// builds for every system of `left` that `known` names, whose folder is
+/// said too, with the claim on its `room` that keeps VM tests off it while
+/// the run goes.
 fn left_to(
-    any: bool,
+    left: Option<&there::Asked>,
     [first, more]: [&PathBuf; 2],
     (vm_dirs, vm_parts): (&[PathBuf], &[Option<there::Asked>]),
+    known: &[String],
     room: usize,
     scratch: &Path,
 ) -> (PathBuf, Option<PathBuf>, Option<there::Claim>) {
-    let (dir, full) = if any && there::lends(more) {
+    let (dir, full) = if left.is_some() && there::lends(more) {
         more_than(first, more, scratch)
     } else {
         (first.clone(), false)
     };
-    match full
-        .then(|| spilled_onto(vm_dirs, vm_parts, room, scratch))
-        .flatten()
-    {
+    let spill = left
+        .filter(|_| full)
+        .and_then(|left| spilled_onto(left, known, (vm_dirs, vm_parts), room, scratch));
+    match spill {
         Some((spill, claim)) => (spill.clone(), Some(spill), Some(claim)),
         None => (dir, None, None),
     }
@@ -1543,16 +1609,44 @@ fn left_to(
 /// None while none is, or while another run's spill holds a lane: one at
 /// a time, never the first lane, and the last asked first, as
 /// `there::spill_order` says, so VM runs keep the lanes they reach first.
+/// None too where `left` holds what the lane's record says it can't build,
+/// by `there::unbuildable`'s reading of the systems `known` names: a lane
+/// builds for what its lender lends, which needn't be what the run is for.
 fn spilled_onto(
-    vm_dirs: &[PathBuf],
-    parts: &[Option<there::Asked>],
+    left: &there::Asked,
+    known: &[String],
+    (vm_dirs, parts): (&[PathBuf], &[Option<there::Asked>]),
     room: usize,
     scratch: &Path,
 ) -> Option<(PathBuf, there::Claim)> {
     if vm_dirs.iter().any(|dir| there::spilled(dir)) {
         return None;
     }
-    let index = there::spill_order(vm_dirs.len()).find(|&index| {
+    // Judged before any lane is probed, since a probe is an ssh.
+    let lanes: Vec<(usize, Vec<(String, String)>)> = there::spill_order(vm_dirs.len())
+        .map(|index| {
+            let lends_for = there::lent_systems(&vm_dirs[index]);
+            // A derivation whose file can't be read is taken as buildable,
+            // as `foreign` takes it, so the lane it goes to says why.
+            let read = |path: &str| fs::read_to_string(path).ok();
+            (index, there::unbuildable(left, &lends_for, known, read))
+        })
+        .collect();
+    if let Some((_, unbuilt)) = lanes.first()
+        && lanes.iter().all(|(_, unbuilt)| !unbuilt.is_empty())
+    {
+        eprintln!(
+            "nix-offload: both lent builders are full, but no VM builder builds for {}, which \
+             this is for, so it waits on them",
+            there::systems_of(unbuilt)
+        );
+        return None;
+    }
+    let mut builds_all = lanes
+        .into_iter()
+        .filter(|(_, unbuilt)| unbuilt.is_empty())
+        .map(|(index, _)| index);
+    let index = builds_all.find(|&index| {
         let dir = &vm_dirs[index];
         let open = parts.get(index).is_none_or(Option::is_none)
             && there::lends(dir)
