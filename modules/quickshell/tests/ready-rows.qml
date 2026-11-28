@@ -52,6 +52,7 @@ QtObject {
             beneath();
             keywording();
             searching();
+            foundHead();
             emojiAsked();
             madeInside();
             Qt.exit(0);
@@ -904,6 +905,23 @@ QtObject {
             [true, true]);
         Expect.same("a found row served whole with no order, or a drawer, leaves it standing",
             Found.reranks(["a"], ["a"], ["far", "drawer:taken:a"]), false);
+    }
+
+    // The find's head counted the rows a steadying refresh kept dimmed
+    // where they were, gone from what their source answers last, so it
+    // said more were found than the find found (ZINAWZ's F8).
+    function foundHead() {
+        const field = { found: "{count} found", foundOf: "{count} of {all} found" };
+        const rows = [{ name: "a" }, { name: "b", gone: true, went: true }, { name: "c" }];
+        Expect.same("the head counts only the rows the find found, not those kept where they went",
+            Found.foundSaid(rows, 0, field), "2 found");
+        Expect.same("and so does what the daemon found past them add to",
+            Found.foundSaid(rows, 5, field), "2 of 7 found");
+        Expect.same("a head whose every row went says nothing",
+            Found.foundSaid([{ name: "b", gone: true, went: true }], 5, field), "");
+        Expect.same("nor does one with no rows", Found.foundSaid([], 0, field), "");
+        Expect.same("a row its source draws dimmed itself is still found",
+            Found.foundSaid([{ name: "a", gone: true }, { name: "c" }], 0, field), "2 found");
     }
 
     function ticking() {

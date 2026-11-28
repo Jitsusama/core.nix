@@ -81,6 +81,7 @@ import "launcher/ActForms.js" as ActForms
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/Found.js" as Found
 import "launcher/Held.js" as Held
 import "launcher/Joined.js" as Joined
 import "launcher/Looks.js" as Looks
@@ -10570,8 +10571,9 @@ Scope {
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
             // How many of them are kept dimmed where they were, gone from what
-            // their source answers last (Steady.kept's `went`), which `found`
-            // counts too; a row its source draws dimmed itself isn't among them.
+            // their source answers last (Steady.kept's `went`), which the find's
+            // head leaves out of what it found (Found.foundSaid); a row its source
+            // draws dimmed itself isn't among them.
             went: root.matches.filter(row => row.went).length,
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
@@ -14600,13 +14602,9 @@ Scope {
                         // the mark, the path and what's typed alone.
                         aside: ""
                         // A find narrowing the rows says how many it found,
-                        // in normal.
-                        narrowed: root.typed === "" || root.matches.length === 0 ? ""
-                            : root.foundPast > 0 ? (Words.field.foundOf ?? "")
-                                .replace("{count}", String(root.matches.length))
-                                .replace("{all}", String(root.matches.length + root.foundPast))
-                            : (Words.field.found ?? "").replace("{count}",
-                                String(root.matches.length))
+                        // in normal, never counting a row kept where it went.
+                        narrowed: root.typed === "" ? ""
+                            : Found.foundSaid(root.matches, root.foundPast, Words.field)
                         onPressing: root.keyPressing()
                         // A talk's caret is kept with its words, moved by
                         // a vi motion as much as by typing, as insert would
