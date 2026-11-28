@@ -152,7 +152,9 @@ impl Peer {
     /// poll, and an asker exiting between them would have another's path
     /// said as its own, proven. When the pidfd is had needn't matter, as
     /// the socket keeps the connecting process's pid: had after a reap,
-    /// it's refused before 6.16 and polls exited from 6.16, as `held` says.
+    /// it's refused from 6.5, where a socket first gives one
+    /// (`SO_PEERPIDFD`), to 6.15, and polls exited from 6.16, as `held`
+    /// says.
     fn read_by(
         pidfd: impl FnOnce() -> io::Result<OwnedFd>,
         pid: Option<i32>,
@@ -246,10 +248,10 @@ fn pidfd_of(socket: BorrowedFd<'_>) -> io::Result<OwnedFd> {
 /// Whether the process a pidfd names has exited, as a pidfd polls
 /// readable once it has. Polling asks no permission, so no filter or
 /// missing capability can make a process gone read as there. A zombie
-/// still holds its pid but counts as exited, which only says less. Any
-/// answer at all is taken as exited, not only `POLLIN`, since a live
-/// pidfd answers none: one that answers only `POLLHUP`, `POLLERR` or
-/// `POLLNVAL` isn't trusted to prove the path.
+/// still holds its pid but counts as exited once its whole group has,
+/// which only says less. Any answer at all is taken as exited, not only
+/// `POLLIN`, since a live pidfd answers none: one that answers only
+/// `POLLHUP`, `POLLERR` or `POLLNVAL` isn't trusted to prove the path.
 fn exited(pidfd: &OwnedFd) -> io::Result<bool> {
     let mut polled = libc::pollfd {
         fd: pidfd.as_raw_fd(),
@@ -284,10 +286,16 @@ fn answered(revents: libc::c_short) -> bool {
 /// in it (`cgroup_destroy_locked` asks `cgroup_is_populated`, which an
 /// exited task no longer counts toward), and `pidfd_poll` answers only
 /// once a process's every thread has exited, holding back a leader
-/// whose other threads run, as it has since a pidfd could be polled, in
-/// 5.3. So an asker still there reads so only as a threaded group's
-/// leader, exited in a cgroup since removed while its threads run in
-/// another, and that path is still one the asker ran in.
+/// whose other threads run. It has done so since a pidfd could be
+/// polled, in 5.3: in `kernel/fork.c` through 6.8, where 5.9 moved the
+/// test into `thread_group_exited`, and in `fs/pidfs.c` from 6.9. So an
+/// asker still there reads so in two ways. A threaded group's leader
+/// may have exited in a cgroup since removed while its threads run in
+/// another. And through 6.18, `do_exit` takes a task out of its cgroup
+/// (`cgroup_exit`) before it marks it exited (`exit_notify`), so an
+/// asker caught between them may find its cgroup removed; from 6.19 a
+/// task leaves its cgroup only once it's dead (`cgroup_task_dead`).
+/// Either way the path is still one the asker ran in.
 /// With no pidfd, the file not found says the asker was reaped, and the
 /// ending is looked up by `named`.
 fn judged(held: Held, read: io::Result<Vec<u8>>, named: impl Fn(&[u8]) -> bool) -> Cgroup {
@@ -361,13 +369,16 @@ impl fmt::Display for Peer {
 ///
 /// The kernel ends the path with ` (deleted)` once a process's cgroup is
 /// removed, as for a zombie whose unit has stopped, so that's said as the
-/// cgroup it was, since removed. A zombie's pidfd polls exited, so this
-/// is reached only where there's none, as `judged` says. A live cgroup
-/// may be named to end so too, so a path `named`, one whose cgroup exists
-/// by that whole name, keeps it as the name's, escaped as the rest.
-/// It's looked up by the bytes the kernel wrote, before any is said as
-/// `?`, so a name that isn't UTF-8 is found too. A name removed between
-/// the read and that look is said as removed, which it then is.
+/// cgroup it was, since removed. A zombie's pidfd polls exited once its
+/// whole group has, and an asker it holds back, a threaded group's
+/// leader or one caught exiting, has the ending kept as its cgroup's
+/// name, as `judged` says, so it's said as removed only where there's no
+/// pidfd. A live cgroup may be named to end so too, so a path `named`,
+/// one whose cgroup exists by that whole name, keeps it as the name's,
+/// escaped as the rest. It's looked up by the bytes the kernel wrote,
+/// before any is said as `?`, so a name that isn't UTF-8 is found too. A
+/// name removed between the read and that look is said as removed,
+/// which it then is.
 fn cgroup_of(cgroup: &[u8], named: impl Fn(&[u8]) -> bool) -> Option<String> {
     let path = cgroup
         .split(|&byte| byte == b'\n')
@@ -421,6 +432,7 @@ fn cut(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::os::fd::AsFd;
+    use std::os::unix::process::CommandExt;
 
     use serde_json::json;
 
@@ -719,30 +731,73 @@ mod tests {
     }
 
     /// A `sleep` child, killed and reaped when dropped, so a case that
-    /// fails before it does leaves none running. A child already reaped
-    /// isn't signalled again, as the standard library keeps its status.
+    /// fails before it does leaves none running. A child a case already
+    /// reaped isn't signalled again: `Child::kill` sends nothing once the
+    /// standard library holds the child's status, which `wait` keeps
+    /// (`Process::send_signal` in `library/std/src/sys/process/unix/unix.rs`,
+    /// as rust-lang/rust's master read on 27 Nov 2026), so its pid, which
+    /// may since be another's, is never killed.
     struct Sleeper(std::process::Child);
 
     impl Drop for Sleeper {
         fn drop(&mut self) {
             // Killed, then reaped whether or not the kill failed, as a
-            // tuple's parts are evaluated in order; one line, so it isn't
-            // the copy of other tests' guards that every-test-function-
-            // lives-once refuses.
+            // tuple's parts are evaluated in order. It's one line, so it
+            // isn't the copy of other tests' guards that the rule
+            // every-test-function-lives-once refuses.
             let _ = (self.0.kill(), self.0.wait());
         }
     }
 
     /// A `sleep` child, with its pidfd from `pidfd_open`, which every
     /// kernel since 5.3 gives, so a case built on it runs the same where
-    /// a socket gives no pidfd, as the builders' kernels did.
+    /// a socket gives no pidfd, as the builders' kernels did. It dies with
+    /// the thread that started it (`dies_with`), so a test runner killed
+    /// without unwinding leaves none running either.
     fn a_sleeper() -> (Sleeper, libc::pid_t, OwnedFd) {
-        let child = std::process::Command::new("sleep")
-            .arg("60")
-            .spawn()
-            .expect("sleep starts");
-        let child = Sleeper(child);
+        // SAFETY: it takes nothing and gives a number.
+        let parent = unsafe { libc::getpid() };
+        let mut command = std::process::Command::new("sleep");
+        command.arg("60");
+        // SAFETY: the hook runs in the child between its fork and its exec,
+        // and calls only what `dies_with` says is safe there. The ask
+        // outlasts the exec, as `sleep` isn't set-uid.
+        unsafe {
+            command.pre_exec(move || {
+                dies_with(parent);
+                Ok(())
+            });
+        }
+        let child = Sleeper(command.spawn().expect("sleep starts"));
         let pid = libc::pid_t::try_from(child.0.id()).expect("a pid fits");
+        (child, pid, pidfd_open(pid))
+    }
+
+    /// Asks the kernel to kill this child once the thread that forked it
+    /// ends, as `parent`'s: a test process that dies without unwinding
+    /// never drops the child, so the kernel kills it then instead. The
+    /// thread's end comes after the drop, so a case that passes reaps its
+    /// child first. Called in a child straight after its fork, it calls
+    /// only `prctl`, `getppid` and `_exit`, each safe there in a process
+    /// of many threads.
+    fn dies_with(parent: libc::pid_t) {
+        // SAFETY: they take only numbers, and end only this child.
+        unsafe {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            // A parent gone before the ask never kills the child, so it
+            // exits itself. It exits 3 so that whoever reaps the orphan,
+            // init or a subreaper, can tell why: the case that forked it
+            // is gone, so no `left` of a case ever sees it, and only the
+            // case that pins this exit does.
+            if libc::getppid() != parent {
+                libc::_exit(3);
+            }
+        }
+    }
+
+    /// A process's pidfd from `pidfd_open`, which any process may ask of
+    /// another's pid, not only its parent.
+    fn pidfd_open(pid: libc::pid_t) -> OwnedFd {
         // SAFETY: it takes only numbers, and the descriptor it gives is
         // taken straight into an OwnedFd.
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
@@ -750,7 +805,175 @@ mod tests {
         assert!(fd >= 0, "no pidfd: {}", io::Error::last_os_error());
         // SAFETY: the kernel made it for this call, and nothing else holds
         // it.
-        (child, pid, unsafe { OwnedFd::from_raw_fd(fd) })
+        unsafe { OwnedFd::from_raw_fd(fd) }
+    }
+
+    /// Whether the process a pidfd names exits within 10 s, as a pidfd
+    /// polls readable once it has: far past a kill landing on the busiest
+    /// builder, and bounded, so a process that never exits fails the case
+    /// rather than hang the run.
+    fn exits_soon(pidfd: &OwnedFd) -> bool {
+        let mut polled = libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one pollfd, for a descriptor held for the call.
+        let ready = unsafe { libc::poll(&raw mut polled, 1, 10_000) };
+        ready == 1
+    }
+
+    #[test]
+    fn a_child_asked_to_die_with_its_parent_goes_once_its_parent_does() {
+        let mut ends = [0; 2];
+        // SAFETY: it writes the two ints given.
+        let piped = unsafe { libc::pipe2(ends.as_mut_ptr(), libc::O_CLOEXEC) };
+        assert_eq!(piped, 0, "no pipe: {}", io::Error::last_os_error());
+        // SAFETY: the kernel made it for this call, and nothing else holds
+        // it.
+        let reading = unsafe { OwnedFd::from_raw_fd(ends[0]) };
+        // SAFETY: as above.
+        let writing = unsafe { OwnedFd::from_raw_fd(ends[1]) };
+        // SAFETY: it takes nothing and gives a number.
+        let runner = unsafe { libc::getpid() };
+        // SAFETY: the child calls only what `dies_with` does, getpid, fork
+        // and pause, and its own child what `dies_with` does, getpid, write
+        // and pause, each safe after a fork in a process of many threads,
+        // and neither returns into the test.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            dies_with(runner);
+            // SAFETY: as above.
+            unsafe {
+                let parent = libc::getpid();
+                if libc::fork() == 0 {
+                    dies_with(parent);
+                    // Its pid, said only once it's asked, so the parent
+                    // can't go before the ask and leave the case passing
+                    // on the exit that `dies_with` makes for that.
+                    let own = libc::getpid();
+                    let size = mem::size_of::<libc::pid_t>();
+                    libc::write(writing.as_raw_fd(), (&raw const own).cast(), size);
+                }
+                loop {
+                    libc::pause();
+                }
+            }
+        }
+        assert!(pid > 0, "no fork: {}", io::Error::last_os_error());
+        let parent = Forked {
+            pid,
+            reaped: std::cell::Cell::new(false),
+        };
+        drop(writing);
+        let mut told = libc::pollfd {
+            fd: reading.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one pollfd, for a descriptor held for the call. A child
+        // that never forks says nothing, so the wait is bounded, at 10 s,
+        // far past a fork on the busiest builder.
+        let ready = unsafe { libc::poll(&raw mut told, 1, 10_000) };
+        assert_eq!(ready, 1, "the child never said it had asked");
+        let mut child: libc::pid_t = 0;
+        let size = mem::size_of::<libc::pid_t>();
+        // SAFETY: it writes at most the size of the one pid given.
+        let got = unsafe { libc::read(reading.as_raw_fd(), (&raw mut child).cast(), size) };
+        assert_eq!(
+            usize::try_from(got).ok(),
+            Some(size),
+            "the child's pid was cut"
+        );
+        // Had while its parent lives and doesn't wait, so the pid is still
+        // the child's.
+        let pidfd = pidfd_open(child);
+
+        parent.gone();
+        let went = exits_soon(&pidfd);
+        if !went {
+            // SAFETY: it takes only numbers and the pidfd held, which
+            // names the child however long it's been orphaned.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    pidfd.as_raw_fd(),
+                    libc::SIGKILL,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                );
+            }
+        }
+
+        assert!(
+            went,
+            "a child asked to die with its parent outlived it, so a killed runner leaves it"
+        );
+    }
+
+    #[test]
+    fn a_child_whose_parent_went_before_it_asked_to_die_with_it_exits() {
+        // SAFETY: the child calls only getpid, what `dies_with` does and
+        // pause, each safe after a fork in a process of many threads, and
+        // never returns into the test.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            // SAFETY: as above. Its own pid, never its parent's, stands for
+            // a parent gone before the ask, whose orphan's parent is by
+            // then init or a subreaper.
+            unsafe {
+                dies_with(libc::getpid());
+                loop {
+                    libc::pause();
+                }
+            }
+        }
+        assert!(pid > 0, "no fork: {}", io::Error::last_os_error());
+        let child = Forked {
+            pid,
+            reaped: std::cell::Cell::new(false),
+        };
+        // Had before the wait, so the pid is still the child's, exited
+        // or not.
+        let went = exits_soon(&pidfd_open(pid));
+        let mut status = 0;
+        // SAFETY: it takes only numbers and the one int written, and
+        // waits for nothing.
+        let reaped = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
+        child.reaped.set(reaped == pid);
+
+        assert!(
+            went,
+            "a child whose parent went before it asked kept running"
+        );
+        assert!(
+            reaped == pid && libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 3,
+            "a child whose parent went before it asked didn't exit 3, status {status:#x}"
+        );
+    }
+
+    #[test]
+    fn a_sleeper_goes_once_the_thread_that_started_it_does() {
+        // The kernel's death signal follows the thread that forked the
+        // child, not its process, so a thread that starts a sleeper and
+        // ends is a parent gone: the case needs no forked child of the
+        // runner to spawn from, which isn't safe in a process of many
+        // threads, nor a second run of the runner. `spawn` returns only
+        // once the exec has closed the child's end of the socket it reports
+        // a failed exec on, after the hook has asked (`Command::spawn` in
+        // `library/std/src/sys/process/unix/unix.rs`, as rust-lang/rust's
+        // master read on 27 Nov 2026), so the thread can't end before the
+        // ask. The sleeper is held to the case's end, so it's reaped, and
+        // killed first should it outlive the thread.
+        let (_sleeper, _, pidfd) = std::thread::spawn(a_sleeper)
+            .join()
+            .expect("a sleeper starts");
+        let went = exits_soon(&pidfd);
+
+        assert!(
+            went,
+            "a sleeper outlived the thread that started it, so a killed runner would leave it"
+        );
     }
 
     #[test]
@@ -760,14 +983,8 @@ mod tests {
 
         let running = asked();
         child.0.kill().expect("sleep is killed");
-        let mut polled = libc::pollfd {
-            fd: pidfd.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        // SAFETY: one pollfd, for a descriptor held for the call. It waits
-        // for the kill to land, as a pidfd polls readable once it has.
-        let ready = unsafe { libc::poll(&raw mut polled, 1, 10_000) };
+        // It waits for the kill to land.
+        let landed = exits_soon(&pidfd);
         let killed = asked();
         // A zombie's file still reads, so only the poll keeps its path
         // from being said as a proven asker's.
@@ -776,7 +993,7 @@ mod tests {
         let reaped = asked();
 
         assert_eq!(running, Held::Still, "a running process was said exited");
-        assert_eq!(ready, 1, "a killed process never polled readable");
+        assert!(landed, "a killed process never polled readable");
         assert_eq!(
             killed,
             Held::Exited,
@@ -811,9 +1028,9 @@ mod tests {
         }
     }
 
-    /// A child forked by `a_child_connected`, killed and reaped by `gone`,
-    /// or when dropped, so a test that fails leaves no child paused, and
-    /// killed by the kernel should the thread that forked it end first.
+    /// A child a case forked, killed and reaped by `gone`, or when dropped,
+    /// so a test that fails leaves no child paused, and killed by the
+    /// kernel should the thread that forked it end first (`dies_with`).
     /// Dropped, it kills its pid unless `gone` or `left` reaped it, which
     /// is safe only while no test waits on any child or ignores `SIGCHLD`:
     /// one that did could reap it first and let its pid go to another.
@@ -833,7 +1050,10 @@ mod tests {
                     libc::waitpid(self.pid, &raw mut status, 0),
                 )
             };
-            if reaped == self.pid {
+            // A wait that fails, as it does on a child reaped elsewhere, is
+            // taken as reaped too, as `left` takes it: the pid may since be
+            // another process's, which the drop mustn't kill.
+            if reaped == self.pid || reaped < 0 {
                 self.reaped.set(true);
             }
             assert_eq!(
@@ -844,9 +1064,8 @@ mod tests {
         }
 
         /// Fails the test if the child has exited, with how it did, as a
-        /// child that can't connect exits 1 for no socket, 2 for a connect
-        /// refused and 3 for a parent gone before it could ask to be
-        /// killed with it. Fails it too if the child can't be waited on,
+        /// child that can't connect exits 1 for no socket and 2 for a
+        /// connect refused. Fails it too if the child can't be waited on,
         /// as one reaped elsewhere would otherwise cost the whole wait.
         fn left(&self) {
             let mut status = 0;
@@ -862,7 +1081,7 @@ mod tests {
                 self.reaped.set(true);
                 let how = if libc::WIFEXITED(status) {
                     format!(
-                        "exit {} (1: no socket, 2: refused, 3: orphaned)",
+                        "exit {} (1: no socket, 2: refused)",
                         libc::WEXITSTATUS(status)
                     )
                 } else {
@@ -910,21 +1129,14 @@ mod tests {
             .expect("an address's length fits");
         // SAFETY: it takes nothing and gives a number.
         let parent = unsafe { libc::getpid() };
-        // SAFETY: the child calls only prctl, getppid, socket, connect,
-        // pause and _exit, each safe after a fork in a process of many
-        // threads, and never returns into the test.
+        // SAFETY: the child calls only what `dies_with` does, socket,
+        // connect, pause and _exit, each safe after a fork in a process of
+        // many threads, and never returns into the test.
         let pid = unsafe { libc::fork() };
         if pid == 0 {
+            dies_with(parent);
             // SAFETY: as above; the address was made before the fork.
             unsafe {
-                // A test process that dies without unwinding never drops
-                // the child, so the kernel kills it then instead. It's
-                // asked of the forking thread's end, which comes after the
-                // drop, and a parent gone before the ask leaves it orphaned.
-                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
-                if libc::getppid() != parent {
-                    libc::_exit(3);
-                }
                 let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
                 if fd < 0 {
                     libc::_exit(1);
@@ -966,6 +1178,36 @@ mod tests {
             child.left();
         }
         panic!("the child neither connected nor exited in 10 s");
+    }
+
+    #[test]
+    fn a_child_reaped_elsewhere_is_taken_as_reaped_so_its_pid_is_never_killed() {
+        let (_connected, child) = a_child_connected();
+        let mut status = 0;
+        // SAFETY: they take only numbers and the one int written, and the
+        // wait reaps only this case's own child.
+        let reaped = unsafe {
+            libc::kill(child.pid, libc::SIGKILL);
+            libc::waitpid(child.pid, &raw mut status, 0)
+        };
+        assert_eq!(reaped, child.pid, "the child wasn't reaped out of band");
+
+        // Its kill and its wait each fail on a child already reaped, so
+        // `gone` fails the case it's in, which this one catches.
+        let gone = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| child.gone()));
+        let taken = child.reaped.get();
+        // Set whatever `gone` did, so one that forgets never has the drop
+        // kill a pid that may since be another process's.
+        child.reaped.set(true);
+
+        assert!(
+            gone.is_err(),
+            "a child reaped elsewhere was said killed and reaped"
+        );
+        assert!(
+            taken,
+            "a child whose wait failed wasn't taken as reaped, so the drop would kill its pid"
+        );
     }
 
     #[test]
@@ -1039,6 +1281,35 @@ mod tests {
             Err(errno) => panic!("the child's pidfd went unread, errno {errno:?}"),
         };
         assert_eq!(peer.cgroup, want, "{wrong}: {peer}");
+    }
+
+    #[test]
+    fn an_asker_s_pid_taken_by_another_is_said_gone_by_its_socket_s_pidfd() {
+        let (connected, child) = a_child_connected();
+        // Had before the reap, as from 6.5 to 6.15 one had after is
+        // refused, which would read as no pidfd here.
+        let pidfd = pidfd_of(connected.as_fd());
+        child.gone();
+        // This test's own pid, live, stands for one the reaped asker's
+        // number went to, which only the socket's pidfd tells apart from
+        // the asker.
+        let own = i32::try_from(std::process::id()).expect("a pid fits");
+
+        let peer = Peer::on(connected.as_fd(), Some(own), Some(1000));
+
+        match pidfd.as_ref().map_err(io::Error::raw_os_error) {
+            Ok(_) => assert_eq!(
+                peer.cgroup,
+                Cgroup::Gone,
+                "a reaped asker's pid named its taker's cgroup, so the pidfd wasn't the socket's: \
+                 {peer}"
+            ),
+            Err(Some(libc::ENOPROTOOPT)) => assert!(
+                matches!(peer.cgroup, Cgroup::Unproven(_)),
+                "a kernel with no pidfd for a socket proved a path: {peer}"
+            ),
+            Err(errno) => panic!("the child's pidfd went unread, errno {errno:?}"),
+        }
     }
 
     #[test]
