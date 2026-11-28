@@ -127,7 +127,7 @@ impl Guard {
             uses: Arc::new(Mutex::new(uses)),
             uses_path,
             opens: None,
-            marked_at: None,
+            marks: crate::marks::Marks::default(),
             listening: Arc::new(AtomicBool::new(false)),
             min_free: None,
             home,

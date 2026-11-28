@@ -328,11 +328,13 @@ impl Guard {
             counted: std::cell::RefCell::default(),
             sizes: std::cell::RefCell::new(std::mem::take(&mut self.sizes)),
             walked: 0,
+            // Every walk that finished is whole, in a survey of part of
+            // the sources or one a stop ended later, so all are kept.
+            targets: &mut self.marks.targets,
             stop: &*self.stop,
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
-        let kept = std::mem::take(&mut world.kept);
-        let mut sizes = world.sizes.take();
+        let (kept, mut sizes) = (std::mem::take(&mut world.kept), world.sizes.take());
         drop(world);
         // Only a whole survey asks for every size it would, so only one
         // may forget the rest.

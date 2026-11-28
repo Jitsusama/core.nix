@@ -314,9 +314,9 @@ pub struct Guard {
     uses: Arc<Mutex<Uses>>,
     uses_path: PathBuf,
     /// What hears the opens, once the guard listens, and when it last
-    /// marked what's built.
+    /// marked what's built, with what it marks from.
     opens: Option<Arc<crate::opens::Watch>>,
-    marked_at: Option<f64>,
+    marks: crate::marks::Marks,
     /// Whether what hears the opens still does: its thread ends on an
     /// error reading them, after which nothing is heard.
     listening: Arc<AtomicBool>,

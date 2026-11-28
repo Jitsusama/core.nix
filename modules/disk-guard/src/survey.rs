@@ -171,6 +171,9 @@ pub struct World<'a> {
     pub sizes: RefCell<Sizes>,
     /// How many times the survey walked a root for targets and installs.
     pub walked: usize,
+    /// The targets each walk that finished found, by its root, kept for
+    /// the marks a daemon places hourly, so they walk only what changed.
+    pub targets: &'a mut crate::marks::Targets,
     /// Whether the daemon has been told to stop, asked as the survey walks,
     /// so a stop never waits on a walk. A stopped survey offers nothing
     /// more, and what it offered is acted on by nobody.
@@ -405,7 +408,7 @@ fn device(path: &Path) -> Option<u64> {
 /// root named through a link, as a Mac names /var/folders through
 /// /var -> /private/var, still holds what it offers. A root that can't be
 /// resolved is kept as named and offers nothing anyway.
-fn resolved(root: &Path) -> PathBuf {
+pub(crate) fn resolved(root: &Path) -> PathBuf {
     fs::canonicalize(root).unwrap_or_else(|_| root.to_owned())
 }
 

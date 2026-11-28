@@ -733,7 +733,7 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
 }
 
 /// The walks outside passes, each journaled with what it read from disk.
-fn walks(home: &Home, step: &str) -> Vec<serde_json::Value> {
+pub(crate) fn walks(home: &Home, step: &str) -> Vec<serde_json::Value> {
     home.journal()
         .into_iter()
         .filter(|line| line["event"] == "walk" && line["step"] == step)
@@ -3441,7 +3441,7 @@ impl Home {
     /// build of it, last written five days ago, beside the newest.
     /// A crate `name` under `src`, built twice, its older build five days
     /// old, answering its `deps` folder.
-    fn replaced_crate(&self, name: &str) -> PathBuf {
+    pub(crate) fn replaced_crate(&self, name: &str) -> PathBuf {
         let app = self.root.join("src").join(name);
         fs::create_dir_all(app.join("src")).unwrap();
         fs::write(
@@ -3470,7 +3470,7 @@ impl Home {
         deps
     }
 
-    fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
+    pub(crate) fn replaced_build(&self, filling: &str) -> (Config, PathBuf) {
         let deps = self.replaced_crate("app");
         let config = Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,

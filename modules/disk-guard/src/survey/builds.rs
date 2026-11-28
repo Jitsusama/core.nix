@@ -26,7 +26,9 @@ impl Walks {
     }
 
     /// What a walk of `root` found, walking it only the first time asked.
-    /// None when the root is on no device or won't read.
+    /// None when the root is on no device or won't read. The targets a
+    /// walk that finished found are kept in `world` for the marks, which
+    /// then needn't walk the root again while it's unchanged.
     pub(super) fn under(
         &mut self,
         root: &Path,
@@ -37,6 +39,9 @@ impl Walks {
         let walked = self.0.entry((root.clone(), depth)).or_insert_with(|| {
             let device = device(&root)?;
             world.walked += 1;
+            // Read before the walk, so a root written while it walks is
+            // stamped otherwise by the next look, which walks it again.
+            let stamp = crate::sizes::stamp(&root);
             let found = discover::walk_until(
                 &root,
                 depth.map(|depth| depth as usize),
@@ -44,6 +49,9 @@ impl Walks {
                 world.stop,
             )
             .ok()?;
+            world
+                .targets
+                .keep((&root, depth), (stamp, world.now), &found);
             Some((device, found))
         });
         walked

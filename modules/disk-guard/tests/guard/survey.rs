@@ -202,6 +202,7 @@ fn surveyed_asking(
         counted: std::cell::RefCell::default(),
         sizes: std::cell::RefCell::new(sizes),
         walked: 0,
+        targets: &mut disk_guard::marks::Targets::default(),
         stop,
     };
     let mut found = survey(config, &mut world);

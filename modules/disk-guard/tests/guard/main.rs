@@ -44,6 +44,8 @@ mod locks;
 mod logs;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "linux")]
+mod marks;
 mod memorystatus;
 mod nix_builds;
 #[cfg(target_os = "linux")]
