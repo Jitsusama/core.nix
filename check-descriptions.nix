@@ -2477,8 +2477,10 @@
     pi's cancel when pi leaves it, and one whose body is still being read as cut, by a drain or by
     a stop as it leaves idle, refuses a drain of none and each flag it no longer takes, telling
     them by their words, keeps its socket to its account, from a second
-    relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
-    failure included; and its own cases hold a ping from behind an upload, with little held
+    relay and off a file or a link that isn't a socket, handed over to a new build ends the answer
+    in hand whole while the new build takes the next, refuses a hand-over to a build that can't
+    serve and carries on, fails a hand-over with no relay to ask saying so, and logs nothing of a
+    header or a body, a failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
     opened since, and at most once a minute for a reset, have the kernel probe by count alone
     each connection still open as a relay finds the machine slept, however it was retired, and
@@ -2492,9 +2494,11 @@
   model-relay-runs-in-background-slice = ''
     model-relay is installed only where a machine names an origin, listens where only its account
     may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
-    to the origin named alone, outlasts a switch, stops waiting on its answers in time to leave
-    before its stop timeout, keeps more connections than its default and no more than it takes,
-    and tells every pi where to find it
+    to the origin named alone, is handed over to the new build by a switch's reload rather than
+    restarted, its lend's and control's sockets the account's alone and named as its source reads
+    them, sees of the runtime folder only systemd's notify socket and its control socket, stops
+    waiting on its answers in time to leave before its stop timeout, keeps more connections than
+    its default and no more than it takes, and tells every pi where to find it
   '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
