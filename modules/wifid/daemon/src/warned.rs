@@ -19,6 +19,7 @@
 //! (`Arrivals::drops`).
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -93,22 +94,13 @@ impl Warned {
     /// as no card was warned since the boot.
     pub fn kept_in(file: &Path, now: Boot) -> (Warned, Vec<String>) {
         let mut warned = Warned::none(file);
-        let read = match fs::read(file) {
-            Ok(read) => read,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return (warned, Vec::new()),
-            Err(error) => {
-                let said =
-                    format!("forgets the warnings kept before, as it can't read them: {error}");
-                return (warned, vec![said]);
-            }
-        };
-        let kept: BTreeMap<String, Kept> = match serde_json::from_slice(&read) {
+        let kept = match read(file) {
             Ok(kept) => kept,
-            Err(error) => {
-                let said = format!(
-                    "forgets the warnings kept before, as they aren't as it keeps them: {error}"
+            Err(unkept) => {
+                return (
+                    warned,
+                    vec![format!("forgets the warnings kept before, as {unkept}")],
                 );
-                return (warned, vec![said]);
             }
         };
         let most = now.millis().saturating_add(millis_of(LONGEST));
@@ -171,6 +163,35 @@ impl Warned {
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))?;
         fs::rename(partial, &self.file)
     }
+}
+
+/// Why the warnings kept in a file weren't read back.
+#[derive(Debug)]
+enum Unkept {
+    /// The file is there, but reading it failed.
+    Unreadable(io::Error),
+    /// The file was read, but isn't as wifid keeps the warnings.
+    Unlike(serde_json::Error),
+}
+
+impl fmt::Display for Unkept {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Unkept::Unreadable(error) => write!(out, "it can't read them: {error}"),
+            Unkept::Unlike(error) => write!(out, "they aren't as it keeps them: {error}"),
+        }
+    }
+}
+
+/// The warnings kept in a file, or why they can't be read back: none
+/// when there's no file, as no card was warned since the boot.
+fn read(file: &Path) -> Result<BTreeMap<String, Kept>, Unkept> {
+    let read = match fs::read(file) {
+        Ok(read) => read,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(error) => return Err(Unkept::Unreadable(error)),
+    };
+    serde_json::from_slice(&read).map_err(Unkept::Unlike)
 }
 
 /// A duration in whole milliseconds, as many as a `u64` holds.
@@ -351,8 +372,11 @@ mod tests {
             "a file wifid didn't write this way kept a point off"
         );
         assert!(
-            forgotten.len() == 1 && forgotten[0].starts_with("forgets the warnings kept before"),
-            "the warnings forgotten with their file weren't said: {forgotten:?}"
+            forgotten.len() == 1
+                && forgotten[0].starts_with(
+                    "forgets the warnings kept before, as they aren't as it keeps them"
+                ),
+            "the warnings forgotten with a file unlike wifid's weren't said so: {forgotten:?}"
         );
         let until = now + Duration::from_secs(60);
         warned
@@ -362,11 +386,39 @@ mod tests {
         assert_eq!(
             again.lasting(now, start),
             vec![("wlan3".to_owned(), HALL.to_owned(), until)],
-            "the next warning didn't replace a file that couldn't be read"
+            "the next warning didn't replace a file unlike wifid's"
         );
         assert!(
             forgotten.is_empty(),
             "a file the next warning replaced was still said forgotten: {forgotten:?}"
+        );
+    }
+
+    #[test]
+    fn a_kept_file_is_read_back_or_said_unreadable_or_unlike_what_wifid_keeps() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        assert!(
+            matches!(read(&file), Ok(kept) if kept.is_empty()),
+            "no file wasn't read as no warning kept"
+        );
+
+        fs::create_dir(&file).expect("a folder where the file goes");
+        let unreadable = read(&file);
+        assert!(
+            matches!(
+                &unreadable,
+                Err(Unkept::Unreadable(error)) if error.kind() == io::ErrorKind::IsADirectory
+            ),
+            "a file that couldn't be read wasn't said unreadable: {unreadable:?}"
+        );
+
+        fs::remove_dir(&file).expect("the folder gone");
+        fs::write(&file, "not as wifid keeps them").expect("a file");
+        let unlike = read(&file);
+        assert!(
+            matches!(&unlike, Err(Unkept::Unlike(_))),
+            "a file not as wifid keeps it wasn't said unlike it: {unlike:?}"
         );
     }
 
