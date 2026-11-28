@@ -1940,7 +1940,8 @@ impl Relay {
             // `connect` has said why.
             self.counts.failed.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: the lend's request had no connection to go alone on, so it's answered 502"
+                "model-relay: the lend's request had no connection to go alone on, so it's \
+                 answered 502"
             );
             return not_answered();
         };
@@ -2185,6 +2186,11 @@ impl Relay {
     fn unfit_again(&self) -> NotCarried {
         self.counts.failed.fetch_add(1, Ordering::Relaxed);
         self.counts.reset.fetch_add(1, Ordering::Relaxed);
+        // Said as the lend's other 502s are, so cadence counts it with them.
+        eprintln!(
+            "model-relay: the lend's request was reset and no connection fit to carry it \
+             again, so it's answered 502"
+        );
         NotCarried::Answered(Box::new(Unreachable::Unfit.said_to_the_lend()))
     }
 
