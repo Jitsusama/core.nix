@@ -22,10 +22,13 @@ use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::json;
+
+use crate::state::short;
 
 /// A risk the net sees to when a pull request merges.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,6 +251,54 @@ pub fn refusal() -> String {
         .lock()
         .map(|refusal| refusal.clone())
         .unwrap_or_default()
+}
+
+/// Say `said` as why `ready` refuses a head, and keep it for the line that
+/// tells the dates ledger so.
+pub fn refuse(said: &str) {
+    eprintln!("merge-net: {said}");
+    heard(said);
+}
+
+/// Say `said` of a head `ready` boarded on the merge train, which ends 1
+/// as a refusal does, so the asker merges nothing alone, but tells the
+/// dates ledger nothing: the train merges it.
+pub fn boards(said: &str) {
+    eprintln!("merge-net: {said}");
+    boarded();
+}
+
+/// Tell `risks`, the dates ledger, of what `ready` asked of `head` ended
+/// as: a refusal, for `refused`, or a step that couldn't run, each on the
+/// pull request `pull` finds headed by it, if any. A head that may merge
+/// risks nothing, nor does one that ended 1 with no refusal heard, since
+/// every refusal is said through `refuse` and the other ends of 1 are a
+/// boarding of the train or a hold for an earlier gate.
+pub fn tell_of_ready(
+    head: &str,
+    ended: &Result<ExitCode, String>,
+    refused: &str,
+    risks: &Risks,
+    pull: &dyn Fn(&str) -> Option<u64>,
+) {
+    let (risk, why) = match ended {
+        Ok(code) if *code == ExitCode::SUCCESS => return,
+        Ok(_) if refused.is_empty() => return,
+        Ok(_) => (
+            Risk::Refused,
+            format!("ready refused {}: {refused}", short(head)),
+        ),
+        Err(why) => (
+            Risk::StepFailed,
+            format!("a step of ready couldn't run for {}: {why}", short(head)),
+        ),
+    };
+    risks.tell(&Seen {
+        pr: pull(head),
+        risk,
+        run: head,
+        why: &why,
+    });
 }
 
 /// Now, in RFC 3339 with the machine's own offset.
@@ -503,6 +554,91 @@ mod tests {
             days_from_civil(2026, 11, 27),
             20_784,
             "27 November 2026 wasn't day 20,784"
+        );
+    }
+
+    /// What `ready` ending as `ended` told the dates ledger, its file under
+    /// a folder named `name` of the test's own, with `refused` heard and
+    /// the pull request numbered 6900.
+    fn told_of_ready(name: &str, ended: &Result<ExitCode, String>, refused: &str) -> String {
+        let folder = folder(name);
+        let file = folder.join("mission/risks.jsonl");
+        let risks = Risks::new(Some(file.clone()), "Jitsusama/core.nix");
+        let head = "0123456789abcdef0123456789abcdef01234567";
+        tell_of_ready(head, ended, refused, &risks, &|asked| {
+            (asked == head).then_some(6900)
+        });
+        let told = fs::read_to_string(&file).unwrap_or_default();
+        let _ = fs::remove_dir_all(&folder);
+        told
+    }
+
+    #[test]
+    fn a_refusal_tells_the_ledger_why_on_the_heads_pull_request() {
+        let told = told_of_ready(
+            "refused",
+            &Ok(ExitCode::FAILURE),
+            "no changed-checks run that built what it named passed at 0123456789ab",
+        );
+        let lines: Vec<Value> = told
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 1, "a refusal told {told:?}");
+        let line = &lines[0];
+        assert_eq!(
+            (&line["risk"], &line["pr"], &line["eta_added_min"]),
+            (&json!("refused"), &json!(6900), &json!(30)),
+            "the refusal wasn't told on the head's pull request: {line}"
+        );
+        assert_eq!(
+            line["run"], "0123456789abcdef0123456789abcdef01234567",
+            "the refusal's line didn't name the head ready was asked of"
+        );
+        assert!(
+            line["why"]
+                .as_str()
+                .is_some_and(|why| why.contains("no changed-checks run")),
+            "the refusal's line didn't say what ready said: {line}"
+        );
+    }
+
+    #[test]
+    fn a_step_that_couldnt_run_tells_the_ledger_and_a_ready_head_nothing() {
+        let told = told_of_ready(
+            "step-failed",
+            &Err("running git: No such file or directory".to_owned()),
+            "",
+        );
+        let line: Value = serde_json::from_str(told.trim_end()).unwrap();
+        assert_eq!(
+            (&line["risk"], &line["pr"], &line["eta_added_min"]),
+            (&json!("step-failed"), &json!(6900), &json!(20)),
+            "a step that couldn't run wasn't told: {line}"
+        );
+        assert!(
+            line["why"]
+                .as_str()
+                .is_some_and(|why| why.contains("running git")),
+            "the failed step's line didn't say what failed: {line}"
+        );
+        assert_eq!(
+            told_of_ready("ready", &Ok(ExitCode::SUCCESS), ""),
+            "",
+            "a head that may merge was told as a risk"
+        );
+    }
+
+    #[test]
+    fn a_head_that_boards_the_train_tells_the_ledger_nothing() {
+        heard("no changed-checks run that built what it named passed");
+        boards("the merge train runs with 2 riders aboard, so 012345678901 rides it");
+        assert_eq!(refusal(), "", "a boarding kept the refusal said before it");
+        assert_eq!(
+            told_of_ready("boards", &Ok(ExitCode::FAILURE), ""),
+            "",
+            "a head that ended 1 with no refusal heard, as one that boards or is held \
+             for an earlier gate does, was told as a risk"
         );
     }
 }

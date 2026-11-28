@@ -102,7 +102,7 @@ pub fn say(
             )));
         }
         Lists::Need(need) => {
-            crate::refuse(&format!(
+            crate::risks::refuse(&format!(
                 "main has since moved only lists of {} ({}); build {} there, committed so \
                  it's sent, and merge again",
                 short(commit),
@@ -114,7 +114,7 @@ pub fn say(
             ));
             keep(commit, Verdict::Regate(Rerun::Lists), shared);
         }
-        Lists::Broken(why) => crate::refuse(&format!(
+        Lists::Broken(why) => crate::risks::refuse(&format!(
             "{} at {} no longer reads as the net's list: {why}",
             crate::world::QUARANTINE,
             short(commit)

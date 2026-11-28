@@ -946,3 +946,6 @@ mod right_of_way;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod risk_tests;
