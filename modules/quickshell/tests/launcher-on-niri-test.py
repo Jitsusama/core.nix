@@ -4599,10 +4599,14 @@ def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) 
     and the selection's ground from where it's drawn (groundCut), not from the rule's own
     extents, so a row the rule took for whole and drew cut is caught; and the selection against
     where its row's band is drawn (laidOut's selection), so one wholly in view on the wrong row
-    is caught too. A key keeps the selection in view; the wheel moves the view alone, so it
-    may leave the selected row out of it (`selection_in_view`), when only a drawn one is held
-    to its row. Where the view rests is `restsOnARow`'s, from the rows' tops. A row's name
-    reading on is clipped across, never down, so it's no cut.
+    is caught too. A row's mark is the exception: it's judged by its glyph's ink as its Mark
+    says it stands (Mark.qml's inkFrom and inkTo), the numbers the rule takes too, rather than
+    by its box, which stands empty above and below that ink. Those numbers are held to the ink
+    as measured and drawn in tests/rows.qml and tests/turned-mark.qml. A key keeps the
+    selection in view; the wheel moves the view alone, so it may leave the selected row out of
+    it (`selection_in_view`), when only a drawn one is held to its row. Where the view rests is
+    `restsOnARow`'s, from the rows' tops. A row's name reading on is clipped across, never
+    down, so it's no cut.
     """
     cut = rows_drawn_cut(shell)
     assert cut == [], f"{where}: drawn cut: {cut}"
