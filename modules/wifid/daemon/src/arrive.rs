@@ -510,6 +510,16 @@ impl Arrivals {
         self.moves.contains_key(card)
     }
 
+    /// Whether a move of the card's, or its way back, is still followed to
+    /// somewhere other than `point`, and so takes the card off it. One
+    /// headed to `point` itself, as a way back to the point that now warns
+    /// or a move resumed to it, brings the card onto it instead.
+    pub fn moving_off(&self, card: &str, point: &str) -> bool {
+        self.moves
+            .get(card)
+            .is_some_and(|moving| !moving.to.eq_ignore_ascii_case(point))
+    }
+
     /// The card's move as it stands, if one is followed, to put back with
     /// `resume`.
     pub fn saved(&self, card: &str) -> Option<Saved> {

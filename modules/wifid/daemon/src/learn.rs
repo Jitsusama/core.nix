@@ -25,6 +25,9 @@
 //! trusted to know the machine (network.rs). Any other's are learned while
 //! wifid runs and go with it, since which access points a machine was
 //! near, and when, would say where it has been (seen.rs).
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! rules they prove, as every module in wifid keeps them.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -249,6 +252,22 @@ impl Learned {
     /// the one just gone as well as its last minute that recent, as an
     /// instant doesn't count a suspend: a laptop asleep from 22:50 to
     /// 07:10 doesn't go by its evening.
+    ///
+    /// It reads as the worse of the two hours, not the two weighed by
+    /// their minutes: the hour gone holds every day's minutes there, so
+    /// weighed against it the few this hour that made the card leave count
+    /// for nothing, and a point left for 250 ms reads as its usual 41 ms,
+    /// quick enough to be tried again as known better. Read as the worse,
+    /// a point left for carrying badly isn't gone back to within the hour.
+    ///
+    /// This hour's minutes count only where they're as recent, the ones
+    /// that made the card leave: those of another day, kept on the disk,
+    /// would let a few slow minutes a week ago bar a point that carried
+    /// well all of the hour just gone. The minutes are summed to reach
+    /// `ENOUGH`, yet the reading may rest on one of this hour's, which can
+    /// keep the point off until the hour turns. That's meant: it's the
+    /// minute the card left for, and the card off the point can't measure
+    /// it lifting.
     pub fn just_left(&self, point: &str, hour: u8, signal: i16, now: Instant) -> Option<Measured> {
         let gone = (hour + 23) % 24;
         let lately = |learnt: &Learnt| {
@@ -256,11 +275,29 @@ impl Learned {
                 .last
                 .is_some_and(|last| now.saturating_duration_since(last) < LEFT_WITHIN)
         };
-        let near = self
-            .near(point, signal)
-            .filter(|learnt| learnt.hour == hour || (learnt.hour == gone && lately(learnt)));
-        let figures = near.map(|learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes));
-        figured(figures, signal)
+        let figures = |learnt: &Learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes);
+        let near = || self.near(point, signal);
+        let this = summed(
+            near()
+                .filter(|learnt| learnt.hour == hour && lately(learnt))
+                .map(figures),
+        );
+        let before = summed(
+            near()
+                .filter(|learnt| learnt.hour == gone && lately(learnt))
+                .map(figures),
+        );
+        let worse = |of: fn(&Sums) -> Option<f64>| match (of(&this), of(&before)) {
+            (Some(this), Some(before)) => Some(this.max(before)),
+            (this, before) => this.or(before),
+        };
+        let both = Sums {
+            timed: this.timed + before.timed,
+            p95: worse(Sums::p95).unwrap_or_default(),
+            counted: this.counted + before.counted,
+            lost: worse(Sums::lost).unwrap_or_default(),
+        };
+        measured_of(&both, signal)
     }
 
     /// What an access point carried while the card brought a download
@@ -312,6 +349,37 @@ impl Learned {
 /// so many minutes and a loss of so many, once the p95 is of `ENOUGH`
 /// minutes, as heard this loud.
 fn figured(figures: impl Iterator<Item = (f64, u32, f64, u32)>, signal: i16) -> Option<Measured> {
+    measured_of(&summed(figures), signal)
+}
+
+/// Figures weighed together by their minutes: the p95 by the minutes
+/// it's of, the share lost by every minute.
+#[derive(Clone, Copy, Debug, Default)]
+struct Sums {
+    /// The minutes the p95 is of.
+    timed: u32,
+    /// The p95, in milliseconds, weighed by its minutes.
+    p95: f64,
+    /// Every minute measured.
+    counted: u32,
+    /// The share of echoes lost, weighed by every minute.
+    lost: f64,
+}
+
+impl Sums {
+    /// The p95, where any minute's it's of.
+    fn p95(&self) -> Option<f64> {
+        (self.timed > 0).then_some(self.p95)
+    }
+
+    /// The share lost, where any minute was measured.
+    fn lost(&self) -> Option<f64> {
+        (self.counted > 0).then_some(self.lost)
+    }
+}
+
+/// Weighs `(p95, its minutes, lost, every minute)` figures together.
+fn summed(figures: impl Iterator<Item = (f64, u32, f64, u32)>) -> Sums {
     let (mut timed, mut p95, mut counted, mut lost) = (0, 0.0, 0, 0.0);
     for (their_p95, their_timed, their_lost, their_counted) in figures {
         timed += their_timed;
@@ -319,17 +387,27 @@ fn figured(figures: impl Iterator<Item = (f64, u32, f64, u32)>, signal: i16) -> 
         counted += their_counted;
         lost += their_lost * f64::from(their_counted);
     }
-    if timed < ENOUGH {
+    Sums {
+        timed,
+        p95: p95 / f64::from(timed.max(1)),
+        counted,
+        lost: lost / f64::from(counted.max(1)),
+    }
+}
+
+/// What weighed figures say, once they're of enough minutes to go by.
+fn measured_of(sums: &Sums, signal: i16) -> Option<Measured> {
+    if sums.timed < ENOUGH {
         return None;
     }
     // A figure kept negative or past what a duration holds is a file
     // written by hand or broken, and says nothing.
-    let p95 = Duration::try_from_secs_f64(p95 / f64::from(timed) / 1000.0).ok()?;
+    let p95 = Duration::try_from_secs_f64(sums.p95 / 1000.0).ok()?;
     Some(Measured {
         echoes: 0,
         p50: None,
         p95: Some(p95),
-        lost: lost / f64::from(counted.max(1)),
+        lost: sums.lost,
         retried: 0.0,
         failed: 0.0,
         signal: Some(i32::from(signal)),
@@ -764,6 +842,84 @@ mod tests {
         );
 
         assert_eq!(p95_of(&Learned::kept_in(&file), HALL, 20, -50), Some(15));
+    }
+
+    /// That many minutes on the desk at this hour, heard at -44 dBm, the
+    /// last of them ending `ended`.
+    fn on_the_desk(
+        learned: &mut Learned,
+        (hour, ended): (u8, Instant),
+        measured: &Measured,
+        count: u32,
+    ) {
+        let here = Here {
+            at: ended,
+            ..at(DESK, hour, -44)
+        };
+        minutes(learned, &here, measured, count);
+    }
+
+    fn just_left_p95(learned: &Learned, now: Instant) -> Option<u128> {
+        let left = learned.just_left(DESK, 10, -44, now)?;
+        Some(left.p95?.as_millis())
+    }
+
+    #[test]
+    fn a_point_just_left_isn_t_read_by_this_hour_s_minutes_of_another_day() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("carried");
+        let mut another_day = Learned::kept_in(&file);
+        on_the_desk(
+            &mut another_day,
+            (10, Instant::now()),
+            &carried(Some(300), 0.0),
+            3,
+        );
+        let mut learned = Learned::kept_in(&file);
+        let now = Instant::now();
+        on_the_desk(&mut learned, (9, now), &carried(Some(35), 0.0), 60);
+
+        assert_eq!(
+            just_left_p95(&learned, now + Duration::from_mins(20)),
+            Some(35),
+            "three slow minutes of hour 10 from another day, read back from the disk, \
+             outweighed sixty of hour 9 at 35 ms measured just now"
+        );
+    }
+
+    #[test]
+    fn a_point_just_left_reads_by_the_hour_gone_where_that_was_worse() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let now = Instant::now();
+        on_the_desk(&mut learned, (9, now), &carried(Some(250), 0.0), 60);
+        on_the_desk(&mut learned, (10, now), &carried(Some(35), 0.0), 2);
+
+        assert_eq!(
+            just_left_p95(&learned, now + Duration::from_mins(5)),
+            Some(250),
+            "two quick minutes this hour stood for a point that carried 250 ms all of \
+             the hour just gone"
+        );
+    }
+
+    #[test]
+    fn a_point_just_left_reads_the_worse_loss_of_the_two_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let now = Instant::now();
+        on_the_desk(&mut learned, (9, now), &carried(Some(35), 6.0), 60);
+        on_the_desk(&mut learned, (10, now), &carried(Some(35), 0.5), 2);
+
+        let left = learned
+            .just_left(DESK, 10, -44, now + Duration::from_mins(5))
+            .expect("left five minutes before");
+        assert!(
+            (left.lost - 6.0).abs() < 0.01,
+            "the point read by this hour's loss, or the two weighed, not the worse of \
+             the hour gone's 6 %: {}",
+            left.lost
+        );
     }
 
     #[test]

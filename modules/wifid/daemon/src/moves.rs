@@ -27,11 +27,20 @@ use crate::state::{Joined, State};
 pub enum Back {
     /// The card's look ended in time for it to be chosen for again.
     Looked(String),
-    /// The card's move to `to` began, or was refused as out of reach
-    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
-    /// the move was asked, even after a look. Its chooser follows the move
-    /// as one that may never get there (`Chooser::answered`).
+    /// The card's move to `to` began. Its chooser follows the move as one
+    /// that may never get there (`Chooser::answered`).
     Answered {
+        card: String,
+        to: String,
+        asked: Instant,
+    },
+    /// The card's move to `to` was refused as out of reach
+    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
+    /// the move was asked, even after a look. Its chooser follows a
+    /// give-way or trial as one that may never get there, and takes a
+    /// way back as refused, as the card never went back
+    /// (`Chooser::out_of_reach`).
+    OutOfReach {
         card: String,
         to: String,
         asked: Instant,
@@ -57,8 +66,9 @@ enum Whence {
     Lately,
     /// Learned at this hour, heard about as loud.
     Learned,
-    /// Learned at this hour and the hour just gone, heard about as loud,
-    /// as the card was on it within the hour (`Learned::just_left`).
+    /// Learned at this hour and the hour just gone, the worse of the two,
+    /// heard about as loud, as the card was on it within the hour
+    /// (`Learned::just_left`).
     JustLeft,
     /// Learned while the card brought a download down, heard about as
     /// loud.
@@ -530,7 +540,7 @@ async fn roam(
         Err(refused) => {
             eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
             if refused == Refused::NotNearby {
-                Back::Answered { card, to, asked }
+                Back::OutOfReach { card, to, asked }
             } else {
                 Back::Refused { card, to, asked }
             }
@@ -743,7 +753,7 @@ fn tried(
         }
         (Some(known), Some(Whence::JustLeft)) => {
             format!(
-                "carried {} at p95 at this hour and the one before",
+                "carried {} at p95 at worst, over this hour and the one before",
                 measure::ms(known.p95)
             )
         }
@@ -803,11 +813,13 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::arrive::Arrivals;
     use crate::learn::{self, Here};
     use crate::measure::tests::joined;
     use crate::measure::{Counts, Echo};
     use crate::radio::{Load, Radio};
     use crate::state::Security;
+    use crate::transition::Heed;
 
     const DESK: &str = "02:00:00:00:a4:00";
     const HALL: &str = "02:00:00:00:a6:00";
@@ -995,7 +1007,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_move_to_a_point_unheard_after_a_look_is_answered_as_one_to_follow() {
+    async fn a_move_to_a_point_unheard_after_a_look_is_handed_back_as_out_of_reach() {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (state, air) = watch::channel(State::default());
@@ -1022,12 +1034,13 @@ mod tests {
 
         assert_eq!(
             came.try_recv().ok(),
-            Some(Back::Answered {
+            Some(Back::OutOfReach {
                 card: "wlan0".into(),
                 to: HALL.into(),
                 asked
             }),
-            "a point out of reach wasn't answered as a move to follow, to keep off as unreached"
+            "a point out of reach wasn't handed back as one, for its chooser to follow a give-way \
+             or forget a way back"
         );
     }
 
@@ -1379,8 +1392,8 @@ mod tests {
         let (left, whence) = known_then(LEFT_AT_TEN, -44, IDLE).expect("left 26 minutes before");
         assert_eq!(
             left.p95.map(|p95| p95.as_millis()),
-            Some(41),
-            "hour 9's sixty minutes of 35 ms and hour 10's two of 250, by their minutes"
+            Some(250),
+            "the worse of hour 9's sixty minutes of 35 ms and hour 10's two of 250"
         );
         assert_eq!(
             whence,
@@ -1476,6 +1489,22 @@ mod tests {
             "the point left 26 minutes before carried 35 ms all of hour 9 and 250 since, \
              so 42.9 ms is no reason to try it as untried"
         );
+        // Weighed by their minutes, hour 9's sixty drown hour 10's two, and
+        // the point left for 250 ms reads as 41 ms, quicker than 60 by the
+        // margin, so the card would go back to it as known better. The
+        // middle stays slow, so the wider band may yield as it did then.
+        let slower = Measured {
+            p95: Some(ms(60)),
+            ..slow
+        };
+        let third = choose(past_nine(90, 44), TRIED_AT_TEN, &slower);
+        let fourth = choose(past_nine(91, 44), TRIED_AT_TEN, &slower);
+        let back = Some(Next::Move(LEFT_AT_TEN.into()));
+        assert!(
+            third != back && fourth != back,
+            "60 ms sent the card back within the half hour to the point it left for 250, \
+             as {third:?} then {fourth:?}"
+        );
     }
 
     fn other(point: &str, measured: Option<Measured>) -> Other {
@@ -1512,7 +1541,7 @@ mod tests {
                 &other(HALL, quick.clone()),
                 Some(Whence::JustLeft)
             ),
-            format!("{why} carried 10.0 ms at p95 at this hour and the one before"),
+            format!("{why} carried 10.0 ms at p95 at worst, over this hour and the one before"),
             "a move made on what was learned of a point just left says over which hours"
         );
         assert_eq!(
@@ -1624,11 +1653,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_never_gives_way_to_the_point_that_warned_it_drops_the_card() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
 
         let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
@@ -1653,11 +1682,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_waits_on_the_warned_move_off_its_point_before_it_gives_way() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
         air.warned_off(
             "wlan2",
@@ -1701,11 +1730,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_let_go_from_its_warned_point_gives_way_at_once() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         // Looked first for the points named, then let go as its look found
         // none: no heed of wifid's is under way to wait on.
         let until = start + Duration::from_secs(600);
@@ -1718,6 +1747,61 @@ mod tests {
             given,
             Some(Next::Move(DESK.into())),
             "a call let go from its warned point waited on a move nothing made"
+        );
+    }
+
+    /// #7139's regression replayed as far as wifid runs it without
+    /// wpa_supplicant: a warned move heeded as `Wifid::asked` heeds it, its
+    /// refusal taken in as it takes one in, and the call's give-way asked
+    /// as each second's does. What `Wifid::asked` and `roam_card` do over
+    /// D-Bus between them, and whether `roam_card` leaves a move followed
+    /// as each refusal says, stays unchecked: main.rs has no way to run
+    /// them without a bus and a wpa_supplicant to answer.
+    #[test]
+    fn a_losing_call_gives_way_at_once_once_its_warned_move_is_refused() {
+        let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
+        let start = Instant::now();
+        let warned = || {
+            let mut air = State::default();
+            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)), start);
+            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)), start);
+            air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+            air
+        };
+        let heeded = (start, start + Duration::from_secs(600));
+        let refused = |arrivals: &Arrivals| {
+            let mut air = warned();
+            Heed::Move(desk.into()).keep_warned(&mut air, ("wlan2", hall), false, heeded);
+            Heed::move_refused(&mut air, arrivals, ("wlan2", hall));
+            let soon = start + Duration::from_secs(1);
+            given_hearing(&mut Chooser::default(), soon, &joined(hall), &air, LOSING)
+        };
+        let mut resumed = Arrivals::default();
+        resumed.asked("wlan2", Some(hall), desk, start);
+        let mut toward = Arrivals::default();
+        toward.asked("wlan2", Some(desk), hall, start);
+        let mut back = Arrivals::default();
+        back.back("wlan2", hall, start);
+
+        assert_eq!(
+            refused(&Arrivals::default()),
+            Some(Next::Move(desk.into())),
+            "a call waited out fading::BETWEEN on a warned move that was refused"
+        );
+        assert_eq!(
+            refused(&resumed),
+            None,
+            "a call raced a move still under way after the warned one was refused"
+        );
+        assert_eq!(
+            refused(&toward),
+            Some(Next::Move(desk.into())),
+            "a call waited on a move resumed onto the point that warned"
+        );
+        assert_eq!(
+            refused(&back),
+            Some(Next::Move(desk.into())),
+            "a call waited on a way back onto the point that warned"
         );
     }
 
@@ -1876,6 +1960,35 @@ mod tests {
             "wlan2 gives way during a call only once its link is gone for 10 minutes, as a \
              second give-way within an hour never got there",
             "a held call doesn't say how long it's held, or that a gone link still moves"
+        );
+    }
+
+    #[test]
+    fn a_call_with_nowhere_to_give_way_to_says_what_faded_and_what_it_keeps_off() {
+        let (desk, hall, stairs) = (
+            "02:00:00:00:01:00",
+            "02:00:00:00:02:00",
+            "02:00:00:00:03:00",
+        );
+
+        let keeping = stranded(&joined(desk), &Why::Lossy(2), &[hall, stairs]);
+        let faint = stranded(&joined(desk), &Why::Faint(-75), &[]);
+
+        assert_eq!(
+            keeping,
+            format!(
+                "wlan2 is fading during a call, as {desk} lost 2 echoes in 10 s, and hears \
+                 nowhere to give way to, keeping off {hall}, {stairs}"
+            ),
+            "a stranded call doesn't say what faded, or each point it keeps off"
+        );
+        assert_eq!(
+            faint,
+            format!(
+                "wlan2 is fading during a call, as {desk} has faded to -75 dBm, and hears \
+                 nowhere to give way to"
+            ),
+            "a stranded call keeping nothing off says it keeps some off, or not how it faded"
         );
     }
 

@@ -234,6 +234,21 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn an_access_point_first_said_with_its_age_ages_from_then() {
+        let mut properties = access_point(b"Lantern", &["wpa-psk"], true, -58).properties;
+        properties.insert("Age".into(), owned(&Value::from(4u32)));
+        let lantern = AccessPoint::new(properties);
+
+        tokio::time::advance(std::time::Duration::from_secs(30)).await;
+
+        assert_eq!(
+            lantern.heard().unwrap().age,
+            34,
+            "an age first said 30 s ago was taken as now's, as a look just heard it"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn an_access_point_s_age_grows_until_a_look_hears_it_again() {
         let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
         lantern.changed(HashMap::from([("Age".into(), owned(&Value::from(4u32)))]));

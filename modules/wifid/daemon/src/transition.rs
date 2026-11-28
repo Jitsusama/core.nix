@@ -55,6 +55,7 @@ use std::fmt::Write as _;
 use tokio::time::{Duration, Instant};
 use zbus::zvariant::{OwnedValue, Value};
 
+use crate::arrive::Arrivals;
 use crate::choose::SETTLE;
 use crate::state::{Security, State};
 
@@ -195,6 +196,21 @@ impl Heed {
             state.warned_again(card, from, until);
         } else {
             state.warned_off(card, from, (heeding, until));
+        }
+    }
+
+    /// Ends the wait a warned move's heed set (`keep_warned`) once wifid's
+    /// move off `from` was refused, so a call's give-way doesn't wait on a
+    /// move that isn't under way (`State::heed_ended`). A move of the
+    /// card's still followed elsewhere after the refusal keeps it: one
+    /// already under way, put back as it stood, or a way back the warned
+    /// move was refused for, still moves the card off its point, so a call
+    /// waits on it as on this heed, for no longer than `fading::BETWEEN`.
+    /// One headed to `from` itself moves the card onto the point that
+    /// warned, so the call doesn't wait on it (`Arrivals::moving_off`).
+    pub fn move_refused(state: &mut State, arrivals: &Arrivals, (card, from): (&str, &str)) {
+        if !arrivals.moving_off(card, from) {
+            state.heed_ended(card, from);
         }
     }
 }
@@ -677,6 +693,7 @@ mod tests {
 
     /// A card on the point that warned it, as it heeds the warning.
     fn on_the_warning_point() -> State {
+        let now = Instant::now();
         let mut state = State::default();
         let on = Heard {
             name: "Lantern".into(),
@@ -687,7 +704,7 @@ mod tests {
             age: 0,
             radio: Radio::default(),
         };
-        state.heard("/Interfaces/0/BSSs/1", Some(on));
+        state.heard("/Interfaces/0/BSSs/1", Some(on), now);
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
         state
     }
@@ -714,6 +731,38 @@ mod tests {
         );
     }
 
+    /// `Wifid::asked` once ended a let-go's heed itself as its look's end.
+    /// A let-go is heeded only by a card not leaving, so keeping it has
+    /// already ended the look's heed, and nothing is left to end.
+    #[test]
+    fn a_let_go_is_heeded_only_not_leaving_so_its_look_leaves_no_heed_to_end() {
+        let request = warning(vec![named(FAR, None)]);
+        let heeds = |leaving| request.heed(Some(ON), &heard(&[]), true, leaving, true, PASSWORD);
+        let start = Instant::now();
+        let (ended, until) = (start + Duration::from_secs(1), start + SETTLE);
+        let mut state = on_the_warning_point();
+        Heed::Look(vec![2437]).keep_warned(&mut state, ("wlan2", ON), false, (start, until));
+        let let_go = heeds(false);
+        let_go.keep_warned(&mut state, ("wlan2", ON), false, (ended, until));
+        let kept = state.clone();
+        state.heed_ended("wlan2", ON);
+
+        assert_eq!(
+            let_go,
+            Heed::LetGo,
+            "a look hearing none of the points named didn't let the card go"
+        );
+        assert_eq!(
+            heeds(true),
+            Heed::Leaving,
+            "a card still leaving was let go"
+        );
+        assert_eq!(
+            state, kept,
+            "a let-go kept its look's heed for the look's end to end"
+        );
+    }
+
     #[test]
     fn a_heed_left_to_wpa_supplicant_keeps_the_wait_on_a_warned_move_still_leaving() {
         let mut state = on_the_warning_point();
@@ -729,6 +778,41 @@ mod tests {
             Some(start),
             "a whole network's drop, warned as wifid's move left, freed a call to race it"
         );
+    }
+
+    #[test]
+    fn only_a_heed_that_moves_or_looks_holds_a_call_and_only_a_move_still_leaving_keeps_it() {
+        let start = Instant::now();
+        let (again, until) = (start + Duration::from_secs(1), start + SETTLE);
+        let heeds = [
+            Heed::Stay,
+            Heed::Unheld,
+            Heed::Leaving,
+            Heed::NetworkDrops,
+            Heed::Unproven,
+            Heed::Move(NEAR.to_owned()),
+            Heed::Look(vec![2437]),
+            Heed::LetGo,
+        ];
+        for heed in heeds {
+            for leaving in [false, true] {
+                let mut state = on_the_warning_point();
+                let moved = Heed::Move(FAR.to_owned());
+                moved.keep_warned(&mut state, ("wlan2", ON), false, (start, until));
+                heed.keep_warned(&mut state, ("wlan2", ON), leaving, (again, until));
+                let waits = match (&heed, leaving) {
+                    (Heed::Move(_) | Heed::Look(_), _) => Some(again),
+                    (_, true) => Some(start),
+                    (_, false) => None,
+                };
+                assert_eq!(
+                    state.warned_on("wlan2", again),
+                    waits,
+                    "{heed:?}, heeded after a warned move with leaving {leaving}, held a call \
+                     wrongly"
+                );
+            }
+        }
     }
 
     #[test]
