@@ -411,7 +411,9 @@ type Told = ReadonlyMap<string, string>;
  * that reads as one of `own`, the names the page gives its own groups, is
  * told apart from it as from another network's; those names are kept in
  * what it gives too, keyed as the page keys its own groups (#own.0, #own.1
- * and on), so labelsApart tells labels from them as well.
+ * and on), so labelsApart tells labels from them as well. Keys are unique,
+ * and stay so written out, so each pass of the last tell leaves fewer
+ * alike, and one pass per network bounds it.
  */
 export const toldApart = (networks: readonly Named[], own: readonly string[] = []): Told => {
   const groups = own.map((name, at) => ({ key: `#own.${at}`, name }));
@@ -421,10 +423,8 @@ export const toldApart = (networks: readonly Named[], own: readonly string[] = [
     return carries === asDrawn(n.name) ? "" : carries;
   });
   tell(networks, names, " ", idHint);
-  // Keys are unique, and stay so with their spaces and % written as a link has them, which a
-  // page can't run together; each pass leaves fewer alike, and one per network bounds it.
   for (let pass = 0; pass < networks.length; pass++) {
-    if (!tell(networks, names, " ", (n) => `[${n.key.replace(/[\s%]/gu, encodeURIComponent)}]`)) {
+    if (!tell(networks, names, " ", (n) => `[${n.key.replace(WRITTEN_OUT, encodeURIComponent)}]`)) {
       break;
     }
   }
@@ -542,6 +542,12 @@ const SPACES = /[ \t\n\r\f]+/gu;
 // The space a page drops at either end, once each run is one; trim() would drop a
 // no-break space there too.
 const EDGE_SPACES = /^ | $/gu;
+/**
+ * What a key's tell writes out as a link has it, since a page can't run it
+ * together: the spaces a page does, as SPACES has them, and the % that
+ * opens each escape, so a written-out key stays as unique as the keys.
+ */
+const WRITTEN_OUT = /[ \t\n\r\f%]/gu;
 
 /**
  * A name as a page draws it, each run of spaces as one and none at its
