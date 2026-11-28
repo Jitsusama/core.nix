@@ -748,14 +748,21 @@ fn a_slow_copy_up_gives_its_turn_back_and_sends_only_its_closure() {
 }
 
 #[test]
-fn a_copy_up_sent_first_takes_no_turn() {
-    let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(20));
+fn a_copy_up_sent_first_waits_its_turn_too() {
+    // A run sent first once took no turn, and on 27 November the watch's
+    // dozen at once kept the uplink's relay resetting, so the net's
+    // copies wait for a shared turn like any other.
+    let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(3));
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(!said.contains("waits its turn to send"), "{said}");
+    assert_eq!(
+        said.matches("so this waits its turn to send").count(),
+        1,
+        "a copy sent first didn't say once that it waits its turn: {said}"
+    );
     assert!(
-        took < Duration::from_secs(20),
-        "waited for a turn: {took:?}"
+        took >= Duration::from_secs(3),
+        "a copy sent first went up before a turn was free: {took:?}"
     );
 }
 
