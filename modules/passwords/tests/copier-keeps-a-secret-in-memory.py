@@ -204,7 +204,11 @@ class Cases:
             locked = ended(copier) or unlocked(copier.pid, len(held))
             self.check("its secret is locked in memory", locked)
         finally:
-            # Anything it said past held could be the secret, so none of it is kept.
+            # What said_next read past held, which could be the secret, is let go of rather
+            # than kept for a later read. That narrows where the secret goes, no more: a line
+            # said_next answered is said in this case's outcomes, whatever it holds. This
+            # cleanup is the part no test sees: the bounded test never runs copied(), and the
+            # run on niri passes the same whether or not it lets go and kills.
             unanswered(copier)
             copier.kill()
             copier.wait()

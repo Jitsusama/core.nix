@@ -427,8 +427,12 @@ def a_copier_saying_two_lines_at_once_is_answered_each_in_turn() -> None:
     assert took < SLACK, f"the second line, said with the first, took {took:.1f} s to answer"
 
 
-def a_copier_with_no_pipe_to_read_is_refused_by_name() -> None:
-    """said_next raises for a copier whose standard output it has no pipe to, not answer ""."""
+def a_copier_with_no_pipe_to_read_raises_as_the_checks_own_fault() -> None:
+    """said_next raises for a copier whose standard output it has no pipe to, not answer "".
+
+    No pipe is the check's own wiring, not anything the copier did, so it isn't answered as
+    a copier that said nothing, nor failed as one that refused.
+    """
     unpiped = subprocess.Popen([BASH, "-c", "echo ready"], stdout=subprocess.DEVNULL)
     try:
         said = CHECK.said_next(unpiped)
@@ -436,7 +440,7 @@ def a_copier_with_no_pipe_to_read_is_refused_by_name() -> None:
         return
     finally:
         unpiped.wait()
-    why = f"a copier with no pipe for its standard output was said {said!r}, not refused"
+    why = f"a copier with no pipe for its standard output was said {said!r}, not raised"
     raise AssertionError(why)
 
 
@@ -524,7 +528,7 @@ CASES = [
     a_copier_pouring_out_one_line_is_answered_at_the_cap,
     a_line_is_cut_at_the_cap_never_past_it,
     a_line_cut_at_the_cap_is_read_on_and_never_ready,
-    a_copier_with_no_pipe_to_read_is_refused_by_name,
+    a_copier_with_no_pipe_to_read_raises_as_the_checks_own_fault,
     a_read_that_raised_fails_saying_so,
     a_case_that_raised_fails_by_what_it_raised_and_the_run_goes_on,
     what_said_next_read_past_its_line_is_kept_for_how_the_copier_ended,

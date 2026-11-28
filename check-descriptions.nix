@@ -3305,13 +3305,14 @@
     left outside that group holding its pipes, a reader never reading, a copier saying
     nothing, one saying half a line and holding on and one pouring out a line with no end
     included; a line is read whole and exactly, as the daemon reads it, so one said in pieces
-    is joined, two said at once are answered in turn, 'ready ' is never 'ready', one past a
-    cap is answered no further than it, the next read reading on and never answering its rest
-    as a word, and a half line is answered as said only once the copier closed its standard
-    output, and finished by
-    the next read if it was held open; what was read past a line comes
-    first in how the copier ended, a refusal keeps none of it, a copier with no pipe to read is
-    refused by name, and a read that raised fails saying what it raised
+    is joined, two said at once are answered in turn, 'ready ' is never 'ready', nor is
+    'ready' and a carriage return said last, one past a cap is answered no further than it,
+    the next read reading on and never answering its rest as a word, and a half line is
+    answered as said only once the copier closed its standard output, and finished by the
+    next read if it was held open; what was read past a line comes first in how the copier
+    ended, a refusal keeps none of it, a copier with no pipe to read raises as the check's own
+    wiring fault, and a read or a case that raised fails saying what it raised, the cases
+    after it still run
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
