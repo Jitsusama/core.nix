@@ -161,7 +161,9 @@
   "modules/nix-offload/offload/src/gate.rs" = 1;
   "modules/nix-offload/offload/src/gate/ask.rs" = 2;
   "modules/nix-offload/offload/src/lines.rs" = 3;
-  "modules/nix-offload/offload/src/machines.rs" = 4;
+  "modules/nix-offload/offload/src/machines/mod.rs" = 2;
+  "modules/nix-offload/offload/src/machines/named.rs" = 1;
+  "modules/nix-offload/offload/src/machines/reaching.rs" = 1;
   "modules/nix-offload/offload/src/main.rs" = 12;
   "modules/nix-offload/offload/src/passed.rs" = 2;
   "modules/nix-offload/offload/src/proof.rs" = 6;
