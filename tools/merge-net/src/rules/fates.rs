@@ -6,6 +6,8 @@
 //! on main. A move anywhere in a fate's folders counts as one the change
 //! shares, so changed-checks runs again at its head over what main moved.
 
+use std::path::Path;
+
 use crate::ready::Side;
 
 /// Where the fates are kept, read beside the built-in ones wherever a
@@ -106,16 +108,13 @@ pub fn parse(text: &str) -> Result<Vec<Fate>, String> {
         .collect()
 }
 
-/// The files git, run as `git`, says changed from `base` to `head`, each
+/// The files git, run in `repo`, says changed from `base` to `head`, each
 /// named whole: given without `-z`, git C-quotes a name holding `"`, `\`,
 /// a tab or another control byte, whatever `core.quotePath` says, and a
-/// quoted name wouldn't start with its fate's folder.
-pub fn changed<E>(
-    git: &dyn Fn(&[&str]) -> Result<String, E>,
-    base: &str,
-    head: &str,
-) -> Result<Vec<String>, E> {
-    let said = git(&["diff", "--name-only", "-z", base, head])?;
+/// quoted name wouldn't start with its fate's folder. Its words are read
+/// untrimmed, so the first name keeps a space it starts with.
+pub fn changed(repo: &Path, base: &str, head: &str) -> Result<Vec<String>, String> {
+    let said = crate::git_said(repo, &["diff", "--name-only", "-z", base, head])?;
     Ok(said
         .split('\0')
         .filter(|name| !name.is_empty())
@@ -126,20 +125,19 @@ pub fn changed<E>(
 /// The paths renamed or deleted from `base` to `head`, by their old names,
 /// as `changed` reads them: each status is followed by its path, and a
 /// rename's by its new name too.
-pub fn gone<E>(
-    git: &dyn Fn(&[&str]) -> Result<String, E>,
-    base: &str,
-    head: &str,
-) -> Result<Vec<String>, E> {
-    let said = git(&[
-        "diff",
-        "--name-status",
-        "-z",
-        "-M",
-        "--diff-filter=DR",
-        base,
-        head,
-    ])?;
+pub fn gone(repo: &Path, base: &str, head: &str) -> Result<Vec<String>, String> {
+    let said = crate::git_said(
+        repo,
+        &[
+            "diff",
+            "--name-status",
+            "-z",
+            "-M",
+            "--diff-filter=DR",
+            base,
+            head,
+        ],
+    )?;
     let mut fields = said.split('\0').filter(|field| !field.is_empty());
     let mut gone = Vec::new();
     while let (Some(status), Some(old)) = (fields.next(), fields.next()) {

@@ -331,7 +331,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     if !ready::built_there(&ready::record(&commit), &on_main) {
         return by_change(&commit, &main, &on_main);
     }
-    let files = rules::fates::changed(&git, &main, &commit)?;
+    let files = rules::fates::changed(Path::new("."), &main, &commit)?;
     Ok(may_merge(
         &commit,
         &main,
@@ -660,11 +660,17 @@ fn git(arguments: &[&str]) -> Result<String, String> {
     git_at(Path::new("."), arguments)
 }
 
-/// What git says, run in the repo at `repo`.
+/// What git says, run in the repo at `repo`, trimmed.
 fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
+    Ok(git_said(repo, arguments)?.trim().to_owned())
+}
+
+/// What git says, run in the repo at `repo`, as it says it, so the first
+/// name of a `-z` list keeps a space it starts with (`fates::changed`).
+fn git_said(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     // Paths come back as they are named, not C-quoted for a byte over
     // 0x7f, so one in a fate's folder still starts with the folder; one
-    // holding a quote or a control byte needs `-z` too (`fates::changed`).
+    // holding a quote or a control byte needs `-z` too.
     let ran = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -679,7 +685,7 @@ fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
             String::from_utf8_lossy(&ran.stderr).trim()
         ));
     }
-    Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+    Ok(String::from_utf8_lossy(&ran.stdout).into_owned())
 }
 
 #[cfg(test)]

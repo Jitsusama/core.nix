@@ -249,6 +249,34 @@ fn a_name_git_would_quote_is_read_whole_and_keeps_its_fate() {
 }
 
 #[test]
+fn a_first_name_starting_with_a_space_is_read_whole() {
+    // Only a name at the top starts with a space, a fate's folder never;
+    // read trimmed, it would lose it, and share nothing by name.
+    use crate::tests::git_in;
+    let repo = std::env::temp_dir().join(format!("merge-net-spaced-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&repo);
+    fs::create_dir_all(&repo).unwrap();
+    git_in(&repo, &["init", "-q", "-b", "main"]);
+    git_in(&repo, &["commit", "-q", "--allow-empty", "-m", "base"]);
+    git_in(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    fs::write(repo.join(" spaced.md"), "words\n").unwrap();
+    git_in(&repo, &["add", "-A"]);
+    git_in(&repo, &["commit", "-qm", "spaced"]);
+    let gate = Gate {
+        commit: git_in(&repo, &["rev-parse", "HEAD"]),
+        folder: repo.clone(),
+        ..gate(1, "/spaced", 100)
+    };
+    let files = files_of(&gate);
+    fs::remove_dir_all(&repo).unwrap();
+    assert_eq!(
+        files,
+        Some(owned(&[" spaced.md"])),
+        "a first name's leading space was lost"
+    );
+}
+
+#[test]
 fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
     // Two changes in different files the map's check is built from each
     // fit its budget's room alone. Were the later to merge while the
