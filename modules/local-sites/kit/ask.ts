@@ -20,7 +20,8 @@
 // Its choices are the first form's, each sending the value the session
 // offered exactly as written, but for one whose label poses as one of the
 // launcher's own acts, which For You hides (Now.qml's lookOffers). Its act
-// is For You's "Open" unless the second form names one LookForm.js takes.
+// is For You's "Open" unless the second form names one LookForm.js takes,
+// told apart only from the choices offered beside it.
 // The check the-ask-row-reads-as-for-you runs the launcher's own Looks.js,
 // LookForm.js and lookOffers against these over looks at each boundary,
 // and every character through how a name is read, in Node rather than in
@@ -408,9 +409,9 @@ function poses(name: string, taken: readonly string[]): boolean {
 /**
  * The second form's act in its own words, as LookForm.js's actOf takes it
  * with the launcher's act names: never past four words, holding a turn,
- * or posing as one of the launcher's acts, or as one of `choices` or one
- * of them as it, the look's offers before any posing is dropped, as
- * LookForm.js reads them; else "".
+ * or posing as one of the launcher's acts, or as one of `choices` a page
+ * would offer (`shown`) or one of them as it; else "". One held back is
+ * never drawn beside it, so it costs the act nothing (#6562, 231).
  */
 function actOf(act: string, choices: readonly Choice[]): string {
   const read = readAs(act);
@@ -419,7 +420,7 @@ function actOf(act: string, choices: readonly Choice[]): string {
     TURNS.test(act) ||
     VARIANTS.test(act) ||
     poses(act, LAUNCHER_ACTS) ||
-    choices.some((one) => poses(act, [one.label]) || poses(one.label, [act]))
+    shown(choices).some((one) => poses(act, [one.label]) || poses(one.label, [act]))
     ? ""
     : act;
 }
@@ -447,8 +448,8 @@ function saying(happened: unknown, matters: unknown): string {
  * second form's choices of that label, two of one label sharing it, as
  * Looks.js finds it, a choice's own kept wherever it says one. What follows
  * is said only in the second form (`said`), as For You's drawer says it. A
- * page never sends a value the session didn't offer. These are what the
- * act is told apart from; `shown` drops those posing as the launcher's.
+ * page never sends a value the session didn't offer. `shown` drops those
+ * posing as the launcher's, and the act is told apart from the rest.
  */
 function choicesOf(look: Fields, wants: Fields, said: boolean): readonly Choice[] {
   const wanted = (Array.isArray(wants["choices"]) ? wants["choices"] : []).filter(isObject);

@@ -1541,12 +1541,19 @@ Provider {
             : [];
         const choices = followed.length > 0 ? []
             : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
-        // A choice held back as worded like the launcher's own act is named
-        // as left out, with why, rather than gone without a word
-        // (docs/design.md, a figure shown or named as left out).
-        const held = waits ? one.offers.length - offered.length : 0;
+        // A choice held back is named as left out, with why, rather than
+        // gone without a word (docs/design.md, a figure shown or named as
+        // left out), each cause counted apart so each says only what's true
+        // of its own (#6562, 229 and 235): most are held for a character the
+        // launcher can't vouch for, not for their words.
+        const held = waits ? one.offers.filter(choice => !offered.includes(choice)) : [];
+        const heldSaid = [["worded", "heldBack"], ["character", "heldUnvouched"],
+            ["length", "heldLong"]].map(([cause, id]) => {
+            const count = held.filter(choice => LookForm.heldFor(choice.label) === cause).length;
+            return count > 0 ? waitingSaid(id, { count: count }) : "";
+        }).filter(part => part !== "").join(" \u00b7 ");
         const facts = followed.concat(choices, [
-            fact("heldBack", held > 0 ? waitingSaid("heldBack", { count: held }) : ""),
+            fact("heldBack", heldSaid),
             fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),

@@ -646,14 +646,34 @@ QtObject {
             ["\u00e1", "\u013c", "\u00cf"].map(one => one.normalize("NFD")),
             ["a\u0301", "l\u0327", "I\u0308"]);
         // Only a closed set of characters is trusted, each weighed as it draws:
-        // any other, as $ or _, which were weighed as small letters so "Talk "
-        // and 19 $'s drew cut to Talk (#6562, 214), holds the choice back.
+        // any other, as a tab or a caret, holds the choice back; and $ and _,
+        // once weighed as small letters so "Talk " and 19 $'s drew cut to Talk
+        // (#6562, 214), are weighed as the widest, so 19 still pose.
         expect("a choice holding a character outside the closed set poses",
             [LookForm.poses(`Talk ${"$".repeat(19)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"_".repeat(19)}`, ["Talk"]),
-                LookForm.poses("Talk $5", ["Talk"]),
-                LookForm.poses("Keep_It", ["Talk"])],
+                LookForm.poses("Talk ^5", ["Talk"]),
+                LookForm.poses("Keep\tIt", ["Talk"])],
             [true, true, true, true]);
+        // The marks sessions write all the time are in the set, none drawing as
+        // an act's letter, so a choice holding one is offered (#6562, 230, 234,
+        // 241 and 247).
+        const launcherActs = ["Open", "Answer", "Clear It", "Go To", "Explain It", "Talk"];
+        expect("a choice holding a mark sessions write is offered",
+            ["Merge into `main`", "Keep feature_flag", "Ship at 50%", "Ping @sam",
+                "Not yet\u2026", "Set x = 2", "Bump *all*", "Keep [WIP]", "Keep <br>",
+                "About ~5 min", "Pay $5", "Pick a | b", "Talk $5", "Keep_It"]
+                .filter(label => LookForm.poses(label, launcherActs)), []);
+        // Those of them that may stand for a letter read as it, so the skeleton
+        // still catches a choice borrowing one: $ as an s, @ as an a, a bar as
+        // an l, and a backtick as an apostrophe.
+        expect("a mark that may stand for a letter reads as it",
+            [LookForm.poses("Cle@r It", ["Clear It"]), LookForm.poses("$ave", ["Save"]),
+                LookForm.poses("T@lk", ["Talk"]), LookForm.poses("Ta|k", ["Talk"]),
+                LookForm.poses("Don`t Merge", ["Don't Merge"]),
+                LookForm.actOf(second({ act: "Save", choices: [{ value: "s", label: "$ave" }],
+                    wants: undefined }), launcherActs)],
+            [true, true, true, true, true, ""]);
         // A precomposed letter is read as its letter and its mark, so "Ta\u013ck"
         // poses as "Tal\u0327k" does, where it was offered (#6562, 215), and an
         // accent after the act is offered in either form.
@@ -691,10 +711,12 @@ QtObject {
             [true, true, true, false]);
         // Each character of the set is weighed from one table of them all,
         // and at the edge 217 asked for: ten #'s after "Talk " pose and nine
-        // don't, thirteen 0's pose and twelve don't (#6562, 217).
+        // don't, thirteen 0's pose and twelve don't (#6562, 217). The marks
+        // sessions write weigh as the widest, an ellipsis among them (230).
         const weights = [
             ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
-            ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5], ["mwMW&#+\u2014", 2]];
+            ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
+            ["mwMW&#+\u2014`_@%=*[]<>~$|\u2026", 2]];
         expect("each character of the closed set weighs as its table says",
             weights.reduce((wrong, [characters, width]) => wrong.concat(characters.split("")
                 .filter(one => LookForm.weighed(one) !== width)), []), []);
@@ -773,6 +795,24 @@ QtObject {
                 LookForm.actOf(second({ act: "Keep It Now",
                     choices: [{ value: "keep", label: "Keep It" }] }))],
             ["", "Review It", "", "Review It", ""]);
+        // Only beside the choices it's offered with: one held back is never
+        // drawn beside it, so a choice holding a character outside the set no
+        // longer costs "Review It" its own words (#6562, 231).
+        expect("its act stays beside a choice held back, never drawn beside it",
+            [LookForm.actOf(offeringOf(["\u0414\u0430", "Keep It"]), launcherActs),
+                LookForm.actOf(offeringOf(["Keep\tIt"]), launcherActs),
+                LookForm.actOf(offeringOf(["Review It\nfor good"]), launcherActs),
+                LookForm.actOf(offeringOf(["Review It Now"]), launcherActs)],
+            ["Review It", "Review It", "Review It", ""]);
+        // Why a choice was held back, so its drawer says what's true of it: a
+        // character the set leaves out, a length past what's read, else its
+        // words read as an act's (#6562, 229 and 235).
+        expect("a choice held back says why",
+            [LookForm.heldFor("\u0414\u0430"), LookForm.heldFor("Clear It\nfor good"),
+                LookForm.heldFor(`Keep ${"x".repeat(92)}`),
+                LookForm.heldFor("\u0436".repeat(200)),
+                LookForm.heldFor("Cle@r It"), LookForm.heldFor("Ta\u013ck")],
+            ["character", "character", "length", "length", "worded", "worded"]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
         // shows: a name whose words before either read as an act poses as it,

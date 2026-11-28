@@ -2150,7 +2150,8 @@ ShellRoot {
             "f.json": secondText("f", { happened: "" }),
             "c.json": secondText("c", { act: "Clear It" }),
             // And one whose choices are named as the launcher's own acts, one
-            // of them only where a line break hides the rest.
+            // of them only where a line break hides the rest, which, outside
+            // the closed set, is held back for its character.
             "p.json": secondText("p", { choices: [
                 { value: "clear", label: now.lookActNames[2], follows: "It goes." },
                 { value: "talk", label: now.lookActNames[5], follows: "You talk." },
@@ -2161,7 +2162,14 @@ ShellRoot {
             // so none is left to press.
             "q.json": secondText("q", { choices: [
                 { value: "clear", label: now.lookActNames[2] },
-                { value: "talk", label: now.lookActNames[5] }], wants: undefined }) });
+                { value: "talk", label: now.lookActNames[5] }], wants: undefined }),
+            // And one whose every choice is held back, each for another cause:
+            // a character outside the set, a length past what's read, and a
+            // letter that draws as an act's.
+            "r.json": secondText("r", { choices: [
+                { value: "da", label: "\u0414\u0430" },
+                { value: "long", label: `Keep ${"x".repeat(92)}` },
+                { value: "clear", label: "Cle@r It" }], wants: undefined }) });
         const secondRow = () => looked().find(row => row.key === "on:look:s");
         const seconds = secondRow();
         const informing = looked().find(row => row.key === "on:look:i");
@@ -2218,19 +2226,30 @@ ShellRoot {
                     || label === now.lookActNames[5]),
             JSON.stringify([now.lookActNames, posedAnswers, posedFacts]));
         // What was held back is counted in the drawer, and only where some
-        // was; and a row whose every choice was held back doesn't say it asks
-        // you, since nothing is left to press (#6562's eighth review).
+        // was, each cause apart, so it says only what's true of each (#6562,
+        // 229 and 235); and a row whose every choice was held back, for
+        // whatever cause, doesn't say it asks you, since nothing is left to
+        // press (#6562's eighth review).
         const posedValues = (posed?.drawer().facts ?? []).map(each => [each.label, each.value]);
         const unposed = (seconds?.drawer().facts ?? []).map(each => each.label);
         const allPosed = looked().find(row => row.key === "on:look:q");
-        expect("a drawer counts the choices held back, only where some were, and a row"
-            + " left none to press doesn't ask you",
-            posedValues.some(each => JSON.stringify(each) === JSON.stringify(["Held Back",
-                "3 worded as the launcher's own acts, so not offered"]))
+        const allHeld = looked().find(row => row.key === "on:look:r");
+        const heldValues = (allHeld?.drawer().facts ?? []).map(each => [each.label, each.value]);
+        const worded = "worded as the launcher's own acts, so not offered";
+        const unvouched = "with a character the launcher can't vouch for, so not offered";
+        const heldOf = (values, said) => values.some(each => JSON.stringify(each)
+            === JSON.stringify(["Held Back", said]));
+        expect("a drawer counts the choices held back by cause, only where some were, and a"
+            + " row left none to press doesn't ask you",
+            heldOf(posedValues, `2 ${worded} \u00b7 1 ${unvouched}`)
+                && heldOf(heldValues, `1 ${worded} \u00b7 1 ${unvouched}`
+                    + " \u00b7 1 too long to check, so not offered")
                 && !unposed.includes("Held Back")
                 && allPosed !== undefined && allPosed.side === informing?.side
-                && !String(allPosed.side).startsWith("asks you"),
-            JSON.stringify([posedValues, unposed, allPosed?.side, informing?.side]));
+                && !String(allPosed.side).startsWith("asks you")
+                && allHeld !== undefined && allHeld.side === informing?.side,
+            JSON.stringify([posedValues, heldValues, unposed, allPosed?.side, allHeld?.side,
+                informing?.side]));
         const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
         expect("its act named in its own words, its verb the launcher's",
             secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb

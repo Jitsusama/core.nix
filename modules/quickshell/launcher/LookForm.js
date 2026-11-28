@@ -40,26 +40,38 @@ const COMBINING = /[\u0300-\u036f]/gu;
 // digits, the space, the marks a choice in English writes, and typographic
 // quotes and dashes. Any other may draw as an act's letter or as nothing,
 // a Cyrillic Es as C, a kra as k, a times sign as x, a mark no list names
-// over a letter (#6562, F170, 177 to 187, 211, 218 and 224), or draw wider
-// than it's weighed, $ and _ as wide as an m (214). A list of those never
-// ends, as round after round on #6562 found, so the set is closed and a
-// choice holding anything outside it poses as any act. It refuses more
-// than it must: a choice in another script, or with a letter as \u00f8, is
-// held back, which a look written in English rarely is. A capital or a
-// digit draws half as wide again as a small letter, and an m, a w and the
-// marks drawn as wide as one about twice, so "Talk " and 19 #'s, weighed
-// as small letters, drew cut to Talk (212).
+// over a letter (#6562, F170, 177 to 187, 211, 218 and 224). A list of
+// those never ends, as round after round on #6562 found, so the set is
+// closed and a choice holding anything outside it poses as any act. It
+// refuses more than it must: a choice in another script, or with a letter
+// as \u00f8, is held back, which a look written in English rarely is. A
+// capital or a digit draws half as wide again as a small letter, and an m,
+// a w and the marks drawn as wide as one about twice, so "Talk " and 19
+// #'s, weighed as small letters, drew cut to Talk (212).
+// The marks sessions write all the time are in it too, since leaving them
+// out held back "Merge into `main`", "Ship at 50%" and "Not yet\u2026"
+// (230, 234, 241 and 247): each draws as a mark of its own, never as
+// nothing, and each is weighed as the widest, which a $ or a _ draws as
+// (214) and the narrow ones, a bar or a backtick, draw well within, so a
+// run of any after an act is never weighed short. The ellipsis is a stop,
+// as STOPS and ENDED read it, but draws as three, about as wide as an m.
+// Those that may stand for a letter read as it (ALIKE); the rest draw as
+// no letter in a plain face: _ and ~ as a rule, as the dash already in the
+// set does, [ ] < > as brackets open on one side, as ( ) are, and % = *
+// as signs.
 const WIDTHS = widthsOf([
     ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
     ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
-    ["mwMW&#+\u2014", 2]]);
-// The set's letters that draw alike in a plain face, each read as the one
-// it draws like: a capital I, a small l, a one and a bar as a stem, a zero
-// as an o, two v's as a w, r and n as an m, and c and l as a d, so
-// "Clear lt", "Ansvver" and "Rnerge" draw as an act and read as it (round
-// 14 on #6562, 198 and 207; 218 and 224). Unlike the letters beyond the
-// set, these are few, and known.
-const ALIKE = [[/[i1|]/gu, "l"], [/0/gu, "o"], [/vv/gu, "w"], [/rn/gu, "m"], [/cl/gu, "d"]];
+    ["mwMW&#+\u2014`_@%=*[]<>~$|\u2026", 2]]);
+// The set's characters that draw alike in a plain face, each read as the
+// one it draws like: a capital I, a small l, a one and a bar as a stem, a
+// zero as an o, two v's as a w, r and n as an m, c and l as a d, a $ as an
+// s, an @ as an a, and a backtick as an apostrophe, so "Clear lt",
+// "Ansvver", "Rnerge", "Cle@r It" and "$ave" draw as an act and read as it
+// (round 14 on #6562, 198 and 207; 218 and 224). Unlike the letters beyond
+// the set, these are few, and known.
+const ALIKE = [[/[i1|]/gu, "l"], [/0/gu, "o"], [/vv/gu, "w"], [/rn/gu, "m"], [/cl/gu, "d"],
+    [/\$/gu, "s"], [/@/gu, "a"], [/`/gu, "'"]];
 // What goes on a word, so what follows an act's words is a break only where
 // it's none of these (opensWith): a letter, or a digit as a letter does.
 const WORDED = /[a-z0-9]/u;
@@ -164,15 +176,20 @@ function readAs(name) {
 // off as Clear It or an answer, or turn its letters around, nor hold,
 // beside a name it's told apart from, a character outside the closed set
 // (WIDTHS) that may draw as an act's letter or as nothing; the drawer's
-// eyebrow says whose words they are.
+// eyebrow says whose words they are. It's told apart only from the choices
+// offered beside it, those poses leaves of `taken`, as Now.qml's
+// lookOffers leaves them: one held back is never drawn beside it, so one
+// holding a character outside the set cost the act its words for nothing
+// (#6562, 231).
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
+    const beside = (one.offers ?? []).map(choice => written(choice.label))
+        .filter(label => !poses(label, taken));
     return read === "" || read.split(" ").length > ACT_WORDS || TURNS.test(act)
         || VARIANTS.test(act)
         || poses(act, taken)
-        || (one.offers ?? []).some(choice => poses(act, [written(choice.label)])
-            || poses(written(choice.label), [act])) ? "" : act;
+        || beside.some(label => poses(act, [label]) || poses(label, [act])) ? "" : act;
 }
 
 // The words of a name before a line break or a run of spaces, which is
@@ -209,7 +226,7 @@ function poses(name, taken) {
     }
     const spelled = String(name).normalize("NFD");
     const bare = spelled.replace(COMBINING, "");
-    if (!bare.split("").every(one => WIDTHS.has(one))) {
+    if (!trusted(bare)) {
         return true;
     }
     const read = readAs(bare);
@@ -251,6 +268,25 @@ function poses(name, taken) {
         || drawn(each) > WHOLE_CHOICE;
     return taken.map(readAs).some(each => each !== "" && (reads(read, each)
         || reads(head, each) || (opensWith(read, each) && opened(each))));
+}
+
+// Whether every character of `name`, once its accents are gone, is in the
+// closed set (WIDTHS).
+function trusted(name) {
+    return String(name).normalize("NFD").replace(COMBINING, "").split("")
+        .every(one => WIDTHS.has(one));
+}
+
+// Why poses held back a choice named `name`, so its drawer says only
+// what's true of it: "length" past LONGEST, read no further; "character"
+// holding one outside the closed set, which may draw as anything; else
+// "worded", read as one of the launcher's acts (#6562, 229 and 235). Asked
+// only of a choice poses refused, in the order poses refuses it.
+function heldFor(name) {
+    if (String(name).length > LONGEST) {
+        return "length";
+    }
+    return trusted(name) ? "worded" : "character";
 }
 
 // Whether `read` draws as `each` whole: alike once the letters that draw

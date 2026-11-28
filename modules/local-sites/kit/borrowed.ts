@@ -24,18 +24,25 @@ const COMBINING = /[\u0300-\u036f]/gu;
  * The only characters a choice is trusted to hold, each with how wide it
  * draws in small letters, as LookForm.js's WIDTHS: a capital or a digit half
  * as wide again, and an m, a w and the marks drawn as wide as one about
- * twice, so neither $ nor _ is in it to be weighed as a small letter (214).
+ * twice. The marks sessions write all the time are in it, since leaving them
+ * out held back "Merge into `main`" and "Not yet\u2026" (230, 234, 241 and
+ * 247), each weighed as the widest, which a $ or a _ draws as (214) and a
+ * bar or a backtick draws well within, and the ellipsis, a stop, as three
+ * draw. Those that may stand for a letter read as it (ALIKE); the rest draw
+ * as no letter: _ and ~ as a rule, as the dash does, [ ] < > as brackets,
+ * as ( ) are, and % = * as signs.
  */
 const WIDTHS = widthsOf([
   ["abcdefghijklnopqrstuvxyz .,'\"-!?:;()/\u2018\u2019\u201c\u201d\u2013", 1],
   ["ABCDEFGHIJKLNOPQRSTUVXYZ0123456789", 1.5],
-  ["mwMW&#+\u2014", 2],
+  ["mwMW&#+\u2014`_@%=*[]<>~$|\u2026", 2],
 ]);
 
 /**
- * The set's letters that draw alike in a plain face, each read as the one it
- * draws like, as LookForm.js's ALIKE: a stem as an l, a zero as an o, two v's
- * as a w, r and n as an m, and c and l as a d (round 14, 198 and 207; 218).
+ * The set's characters that draw alike in a plain face, each read as the one
+ * it draws like, as LookForm.js's ALIKE: a stem as an l, a zero as an o, two
+ * v's as a w, r and n as an m, c and l as a d, a $ as an s, an @ as an a, and
+ * a backtick as an apostrophe (round 14, 198 and 207; 218).
  */
 const ALIKE: readonly (readonly [RegExp, string])[] = [
   [/[i1|]/gu, "l"],
@@ -43,6 +50,9 @@ const ALIKE: readonly (readonly [RegExp, string])[] = [
   [/vv/gu, "w"],
   [/rn/gu, "m"],
   [/cl/gu, "d"],
+  [/\$/gu, "s"],
+  [/@/gu, "a"],
+  [/`/gu, "'"],
 ];
 
 /** What goes on a word, as LookForm.js's WORDED: a letter, or a digit. */

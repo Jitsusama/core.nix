@@ -201,9 +201,9 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
   assert.deepEqual(asked(hidden, NOW)?.choices, [], "a choice hiding a space passed for Clear It");
   const asChoice = { ...posing, act: "Keep\u200b It" };
   assert.equal(asked(asChoice, NOW)?.act, OPEN, "an act reading as a choice offered showed");
-  // "Ship\u202e" holds a turn, so it isn't shown, but it's still offered:
-  // an act reading as it is refused, as For You tells the act apart from
-  // the offers before any posing is dropped.
+  // "Ship\u202e" holds a turn, so it's held back and never drawn beside
+  // the act, which For You tells apart only from the choices it offers, so
+  // an act reading as it stands (#6562, 231).
   const asDropped = {
     ...second,
     choices: [
@@ -212,13 +212,33 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
     ],
     act: "Ship",
   };
-  assert.equal(asked(asDropped, NOW)?.act, OPEN, "an act reading as a dropped choice showed");
+  assert.equal(asked(asDropped, NOW)?.act, "Ship", "a choice held back cost the act its words");
 });
+
+// A choice held back is never drawn beside the act, so one holding a
+// character outside the closed set no longer costs the act (#6562, 231).
+it("the act stays beside a choice held back, and goes beside one offered", () => {
+  const beside = (labels: readonly string[]): string | null | undefined =>
+    asked({ ...second, act: "Review It", choices: labelled(labels) }, NOW)?.act;
+  assert.equal(beside(["\u0414\u0430", "Keep It"]), "Review It", "a held choice cost the act");
+  assert.equal(beside(["Keep\tIt"]), "Review It", "a choice with a tab cost the act");
+  assert.equal(beside(["Review It Now"]), OPEN, "an act read as an offered choice showed");
+  assert.equal(
+    asked({ ...second, act: "Save", choices: labelled(["$ave"]) }, NOW)?.act,
+    OPEN,
+    "an act a choice's $ stands for a letter of showed",
+  );
+});
+
+/** The choices a look offering `labels` holds, each sending a value of its own. */
+function labelled(labels: readonly string[]): { value: string; label: string }[] {
+  return labels.map((label, at) => ({ value: `choice-${at}`, label }));
+}
 
 /** The labels a look offering `labels`, four at most, offers of them. */
 function offeredOf(labels: readonly string[]): string[] {
-  const choices = labels.map((label, at) => ({ value: `choice-${at}`, label }));
-  return asked({ ...second, choices }, NOW)?.choices.map((one) => one.label) ?? [];
+  const ask = asked({ ...second, choices: labelled(labels) }, NOW);
+  return ask?.choices.map((one) => one.label) ?? [];
 }
 
 // A mark MARKS doesn't name draws on the letter before it all the same, so
@@ -242,12 +262,28 @@ it("a one-word act's choice weighs ASCII's wide marks and its digits as drawn", 
 });
 
 // Only a closed set of characters is trusted, each weighed as it draws, so
-// $ and _, once weighed as small letters, hold a choice back (#6562, 214).
+// a tab or a caret holds a choice back, and $ and _, once weighed as small
+// letters, are weighed as the widest, so 19 after Talk still do (#6562, 214).
 it("a choice holding a character outside the closed set is held back", () => {
   assert.deepEqual(
-    offeredOf([`Talk ${"$".repeat(19)}`, `Talk ${"_".repeat(19)}`, "Keep_It", "Talk $5"]),
+    offeredOf([`Talk ${"$".repeat(19)}`, `Talk ${"_".repeat(19)}`, "Keep\tIt", "Talk ^5"]),
     [],
   );
+});
+
+// The marks sessions write all the time are in the set, none drawing as an
+// act's letter, so a choice holding one is offered (#6562, 230, 234, 241
+// and 247); those that may stand for a letter still read as it.
+it("a choice holding a mark sessions write is offered, unless it reads as an act", () => {
+  const marked = [
+    ["Merge into `main`", "Keep feature_flag", "Ship at 50%", "Ping @sam"],
+    ["Not yet\u2026", "Set x = 2", "Bump *all*", "Keep [WIP]"],
+    ["Keep <br>", "About ~5 min", "Pay $5", "Pick a | b"],
+  ];
+  for (const labels of marked) {
+    assert.deepEqual(offeredOf(labels), labels, "a choice holding a mark was held back");
+  }
+  assert.deepEqual(offeredOf(["Cle@r It", "T@lk", "Ta|k", "Keep It"]), ["Keep It"]);
 });
 
 // A precomposed letter is read as its letter and its mark (#6562, 215).

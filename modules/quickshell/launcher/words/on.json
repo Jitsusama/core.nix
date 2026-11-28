@@ -428,6 +428,8 @@
         "asksYou": "asks you",
         "followsUnsaid": "it doesn't say what follows",
         "heldBack": "{count} worded as the launcher's own acts, so not offered",
+        "heldUnvouched": "{count} with a character the launcher can't vouch for, so not offered",
+        "heldLong": "{count} too long to check, so not offered",
         "ifNothing": "it goes quiet into History 3 days after it came",
         "expires": "it expires into History at {clock}",
         "review": "{at} review",
