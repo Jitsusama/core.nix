@@ -691,6 +691,7 @@ mod tests {
 
     /// A card on the point that warned it, as it heeds the warning.
     fn on_the_warning_point() -> State {
+        let now = Instant::now();
         let mut state = State::default();
         let on = Heard {
             name: "Lantern".into(),
@@ -701,7 +702,7 @@ mod tests {
             age: 0,
             radio: Radio::default(),
         };
-        state.heard("/Interfaces/0/BSSs/1", Some(on));
+        state.heard("/Interfaces/0/BSSs/1", Some(on), now);
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
         state
     }

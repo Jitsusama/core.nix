@@ -980,7 +980,8 @@ impl<'a> Air<'a> {
             "BSSRemoved" => {
                 if let Ok(point) = body.deserialize::<OwnedObjectPath>() {
                     self.points.remove(point.as_str());
-                    change(&self.state, |state| state.heard(point.as_str(), None));
+                    let now = Instant::now();
+                    change(&self.state, |state| state.heard(point.as_str(), None, now));
                 }
             }
             "InterfaceRemoved" => {
@@ -1034,7 +1035,8 @@ impl<'a> Air<'a> {
                         };
                         point.changed(changed);
                         let heard = point.heard();
-                        change(&self.state, |state| state.heard(path.as_str(), heard));
+                        let now = Instant::now();
+                        change(&self.state, |state| state.heard(path.as_str(), heard, now));
                     }
                     "fi.w1.wpa_supplicant1.Interface" => {
                         self.card_changed(bus, path, &changed).await;
@@ -1356,7 +1358,8 @@ impl<'a> Air<'a> {
         let point = AccessPoint::new(properties);
         let heard = point.heard();
         self.points.insert(path.into(), point);
-        change(&self.state, |state| state.heard(path, heard));
+        let now = Instant::now();
+        change(&self.state, |state| state.heard(path, heard, now));
     }
 
     /// The saved network of these the card hears most strongly, if it hears

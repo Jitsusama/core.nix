@@ -1626,11 +1626,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_never_gives_way_to_the_point_that_warned_it_drops_the_card() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
 
         let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
@@ -1655,11 +1655,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_waits_on_the_warned_move_off_its_point_before_it_gives_way() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
         air.warned_off(
             "wlan2",
@@ -1703,11 +1703,11 @@ mod tests {
 
     #[test]
     fn a_losing_call_let_go_from_its_warned_point_gives_way_at_once() {
-        let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
-        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let start = Instant::now();
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         // Looked first for the points named, then let go as its look found
         // none: no heed of wifid's is under way to wait on.
         let until = start + Duration::from_secs(600);
@@ -1733,14 +1733,14 @@ mod tests {
     #[test]
     fn a_losing_call_gives_way_at_once_once_its_warned_move_is_refused() {
         let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
+        let start = Instant::now();
         let warned = || {
             let mut air = State::default();
-            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)));
-            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)));
+            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)), start);
+            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)), start);
             air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
             air
         };
-        let start = Instant::now();
         let heeded = (start, start + Duration::from_secs(600));
         let refused = |arrivals: &Arrivals| {
             let mut air = warned();
