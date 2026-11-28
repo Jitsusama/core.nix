@@ -12,9 +12,14 @@ Item {
     // A tenth of a meter's: 150 ms once seen, and 1 s at most.
     readonly property int lasts: 150
     readonly property int atMost: 1000
-    // How far either side of its time a spending may come, a busy builder's
-    // timers firing late.
-    readonly property int slack: 60
+    // How far before its time a spending may come, as Qt's coarse timers may
+    // fire up to 5% early, and how far after. A busy builder's timers fire
+    // late by however long its thread is held, as the first case's did by
+    // 68 ms (2026-11-27), so late gets more room. Every wrong spending a case
+    // guards against comes earlier, or at the 1 s cap well past this, and each
+    // case's span outlasts its time and the late room both.
+    readonly property int early: 60
+    readonly property int late: 250
 
     // Each case: what's done when, in ms from showing, and when it's spent,
     // or -1 for never within the case's span, with whether it was seen.
@@ -73,8 +78,9 @@ Item {
                 Expect.expect(one.name, heard === null, `spent at ${heard?.after} ms`);
             else {
                 Expect.expect(one.name, heard !== null, "never spent");
-                const off = Math.abs(heard.after - one.spent);
-                Expect.expect(one.name, off <= slack, `spent at ${heard.after} ms`);
+                const off = heard.after - one.spent;
+                Expect.expect(one.name, off >= -early && off <= late,
+                    `spent at ${heard.after} ms`);
                 Expect.same(`${one.name}, seen`, heard.seen, one.seen);
             }
         } catch (error) {
