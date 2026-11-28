@@ -361,6 +361,14 @@ CASES: list[tuple[str, tuple[str, str], str | None]] = [
         f"{CANNOT} preprocessor conditional, #if,",
     ),
     (
+        "a guard's test only some kernels build",
+        at_start(
+            "\tif (data->kept\n#ifndef CONFIG_PM_SLEEP\n\t    || mesg.event == PM_EVENT_THAW\n"
+            f"#endif\n\t    )\n\t\treturn 0;\n\t{RESET}"
+        ),
+        f"{CANNOT} preprocessor conditional, #ifndef,",
+    ),
+    (
         "a return only a loop's macro reaches",
         at_start(
             "\tif (mesg.event == PM_EVENT_THAW)\n"
@@ -479,6 +487,17 @@ CASES: list[tuple[str, tuple[str, str], str | None]] = [
             )
         ),
         "mesg.event == PM_EVENT_FREEZE || mesg.event == PM_EVENT_RESTORE",
+    ),
+    (
+        "a case past a do's break in a thaw's case",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_THAW:\n\t\tdo {\n\t\t\tdata->kept = 1;\n\t\t\tbreak;\n"
+                "\t\t} while (0);\n\t\tfallthrough;\n"
+                f"\tcase PM_EVENT_RESTORE:\n\t\t{RESET}\n\t\tbreak;\n"
+            )
+        ),
+        "mesg.event == PM_EVENT_THAW || mesg.event == PM_EVENT_RESTORE",
     ),
 ]
 

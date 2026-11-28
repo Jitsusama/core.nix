@@ -344,12 +344,15 @@ class Reader:
         """Read the parentheses opening at the next word, and give what they hold.
 
         A reset called inside them runs under what holds outside them, so it is found
-        with those tests.
+        with those tests. A conditional inside them is refused as it is anywhere else,
+        since it decides which of the test's words a kernel builds.
         """
         opening = self.tokens[self.at + 1].start()
         end = closing(self.text, opening)
         self.at += 1
         while self.at < len(self.tokens) and self.tokens[self.at].start() <= end:
+            if self.word() == MARK:
+                sys.exit(self.refused(MARK, self.word(1)))
             if self.resets_at(self.at):
                 self.found.append(self.holding())
             self.at += 1
@@ -376,6 +379,14 @@ class Reader:
         self.test()
         if self.word() == "{" or NAME.fullmatch(self.word()):
             self.pending.append(Held(LOOP, "loop"))
+
+    def looped(self) -> None:
+        """Read a do, which holds a loop over its body as a while does.
+
+        A break in that body leaves only the loop, never the switch around it.
+        """
+        self.at += 1
+        self.pending.append(Held(LOOP, "loop"))
 
     def otherwise(self) -> None:
         """Read an else, which holds where its if's surroundings did and the if's test failed."""
@@ -493,7 +504,13 @@ class Reader:
     def step(self) -> None:
         """Read one word, or one test or call with the word that opens it."""
         word, following = self.word(), self.word(1)
-        marks = {"else": self.otherwise, "{": self.opened, "}": self.shut, ";": self.ended}
+        marks = {
+            "else": self.otherwise,
+            "do": self.looped,
+            "{": self.opened,
+            "}": self.shut,
+            ";": self.ended,
+        }
         if word in marks:
             marks[word]()
         elif word in {"case", "default"}:
