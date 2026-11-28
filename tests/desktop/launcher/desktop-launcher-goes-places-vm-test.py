@@ -800,11 +800,18 @@ def landed_after_an_offer(desktop: Desktop, held: str, words: str) -> None:
     Offered from outside, it holds Joel's keys as a link does: a Return before he types a key
     lands on nothing, since one meant for a window he was typing in would end it (round 000036
     on #6796, F135; round 000035, F1). So the Return is pressed first, then `words` typed.
+    Nothing landed means something only once the line has heard that Return: a launcher lagging
+    the key would show nothing landed too. A held Return takes no key, so the wait is on the
+    line's count of what it held, or of what its quiet dropped, should the key land inside it.
     """
     time.sleep(LINK_QUIET)
+    was = desktop.showing()
     desktop.machine.send_key("ret")
-    time.sleep(LINK_QUIET)
-    shown = desktop.showing()
+    shown = desktop.launcher_until(
+        lambda now: (
+            now["returnsHeld"] + now["quietDropped"] > was["returnsHeld"] + was["quietDropped"]
+        )
+    )
     assert shown["landed"] == "", shown
     assert shown["mode"] != "normal", shown
     desktop.machine.succeed(held)

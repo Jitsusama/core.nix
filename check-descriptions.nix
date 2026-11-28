@@ -461,6 +461,13 @@
     other's; one whose words alone change is said again in place, by its id, and not once Joel has
     put it away; and one that goes takes back whichever of its notices is up
   '';
+  an-ask-refused-for-now-is-asked-again = ''
+    an ask a daemon's client sends till taken is asked again when refused for now or given no
+    answer, and done on any other code; given up at its last try, it says the daemon's refusal,
+    or none where no answer came; asks given as words each wait their own try, while two given
+    as their latest wait as one with the most tries either had; and a try due with no connection
+    asks nothing and spends no try
+  '';
   an-emoji-stands-on-its-name-on-niri = ''
     each of Super+E's groups, as niri shows the launcher's rows drawn through Qt's GPU path at 1.5
     and 2, has its emoji's middle within a device pixel of its name's, halfway from the top of its

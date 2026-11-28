@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
-use super::joels_acts::{AS_JOEL, NOT_AS_JOEL, ONLY_THE_SHELL};
+use super::joels_acts::{AS_JOEL, NOT_AS_JOEL, ONLY_THE_SHELL, answer_refused_line};
 use super::*;
 
 /// The daemon's own socket, served as `serve` serves it, refuses a
@@ -583,5 +583,47 @@ fn each_act_as_joel_is_held_to_the_shell_but_a_shares_start() {
     assert!(
         !held_to_the_shell(&json!({"ask": "rows"})),
         "nor an ask that isn't Joel's act"
+    );
+}
+
+/// The shell's heard says when Joel opened a drawer apart from when the
+/// daemon heard it, so a late retry's moment is never taken for his.
+#[test]
+fn a_heard_keeps_when_joel_opened_a_drawer_apart_from_when_it_was_heard() {
+    let (told, heard) = mpsc::channel();
+    let says = own(told, Wants::default());
+    let answer = says(&json!({"ask": "heard", "address": "P", "seen": 5}));
+    assert_eq!(answer, Some(json!({"heard": "P"})), "the heard is answered");
+    let Ok(Heard::Opened { address, at, seen }) = heard.try_recv() else {
+        panic!("the loop was told no opening");
+    };
+    assert_eq!(
+        (address.as_str(), seen, at > seen),
+        ("P", 5, true),
+        "opened at 5 by the shell's word, heard now"
+    );
+}
+
+/// An answer the shell's check refused journals what it named cut short,
+/// as [`asker::named`] cuts it, so no asker writes more than a line. The
+/// refused act's line, `not_as_joel`'s, is asker.rs's `refused_line`,
+/// whose own case holds its cut.
+#[test]
+fn a_refused_answers_line_says_what_it_named_short_and_on_one_line() {
+    let long = format!("{}\nagents: a forged line", "x".repeat(300));
+    let line = answer_refused_line(
+        asker::REFUSED,
+        &json!({"want": "question@1", "address": long}),
+    );
+    assert!(!line.contains('\n'), "one line: {line}");
+    assert!(line.len() < 220, "the address cut short: {line}");
+    assert_eq!(
+        answer_refused_line(
+            asker::REFUSED,
+            &json!({"want": "question@1", "address": "P9R1KI"})
+        ),
+        "agents: an answer to \"question@1\" for \"P9R1KI\" wasn't taken: \
+         who asked isn't the shell",
+        "a short one whole"
     );
 }

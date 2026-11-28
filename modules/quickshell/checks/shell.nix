@@ -453,6 +453,25 @@
       touch $out
     '';
 
+  # An ask a daemon's client sends till taken (Daemon.qml's askTillTaken) is
+  # asked again, merged, given up or kept for the connection's return as
+  # modules/quickshell/tests/retrying.qml holds Retrying.js to in Qt's own
+  # engine; tests/daemon.qml holds the path through a real socket.
+  an-ask-refused-for-now-is-asked-again =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "an-ask-refused-for-now-is-asked-again" { } ''
+      cp ${../tests/retrying.qml} retrying.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "Retrying.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml retrying.qml
+      touch $out
+    '';
+
   # A FileView told not to print errors says nothing of a file that opens
   # and then refuses every read, as some sysfs files do, in the Quickshell
   # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since

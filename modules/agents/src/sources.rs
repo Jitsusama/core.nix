@@ -64,10 +64,19 @@ pub enum Heard {
     /// Joel reads these landings, by their keys, at this moment in
     /// milliseconds, as the shell says.
     Read(Vec<String>, i64),
-    /// Joel opened a session's drawer, by its address, so he's read what
-    /// it answered before then (answered.rs's `opened`): at this moment
-    /// in milliseconds, then when the shell says he opened it.
-    Opened(String, i64, i64),
+    /// Joel opened a session's drawer, so he's read what it answered
+    /// before then (answered.rs's `opened`). Its two moments are named,
+    /// as a late retry's `at` taken for `seen` would mark read an answer
+    /// he never saw.
+    Opened {
+        /// The session's address.
+        address: String,
+        /// When the daemon heard the ask, in milliseconds since 1970,
+        /// which the read line says.
+        at: i64,
+        /// When the shell says he opened it, in milliseconds since 1970.
+        seen: i64,
+    },
     /// Where the windows of sessions moving onto pi's host sat, all of
     /// them, as the shell says each time one's kept or let go.
     KeepPlaces(KeptPlaces),
@@ -301,10 +310,10 @@ impl Inputs {
             }
             // The node tells the read line back with the rest of the talk,
             // which takes the answer away, so nothing is held here.
-            Heard::Opened(address, now, seen) => {
+            Heard::Opened { address, at, seen } => {
                 let answers = self.answers();
                 if let Some(answer) = answered::opened(&answers, &address, seen)
-                    && let Err(why) = answered::read(&paths.steer, answer, now)
+                    && let Err(why) = answered::read(&paths.steer, answer, at)
                 {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
@@ -503,6 +512,54 @@ mod tests {
             "written for the next start"
         );
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn an_opening_marks_read_only_an_answer_that_came_before_it_was_seen() {
+        let folder = std::env::temp_dir().join(format!("agents-opened-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        let paths = paths_in(&folder);
+        let replies = paths.steer.join("P").join("replies");
+        fs::create_dir_all(&replies).expect("its replies folder");
+        let file = replies.join("talk-1.jsonl");
+        fs::write(&file, "").expect("the talk's file");
+        let mut inputs = Inputs::default();
+        let running = json!({"records": [{"key": "session:p", "standing": "running",
+            "presence": {"addresses": ["P"]}}]});
+        inputs.hear(Heard::Sessions(running), &paths);
+        inputs.hear(
+            Heard::Talks(json!({"records": [{"key": "talk:P/talk-1", "address": "P",
+                "id": "talk-1", "lines": [
+                    {"stage": "delivered", "from": "joel", "text": "still lit?"},
+                    {"stage": "replied", "at": "2026-11-11T21:01:00Z", "text": "Yes."}]}]})),
+            &paths,
+        );
+        let came = crate::clock::ms_of(&json!("2026-11-11T21:01:00Z")).expect("a moment");
+        // A late retry: the daemon hears the ask a minute after the answer
+        // came, though the shell says he opened the drawer before it.
+        let heard = came + 60_000;
+        let opened = |seen| Heard::Opened {
+            address: "P".into(),
+            at: heard,
+            seen,
+        };
+        inputs.hear(opened(came - 1), &paths);
+        let unread = fs::read_to_string(&file).expect("its lines");
+        inputs.hear(opened(came + 1), &paths);
+        let read = fs::read_to_string(&file).expect("its lines");
+        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            unread, "",
+            "an answer that came after he opened its drawer was marked read by a late ask"
+        );
+        assert_eq!(
+            read,
+            format!(
+                "{}\n",
+                json!({"stage": "read", "by": "joel", "at": crate::clock::text_of(heard)})
+            ),
+            "an answer that came before he opened its drawer wasn't marked read when heard"
+        );
     }
 
     #[test]

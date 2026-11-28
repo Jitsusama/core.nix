@@ -78,6 +78,19 @@ pub(super) const NOT_AS_JOEL: &str =
 pub(super) const ONLY_THE_SHELL: &str =
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
 
+/// The journal line of an answer the shell's check refused, beside the
+/// line asker.rs writes of who asked, so an agent answering its own ask
+/// can be traced to it: the want and address it named, each the asker's
+/// own, [`asker::named`] cut short, so no ask writes more than a line.
+pub(super) fn answer_refused_line(why: &str, said: &Value) -> String {
+    format!(
+        "agents: an answer to {} for {} wasn't taken: {}",
+        asker::named(&said["want"]),
+        asker::named(&said["address"]),
+        asker::journalled(why)
+    )
+}
+
 /// Joel's answer to one of `wants`, steered through `node` only where
 /// `asker` says the shell asked it: the node takes it as his, so an
 /// agent answering its own ask through this daemon would answer as him
@@ -89,16 +102,7 @@ pub(super) fn answered(
     node: Option<&Path>,
 ) -> Value {
     if let Err(why) = asker {
-        // Why it was refused is journalled with what it named, beside the
-        // line asker.rs writes of who asked, so an agent answering its own
-        // ask can be traced to it. What it named is the asker's own, cut
-        // short, so no ask writes more than a line.
-        eprintln!(
-            "agents: an answer to {} for {} wasn't taken: {}",
-            asker::named(&said["want"]),
-            asker::named(&said["address"]),
-            asker::journalled(&why)
-        );
+        eprintln!("{}", answer_refused_line(&why, said));
         return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
     }
     // Only an answer reaches here, so the wants always have one to give.
