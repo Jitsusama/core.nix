@@ -857,6 +857,25 @@ in
       touch $out
     '';
 
+  # What an act came to, told while the launcher is shut, waits beside what
+  # others' acts came to and lapses a quarter hour on, as
+  # modules/quickshell/tests/told-shut.qml holds launcher/ToldShut.js to it in
+  # Qt's own engine.
+  a-word-told-shut-waits-beside-the-others =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-word-told-shut-waits-beside-the-others" { } ''
+      cp ${../tests/told-shut.qml} told-shut.qml
+      cp ${../launcher/ToldShut.js} ToldShut.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml told-shut.qml
+      touch $out
+    '';
+
   # An open launcher takes a burst of its sources' changes a pace apart, and
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a

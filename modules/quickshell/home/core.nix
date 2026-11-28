@@ -89,6 +89,7 @@
   "launcher/Headings.js"
   "launcher/Most.js"
   "launcher/Becoming.js"
+  "launcher/ToldShut.js"
   "launcher/Recent.js"
   "launcher/Recents.js"
   "launcher/Trials.js"

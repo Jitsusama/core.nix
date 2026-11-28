@@ -5376,6 +5376,11 @@
     would free, one a turn, leaving out names folded under a tilde; and a busy count or weighing
     stays owed for the next closing to take up rather than being dropped
   '';
+  a-word-told-shut-waits-beside-the-others = ''
+    what an act came to, told while the launcher is shut, is said as it next opens beside what
+    others' acts came to, a newer word about the same session or act takes the older's place,
+    and a word told more than a quarter hour before the opening lapses unsaid
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold

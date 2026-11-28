@@ -86,6 +86,7 @@ import "launcher/Joined.js" as Joined
 import "launcher/Looks.js" as Looks
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
+import "launcher/ToldShut.js" as ToldShut
 import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
@@ -3561,8 +3562,10 @@ Scope {
     // again (sayOffer), and the line left (onHeldChanged) or its words given (give) ends it,
     // so it never stands over a line it didn't offer.
     property var offerHeld: null
+    // Said alone or among the tells an opening said with it (ToldShut.among).
     readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
-        && JSON.stringify(saying) === offerHeld.told
+        && (JSON.stringify(saying) === offerHeld.told
+            || ToldShut.among(toldSaid, saying, offerHeld.foot))
     // Words that aren't keys, as what an act didn't do and why, say nothing
     // in Return's place, so its last stands at its own width: held there,
     // the why stood a Return's room away from what it was the why of.
@@ -3583,10 +3586,15 @@ Scope {
     // what its row said it would be, as a folder gone between the listing
     // and Return: said once the next time it opens, until the first key,
     // as `say` says a key's word, never as a notice (VKCF3Z, 2026-11-07
-    // [4a00987e]). Each is [mark, word, colour], as the foot's keys are;
-    // said again before it opens, the newer takes its place.
+    // [4a00987e]). Each tell's words are [mark, word, colour], as the foot's
+    // keys are, kept whole beside what it's about and when it was told
+    // (ToldShut.js): a newer tell about the same takes its place, another's
+    // waits beside it, and one told over a quarter hour before the launcher
+    // opens lapses unsaid.
     property var toldOnOpen: []
-    property bool toldLoose: false
+    // The tells the opening said (sayTold), and the words it said them in,
+    // so one can be taken back from the foot while it says them still.
+    property var toldSaid: ({ tells: [], said: null })
 
     // Forgets what's told and not yet read, said in the foot or waiting
     // for the next opening, as a share begins, since it may name what the
@@ -3602,7 +3610,7 @@ Scope {
     // place held before may be an ask's step, whose name the crumb draws
     // (Steady.shareStarts says what's left).
     function untold() {
-        const forgotten = toldOnOpen.length + saying.length;
+        const forgotten = ToldShut.said(toldOnOpen).length + saying.length;
         toldOnOpen = [];
         say([]);
         forgetGone();
@@ -3647,13 +3655,50 @@ Scope {
         armed = left.armed;
         forgetLetGo();
     }
-    function tellOnOpen(told, loose) {
+    // Says `told` now if the launcher is open, else keeps it for its next
+    // opening as about `about`, the session or act it answers, by default
+    // the mark its words open with (ToldShut.aboutOf).
+    function tellOnOpen(told, loose, about) {
         if (open) {
             say(told, loose);
-        } else {
-            toldOnOpen = told;
-            toldLoose = loose === true;
+            return;
         }
+        toldOnOpen = ToldShut.waiting(toldOnOpen, ToldShut.tell(told, loose, about, Date.now()));
+    }
+    // Takes back the words `shown` (a tellOnOpen's), from what waits for
+    // the next opening and from the foot where it says them still, alone
+    // or among what the opening said (ToldShut.untold): the rest said
+    // again under the keys they were said under, so they go at the key
+    // they'd have gone at.
+    function untell(shown) {
+        toldOnOpen = ToldShut.without(toldOnOpen, shown);
+        const left = ToldShut.untold(toldSaid, saying, shown, open && sayingNow);
+        toldSaid = left.state;
+        if (left.foot === null)
+            return;
+        const keys = sayingKeys;
+        say(left.foot, left.loose);
+        if (left.foot.length > 0)
+            sayingKeys = keys;
+    }
+    // Says `tells` in the foot, kept as what the opening said.
+    function sayTells(tells) {
+        const said = ToldShut.said(tells);
+        say(said, tells.length > 0 && tells.every(one => one.loose));
+        toldSaid = { tells, said };
+    }
+    // Says what waits to be told as the launcher opens, but for what lapsed,
+    // which the journal counts, never its words, which a source served.
+    function sayTold() {
+        const due = ToldShut.due(toldOnOpen, Date.now());
+        toldOnOpen = [];
+        if (due.lapsed > 0)
+            console.info(`launcher: let ${due.lapsed} words told lapse, `
+                + "told over 15 min before it opened");
+        if (due.said.length === 0)
+            return;
+        sayTells(due.tells);
+        Report.say(`told ${JSON.stringify(due.said)}`);
     }
 
     // What q says, on the rows and in the drawer alike: with :q at the
@@ -3798,10 +3843,15 @@ Scope {
     // Return giving way first (Standing.keysFitted), counted for stepFits
     // with the facts' fittings (standing.fitNow) in a plain object, since a
     // property read and written as they're fitted would fit them again.
+    // Several tells an opening said give way a whole tell at a time first
+    // (ToldShut.fitting), so one's why never stands beside another's what.
     readonly property var footFitted: ({ keys: 0, facts: 0 })
     function keysFittedIn(told, loose, room) {
         footFitted.keys += 1;
-        return Standing.keysFitted(told, keys => keysWide(keys, loose), room, footYielding);
+        const wide = keys => keysWide(keys, loose);
+        const whole = toldSaid.tells.length > 1 && ToldShut.sameWords(told, toldSaid.said)
+            ? ToldShut.fitting(toldSaid.tells, keys => wide(keys) <= room) : told;
+        return Standing.keysFitted(whole, wide, room, footYielding);
     }
 
     // How wide a row's keys are, Return in its place, or loose (say) at
@@ -6416,14 +6466,14 @@ Scope {
     // mark beside it in the alert, why muted.
     function toldThat(what, why) {
         tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
-            { what: Theme.alert, why: Theme.muted }), true);
+            { what: Theme.alert, why: Theme.muted }), true, what);
     }
     // Says where words in the field came from, which nothing failed, and
     // gives what it said.
     function toldWhence(what) {
         const told = Becoming.told({ mark: Theme.glyph.link, what, why: "" },
             { what: Theme.text, why: Theme.muted });
-        tellOnOpen(told, true);
+        tellOnOpen(told, true, what);
         return told;
     }
 
@@ -11705,11 +11755,8 @@ Scope {
             if (!openingInto)
                 noteKeys();
             lap("noting");
-            if (toldOnOpen.length > 0) {
-                say(toldOnOpen, toldLoose);
-                Report.say(`told ${JSON.stringify(toldOnOpen)}`);
-                toldOnOpen = [];
-            }
+            if (toldOnOpen.length > 0)
+                sayTold();
             Report.say(`stands ${standing.said}`);
             lap("telling");
             if (openAsked >= 0) {
