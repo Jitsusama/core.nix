@@ -561,6 +561,56 @@ fn a_kept_case_is_folded_again_by_its_wording() {
     );
 }
 
+/// A wording kept under a longer cap is cut as a fresh one is, its space
+/// at the cut trimmed too, so its message reread gives the same case and
+/// the two dedup rather than keeping both.
+#[test]
+fn a_kept_wording_past_the_cap_dedups_with_its_fresh_copy() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    // Cut at the cap, it ends in the space after its first word.
+    let wording = format!("{} {}", "x".repeat(SAID_AT_MOST - 1), "y".repeat(100));
+    assert_eq!(
+        wording.chars().count(),
+        600,
+        "the wording isn't 600 letters long"
+    );
+    let m = sent(
+        &format!("cause: {wording} | change: core.nix#1"),
+        600,
+        "@1JQPPC",
+    );
+    write(&messages, &m, 600);
+    let kept = Kept {
+        v: VERSION,
+        through_ms: (NOW - 600) * 1000,
+        cases: vec![Case {
+            said_in: Some(m.id.clone()),
+            ..case(&wording, "core.nix#1", 600)
+        }],
+        withdrawn: BTreeSet::new(),
+    };
+    let text = serde_json::to_string(&kept).expect("serialised");
+    fs::write(folder.path().join("causes.json"), text).expect("kept");
+    let _ = read(home.path(), folder.path(), NOW, true);
+    let json = fs::read(folder.path().join("causes.json")).expect("a reading kept");
+    let cases = serde_json::from_slice::<Kept>(&json)
+        .expect("a reading that parses")
+        .cases;
+    assert!(
+        cases.len() == 1 && cases[0].said == "x".repeat(SAID_AT_MOST - 1),
+        "a kept wording and its fresh copy weren't cut alike, so both were kept: {:?}",
+        cases
+            .iter()
+            .map(|c| c.said.chars().count())
+            .collect::<Vec<_>>()
+    );
+}
+
 /// An hour that can't keep what it read says so on the card, naming no
 /// class, and first, above the classes over the bar, since the card
 /// shows only its first few lines; so the week read again each hour

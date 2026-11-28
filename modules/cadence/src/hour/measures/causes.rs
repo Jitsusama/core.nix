@@ -262,7 +262,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
         .cases
         .into_iter()
         .map(|case| {
-            let said: String = case.said.chars().take(SAID_AT_MOST).collect();
+            let said = cut_said(&case.said);
             Case {
                 class: class_named(&said),
                 said,
@@ -678,7 +678,7 @@ fn class_named(said: &str) -> String {
 /// within is an apostrophe, so a sender's words can't close the quotes
 /// the ask puts them in. Only its first `SAID_AT_MOST` letters are kept.
 fn plain(class: &str) -> String {
-    class
+    let written = class
         .trim()
         .trim_matches(['"', '\'', '`'])
         .trim_end_matches('.')
@@ -687,8 +687,16 @@ fn plain(class: &str) -> String {
         .join(" ")
         .to_lowercase()
         .replace(['\u{2019}', '"', '`'], "'")
-        .replace(':', ",")
-        .chars()
+        .replace(':', ",");
+    cut_said(&written)
+}
+
+/// `said`'s first `SAID_AT_MOST` letters, with no space left at their
+/// end, as a case keeps its cause. A kept case is cut by it too when it
+/// is read again, so a copy kept under a longer cap matches the fresh
+/// copy its message gives once it is reread, and the two dedup.
+fn cut_said(said: &str) -> String {
+    said.chars()
         .take(SAID_AT_MOST)
         .collect::<String>()
         .trim_end()
