@@ -4724,7 +4724,16 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         shell.launcher_until(rested)
         shown = shell.showing()
         print(f"the wheel by {by} rested at {shown['scrolled']}")
-        assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
+        # Every condition the wait held, so a failure here names the one that let go.
+        assert rested(shown), {
+            "by": by,
+            "scrolled": shown["scrolled"],
+            "restsOnARow": shown["restsOnARow"],
+            "cut": shown["cut"],
+            "moving": shown["moving"],
+            "movements": shown["movements"],
+            "heard": heard,
+        }
         none_drawn_cut(shell, f"the wheel by {by} from {was}", selection_in_view=False)
         places.append(shown["scrolled"])
         return int(shown["scrolled"]), True
