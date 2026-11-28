@@ -1551,6 +1551,8 @@ fn unbuilt_left(
         kept => return (kept, owed, known),
     };
     let lends_for = there::lent_systems(general[0]);
+    // A derivation whose file can't be read is taken as buildable, as
+    // `foreign` takes it, so the builder it goes to says why it fails.
     let read = |path: &str| fs::read_to_string(path).ok();
     let unbuilt = there::unbuildable(&part, &lends_for, &known, read);
     if unbuilt.is_empty() {
@@ -1624,6 +1626,8 @@ fn spilled_onto(
     let lanes: Vec<(usize, Vec<(String, String)>)> = there::spill_order(vm_dirs.len())
         .map(|index| {
             let lends_for = there::lent_systems(&vm_dirs[index]);
+            // A derivation whose file can't be read is taken as buildable,
+            // as `foreign` takes it, so the lane it goes to says why.
             let read = |path: &str| fs::read_to_string(path).ok();
             (index, there::unbuildable(left, &lends_for, known, read))
         })
