@@ -25,7 +25,9 @@ this boot, its owner gone, stands alone in Recent, after Landed and before Start
 saying when it closed and where it ran. A folder the disk guard measured offers to talk to the
 session working in it, by its title and how it stands, and what Joel tells it reaches its inbox
 with the folder and its size. A look's choice, stepped into from For You, reaches the session
-that left it as an answer, and its row says so until the session writes it resolved. Shut, a
+that left it as an answer, and its row says so until the session writes it resolved. A look a
+link names before For You has heard its looks is walked to once they're heard, the foot keeping
+what was told while shut, and nowhere once a key took the cursor. Shut, a
 session arriving with a landing makes none of Agents' rows,
 which show both once it opens, and a change to its rows isn't told the shell at once, but told it
 at once as it opens.
@@ -42,6 +44,7 @@ import logging
 import os
 import re
 import shlex
+import signal
 import socket
 import subprocess
 import time
@@ -2219,6 +2222,252 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
         )
     )
     shell.close_launcher()
+
+
+def test_look_opens_on_its_row_in_for_you_selected_and_on_nothing_it_lacks(
+    shell: Shell,
+) -> None:
+    """Look and a look's id opens For You on that look's row, selected, through To Look At.
+
+    A live site draws a look and hands Joel to it here, since only his press may steer it
+    (1HE06W, 2026-11-24 [b410e73c]). An id For You doesn't hold opens For You, its foot saying
+    so in For You's own words, never the id a page chose.
+    """
+    looks = STATE / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "linked.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    came = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    launcher_on_niri.laid_whole(
+        look,
+        json.dumps(
+            {
+                "v": 1,
+                "id": "linked",
+                "title": "Linked Look",
+                "target": "/etc/hostname",
+                "kind": "file",
+                "state": "waiting",
+                "at": came,
+                "address": "LISTEN",
+                "ask": "Say whether it reads right.",
+                "choices": [{"value": "reads-right", "label": "Reads Right"}],
+            }
+        ),
+    )
+    try:
+        # For You has heard the look before the link asks, so this is the walk, not the wait.
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "To Look At" in shown["rows"])
+        shell.close_launcher()
+        did = followed(shell, "look", "linked")
+        assert did["done"], did
+        assert did["said"].endswith("To Look At \u203a look linked"), did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "For You", "To Look At"]
+                and (shown["selected"] or {}).get("name") == "Linked Look"
+            )
+        )
+        shell.close_launcher()
+        did = followed(shell, "look", "gone")
+        assert did == {
+            "done": False,
+            "said": "the link named a look For You doesn't hold: it may have been settled and"
+            " let go since, or never left on this machine",
+        }, did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "For You"]
+                and "settled and let go since" in " ".join(shown["saying"]).replace("\xa0", " ")
+                and "gone" not in " ".join(shown["saying"])
+            )
+        )
+        shell.close_launcher()
+    finally:
+        look.unlink()
+
+
+@contextlib.contextmanager
+def looks_unheard(shell: Shell) -> Iterator[Callable[[], None]]:
+    """Start the shell again on a to-do daemon stopped, so For You hasn't heard its looks.
+
+    Gives what lets the daemon go on, which answers the shell's watch at once, as a daemon
+    answering late does; it goes on as the case ends whatever it did, for the cases after.
+    """
+    to_do = shell.daemons["to-do"].pid
+    try:
+        shell.restart(while_down=lambda: os.kill(to_do, signal.SIGSTOP))
+        shell.unshared()
+        yield lambda: os.kill(to_do, signal.SIGCONT)
+    finally:
+        os.kill(to_do, signal.SIGCONT)
+
+
+# A session to reopen whose folder goes after the launcher listed it, so a reopen tells on.
+EBB_TIDE = {"id": "01b5-ebb", "address": "EBBTID", "title": "Ebb Tide", "lostAt": 1}
+EBB_FOLDER = Path.home() / "trees/ebb-tide"
+
+
+def told_shut(shell: Shell) -> None:
+    """Reopen a session to reopen from outside, the launcher shut, its folder gone since listed.
+
+    Agents says the folder is gone the next time the launcher opens, a word told while shut.
+    """
+    deadline = time.monotonic() + 30
+    while True:
+        listed = json.loads(shell.as_account(shell.ipc("list")))
+        ebb = [one["id"] for one in listed if one["words"] == "Ebb Tide"]
+        if ebb:
+            break
+        assert time.monotonic() < deadline, f"Ebb Tide was never listed to reopen: {listed}"
+        time.sleep(0.2)
+    EBB_FOLDER.rmdir()
+    did = json.loads(shell.as_account(shell.ipc("run", shlex.quote(ebb[0]))))
+    assert did.get("done"), f"reopening Ebb Tide from outside wasn't done: {did}"
+    shell.launcher_until(lambda shown: not shown["open"] and shown["toldWaiting"] >= 1)
+
+
+# What the foot says of a look a link names before For You has heard its looks (on:waiting).
+UNHEARD = "the link's look opens once For You has heard its looks"
+
+
+def foot(shown: Json) -> str:
+    """Read what the foot says, each phrase's no-break spaces as spaces."""
+    return " ".join(said.replace("\xa0", " ") for said in shown["saying"])
+
+
+@contextlib.contextmanager
+def waited_look() -> Iterator[None]:
+    """Lay a look waiting on Joel, which a link names as "waited", and take it up after."""
+    looks = STATE / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "waited.json"
+    launcher_on_niri.laid_whole(
+        look,
+        json.dumps(
+            {
+                "v": 1,
+                "id": "waited",
+                "title": "Waited Look",
+                "target": "/etc/hostname",
+                "kind": "file",
+                "state": "waiting",
+                "at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "address": "LISTEN",
+                "ask": "Say whether it reads right.",
+                "choices": [{"value": "reads-right", "label": "Reads Right"}],
+            }
+        ),
+    )
+    try:
+        yield
+    finally:
+        look.unlink()
+
+
+def test_a_look_link_drawn_kept_walks_once_heard_and_keeps_what_was_told_shut(
+    shell: Shell,
+) -> None:
+    """A look a link names before For You has heard its looks is walked to once it has.
+
+    Drawn from a kept For You, the looks heard while its opening still draws, it lands on the
+    look's row once open, and the foot takes back only the link's own word: what was told
+    while the launcher was shut, a folder gone, is said beside it and stays after the walk
+    (#6583's stack round, 85 and 90).
+    """
+    kept = RESTORE.read_text()
+    restore = json.loads(kept)
+    restore["sessions"].append({**EBB_TIDE, "cwd": str(EBB_FOLDER)})
+    try:
+        EBB_FOLDER.mkdir(parents=True, exist_ok=True)
+        RESTORE.write_text(json.dumps(restore))
+        with waited_look(), looks_unheard(shell) as heard:
+            # For You kept, as its chord keeps it, so the link's opening is drawn from it.
+            shell.as_account(shell.ipc("collection", "forYou"))
+            shell.launcher_ready()
+            shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+            shell.close_launcher()
+            told_shut(shell)
+            shell.launcher_until(lambda shown: shown.get("kept"))
+            with launcher_on_niri.niri_held():
+                did = followed(shell, "look", "waited", quiet=False)
+                assert did == {"done": True, "said": UNHEARD}, did
+                drawn = shell.showing()
+                assert drawn["opening"], f"the link's opening wasn't drawn from kept: {drawn}"
+                heard()
+                shell.launcher_until(lambda shown: shown["lookLink"] == "heard" or shown["open"])
+            shell.launcher_until(
+                lambda shown: (
+                    shown["open"]
+                    and shown["held"] == ["now", "For You", "To Look At"]
+                    and (shown["selected"] or {}).get("name") == "Waited Look"
+                    and shown["lookLink"] == ""
+                )
+            )
+            walked = shell.showing()
+            gone = "~/trees/ebb-tide is gone"
+            assert gone in foot(walked), f"the walk took what was told shut from the foot: {walked}"
+            assert UNHEARD not in foot(walked), f"the foot still says the looks unheard: {walked}"
+    finally:
+        RESTORE.write_text(kept)
+        with contextlib.suppress(FileNotFoundError):
+            EBB_FOLDER.rmdir()
+        shell.close_launcher()
+
+
+def test_a_key_pressed_while_a_look_link_waits_keeps_the_cursor_where_it_put_it(
+    shell: Shell,
+) -> None:
+    """A key pressed while a look link waits on For You's looks lets the link go.
+
+    The cursor is his then, so the looks heard after walk it nowhere (#6583's stack round, 86).
+    """
+    with waited_look(), looks_unheard(shell) as heard:
+        did = followed(shell, "look", "waited")
+        assert did == {"done": True, "said": UNHEARD}, did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "For You"]
+                and shown["lookLink"] == "waiting"
+                and UNHEARD in foot(shown)
+            )
+        )
+        shell.send_key("down")
+        shell.launcher_until(lambda shown: shown["lookLink"] == "")
+        moved = shell.showing()
+        heard()
+        shell.launcher_until(lambda shown: "To Look At" in shown["rows"])
+        assert shell.held_still(), "the launcher never held still once the looks were heard"
+        after = shell.showing()
+        assert after["held"] == ["now", "For You"], f"the looks walked off the key: {after}"
+        # By its name, since its side may count what For You heard.
+        stood = (moved["selected"] or {}).get("name")
+        assert (after["selected"] or {}).get("name") == stood, (moved, after)
+
+
+def test_a_chord_while_a_look_link_waits_takes_its_word_from_the_foot(shell: Shell) -> None:
+    """A chord while a look link waits on For You's looks lets the link go whole.
+
+    Its word, that the look opens once For You has heard them, goes from the foot with it, so
+    the foot never promises a walk that never comes (#6583's stack round of 28 Nov, 42, 92
+    and 96).
+    """
+    with waited_look(), looks_unheard(shell):
+        did = followed(shell, "look", "waited")
+        assert did == {"done": True, "said": UNHEARD}, did
+        shell.launcher_until(
+            lambda shown: (
+                shown["open"] and shown["lookLink"] == "waiting" and UNHEARD in foot(shown)
+            )
+        )
+        shell.as_account(shell.ipc("collection", "forYou"))
+        shell.launcher_until(lambda shown: shown["lookLink"] == "")
+        let_go = shell.showing()
+        assert UNHEARD not in foot(let_go), f"the foot still promises the walk: {let_go}"
 
 
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:

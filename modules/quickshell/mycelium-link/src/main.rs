@@ -13,6 +13,10 @@
 //! as each repository's Open in the Launcher, for the same reason: its
 //! row's acts are where Joel pulls it, forgets its gone trees or gathers
 //! its store.
+//! `mycelium:look/<id>` opens For You on that look's row, selected, as
+//! `qs ipc call launcher look` does, which the live sites offer beside a
+//! look they draw whole: the page can't answer it, so the row's own
+//! choices are where Joel's press steers it (1HE06W, 2026-11-25).
 //! `mycelium:cell/<ADDRESS>/go` goes to that session instead, its window
 //! raised or one opened on it, as `qs ipc call launcher goTo` does, which a
 //! notice from a session offers as its Go To. A cell may say where it runs
@@ -87,7 +91,8 @@ const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
 /// it.
 /// Or new work to start: the words a page offers, the cell it came from
 /// where it names one by its address, and the machine it's to start on
-/// where it names one, `cloud` for any cloud machine.
+/// where it names one, `cloud` for any cloud machine. Or a repository, by
+/// its key, or a look left for Joel, by its id.
 #[derive(Debug, PartialEq, Eq)]
 enum Link {
     Cell(String),
@@ -100,6 +105,7 @@ enum Link {
         on: Option<String>,
     },
     Repository(String),
+    Look(String),
 }
 
 impl Link {
@@ -130,6 +136,7 @@ impl Link {
                 }
             }
             Self::Repository(key) => call("code", key),
+            Self::Look(id) => call("look", id),
         }
     }
 }
@@ -259,9 +266,13 @@ fn read(link: &str) -> Result<Link, Failure> {
         "machine" => Err(wrong(
             "it names no machine in letters, digits, dots, hyphens or underscores",
         )),
+        "look" if named(name) => Ok(Link::Look(name.to_owned())),
+        "look" => Err(wrong(
+            "it names no look in letters, digits, dots, hyphens or underscores",
+        )),
         "sprout" => sprouted(query_of(rest)).map_err(|why| wrong(&why)),
         _ => Err(wrong(
-            "its kind is none of cell, network, machine, sprout or repository",
+            "its kind is none of cell, network, machine, look, sprout or repository",
         )),
     }
 }
@@ -423,15 +434,19 @@ fn help() -> Help {
         "mycelium-link mycelium:repository/github:someone/thing",
         "opens Code on someone's thing",
     )
+    .example(
+        "mycelium-link mycelium:look/0175b442b5f20e43",
+        "opens For You on that look, for Joel's answer there",
+    )
     .argument(
         "<link>",
         "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name>, \
-         mycelium:machine/<name>, mycelium:repository/<key> or \
+         mycelium:machine/<name>, mycelium:repository/<key>, mycelium:look/<id> or \
          mycelium:sprout?words=<words>[&from=<ADDRESS>][&on=<machine>|cloud]",
     )
     .exit(
         Exit::Usage,
-        "the link names no cell, network, machine or repository, or offers no plain words \
+        "the link names no cell, network, machine, repository or look, or offers no plain words \
          or a misshaped machine to start them on",
     )
     .exit(Exit::Failed, "qs couldn't be run")
@@ -657,6 +672,44 @@ mod tests {
             "mycelium:machine/osprey;rm",
             "mycelium:machine/osprey@here",
             &format!("mycelium:machine/{}", "m".repeat(LONGEST + 1)),
+        ] {
+            assert!(read(link).is_err(), "{link} was followed");
+        }
+    }
+
+    #[test]
+    fn a_look_link_names_its_look_and_nothing_after_it() {
+        for link in [
+            "mycelium:look/0175b442b5f20e43",
+            "MYCELIUM://look/0175b442b5f20e43",
+            "mycelium:look/0175b442b5f20e43/clear",
+            "mycelium:look/0175b442b5f20e43?choice=yes",
+            "mycelium:look/0175b442b5f20e43#why",
+        ] {
+            assert_eq!(
+                named_by(link),
+                Ok(Link::Look("0175b442b5f20e43".to_owned())),
+                "{link} named another"
+            );
+        }
+        assert_eq!(
+            Link::Look("0175b442b5f20e43".to_owned()).call(),
+            ["look", "0175b442b5f20e43"],
+            "a look opens its row and answers nothing"
+        );
+    }
+
+    #[test]
+    fn a_look_link_with_a_misshaped_id_is_refused() {
+        for link in [
+            "mycelium:look/",
+            "mycelium:look",
+            "mycelium:look/-h",
+            "mycelium:look/.hidden",
+            "mycelium:look/0175%20b442",
+            "mycelium:look/0175b442;reboot",
+            "mycelium:look/0175b442@here",
+            &format!("mycelium:look/{}", "a".repeat(LONGEST + 1)),
         ] {
             assert!(read(link).is_err(), "{link} was followed");
         }

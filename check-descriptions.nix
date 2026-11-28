@@ -4767,13 +4767,13 @@
   mycelium-links-open-in-the-launcher = ''
     xdg-open and gio send mycelium: links to mycelium-link's entry, registered for them in the
     profile's applications so the portal opens them without asking, which asks the launcher to talk
-    to the cell or show the network a link names, by its name alone, a notice's whole cell link
-    by its address wherever it says the cell runs, and new work a sprout link offers with its words
-    decoded and its cell only as an address, each after a fixed word, on the machine it names
-    through newWorkOn, and asks nothing for a link naming none of them, an address not in
-    capitals, a name qs could take for a flag, a sprout's words missing or said twice, or a second
-    link within a few seconds, and calls only functions the launcher's IpcHandler has, each
-    taking as many arguments as it passes
+    to the cell or show the network or the look a link names, by its name alone, a notice's whole
+    cell link by its address wherever it says the cell runs, and new work a sprout link offers
+    with its words decoded and its cell only as an address, each after a fixed word, on the
+    machine it names through newWorkOn, and asks nothing for a link naming none of them, an
+    address not in capitals, a name qs could take for a flag, a sprout's words missing or said
+    twice, or a second link within a few seconds, and calls only functions the launcher's
+    IpcHandler has, each taking as many arguments as it passes
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its
@@ -5152,8 +5152,11 @@
     Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
-    own, which Return steps into and typing still finds each in; and a look's choice in For You
-    steers its answer to the session that left it and, once taken, moves to History saying it
+    own, which Return steps into and typing still finds each in; a look's choice in For You
+    steers its answer to the session that left it and, once taken, moves to History saying it;
+    and a look link followed before For You has heard its looks walks to the look once they're
+    heard, keeping beside it what was told while shut, and walks nowhere once a key took the
+    cursor
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
@@ -5720,6 +5723,8 @@
     and For You, asked again, makes none of its rows again, its looks, its to-dos, the sessions
     wanting Joel and To Look At's own, only one whose file or what it says changed, a session
     wanting Joel making only the look it left again and to-dos said anew as they were none; and a
+    link to a look walks through the rows For You makes to its own, through To Look At while it
+    waits and History once it's done with, and nowhere for a look For You doesn't hold; and a
     piece of what's on that moved is the only one whose row and acts are made again, a kept one
     running its piece's act as it is now; and Now's Desktop holds the notices unread as the
     notices' own rows, and its History those read, stepping in again after one is read making
