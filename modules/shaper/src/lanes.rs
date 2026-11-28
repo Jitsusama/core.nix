@@ -26,7 +26,8 @@
 //! agent has something waiting, a quarter of the rate is theirs whatever
 //! Joel wants: agents are always usable. Agents' model calls go inside
 //! the VPN as best effort (shaper.nft says why), so here they count as
-//! Joel's: what's agents' is what they send as bulk.
+//! Joel's, up to `AHEAD_MOST` (`joel_inside`): what's agents' is what they
+//! send as bulk.
 //!
 //! What Joel carries now on both lanes comes first, and the VPN's share
 //! is set from it. What his straight lane was given is held past that, as
@@ -550,6 +551,25 @@ fn need(carried: f64) -> f64 {
 /// again (model calls ahead round 1's F16).
 const AHEAD_MOST: f64 = 4_000.0;
 
+/// The counter shaper.nft keeps of what the model relay sent inside the
+/// VPNs as best effort, in bytes.
+pub const RELAY_COUNTER: &str = "relayvpn";
+
+/// What Joel carried inside the VPN, for the split, in kbit/s: what its
+/// tins ahead of bulk carried, `ahead`, with the model relay's part of it,
+/// `relay`, counted up to `AHEAD_MOST`, as the VPN's floor counts it.
+/// Joel's two lanes shrink alike when together they'd pass his room, so
+/// a relay counted whole, filling what best effort is given, trimmed his
+/// straight lane's headroom: at 20 Mbit/s with agents waiting, the relay
+/// carrying 20 left his 5 straight about 3.3 of the 7 he needs (model calls
+/// ahead round 6's F46). The relay is counted by shaper.nft, before the
+/// VPN's CAKE, whose ACK filter drops some of what it counted, so it never
+/// counts past `ahead`.
+pub fn joel_inside(ahead: f64, relay: f64) -> f64 {
+    let relay = relay.clamp(0.0, ahead);
+    ahead - relay + relay.min(AHEAD_MOST)
+}
+
 /// What the VPN's own CAKE is held to, in kbit/s: under its lane's rate,
 /// at the share the VPN's own hold leaves it, but never under what its
 /// tins ahead of bulk carried, `carried`, with Joel's headroom past it, up
@@ -810,6 +830,52 @@ mod tests {
         assert!(
             (held - 10_000.0 * VPN_HELD).abs() < 1e-9,
             "an unheld VPN was held at {held} kbit/s"
+        );
+    }
+
+    #[test]
+    fn the_relay_counts_as_joel_s_inside_the_vpn_up_to_its_most() {
+        assert!(
+            near(joel_inside(9_000.0, 8_000.0), 1_000.0 + AHEAD_MOST),
+            "Joel's 1,000 beside a relay of 8,000 counted {}",
+            joel_inside(9_000.0, 8_000.0)
+        );
+        assert!(
+            near(joel_inside(3_000.0, 2_000.0), 3_000.0),
+            "a relay under its most counted {} of 3,000",
+            joel_inside(3_000.0, 2_000.0)
+        );
+        assert!(
+            near(joel_inside(1_000.0, 1_500.0), 1_000.0),
+            "a relay counted past what the tins carried gave {}",
+            joel_inside(1_000.0, 1_500.0)
+        );
+    }
+
+    #[test]
+    fn a_busy_relay_leaves_joel_s_straight_lane_its_headroom() {
+        // Model calls ahead round 6's F46: on 20 Mbit/s with agents
+        // waiting on both lanes, Joel's 5 straight and his two lanes' room
+        // of 15 fit beside a relay at its most, so a relay filling 20
+        // inside the VPN takes nothing more from his straight lane.
+        let rate = 20_000.0;
+        let busy = Seen {
+            rate,
+            ..seen(
+                (5_000.0, joel_inside(20_000.0, 20_000.0)),
+                (waiting(2), waiting(30)),
+            )
+        };
+        let split = Lanes::default().split(&busy, 1.0);
+        assert!(
+            adds_up(split, rate),
+            "the classes don't add up to the rate: {split:?}"
+        );
+        assert!(
+            near(split.joel, need(5_000.0)),
+            "a relay of 20,000 left Joel's straight lane {} of {}",
+            split.joel,
+            need(5_000.0)
         );
     }
 

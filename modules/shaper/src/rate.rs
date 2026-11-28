@@ -26,6 +26,47 @@ pub fn whole(kbit: f64) -> u64 {
     kbit.round().max(0.0) as u64
 }
 
+/// Follows the bytes a counter has counted, for its rate over the last
+/// second or more, as src/qdisc.rs's `TinRates` does for CAKE's tins, read
+/// at the same steps so the two rates span the same seconds.
+#[derive(Debug, Default)]
+pub struct Counted {
+    then: Option<(u64, f64)>,
+    kbit: Option<u64>,
+}
+
+impl Counted {
+    /// Takes what the counter has counted, `bytes`, at `at` seconds: none
+    /// where it couldn't be read, which forgets its rate until it's read
+    /// over a second again.
+    pub fn take(&mut self, bytes: Option<u64>, at: f64) {
+        let Some(bytes) = bytes else {
+            *self = Self::default();
+            return;
+        };
+        let Some((was, then)) = self.then else {
+            self.then = Some((bytes, at));
+            return;
+        };
+        let seconds = at - then;
+        if seconds < 1.0 {
+            return;
+        }
+        // A counter made again counts from nothing, so what it counted
+        // since reads as nothing for that second rather than a rate past
+        // u64.
+        let bits = float(bytes.saturating_sub(was) * 8);
+        self.kbit = Some(whole(bits / 1_000.0 / seconds));
+        self.then = Some((bytes, at));
+    }
+
+    /// The counter's rate over the last second read, in kbit/s, once there
+    /// is one.
+    pub fn kbit(&self) -> Option<u64> {
+        self.kbit
+    }
+}
+
 /// Rates are in kbit/s, as tc takes them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bounds {
@@ -94,6 +135,38 @@ mod tests {
         assert!(d.bound(930_000), "a faster link's most moved");
         assert_eq!(d.bounds.max, 930_000, "the new most");
         assert_eq!(d.rate, 93_000, "a faster link is found, not assumed");
+    }
+
+    #[test]
+    fn a_counter_s_rate_is_what_it_counted_over_a_second() {
+        let mut counted = Counted::default();
+        counted.take(Some(1_000), 10.0);
+        assert_eq!(counted.kbit(), None, "one read has no rate");
+        counted.take(Some(251_000), 10.6);
+        assert_eq!(counted.kbit(), None, "under a second has no rate yet");
+        counted.take(Some(251_000), 12.0);
+        assert_eq!(counted.kbit(), Some(1_000), "250 kB over two seconds");
+    }
+
+    #[test]
+    fn a_counter_made_again_counts_nothing_rather_than_a_wrapped_rate() {
+        let mut counted = Counted::default();
+        counted.take(Some(9_000_000), 0.0);
+        counted.take(Some(125_000), 1.0);
+        assert_eq!(counted.kbit(), Some(0), "a counter that went back");
+        counted.take(Some(250_000), 2.0);
+        assert_eq!(counted.kbit(), Some(1_000), "counted on from it");
+    }
+
+    #[test]
+    fn a_counter_unread_has_no_rate_until_read_over_a_second_again() {
+        let mut counted = Counted::default();
+        counted.take(Some(0), 0.0);
+        counted.take(Some(125_000), 1.0);
+        counted.take(None, 2.0);
+        assert_eq!(counted.kbit(), None, "an unread counter kept its rate");
+        counted.take(Some(500_000), 3.0);
+        assert_eq!(counted.kbit(), None, "a rate read across the gap");
     }
 
     #[test]

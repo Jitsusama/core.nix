@@ -674,7 +674,11 @@ def test_tunnel(tunnel: Connection) -> None:
         client.succeed("touch /tmp/models-sent")
         client.wait_until_fails("systemctl -M alice@ --user is-active model-relay-agents")
 
+    # The relay's part is counted apart from the app's beside it, so the split counts it as
+    # Joel's only up to the most its floor takes (model calls ahead round 6's F46).
+    client.succeed("nft list counter inet shaper relayvpn | grep -Eq 'bytes 0( |$)'")
     tunnel.reaches("best effort", "model-relay-agents", call_models, "wg0", LEAST_TRANSFER)
+    client.succeed("nft list counter inet shaper relayvpn | grep -Eq 'bytes [0-9]{7,}'")
     inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
     back = tunnel.ifb("wg0")
     tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
