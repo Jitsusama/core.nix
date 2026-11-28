@@ -271,7 +271,10 @@ pub enum Refusal {
     /// The give-way or trial asked then is forgotten, as though never
     /// asked.
     Undone,
-    /// It was the way back from a trial, which the card was sent on.
+    /// It was the way back from a trial, which the card was sent on. The
+    /// card never went back, so it isn't held where it would have been;
+    /// the trial's point stays kept off and the move's settle holds, as
+    /// the trial was judged no better all the same.
     WayBack,
     /// It was of a move since replaced, or one found where it went, so
     /// nothing changes.
@@ -1163,10 +1166,13 @@ impl Chooser {
     /// point off does, isn't asked again each second the call fades, and
     /// keeps the call off `to` a `fading::BETWEEN`, so the next goes to
     /// the next best. A trial still holds the card from choosing for a
-    /// `SPAN`, as one judged back where it began does. A later move, to
-    /// `to` or not, is left alone, as is one found there. Says what it
-    /// made of the refusal, a trial's way back apart from the rest, as
-    /// it was asked too.
+    /// `SPAN`, as one judged back where it began does. A trial's way back
+    /// is forgotten as gone back, as the card is still on the trial's
+    /// point: a card that later gets to `to` on its own, as by a roam, is
+    /// judged as any there (`holds_still`), its span counted from then
+    /// (`young`). A later move, to `to` or not, is left alone, as is one
+    /// found there. Says what it made of the refusal, a trial's way back
+    /// apart from the rest, as it was asked too.
     pub fn refused(&mut self, now: Instant, to: &str, asked: Instant) -> Refusal {
         if self
             .gave
@@ -1195,6 +1201,8 @@ impl Chooser {
             .as_ref()
             .is_some_and(|(back, at)| *at == asked && back == to);
         if back {
+            self.back_to = None;
+            self.joined = None;
             Refusal::WayBack
         } else {
             Refusal::Stale
@@ -4903,6 +4911,45 @@ pub(crate) mod tests {
             "a card moved on since the back isn't held where it went back to"
         );
         assert_eq!(landed_held, None, "nor said held");
+    }
+
+    #[test]
+    fn a_refused_way_back_holds_the_card_nowhere_it_never_went_back_to() {
+        let start = Instant::now();
+        let now = start + TRIAL;
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let failing = carried(400, 15.0);
+        let around = [desk_at(-50, None), hall(-45, Some(20), None), elsewhere()];
+        let mut chooser = after_a_bad_minute(DESK);
+        let tried = chooser.choose(start, (DESK, &unloaded(45), -50, CH52), &around[..2], false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        let judged = chooser.choose(now, (HALL, &unloaded(60), -45, CH52), &around[..2], false);
+        assert_eq!(judged, Choice::Back(DESK.into()), "and gone back from");
+
+        let refused = chooser.refused(now, DESK, now);
+        let found = found_on(&chooser).map(str::to_owned);
+        // wpa_supplicant roams the card to the desk itself, within the span
+        // the back would have held it there.
+        let minute = now + Duration::from_secs(60);
+        let landed = chooser.choose(minute, (DESK, &failing, -50, CH52), &around, false);
+
+        assert_eq!(
+            refused,
+            Refusal::WayBack,
+            "the way back's refusal wasn't told as one"
+        );
+        assert_eq!(
+            found, None,
+            "the chooser still found the card on the desk it never went back to"
+        );
+        assert_eq!(
+            landed,
+            Choice::Try(elsewhere().point),
+            "a card roamed to the desk after its way back was refused was held there as gone back"
+        );
     }
 
     #[test]
