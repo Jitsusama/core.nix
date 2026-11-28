@@ -648,7 +648,9 @@ def test_tunnel(tunnel: Connection) -> None:
 
     Agents' model relay sits in background with their bulk, but goes as best effort: held
     inside a VPN as bulk, it waited behind agents' uploads until the origin gave its calls
-    up. The stand-in waits to send until the set holds its unit.
+    up. The stand-in waits to send until the set holds its unit, and stays until what it
+    sent has left: its unit gone, the bytes still in its socket would match background's
+    bulk, a level above, as the relay's never do, since the relay runs on.
     """
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
@@ -656,15 +658,20 @@ def test_tunnel(tunnel: Connection) -> None:
     client = tunnel.client
     client.succeed(
         "systemd-run -M alice@ --user --slice=background.slice --unit=model-relay-agents"
-        f" {BIN}/bash -c 'until [ -e /tmp/call-models ]; do {BIN}/sleep 0.1; done; {inner}'"
+        f" {BIN}/bash -c 'until [ -e /tmp/call-models ]; do {BIN}/sleep 0.1; done; {inner};"
+        f" {BIN}/touch /tmp/models-written;"
+        f" until [ -e /tmp/models-sent ]; do {BIN}/sleep 0.1; done'"
     )
     client.wait_until_succeeds(
         "nft list set inet shaper models5 | grep -q model-relay-agents", timeout=HOLDING
     )
 
     def call_models() -> None:
-        """Let the stand-in send, and wait until it's done."""
+        """Let the stand-in send, and wait until what it sent has left and it's done."""
         client.succeed("touch /tmp/call-models")
+        client.wait_until_succeeds("test -e /tmp/models-written", timeout=HOLDING)
+        tunnel.still("wg0")
+        client.succeed("touch /tmp/models-sent")
         client.wait_until_fails("systemctl -M alice@ --user is-active model-relay-agents")
 
     tunnel.reaches("best effort", "model-relay-agents", call_models, "wg0", LEAST_TRANSFER)
