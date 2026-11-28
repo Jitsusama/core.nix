@@ -99,7 +99,8 @@
 //! by design: a commit of the change saying `Red-first: none, <why>`
 //! excuses it, and the run says so. A
 //! revert, as the net lands one, restores old tests over code that passed
-//! them, and is excused too.
+//! them, and is excused too, told by the line `git revert` writes in each
+//! commit's body, `This reverts commit <sha>.`, never by a subject.
 
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -165,23 +166,29 @@ impl<'a> At<'a> {
 pub enum Excused {
     /// A commit says why, as `Red-first: none, <why>`.
     Pinned(String),
-    /// Every commit reverts.
+    /// Every commit's body holds git's own line saying it reverts one.
     Reverts,
 }
 
 /// Whether the change's commits, as `git log --no-merges` gives each's
-/// subject, a unit separator and its Red-first trailers, one to a line,
-/// ended by a record separator, excuse it; and each trailer that doesn't
-/// read, to say.
+/// subject, its Red-first trailers, one to a line, and its body, each
+/// after a unit separator, ended by a record separator, excuse it; and
+/// each trailer that doesn't read, to say.
 pub fn excused(log: &str) -> (Option<Excused>, Vec<String>) {
     let commits: Vec<(&str, &str)> = log
         .split('\x1e')
         .map(|commit| commit.trim_start_matches('\n'))
         .filter(|commit| !commit.is_empty())
-        .map(|commit| commit.split_once('\x1f').unwrap_or((commit, "")))
+        .map(|commit| {
+            let mut fields = commit.splitn(3, '\x1f').skip(1);
+            (
+                fields.next().unwrap_or_default(),
+                fields.next().unwrap_or_default(),
+            )
+        })
         .collect();
     let mut unread = Vec::new();
-    for (_, trailers) in &commits {
+    for (trailers, _) in &commits {
         for trailer in trailers
             .lines()
             .map(str::trim)
@@ -197,11 +204,23 @@ pub fn excused(log: &str) -> (Option<Excused>, Vec<String>) {
             }
         }
     }
+    // A subject can say anything, so only the line `git revert` writes
+    // into a body tells a revert: "revertible" or "Reverting" says none.
     let reverts = !commits.is_empty()
         && commits
             .iter()
-            .all(|(subject, _)| subject.to_lowercase().starts_with("revert"));
+            .all(|(_, body)| body.lines().any(says_it_reverts));
     (reverts.then_some(Excused::Reverts), unread)
+}
+
+/// Whether a body's line is git's own saying its commit reverts one, as
+/// `This reverts commit <sha>.`, the sha whole, as git writes it.
+fn says_it_reverts(line: &str) -> bool {
+    line.strip_prefix("This reverts commit ")
+        .and_then(|rest| rest.strip_suffix('.'))
+        .is_some_and(|sha| {
+            matches!(sha.len(), 40 | 64) && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 /// What a check is over the base, its derivation there beside the base's
@@ -327,7 +346,7 @@ fn sparing(at: &At) -> Result<Option<Verdict>, String> {
         return Ok(Some(Verdict::Unjudged("train candidate")));
     }
     // Only the change's own commits speak for it, not a branch it merged.
-    let format = format!("--format=%s%x1f%(trailers:key={TRAILER},valueonly)%x1e");
+    let format = format!("--format=%s%x1f%(trailers:key={TRAILER},valueonly)%x1f%b%x1e");
     let trailers = [
         "log",
         "--first-parent",

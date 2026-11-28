@@ -39,10 +39,12 @@ fn starting() -> MutexGuard<'static, ()> {
 /// commit's tree is `tree`'s, or `basetree`, the change from the base
 /// is `diff`, and the base holds the paths `based` lists.
 ///
-/// Asked of the change as red first asks it, its commits and their
-/// Red-first trailers are `log` (one commit of its own with none, without
-/// it), asked of its own commits alone, and otherwise a rider's, as the
-/// train's candidate holds, its files with renames found are `diff.whole`,
+/// Asked of the change as red first asks it, each commit's body among
+/// what it asks (a log asked without one fails), its commits, their
+/// Red-first trailers and their bodies are `log` (one commit of its own
+/// with neither, without it), asked of its own commits alone, and
+/// otherwise a rider's, as the train's candidate holds, its files with
+/// renames found are `diff.whole`,
 /// a file of its head's is `show/` and its path (or main's quarantine
 /// list, as any other `show` is), the
 /// lines each adds and takes are `diff.counted` (one added to each file
@@ -89,9 +91,13 @@ case "$1" in
         else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
       log)
         case " $* " in
+          *'%x1f%b%x1e'*) ;;
+          *) echo "log asked without each commit's body" >&2; exit 128 ;;
+        esac
+        case " $* " in
           *" --first-parent --no-merges "*)
-            cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\036' ;;
-          *) printf 'feat(b): a rider\037\036' ;;
+            cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\037\036' ;;
+          *) printf 'feat(b): a rider\037\037\036' ;;
         esac ;;
       read-tree|write-tree)
         if [ -e "$STAND_IN/unwritable" ]; then exit 1; fi

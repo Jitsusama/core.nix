@@ -239,7 +239,10 @@ fn a_code_file_s_inline_tests_begin_at_its_test_module_or_first_test_function() 
 
 #[test]
 fn a_change_is_excused_by_a_trailer_saying_why_or_by_reverting() {
-    let commit = |subject: &str, trailers: &str| format!("{subject}\x1f{trailers}\x1e\n");
+    let commit = |subject: &str, trailers: &str| format!("{subject}\x1f{trailers}\x1f\x1e\n");
+    let reverting = |subject: &str, body: &str| format!("{subject}\x1f\x1f{body}\x1e\n");
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    let said = format!("This reverts commit {sha}.\n");
 
     let pinned = commit("fix(a): b", "") + &commit("test(a): pin c", "none, c was right\n");
     assert_eq!(
@@ -255,11 +258,34 @@ fn a_change_is_excused_by_a_trailer_saying_why_or_by_reverting() {
         "a trailer saying no why excused the change, or wasn't said"
     );
 
-    let reverted =
-        commit("revert: undo #7, which breaks a check", "") + &commit("Revert \"feat(a): b\"", "");
-    assert_eq!(excused(&reverted), (Some(Excused::Reverts), vec![]));
+    let reverted = reverting(
+        "Revert \"feat(a): b\"",
+        &format!("Breaks a check.\n\n{said}"),
+    ) + &reverting("undo #7", &said);
+    assert_eq!(
+        excused(&reverted),
+        (Some(Excused::Reverts), vec![]),
+        "commits each holding git's own revert line weren't excused"
+    );
 
-    let partly = commit("revert: undo #7", "") + &commit("feat(a): b", "");
+    let named = commit("revertible(a): b", "")
+        + &commit("Reverting c", "")
+        + &commit("Revert \"feat(a): b\"", "");
+    assert_eq!(
+        excused(&named),
+        (None, vec![]),
+        "commits only named as reverts were excused"
+    );
+
+    let quoted = reverting("Revert d", &format!("As git says, {said}"))
+        + &reverting("Revert e", "This reverts commit e.\n");
+    assert_eq!(
+        excused(&quoted),
+        (None, vec![]),
+        "a body quoting git's revert line, or naming no commit, was taken for git's own"
+    );
+
+    let partly = reverting("Revert f", &said) + &commit("feat(a): b", "");
     assert_eq!(
         excused(&partly),
         (None, vec![]),

@@ -202,3 +202,50 @@ fn a_change_not_yet_committed_or_only_named_is_not_judged_on_the_base() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(named.built(), "", "a run only naming checks built one");
 }
+
+#[test]
+fn a_change_whose_every_commit_git_says_reverts_is_excused_and_said() {
+    let stand_in = committed("red-reverts", CHANGE, "a3.drv");
+    let log = "Revert \"feat(a): b\"\x1f\x1fIt broke c.\n\n\
+               This reverts commit 0123456789abcdef0123456789abcdef01234567.\n\x1e\n";
+    fs::write(stand_in.path("log"), log).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("the change reverts, so its tests aren't asked"),
+        "a revert wasn't said as one: {}",
+        text(&ran.stderr)
+    );
+    assert!(
+        !stand_in.built().contains("?rev="),
+        "a revert was built over the base: {}",
+        stand_in.built()
+    );
+    noted_with(
+        &stand_in,
+        &json!({ "verdict": "excused", "excuse": "reverts" }),
+    );
+}
+
+#[test]
+fn a_change_only_named_as_reverting_is_built_over_the_base() {
+    let stand_in = committed("red-named-revert", CHANGE, "a3.drv");
+    let log = "Reverting a\x1f\x1fIt undoes b.\n\x1e\nrevertible(a): c\x1f\x1f\x1e\n";
+    fs::write(stand_in.path("log"), log).expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        !text(&ran.stderr).contains("the change reverts"),
+        "a change only named as reverting was said to revert: {}",
+        text(&ran.stderr)
+    );
+    assert!(
+        stand_in.built().contains("?rev="),
+        "a change only named as reverting wasn't built over the base: {}",
+        stand_in.built()
+    );
+}
