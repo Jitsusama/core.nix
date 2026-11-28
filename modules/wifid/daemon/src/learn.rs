@@ -9,7 +9,9 @@
 //! into what it carried before at this hour, heard about this loud, which
 //! stands for the room: the same radio heard 12 dB fainter is a room or
 //! two away. The latest minutes weigh most, so tonight counts for more
-//! than last week.
+//! than last week. An access point the card was on within the hour is
+//! known by the hour just gone as well, until this hour holds enough of
+//! its own minutes to go by (`just_left`).
 //!
 //! A minute the card brings a download down in is learned apart, as what
 //! the access point carries under load, and across the hours, since such
@@ -30,7 +32,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 
 use crate::choose;
 use crate::echo;
@@ -84,6 +86,10 @@ const STEP: i16 = 6;
 /// the first minute after a join has hardly any.
 const ECHOES: usize = 30;
 
+/// How lately the card must have been on an access point for what it
+/// carried in the hour just gone to stand for it (`just_left`).
+pub const LEFT_WITHIN: Duration = Duration::from_secs(3600);
+
 /// Where a card is: on which access point of which network, at what hour
 /// of the day, heard how loud, in dBm.
 pub struct Here<'a> {
@@ -92,6 +98,8 @@ pub struct Here<'a> {
     pub hour: u8,
     pub signal: i16,
     pub trusted: bool,
+    /// When the minute ended.
+    pub at: Instant,
 }
 
 /// What one access point carried at one hour, from about one place.
@@ -118,6 +126,11 @@ struct Learnt {
     /// measured.
     #[serde(skip)]
     kept: bool,
+    /// When the card was last measured on it, while wifid runs: an
+    /// instant means nothing to the next wifid, so none is kept on the
+    /// disk.
+    #[serde(skip)]
+    last: Option<Instant>,
 }
 
 /// What one access point carried under load, at one hour from one place.
@@ -185,6 +198,7 @@ impl Learned {
                 idle: 0,
                 loaded: None,
                 kept: here.trusted,
+                last: None,
             });
             self.learnt.last_mut().expect("just pushed")
         };
@@ -205,6 +219,7 @@ impl Learned {
         learnt.lost += (measured.lost - learnt.lost) * LATEST;
         learnt.minutes = learnt.minutes.saturating_add(1);
         learnt.kept = here.trusted;
+        learnt.last = Some(here.at);
         if here.trusted { self.keep() } else { Ok(()) }
     }
 
@@ -217,6 +232,33 @@ impl Learned {
         let near = self
             .near(point, signal)
             .filter(|learnt| learnt.hour == hour);
+        let figures = near.map(|learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes));
+        figured(figures, signal)
+    }
+
+    /// What an access point the card was on within `LEFT_WITHIN` carried
+    /// at this hour and the hour just gone, heard about this loud, while
+    /// the card brought little down, which stands in where this hour alone
+    /// has too few minutes to go by (`of`). By the hour alone, a point the
+    /// card has just left reads as untried once the hour turns: on 27 Nov
+    /// 2026 a card on one for all of hour 9 at 34.7 ms at p95 left it at
+    /// 10:03 for carrying 519 ms, and at 10:29, with three minutes of hour
+    /// 10 learned there, tried it again as untried, heard at -44 dBm, and
+    /// left it again at 10:44. What it carried in the hour just gone
+    /// was learned in this room as lately as anything. The hour must be
+    /// the one just gone as well as its last minute that recent, as an
+    /// instant doesn't count a suspend: a laptop asleep from 22:50 to
+    /// 07:10 doesn't go by its evening.
+    pub fn just_left(&self, point: &str, hour: u8, signal: i16, now: Instant) -> Option<Measured> {
+        let gone = (hour + 23) % 24;
+        let lately = |learnt: &Learnt| {
+            learnt
+                .last
+                .is_some_and(|last| now.saturating_duration_since(last) < LEFT_WITHIN)
+        };
+        let near = self
+            .near(point, signal)
+            .filter(|learnt| learnt.hour == hour || (learnt.hour == gone && lately(learnt)));
         let figures = near.map(|learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes));
         figured(figures, signal)
     }
@@ -333,6 +375,7 @@ mod tests {
             hour,
             signal,
             trusted: true,
+            at: Instant::now(),
         }
     }
 

@@ -1628,9 +1628,10 @@ fn refused(failure: store::Failure) -> Refused {
 }
 
 /// What a move wpa_supplicant refused is answered with. One to a point it
-/// forgot is out of reach as one wifid doesn't hear is, so a chooser keeps
-/// it off as never reached rather than taking the move as never asked and
-/// asking again.
+/// forgot is out of reach as one wifid doesn't hear is, so the roam looks
+/// for it once (`acts::roam`), and one still forgotten after that is kept
+/// off by a chooser as never reached rather than taken as never asked and
+/// asked again.
 fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
     let forgotten = matches!(
         error,
@@ -3832,7 +3833,14 @@ impl Wifid<'_> {
                 Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
                 Err(refused) => {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
-                    self.heed_ended(card, from.as_deref());
+                    // A move already under way, put back as it stood, or
+                    // a way back this one was refused for, still moves the
+                    // card off its point, so a call waits on it as on this
+                    // heed, for no longer than `fading::BETWEEN`.
+                    let moving = self.arrivals.borrow().moving(card);
+                    if !moving {
+                        self.heed_ended(card, from.as_deref());
+                    }
                 }
             },
             Heed::Look(channels) => {
@@ -3865,8 +3873,9 @@ impl Wifid<'_> {
     }
 
     /// Ends the heed of the warning from the point a card is on, as
-    /// wifid's move off it couldn't start, or its look first lapsed, so a
-    /// call's give-way doesn't wait on it (`State::heed_ended`).
+    /// wifid's move off it couldn't start, and no other moves the card,
+    /// or its look first lapsed, so a call's give-way doesn't wait on it
+    /// (`State::heed_ended`).
     fn heed_ended(&self, card: &str, from: Option<&str>) {
         if let Some(from) = from {
             change(self.state, |state| state.heed_ended(card, from));
