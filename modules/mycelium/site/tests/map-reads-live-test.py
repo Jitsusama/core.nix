@@ -6,7 +6,8 @@ realm under test names, node.json, through the node feed exactly as home.nix
 declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, its networks and the lines joining them and their cells
 in one window that opens a cell clicked, follow a change within its pace,
-two cells sharing a title moving among them, say broken when the node
+two cells sharing a title moving among them, tell a network titled as one
+of its own groups from the group, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
@@ -384,6 +385,23 @@ def namesakes() -> dict[str, list[dict[str, object]]]:
     return {**reading, "unanswered": [{**asked, "waiting_on": list(NAMESAKES)}]}
 
 
+# A network titled as one of the page's own groups, the receptors at the
+# realm's edge, and what tells the two apart: its id after its title.
+OWN_TITLED = "orchestration.tern01"
+OWN_GROUP = "Receptors"
+OWN_TOLD = "Receptors (TERN01)"
+
+
+def own_titled() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with OWN_TITLED titled as the page's own group of receptors."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    networks = copy.deepcopy(reading["network"])
+    for network in networks:
+        if network["name"] == OWN_TITLED:
+            network["title"] = OWN_GROUP
+    return {**reading, "network": networks}
+
+
 def foraging() -> dict[str, list[dict[str, object]]]:
     """Node.json's realm with forages served, none of them yet, as a node serves the kind."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
@@ -483,6 +501,18 @@ def namesakes_node(tmp_path: Path) -> Iterator[StandIn]:
 @pytest.fixture
 def namesakes_served(tmp_path: Path, namesakes_node: StandIn) -> Iterator[Served]:
     yield from serve(tmp_path, namesakes_node)
+
+
+@pytest.fixture
+def own_titled_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "own-titled.sock", "node", own_titled()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def own_titled_served(tmp_path: Path, own_titled_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, own_titled_node)
 
 
 @pytest.fixture
@@ -746,6 +776,37 @@ def test_a_stale_map_says_nothing_of_reading_its_messages(
     expect(asof, "a stale map said it was reading what it can't").not_to_contain_text(READING_TALK)
     expect(drawer, "a stale map's drawer said it was reading what it can't").to_contain_text(
         DRAWER_BROKEN, timeout=PACE_MS
+    )
+    opened.close()
+
+
+def test_a_stale_map_says_nothing_of_waiting_on_its_messages(
+    browser: Browser, slow_talk_served: Served
+) -> None:
+    root, server = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    asof = page.locator("#asof")
+    page.evaluate("location.hash = '#cell=TERN01'")
+    drawer = page.locator("#panel-body")
+    # Past its patience the line waits on the messages, and so does the drawer.
+    expect(asof, "the map never said it was waiting on its messages").to_contain_text(
+        WAITING_TALK, timeout=TALK_PATIENCE_MS + PACE_MS
+    )
+    expect(drawer, "a cell's drawer never said it was waiting").to_contain_text(
+        DRAWER_WAITING, timeout=PACE_MS
+    )
+    opened.loses(server)
+    the_map_stands(page, "stale")
+    expect(asof, "a stale map said it was waiting on what it can't read").not_to_contain_text(
+        WAITING_TALK
+    )
+    expect(
+        drawer, "a stale map's drawer said it was waiting on what it can't read"
+    ).to_contain_text(DRAWER_BROKEN, timeout=PACE_MS)
+    expect(drawer, "a stale map's drawer said waiting and broken at once").not_to_contain_text(
+        DRAWER_WAITING
     )
     opened.close()
 
@@ -1154,6 +1215,21 @@ def test_cells_sharing_a_title_that_move_are_drawn_moving(
         assert "m-nucleus" in standing_of(page, second), f"{second} stopped being drawn moving"
         still_owe(page, f"once {first} went quiet")
         the_map_stands(page, "live")
+    finally:
+        opened.close()
+
+
+def test_a_network_titled_as_the_pages_own_group_carries_its_id(
+    browser: Browser, own_titled_served: Served
+) -> None:
+    root, _ = own_titled_served
+    opened = Opened(browser, f"{root}mycelium/#net={OWN_TITLED}", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        expect(
+            page.locator("#panel-title"), "a network titled as the receptors read as them"
+        ).to_have_text(OWN_TOLD)
     finally:
         opened.close()
 
@@ -2175,16 +2251,18 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
-# Once every one of the twin's networks is a hub on the map, the frame after the one that first
-# showed them all, on the page's own clock from its opening: a frame's callbacks run before its
-# paint, so the second frame's run after the first was painted. Watched from each frame, as the
-# feed may draw the realm in parts, so neither the driver's polling nor the end of the map's own
-# script stands in for what the reader sees.
-WATCH_DRAWN = """(networks) => {
+# The map's own measure of its draw (view.js), named so a run's log and a profile read alike.
+DRAW_MEASURE = "mycelium-draw"
+# Once a frame first shows every one of the twin's networks as a hub on the map, the draw that
+# drew them, as the map measures it, on the page's own clock from its opening: its start and how
+# long it took, or null where the map left no measure. Watched from each frame, as the feed may
+# draw the realm in parts, and read at once, since each draw replaces the measure of the last.
+WATCH_DRAWN = """({ networks, measure }) => {
   const twin = '#world .hub[data-key^="h:orchestration.skf"]';
   const look = () => {
-    if (document.querySelectorAll(twin).length < networks) requestAnimationFrame(look);
-    else requestAnimationFrame(() => { window.drawnAt = performance.now(); });
+    if (document.querySelectorAll(twin).length < networks) return requestAnimationFrame(look);
+    const drew = performance.getEntriesByName(measure, "measure").at(-1);
+    window.drawn = drew ? { at: drew.startTime + drew.duration, took: drew.duration } : null;
   };
   requestAnimationFrame(look);
 }"""
@@ -2263,15 +2341,17 @@ def test_the_map_answers_its_keys_at_ten_thousand(
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
 
     def stands_drawn(page: Page) -> None:
-        page.evaluate(WATCH_DRAWN, TWIN_NETWORKS)
+        page.evaluate(WATCH_DRAWN, {"networks": TWIN_NETWORKS, "measure": DRAW_MEASURE})
         the_map_stands(page, "live", TWIN_MS)
-        page.wait_for_function("() => window.drawnAt", timeout=TWIN_MS)
+        page.wait_for_function("() => window.drawn !== undefined", timeout=TWIN_MS)
 
     try:
         # The heaviest page here, so a renderer a busy builder kills is opened once more.
         opened.first(stands_drawn)
         page = opened.page
-        drawn = round(page.evaluate("() => window.drawnAt"))
+        drew = page.evaluate("() => window.drawn")
+        assert drew is not None, f"the map drew ten thousand cells with no {DRAW_MEASURE} measure"
+        drawn, took = round(drew["at"]), round(drew["took"])
         page.evaluate(WATCH_LONG)
         where = page.locator("#where")
         page.locator("#map-view").focus()
@@ -2310,7 +2390,7 @@ def test_the_map_answers_its_keys_at_ten_thousand(
         # Said whether it passes, past pytest's capture, so each run's log adds a measure the
         # budgets can be read against.
         with capsys.disabled():
-            print(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
+            print(f"drawn at {drawn} ms, in {took}; Return {first}; j Return {step}; . {now}")
         assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
         for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
             assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
