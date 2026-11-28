@@ -248,8 +248,8 @@ type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.
 const ROOM_HELD_MS = 3000;
-// What a draw had: every repository's kind, and every feed's too.
-type Drawn = { readonly repos: boolean; readonly everyFeed: boolean };
+// What a draw had heard: every repository's kind, and every feed's too.
+type Heard = { readonly repos: boolean; readonly everyFeed: boolean };
 
 /**
  * Keeps the room each part the feeds draw took when the page was left, at this width, so the
@@ -261,7 +261,7 @@ type Drawn = { readonly repos: boolean; readonly everyFeed: boolean };
  * Returns what's told of each draw, which shows the page once the repositories have drawn and
  * lets the room go once every feed has, so the parts fit what they hold again.
  */
-function keepRoom(forgets: () => readonly Room[]): (drawn: Drawn) => void {
+function keepRoom(forgets: () => readonly Room[]): (heard: Heard) => void {
   const show = (): void => document.documentElement.classList.remove("waits");
   const root = document.documentElement.style;
   let held = ROOMS.some((id) => root.getPropertyValue(`--room-${id}`) !== "");
