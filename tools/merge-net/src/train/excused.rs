@@ -73,6 +73,9 @@ pub(super) fn record(checkout: &Path, candidate: &str) -> String {
     if candidate.len() != COMMIT_LENGTH {
         return String::new();
     }
+    // Most candidates were never excused, so they have no record, and one
+    // that can't be read speaks for no pass either: the recut is then built
+    // again, as a red with no record always is.
     fs::read_to_string(beside(checkout).join(candidate)).unwrap_or_default()
 }
 

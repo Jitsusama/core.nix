@@ -91,6 +91,7 @@ import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
 import "launcher/ActsSaid.js" as ActsSaid
 import "launcher/ChangesPresented.js" as ChangesPresented
+import "launcher/Thrown.js" as Thrown
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -3142,6 +3143,17 @@ Scope {
         return `:${endsLine(choice)}`;
     }
 
+    // When the key or button being handled was pressed, on the monotonic
+    // clock, or now when it's handling none or its press came with no time
+    // (KeyTimes.pressed), so the doubled-key guards time two presses by when
+    // they were pressed: timed when the shell got to each, a stall between
+    // a bounced pair would part them past the wait, and the second would
+    // end the session the first armed.
+    function pressedNow() {
+        const pressed = KeyTimes.pressed();
+        return pressed > 0 ? pressed : KeyTimes.now();
+    }
+
     // When Return last wrote an ending row's line, so a Return doubled
     // with it, a key bounced, doesn't run the line it opened. It's in
     // milliseconds of the monotonic clock, as landedAt is, so a wall clock
@@ -3150,15 +3162,16 @@ Scope {
 
     // Return on a row that ends something: its command written on the :
     // line, the menu naming what it acts on, for a fresh Return to run.
-    function lineFor(choice) {
+    function lineFor(choice, at = pressedNow()) {
         commandLine({ typed: endsLine(choice) });
-        linedAt = KeyTimes.now();
+        linedAt = at;
     }
 
-    // Whether a Return now comes so soon after the one that wrote an
-    // ending row's line that it's that one doubled, which runs nothing.
-    function linedJustNow() {
-        return KeyTimes.now() - linedAt < Options.keyTiming.wait;
+    // Whether a Return pressed at `at` comes so soon after the one that
+    // wrote an ending row's line that it's that one doubled, which runs
+    // nothing.
+    function linedJustNow(at = pressedNow()) {
+        return Arming.doubled(at, linedAt, Options.keyTiming.wait);
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
@@ -3192,11 +3205,11 @@ Scope {
         say([["\u21b5", (broken ? hints.closedBroken : hints.closedUnder) ?? ""]]);
     }
 
-    function land(choice) {
+    function land(choice, at = pressedNow()) {
         prompt.toNormal();
         landedKey = steadyId(choice);
         landedKeys = prompt.keysTaken;
-        landedAt = KeyTimes.now();
+        landedAt = at;
     }
 
     // Whether a row is the one landed on, until the next key.
@@ -3208,8 +3221,8 @@ Scope {
     // Whether Return comes so soon after a landing that it's the same
     // Return doubled, a key bounced or pressed twice for one, which does
     // nothing, as a confirm's second Return waits the same while.
-    function landedJustNow() {
-        return landedKey !== "" && KeyTimes.now() - landedAt < Options.keyTiming.wait;
+    function landedJustNow(at = pressedNow()) {
+        return landedKey !== "" && Arming.doubled(at, landedAt, Options.keyTiming.wait);
     }
 
     // The row that ends the session a first press armed (Arming.js), by
@@ -3240,9 +3253,9 @@ Scope {
     // between does it, past its confirm, since arming was the asking, and
     // one doubled with the first does nothing. Says "armed", "ran" or "",
     // as `returned` reads.
-    function pressArming(choice, counted) {
+    function pressArming(choice, counted, at = pressedNow()) {
         const did = Arming.pressed(armed, steadyId(choice), { keysTaken: prompt.keysTaken,
-            counted, now: KeyTimes.now(), wait: Options.keyTiming.wait });
+            counted, now: at, wait: Options.keyTiming.wait });
         armed = did.armed;
         if (did.act === "ends")
             run(Object.assign({}, choice, { confirm: false }), false);
@@ -6291,7 +6304,7 @@ Scope {
             } catch (error) {
                 threw = true;
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + Held.thrown(error));
+                    + Thrown.shown(error));
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.
@@ -7723,8 +7736,13 @@ Scope {
         const due = afterFramesDrawing.concat(afterFrames);
         afterFramesDrawing = [];
         afterFrames = [];
-        for (const then of due)
-            then();
+        afterFramesRun(due);
+    }
+    // Each in turn, one that throws said and the rest run still
+    // (launcher/Thrown.js's runEach).
+    function afterFramesRun(due) {
+        Thrown.runEach(due, said => console.warn(
+            `launcher: what waited on a frame threw: ${said}`));
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -10534,6 +10552,10 @@ Scope {
             seen: root.rowsSaid(),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
+            // How many of them are kept dimmed where they were, gone from what
+            // their source answers last (Steady.kept's `went`), which `found`
+            // counts too; a row its source draws dimmed itself isn't among them.
+            went: root.matches.filter(row => row.went).length,
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
             things: root.matches.slice(0, 20).map(row => ({
@@ -13017,17 +13039,16 @@ Scope {
         const chunks = Math.round(weight.chunks);
         const reachedChunks = Math.round(reached.chunks);
         const chunksAt = Math.round(reached.collectsAt);
-        // Where the rooms alone capped them, so a line whose collector
-        // started higher says what the sweeps kept, or Qt's own limit, set it.
-        const roomsAt = reached.roomsCapAt < 0 ? "no room"
-            : `the rooms ${Math.round(reached.roomsCapAt)} MB`;
+        // Where the rooms alone capped them, and which limit set where the
+        // collector started (Collector.limitSaid).
+        const limit = Collector.limitSaid(reached);
         const reachedOutside = Math.round(reached.outside);
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${resident} of it resident, ${free} of it in free pages,`
             + ` ${outside} MB outside, chunks`
-            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB (${roomsAt}) and`
+            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB${limit} and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
             + ` ${holding} of the shell lent`
@@ -14291,13 +14312,14 @@ Scope {
             // said as the key's (Joel's down onto Slack, 28 ms before the
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
+            // Each is run as what waits on the frame is, so a throw timing
+            // one holds none of it back.
             function onFrameSwapped() {
-                root.keysFrameSwapped();
-                root.actsFrameSwapped();
+                Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
+                    said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
-                for (const then of due)
-                    then();
+                root.afterFramesRun(due);
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }
@@ -14615,6 +14637,10 @@ Scope {
                                 root.keyActs("Return");
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
+                            // When this Return was pressed, or heard when
+                            // its press came with no time, which every
+                            // guard below times it by (pressedNow).
+                            const at = pressed > 0 ? pressed : heard;
                             root.searchNow();
                             trials.pressed("returns");
                             // A held row is held before all else
@@ -14638,8 +14664,7 @@ Scope {
                             // pressed, not when the shell got to it.
                             const under = Held.returnUnder(root.guessed, {
                                 keys: prompt.keysTaken,
-                                at: pressed > 0 ? pressed : KeyTimes.now(),
-                                depth: root.held.length, asking: !!root.asking
+                                at, depth: root.held.length, asking: !!root.asking
                             }, Options.keyTiming.wait);
                             const broken = root.guessed.broken;
                             root.guessed = under.next;
@@ -14652,7 +14677,7 @@ Scope {
                             }
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
-                                landed: root.landedJustNow(),
+                                landed: root.landedJustNow(at),
                                 gone: !!one?.gone,
                                 held: root.heldWhyOf([one], one?.returns) !== null,
                                 arming: !!root.arms(one),
@@ -14661,7 +14686,7 @@ Scope {
                                 lands: root.lands(one)
                             });
                             const arming = chosen === "arming";
-                            const act = arming ? root.pressArming(one, 1) : chosen;
+                            const act = arming ? root.pressArming(one, 1, at) : chosen;
                             // Arming did its own press, armed or done, and
                             // any landing before it is over.
                             if (arming)
@@ -14671,9 +14696,9 @@ Scope {
                             else if (act === "entered")
                                 root.enter(root.selected);
                             else if (act === "lined")
-                                root.lineFor(root.selected);
+                                root.lineFor(root.selected, at);
                             else if (act === "landed")
-                                root.land(root.selected);
+                                root.land(root.selected, at);
                             // Held still, run says why and does nothing.
                             else if (act === "ran" || act === "held")
                                 root.run(root.selected, false);

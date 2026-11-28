@@ -30,21 +30,23 @@ public:
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
     // back to the kernel without moving anything, or -1 as `resident` is;
-    // `chunks`, what its
-    // chunks hold, large items aside; `collectsAt`, what they may hold
-    // before a miss in the free lists starts the collector; and
-    // `collectsOutsideAt`, what may be held outside before the collector
-    // starts. Read after a collection, live is what survived it.
+    // `chunks`, what its chunks hold, large items aside; `collectsAt`, what
+    // they may hold before a miss in the free lists starts the collector;
+    // and `collectsOutsideAt`, what may be held outside before the
+    // collector starts. Read after a collection, live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
     // Where the heap stands against the collector, as weigh() says it but
     // without walking a chunk, so it's cheap enough to read as an opening
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
     // in megabytes; `roomsCapAt`, where the rooms alone cap the chunks
-    // before what the sweeps keep moves it, or -1 with no room left; and
-    // `collecting`, whether a collection is under way between its slices.
-    // Openings whose longest stall the collector ran
-    // in say it, read once their room is left: the room each limit had
+    // before what the sweeps keep moves it, or -1 with no room left;
+    // `collectsBy`, which limit sets `collectsAt`: `sweep` (Qt's own, from
+    // what the last sweep kept), `room` (the room past what the chunks
+    // held), `rooms` (the two rooms' cap) or `kept` (that cap and what the
+    // sweeps kept since); and `collecting`, whether a collection is under
+    // way between its slices. Openings whose longest stall the collector
+    // ran in say it, read once their room is left: the room each limit had
     // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;
 
@@ -147,11 +149,14 @@ public:
     // holder stays as it is, so memory it shares with another is kept by
     // that other. What an object nothing reaches holds, the sweep's
     // anyway, isn't counted. It counts the heap's own items, and the text
-    // their strings keep outside the heap, as weigh()'s `outside` counts it,
-    // where no other QString shares it, since shared text isn't freed. What
-    // C++ keeps for an object the collector would delete isn't counted, nor
-    // is the storage of an object of the holder's own file that only the
-    // holder keeps, a few bytes each, though all its values reach is.
+    // their strings keep outside the heap that letting go would really
+    // free: text only those strings share is counted once, and text a
+    // QString beyond them shares too isn't counted, since it isn't freed.
+    // So it differs from weigh()'s `outside`, Qt's own count, which charges
+    // each string for its text whether it's shared or not. What C++ keeps
+    // for an object the collector would delete isn't counted, nor is the
+    // storage of an object of the holder's own file that only the holder
+    // keeps, a few bytes each, though all its values reach is.
     // `held`, whether any property so named holds a value the heap keeps;
     // `freed`, its megabytes; `outside`, the megabytes of that text;
     // `count`; `ms`; `said`, one line naming it, or saying no property

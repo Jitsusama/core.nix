@@ -62,6 +62,81 @@
         "yours": "your own use",
         "ours": "a stand-in"
       }
+    },
+    {
+      "id": "asked:head",
+      "in": "asked",
+      "said": {
+        "open": "{count} open",
+        "late": "{late} late of {count}",
+        "none": "nothing you asked for is open",
+        "unread": "can't read the list now"
+      }
+    },
+    {
+      "id": "asked:row",
+      "in": "asked",
+      "said": {
+        "due": "due {time}",
+        "late": "late since {time}",
+        "undated": "no date yet",
+        "passes": "probe passed {time}",
+        "fails": "probe fails since {time}",
+        "unrun": "probe not run yet",
+        "unread": "probe can't be read",
+        "unprobed": "no probe yet"
+      }
+    },
+    {
+      "id": "asked:drawer",
+      "in": "asked",
+      "said": {
+        "eyebrow": "asked for · open"
+      }
+    },
+    {
+      "id": "asked:owner",
+      "in": "asked:drawer",
+      "name": "Answered By"
+    },
+    {
+      "id": "asked:at",
+      "in": "asked:drawer",
+      "name": "Asked"
+    },
+    {
+      "id": "asked:due",
+      "in": "asked:drawer",
+      "name": "Due",
+      "said": {
+        "undated": "no date yet"
+      }
+    },
+    {
+      "id": "asked:probe",
+      "in": "asked:drawer",
+      "name": "Probe",
+      "said": {
+        "passes": "passed {time}",
+        "fails": "fails since {time}",
+        "unrun": "not run yet",
+        "unread": "can't be read",
+        "unprobed": "none yet"
+      }
+    },
+    {
+      "id": "asked:moved",
+      "in": "asked:drawer",
+      "name": "Date Moved",
+      "said": {
+        "once": "once",
+        "times": "{count} times"
+      }
+    },
+    {
+      "id": "asked:change",
+      "in": "asked:drawer",
+      "name": "Change"
     }
   ]
 }

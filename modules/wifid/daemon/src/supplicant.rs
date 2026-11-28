@@ -242,6 +242,36 @@ pub fn left_its_network(before: &str, step: &str) -> bool {
     holds_a_network(before) && !holds_a_network(step)
 }
 
+/// What a card's step, from the one before it, says of a join, so a card
+/// counts as on a new point only once its join there completes:
+/// wpa_supplicant names the point as the card associates, before a
+/// handshake that can still fail sends it back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Join {
+    /// A join begins, as the card authenticates, or associates where it
+    /// skips that.
+    Begins,
+    /// The card is short of a completed join at any other step, whether
+    /// or not wifid saw it begin: one first seen partway, as a step can
+    /// go unsaid between two signals, still hasn't landed.
+    Short,
+    /// The join completes.
+    Lands,
+    /// The card stays joined.
+    Stays,
+}
+
+/// The join a card's step says, from the step before it (`Join`).
+pub fn join_at(before: &str, step: &str) -> Join {
+    match step {
+        "completed" if before == "completed" => Join::Stays,
+        "completed" => Join::Lands,
+        "authenticating" => Join::Begins,
+        "associating" if before != "authenticating" => Join::Begins,
+        _ => Join::Short,
+    }
+}
+
 /// A text field as wpa_supplicant gives it back, quoted.
 pub fn unquoted(field: &str) -> Option<&str> {
     field.strip_prefix('"')?.strip_suffix('"')
@@ -723,5 +753,23 @@ mod tests {
         );
         assert!(!left_its_network("scanning", "disconnected"));
         assert!(!left_its_network("", "disconnected"));
+    }
+
+    #[test]
+    fn a_join_lands_only_as_it_completes_however_it_was_first_seen() {
+        let cases = [
+            (("disconnected", "authenticating"), Join::Begins),
+            (("scanning", "associating"), Join::Begins),
+            (("authenticating", "associating"), Join::Short),
+            (("", "associated"), Join::Short),
+            (("completed", "4way_handshake"), Join::Short),
+            (("associating", "disconnected"), Join::Short),
+            (("group_handshake", "completed"), Join::Lands),
+            (("", "completed"), Join::Lands),
+            (("completed", "completed"), Join::Stays),
+        ];
+        for ((before, step), join) in cases {
+            assert_eq!(join_at(before, step), join, "{before} to {step}");
+        }
     }
 }

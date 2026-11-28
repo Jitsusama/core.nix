@@ -9,7 +9,8 @@
 //! tried again; and a stop tries once more what's still owed; and a camera
 //! it moves to is said held while its node file still says the camera
 //! before, its holders file written again when a USB camera's run removes
-//! it.
+//! it; and a read of who holds its camera that fails keeps the holder said,
+//! the run not ready until a read works again.
 
 mod common;
 
@@ -344,6 +345,11 @@ fn a_stop_whose_nobody_still_cant_be_written_keeps_its_node_file() {
         watch.named(),
         "a stop removed the node file of a holder its holders file still says"
     );
+    assert_eq!(
+        fs::read_to_string(watch.file()).unwrap(),
+        "firefox\n",
+        "a stop whose nobody couldn't be written didn't leave its holder said"
+    );
 }
 
 #[test]
@@ -576,6 +582,63 @@ fn a_moved_cameras_holders_file_a_usb_cameras_run_removed_is_written_again() {
         "a holders file removed under its watch wasn't written again",
     );
     fs::set_permissions(&moved.devices, Permissions::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn a_read_that_fails_keeps_its_holder_said_and_the_run_unready() {
+    let watch = Watch::apart("unread");
+    // Held until it's said, so a read that worked found a holder.
+    let held = File::open(watch.camera()).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
+    let holder = fs::read_to_string(watch.file()).unwrap();
+    watch.shut();
+    watch.until(
+        |watch| complaints_of(watch, &watch.camera()) == 1,
+        "a read of its holders that failed went unsaid",
+    );
+    // Its node can be said once the file in its way goes, so only the read
+    // that fails keeps the run from being ready.
+    fs::remove_file(watch.folder.join(".devices")).unwrap();
+    watch.until(
+        |watch| watch.device().exists(),
+        "the node it could say at last wasn't said",
+    );
+    // Past the watch's next look, two seconds on, which reads again and
+    // fails again.
+    sleep(Duration::from_millis(2500));
+    assert_eq!(
+        fs::read_to_string(watch.file()).unwrap(),
+        holder,
+        "a read that failed said a held camera off"
+    );
+    assert_eq!(
+        ready(&watch.read("log")),
+        0,
+        "a run whose reads failed was said ready"
+    );
+    assert_eq!(
+        complaints_of(&watch, &watch.camera()),
+        1,
+        "a read failing each look was complained of each look: {:?}",
+        watch.read("complaints")
+    );
+    watch.open();
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a run whose read worked again wasn't said ready",
+    );
+    watch.until(
+        |watch| right_again(watch, &watch.file()) == 1,
+        "a read that worked again went unsaid",
+    );
+    drop(held);
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a camera let go once its reads worked again wasn't said held by nobody",
+    );
 }
 
 #[test]

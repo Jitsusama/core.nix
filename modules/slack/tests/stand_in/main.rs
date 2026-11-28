@@ -18,8 +18,9 @@ mod wanting;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -169,19 +170,37 @@ fn forget(credentials: &std::path::Path) {
     let _ = std::fs::remove_dir_all(cache(credentials));
 }
 
-/// A sign-in's file that isn't there, named for the test and this run so
-/// no other run's file stands in for it.
-fn no_sign_in(test: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "slack-{test}-no-such-file-{}.json",
-        std::process::id()
-    ));
-    assert!(
-        std::fs::symlink_metadata(&path).is_err(),
-        "{} is there, so a case without a sign-in would read it",
-        path.display()
-    );
-    path
+/// A sign-in's file that isn't there, in a folder made afresh for the
+/// test and this run and open to this user alone, so no other run's or
+/// user's file can stand in for it. The folder, with whatever a run kept
+/// in it, goes once the case lets go.
+struct NoSignIn(PathBuf);
+
+impl NoSignIn {
+    /// The sign-in's file, which nothing makes.
+    fn path(&self) -> PathBuf {
+        self.0.join("sign-in.json")
+    }
+}
+
+impl Drop for NoSignIn {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A `NoSignIn` named for the test and this run.
+fn no_sign_in(test: &str) -> NoSignIn {
+    let folder =
+        std::env::temp_dir().join(format!("slack-{test}-no-sign-in-{}", std::process::id()));
+    if let Err(error) = std::fs::DirBuilder::new().mode(0o700).create(&folder) {
+        panic!(
+            "{} couldn't be made afresh, so a case without a sign-in might read \
+             what's in it: {error}",
+            folder.display()
+        );
+    }
+    NoSignIn(folder)
 }
 
 /// Slack as it answers what wants Joel: Ada's direct message with two
@@ -211,22 +230,35 @@ fn wants_joel(line: &str) -> String {
     said.into()
 }
 
-/// A slack-unreads a case started, stopped once the case lets go of it,
-/// so a case failing partway leaves no daemon asking a stand-in that's
-/// gone.
-struct Running(Child);
+/// A slack-unreads a case started over `run`, stopped once the case lets
+/// go of it, so a case failing partway leaves no daemon asking a stand-in
+/// that's gone. What it kept beside `run`, its socket's folder and what it
+/// asks of Joel, goes then too.
+struct Running {
+    child: Child,
+    run: PathBuf,
+}
 
 impl Running {
-    /// Stops it, and waits for it to end.
-    fn stop(mut self) {
+    /// Stops it, failing the case if it had already ended on its own, and
+    /// waits for it to end. What it kept stays until the case lets go.
+    fn stop(&mut self) {
+        let ended = self
+            .child
+            .try_wait()
+            .expect("couldn't ask whether slack-unreads had ended");
+        assert!(
+            ended.is_none(),
+            "slack-unreads had ended before it was stopped: {ended:?}"
+        );
         self.end()
             .expect("slack-unreads couldn't be stopped, or wasn't seen to end");
     }
 
     /// Kills it and waits for it, as both stopping and letting go do.
-    fn end(&mut self) -> std::io::Result<std::process::ExitStatus> {
-        self.0.kill()?;
-        self.0.wait()
+    fn end(&mut self) -> std::io::Result<ExitStatus> {
+        self.child.kill()?;
+        self.child.wait()
     }
 }
 
@@ -234,6 +266,10 @@ impl Drop for Running {
     fn drop(&mut self) {
         // Stopped already, or failing: either way, nothing more to say.
         let _ = self.end();
+        let _ = std::fs::remove_file(waiting(&self.run));
+        if let Some(folder) = socket(&self.run).parent() {
+            let _ = std::fs::remove_dir_all(folder);
+        }
     }
 }
 
@@ -256,11 +292,12 @@ fn unreads_from(
     credentials: &std::path::Path,
     run: &std::path::Path,
 ) -> Running {
-    Running(
-        unreads_command(command, stand_in, credentials, run)
+    Running {
+        child: unreads_command(command, stand_in, credentials, run)
             .spawn()
             .unwrap(),
-    )
+        run: run.to_owned(),
+    }
 }
 
 /// `command` set to run slack-unreads as `unreads_from` starts it, reading
@@ -293,7 +330,8 @@ fn slack_unreads_reads_nothing_of_whoever_runs_it_but_what_the_case_sets() {
             ("SIGN_IN_KEYRING", None),
             ("LAUNCHER_WORDS", None),
             ("NOTIFY_SOCKET", None)
-        ]
+        ],
+        "a case setting nothing hands slack-unreads none of these"
     );
     let mut command = Command::new("slack-unreads");
     command.env("LAUNCHER_WORDS", WORDS);

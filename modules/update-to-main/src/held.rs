@@ -12,9 +12,10 @@
 //! someone was at the machine.
 
 use crate::config::Config;
-use crate::follows::Followed;
+use crate::follows::{self, Followed};
 use crate::git::{self, Repo};
 use crate::hosted;
+use crate::read;
 use crate::run::Failure;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -196,74 +197,202 @@ pub fn paused(config: &Config) -> Option<String> {
     held.paused.is_some().then(|| said_of(&held))
 }
 
-/// Why main at `head`, with `followed`, mustn't be switched to: it, or a
-/// followed input's head, holds a commit that is held. A hold neither can
-/// be seen to hold or not stops it too, since a hold is only ever asked
-/// for to keep a change off the machine.
+/// Why main at `head`, with `followed`, mustn't be switched to: it, or an
+/// input as the build reads it, holds a commit that is held. A hold
+/// neither can be seen to hold or not stops it too, since a hold is only
+/// ever asked for to keep a change off the machine.
 #[must_use]
 pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String> {
-    for hold in &read(config).commits {
-        // A commit is one repository's, and a followed input's copy is
-        // fetched before this asks, so a commit one of them has is judged
-        // there alone. Main's host doesn't know another repository's
-        // commits, and asking it would refuse every head.
-        let theirs: Vec<(&String, &String)> = followed
-            .iter()
-            .filter(|(name, _)| {
-                config.follows.get(*name).is_some_and(|follow| {
-                    git::has(&Repo::followed(config, name, follow), &hold.commit)
-                })
-            })
-            .collect();
-        let mut unknown = None;
-        let mut judged = |seen: Result<bool, Failure>| match seen {
-            Ok(true) => true,
-            Ok(false) => false,
-            Err(failure) => {
-                unknown = Some(failure.why);
-                false
-            }
-        };
-        let in_main = theirs.is_empty()
-            && judged(match &config.hosted {
-                Some(hosted) => hosted::holds(config, hosted, &hold.commit, head),
-                None => git::descends(&Repo::main(config), &hold.commit, head),
-            });
-        let in_followed = theirs.into_iter().any(|(name, commit)| {
-            config.follows.get(name).is_some_and(|follow| {
-                judged(git::descends(
-                    &Repo::followed(config, name, follow),
-                    &hold.commit,
-                    commit,
-                ))
-            })
-        });
-        if in_main || in_followed {
+    let holds = read(config).commits;
+    let first = holds.first()?;
+    // Each input is judged at the commit the build reads, its followed one
+    // or its lock's pin, so one the lock dropped is neither asked nor
+    // fetched: its repository may have gone with it.
+    let built = match follows::built(config, head, followed) {
+        Ok(built) => built,
+        Err(failure) => {
             return Some(format!(
-                "{} is held, and main at {} holds it; `update-to-main {LIFT} {}` lets it through",
-                git::short(&hold.commit),
+                "{} is held, and what main at {} builds couldn't be read: {}",
+                git::short(&first.commit),
                 git::short(head),
-                hold.commit
+                failure.why
             ));
         }
-        if let Some(why) = unknown {
-            // A hold that can't be told stops every update until it can, so
-            // the stop says how to let it through, as one main holds does.
-            return Some(format!(
-                "{} is held, and whether main at {} holds it couldn't be told: {why}; \
-                 `update-to-main {LIFT} {}` lets it through",
-                git::short(&hold.commit),
-                git::short(head),
-                hold.commit
+    };
+    holds
+        .iter()
+        .find_map(|hold| stopped_by(config, head, &built, hold))
+}
+
+/// Whether a hold names `commit` of the input `name`, or one it holds, as
+/// its copy reads it. Fetches nothing: a copy has a commit it built.
+#[must_use]
+pub fn keeps_off(config: &Config, name: &str, commit: &str) -> bool {
+    let Some(follow) = config.follows.get(name) else {
+        return false;
+    };
+    let repo = Repo::followed(config, name, follow);
+    read(config).commits.iter().any(|hold| {
+        git::has(&repo, &hold.commit) && git::descends(&repo, &hold.commit, commit).unwrap_or(true)
+    })
+}
+
+/// Why `hold` stops main at `head`, its inputs at `built`, if it does.
+fn stopped_by(config: &Config, head: &str, built: &Followed, hold: &Hold) -> Option<String> {
+    let main = Repo::main(config);
+    // A commit is judged in main and in every input the build reads, and
+    // held if any of them builds it: anyone who can push to one repository,
+    // signed or not, can put another's commit in it, so no copy having it
+    // or lacking it settles whose it is. Each input is judged in its own
+    // copy alone, fetched first when it lacks the commit the build reads:
+    // its main, then, for a lock pinning a commit off its main, that commit
+    // by its id. One holding that commit holds its whole history, so lacking
+    // the held one proves the input doesn't build it, and nothing another
+    // copy holds spares the fetch. So a repository out of reach fails a hold
+    // only when its copy is behind what the build reads of it. A copy that
+    // lacks the held commit fetches its main once more, so one landed there
+    // since its last fetch is seen to be its own: an input moved only when
+    // asked is otherwise never fetched, and a hosted main's 404 for the
+    // commit would then leave every update refused as untold. That fetch
+    // failing changes nothing, since the copy still proves what it builds.
+    let mut unknown = None;
+    let mut theirs = false;
+    let mut in_followed = false;
+    for (name, commit) in built {
+        let Some(follow) = config.follows.get(name) else {
+            continue;
+        };
+        let repo = Repo::followed(config, name, follow);
+        if !git::has(&repo, commit)
+            && let Err(failure) = git::fetch(&repo)
+        {
+            unknown.get_or_insert(failure.why);
+            continue;
+        }
+        if !git::has(&repo, commit)
+            && let Err(failure) = git::fetch_commit(&repo, commit)
+        {
+            unknown.get_or_insert(failure.why);
+            continue;
+        }
+        if !git::has(&repo, commit) {
+            unknown.get_or_insert(format!(
+                "{} hasn't got {}, which the build reads",
+                repo.called,
+                git::short(commit)
             ));
+            continue;
+        }
+        if !git::has(&repo, &hold.commit) {
+            let _ = git::fetch(&repo);
+        }
+        if git::has(&repo, &hold.commit) {
+            theirs = true;
+            in_followed |= judged(git::descends(&repo, &hold.commit, commit), &mut unknown);
         }
     }
-    None
+    // A copy of main reads a commit it lacks as not in main, so it is
+    // always asked. Main's host is asked too, since a hosted copy may lack
+    // main's latest merges. It answers 404 for a commit it doesn't know, as
+    // another repository's is; only that, for a commit an input's copy has,
+    // says main doesn't hold it, and only once the same token is shown
+    // main's head, since one that can't see the repository is answered 404
+    // for every commit. A rate limit or a host that's down leaves it untold.
+    let in_main = match &config.hosted {
+        Some(hosted) => match hosted::holds(config, hosted, &hold.commit, head) {
+            Err(failure) if theirs && unknown_to_host(&failure) => false,
+            seen => judged(seen, &mut unknown),
+        },
+        None => judged(git::descends(&main, &hold.commit, head), &mut unknown),
+    };
+    if in_main || in_followed {
+        return Some(format!(
+            "{} is held, and main at {} holds it; `update-to-main {LIFT} {}` lets it through",
+            git::short(&hold.commit),
+            git::short(head),
+            hold.commit
+        ));
+    }
+    // A hold that can't be told stops every update until it can, so the
+    // stop says how to let it through, as one main holds does.
+    unknown.map(|why| {
+        format!(
+            "{} is held, and whether main at {} holds it couldn't be told: {why}; \
+             `update-to-main {LIFT} {}` lets it through",
+            git::short(&hold.commit),
+            git::short(head),
+            hold.commit
+        )
+    })
+}
+
+/// What `seen` says, with a failure kept in `unknown` and read as no.
+fn judged(seen: Result<bool, Failure>, unknown: &mut Option<String>) -> bool {
+    seen.unwrap_or_else(|failure| {
+        unknown.get_or_insert(failure.why);
+        false
+    })
+}
+
+/// Curl's exit for an answer file that isn't there, as an API served from
+/// files says it knows no such commit.
+const NO_ANSWER_FILE: &str = "(exit status: 37)";
+
+/// Whether an ask of main's host failed by its saying it knows no such
+/// commit: curl's own line for each failed answer names its HTTP code, and
+/// an API served from files has no answer file for it. Only the ask itself
+/// can say so; a step before it, such as the account's token command, may
+/// fail with any exit and print anything.
+fn unknown_to_host(failure: &Failure) -> bool {
+    let Some(how) = failure
+        .why
+        .strip_prefix(read::ASKING_THE_HOST)
+        .and_then(|rest| rest.strip_prefix(" failed "))
+    else {
+        return false;
+    };
+    how == NO_ANSWER_FILE
+        || failure
+            .lines
+            .iter()
+            .any(|line| line.trim_end().ends_with(" answered 404"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_host_s_404_says_it_knows_no_such_commit() {
+        let failed = |line: &str| Failure {
+            why: "reading main's folder from the host failed (exit status: 22)".into(),
+            lines: vec![line.to_owned()],
+        };
+        let unfiled = Failure::new("reading main's folder from the host failed (exit status: 37)");
+        assert!(
+            unknown_to_host(&unfiled),
+            "an API served from files with no answer for the commit wasn't read as not knowing it"
+        );
+        let compare = "https://api.example/repos/kestrel/core/compare/a...b";
+        assert!(
+            unknown_to_host(&failed(&format!("{compare} answered 404"))),
+            "a 404 wasn't read as a commit the host doesn't know"
+        );
+        for code in ["429", "500", "000", "4040"] {
+            assert!(
+                !unknown_to_host(&failed(&format!("{compare} answered {code}"))),
+                "a {code} was read as a commit the host doesn't know"
+            );
+        }
+        let token = Failure {
+            why: "asking for a token failed (exit status: 37)".into(),
+            lines: vec![format!("{compare} answered 404")],
+        };
+        assert!(
+            !unknown_to_host(&token),
+            "a token command's failure was read as the host not knowing the commit"
+        );
+    }
 
     #[test]
     fn a_pause_holds_until_resumed_and_keeps_who_asked_first() {

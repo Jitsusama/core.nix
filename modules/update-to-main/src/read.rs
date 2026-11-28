@@ -41,6 +41,10 @@ const READ_FOR: Duration = Duration::from_secs(120);
 /// The longest one answer may take, in seconds.
 const ONE_ANSWER: u64 = 60;
 
+/// What asking the host's API is called when it fails, so a failure can be
+/// told to be the host's answer and not a step before it, such as the token.
+pub const ASKING_THE_HOST: &str = "reading main's folder from the host";
+
 /// What a read of main's head found: the folder's tree, and whether the
 /// head descends from `from`, the commit the machine last switched to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +63,8 @@ pub fn found(config: &Config, commit: &str) -> Option<Found> {
 /// Reads the folder at `head` from the host's API at `api`, asked with
 /// `token`, into root's copy, and keeps what it found, with whether `head`
 /// descends from `from`. Earlier reads are let go, but for `from`'s, which
-/// the next update compares its folder with. A folder where it was at
+/// the next update compares its folder with, and that of a build waiting
+/// for a hold, whose grant judges what it builds by it. A folder where it was at
 /// `from` is given back unkept and unasked how main moved, as not
 /// descending: the machine stays at `from` then, so nothing reads it.
 pub fn read(
@@ -96,25 +101,46 @@ pub fn read(
     Ok(found)
 }
 
-/// Whether `head` descends from `older`, by the host's word, for a head
-/// root's copy hasn't got.
-pub fn descends(
+/// Whether main at `head` holds `commit`, by the host's word, for a head
+/// root's copy hasn't got. The host answers 404 for a commit it doesn't
+/// know, and for every commit when the token can't see the repository, so
+/// a failed comparison is passed on as the host's only once the same token
+/// shows it `head`. Otherwise a token command giving a token that sees
+/// nothing would lift a hold of main's own commit.
+pub fn holds(
     config: &Config,
     api: &str,
     token: &str,
-    older: &str,
+    commit: &str,
     head: &str,
 ) -> Result<bool, Failure> {
-    Host::new(config, api, token)?.descends(older, head)
+    let host = Host::new(config, api, token)?;
+    host.descends(commit, head).map_err(|failure| {
+        let shown = host.get_one(&format!("git/commits/{head}"));
+        if shown.is_ok_and(|seen| seen["sha"].as_str() == Some(head)) {
+            failure
+        } else {
+            Failure::new(format!(
+                "the host didn't show main at {} to the account's token, so its word on {} \
+                 can't be read",
+                git::short(head),
+                git::short(commit)
+            ))
+        }
+    })
 }
 
 fn keep(config: &Config, head: &str, found: &Found, from: Option<&str>) -> Result<(), Failure> {
     let reads = config.reads();
     fs::create_dir_all(&reads).map_err(|e| Failure::new(format!("{}: {e}", reads.display())))?;
+    // A grant switches the build that waited, though main has moved since,
+    // and on a hosted machine only this read tells what that build holds.
+    let waiting = crate::update::waiting_commit(config);
     if let Ok(entries) = fs::read_dir(&reads) {
         for entry in entries.filter_map(Result::ok) {
             let name = entry.file_name();
-            if Some(name.to_string_lossy().as_ref()) != from {
+            let name = name.to_string_lossy();
+            if Some(name.as_ref()) != from && Some(name.as_ref()) != waiting.as_deref() {
                 let _ = fs::remove_file(entry.path());
             }
         }
@@ -360,7 +386,7 @@ impl<'a> Host<'a> {
         let Some((each, retrying)) = allowed(self.until.saturating_duration_since(Instant::now()))
         else {
             return Err(Failure::new(format!(
-                "reading main's folder from the host took over {} s",
+                "{ASKING_THE_HOST} took over {} s",
                 READ_FOR.as_secs()
             )));
         };
@@ -408,7 +434,7 @@ impl<'a> Host<'a> {
             OsString::from("--retry-max-time"),
             OsString::from(retrying.to_string()),
         ]);
-        let asked = run::output(curl, "reading main's folder from the host", args);
+        let asked = run::output(curl, ASKING_THE_HOST, args);
         let _ = fs::remove_file(&asks);
         asked?;
         answers
