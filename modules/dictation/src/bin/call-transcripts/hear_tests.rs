@@ -532,22 +532,19 @@ fn a_take_that_isnt_heard_says_why() {
 }
 
 /// Hears `takes` takes as the daemon does, through a model `load`
-/// gives afresh whenever none is kept: which takes were heard, and how
-/// many times a model was loaded.
+/// gives afresh whenever none is kept and let go by the daemon's own
+/// step: which takes were heard, and how many times a model was loaded.
 fn heard_through(takes: usize, load: impl Fn() -> Scripted) -> (Vec<bool>, usize) {
-    let (mut speech, mut heard_since_load, mut loads) = (None, false, 0);
+    let (mut speech, mut speech_heard, mut loads) = (None, false, 0);
     let heard = (0..takes)
         .map(|_| {
             let hears = speech.get_or_insert_with(|| {
                 loads += 1;
-                heard_since_load = false;
+                speech_heard = false;
                 load()
             });
             let (_, failed) = heard_or_left_out(transcribe_take(hears, 0, &[]));
-            if !kept(heard_since_load, failed.is_some()) {
-                speech = None;
-            }
-            heard_since_load |= failed.is_none();
+            speech_heard = heard_since_load(&mut speech, speech_heard, failed.is_some());
             failed.is_none()
         })
         .collect();

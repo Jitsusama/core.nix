@@ -415,10 +415,11 @@ fn kept(heard_since_load: bool, failed: bool) -> bool {
     !(heard_since_load && failed)
 }
 
-/// Whether Parakeet has heard a take since it was loaded, once a take
-/// was heard through it or `failed`, `heard` saying whether it had
-/// before; let go first when it isn't `kept`, so the next take loads it.
-fn heard_since_load(speech: &mut Option<Parakeet>, heard: bool, failed: bool) -> bool {
+/// Whether the speech model (Parakeet, or a case's stand-in) has heard a
+/// take since it was loaded, once a take was heard through it or
+/// `failed`, `heard` saying whether it had before; let go first when it
+/// isn't `kept`, so the next take loads it.
+fn heard_since_load<T>(speech: &mut Option<T>, heard: bool, failed: bool) -> bool {
     if !kept(heard, failed) {
         *speech = None;
         eprintln!("call-transcripts: Parakeet let go, to be loaded afresh");
