@@ -10,7 +10,9 @@
 //! is kept by the boot clock (`Boot`), which the folder never outlives,
 //! as an `Instant` means nothing to the next wifid, and is read back as
 //! the time it has left. A warning run out stays in the file until the
-//! next is kept, but is never read back.
+//! next is kept, but is never read back. A file that can't be read as
+//! wifid starts is read again before a warning is first kept over it, as
+//! the warning, written whole, would otherwise take every other card's.
 //!
 //! A warning the chooser forgot as its card came back to the point
 //! (`State::warned_off`) is still kept here, so a wifid started again
@@ -76,6 +78,9 @@ struct Kept {
 pub struct Warned {
     file: PathBuf,
     kept: BTreeMap<String, Kept>,
+    /// Whether the file couldn't be read as wifid started, so is read
+    /// again before a warning is first kept over it.
+    unread: bool,
 }
 
 impl Warned {
@@ -84,38 +89,76 @@ impl Warned {
         Warned {
             file: file.to_path_buf(),
             kept: BTreeMap::new(),
+            unread: false,
         }
     }
 
     /// The warnings kept in this file, `now` on the boot clock, and what
-    /// was forgotten of them, for the journal: a file that can't be read
-    /// is begun again empty, and a warning that would outlast any
-    /// keep-off is dropped, as wifid wrote neither. No file says nothing,
-    /// as no card was warned since the boot.
+    /// was forgotten of them, for the journal, each line ending with what
+    /// follows: a file that can't be read or isn't as wifid keeps it is
+    /// begun again empty, and a warning that would outlast any keep-off
+    /// is dropped, as wifid wrote neither. No file says nothing, as no
+    /// card was warned since the boot.
     pub fn kept_in(file: &Path, now: Boot) -> (Warned, Vec<String>) {
         let mut warned = Warned::none(file);
         let kept = match read(file) {
             Ok(kept) => kept,
             Err(unkept) => {
-                return (
-                    warned,
-                    vec![format!("forgets the warnings kept before, as {unkept}")],
+                // A file unreadable now may read later, as a failing disk
+                // or a moment's lack of memory passes, and keeping a
+                // warning over it unread would lose every other card's.
+                let follows = match unkept {
+                    Unkept::Unreadable(_) => {
+                        warned.unread = true;
+                        "it reads them again before it keeps a warning over them"
+                    }
+                    Unkept::Unlike(_) => "the next warning it keeps replaces them",
+                };
+                let said = format!(
+                    "forgets the warnings kept before, as {unkept}; no point warned before the \
+                     restart is kept off, and {follows}"
                 );
+                return (warned, vec![said]);
             }
         };
+        let forgotten = warned.take_in(kept, now);
+        (warned, forgotten)
+    }
+
+    /// Takes in the warnings read from the file, `now` on the boot clock,
+    /// but for any a card already has here, which is newer, and says each
+    /// dropped as it would outlast any keep-off.
+    fn take_in(&mut self, kept: BTreeMap<String, Kept>, now: Boot) -> Vec<String> {
         let most = now.millis().saturating_add(millis_of(LONGEST));
         let mut forgotten = Vec::new();
         for (card, kept) in kept {
             if kept.ends > most {
                 forgotten.push(format!(
-                    "forgets {card}'s warning from {}, as it would outlast any keep-off",
+                    "forgets {card}'s warning from {}, as it would outlast any keep-off; \
+                     {card} isn't kept off it",
                     kept.point
                 ));
             } else {
-                warned.kept.insert(card, kept);
+                self.kept.entry(card).or_insert(kept);
             }
         }
-        (warned, forgotten)
+        forgotten
+    }
+
+    /// Reads the file again, once, as it couldn't be read as wifid
+    /// started, so the first warning kept over it keeps every other
+    /// card's still lasting there, and says what it forgot. Those are
+    /// kept for the next wifid alone: this one didn't keep their points
+    /// off from its start, and their cards may have left them since.
+    fn read_again(&mut self, now: Boot) -> Vec<String> {
+        self.unread = false;
+        match read(&self.file) {
+            Ok(kept) => self.take_in(kept, now),
+            Err(unkept) => vec![format!(
+                "forgets the warnings kept before, as {unkept}; the warning it keeps now \
+                 replaces them"
+            )],
+        }
     }
 
     /// Each card's warning still keeping its point off, as the card, the
@@ -133,13 +176,20 @@ impl Warned {
     /// Keeps that the point warned the card it drops it, kept off until
     /// then, in place of the card's warning before, and forgets every
     /// warning that has run out, `now` being `boot` on the boot clock.
+    /// Says, for the journal, what it forgot of a file read again as it
+    /// couldn't be read when wifid started.
     pub fn warned(
         &mut self,
         card: &str,
         point: &str,
         until: Instant,
         (now, boot): (Instant, Boot),
-    ) -> io::Result<()> {
+    ) -> io::Result<Vec<String>> {
+        let said = if self.unread {
+            self.read_again(boot)
+        } else {
+            Vec::new()
+        };
         let since = boot.millis();
         self.kept.retain(|_, kept| kept.ends > since);
         let kept = Kept {
@@ -147,7 +197,8 @@ impl Warned {
             ends: since.saturating_add(millis_of(until.saturating_duration_since(now))),
         };
         self.kept.insert(card.to_owned(), kept);
-        self.keep()
+        self.keep()?;
+        Ok(said)
     }
 
     /// Writes the warnings whole or not at all, readable by wifid alone.
@@ -342,7 +393,8 @@ mod tests {
         assert_eq!(
             forgotten,
             vec![format!(
-                "forgets wlan2's warning from {DESK}, as it would outlast any keep-off"
+                "forgets wlan2's warning from {DESK}, as it would outlast any keep-off; wlan2 \
+                 isn't kept off it"
             )],
             "a warning dropped as past any keep-off wasn't said"
         );
@@ -375,8 +427,13 @@ mod tests {
             forgotten.len() == 1
                 && forgotten[0].starts_with(
                     "forgets the warnings kept before, as they aren't as it keeps them"
+                )
+                && forgotten[0].ends_with(
+                    "; no point warned before the restart is kept off, and the next warning it \
+                     keeps replaces them"
                 ),
-            "the warnings forgotten with a file unlike wifid's weren't said so: {forgotten:?}"
+            "the warnings forgotten with a file unlike wifid's, and what follows, weren't said: \
+             {forgotten:?}"
         );
         let until = now + Duration::from_secs(60);
         warned
@@ -419,6 +476,81 @@ mod tests {
         assert!(
             matches!(&unlike, Err(Unkept::Unlike(_))),
             "a file not as wifid keeps it wasn't said unlike it: {unlike:?}"
+        );
+    }
+
+    #[test]
+    fn a_file_unreadable_as_wifid_starts_is_read_again_before_a_warning_is_kept_over_it() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        fs::create_dir(&file).expect("a folder where the file goes");
+        let (now, start) = (Instant::now(), boot(600));
+
+        let (mut warned, forgotten) = Warned::kept_in(&file, start);
+
+        assert!(
+            forgotten.len() == 1
+                && forgotten[0].starts_with("forgets the warnings kept before, as it can't read")
+                && forgotten[0].ends_with(
+                    "; no point warned before the restart is kept off, and it reads them again \
+                     before it keeps a warning over them"
+                ),
+            "the warnings forgotten with a file it can't read, and what follows, weren't said: \
+             {forgotten:?}"
+        );
+        // Readable again by the next warning, with another card's still
+        // lasting in it.
+        fs::remove_dir(&file).expect("the folder gone");
+        let hall = now + Duration::from_secs(600);
+        Warned::none(&file)
+            .warned("wlan3", HALL, hall, (now, start))
+            .expect("kept");
+        let desk = now + Duration::from_secs(60);
+        let said = warned
+            .warned("wlan2", DESK, desk, (now, start))
+            .expect("kept");
+
+        assert!(
+            said.is_empty(),
+            "a file read again whole was said forgotten: {said:?}"
+        );
+        assert_eq!(
+            Warned::kept_in(&file, start).0.lasting(now, start),
+            vec![
+                ("wlan2".to_owned(), DESK.to_owned(), desk),
+                ("wlan3".to_owned(), HALL.to_owned(), hall)
+            ],
+            "a warning kept over a file unreadable at the start lost another card's"
+        );
+    }
+
+    #[test]
+    fn a_file_unreadable_as_wifid_starts_and_unlike_its_own_after_is_replaced() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("warned");
+        fs::create_dir(&file).expect("a folder where the file goes");
+        let (now, start) = (Instant::now(), boot(600));
+        let (mut warned, _) = Warned::kept_in(&file, start);
+        fs::remove_dir(&file).expect("the folder gone");
+        fs::write(&file, "not as wifid keeps them").expect("a file");
+
+        let until = now + Duration::from_secs(60);
+        let said = warned
+            .warned("wlan2", DESK, until, (now, start))
+            .expect("kept");
+
+        assert!(
+            said.len() == 1
+                && said[0].starts_with(
+                    "forgets the warnings kept before, as they aren't as it keeps them"
+                )
+                && said[0].ends_with("; the warning it keeps now replaces them"),
+            "a file read again and not as wifid keeps it wasn't said replaced: {said:?}"
+        );
+        assert_eq!(
+            Warned::kept_in(&file, start).0.lasting(now, start),
+            vec![("wlan2".to_owned(), DESK.to_owned(), until)],
+            "the warning kept didn't replace a file unlike wifid's"
         );
     }
 

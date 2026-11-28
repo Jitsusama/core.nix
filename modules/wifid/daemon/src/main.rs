@@ -3784,8 +3784,17 @@ impl Wifid<'_> {
                         .borrow_mut()
                         .warned(card, from, until, (now, boot))
                 });
-                if let Err(error) = kept {
-                    eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");
+                match kept {
+                    Ok(forgotten) => {
+                        for said in forgotten {
+                            eprintln!("<4>wifid {said}");
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "<4>can't keep {from}'s warning to {card} past a restart: {error}"
+                        );
+                    }
                 }
                 let minutes = lasts.as_secs() / 60;
                 println!(
