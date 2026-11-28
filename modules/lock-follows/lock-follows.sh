@@ -191,7 +191,11 @@ for input in "$@"; do
   short=${upstream:0:8}
   branch=$prefix/$input-$short
   step='listing pull requests'
-  open=$("$pr" pr list --state open --limit 100 --json number,headRefName,url)
+  # Only branches on this repository are the tool's: a fork's pull
+  # request may carry the same branch name.
+  open=$("$pr" pr list --state open --limit 100 \
+    --json number,headRefName,url,isCrossRepository |
+    jq -c 'map(select(.isCrossRepository | not))')
   already=$(jq -r --arg branch "$branch" \
     '.[] | select(.headRefName == $branch) | .url' <<<"$open")
   if [ -n "$already" ]; then
@@ -200,9 +204,12 @@ for input in "$@"; do
     continue
   fi
   # Any other open for this input locks an older rev, since upstream's
-  # newest is this one.
+  # newest is this one. Its branch is the stem and eight hex digits, so
+  # an input whose name extends this one with a dash isn't caught.
   older=$(jq -r --arg stem "$prefix/$input-" --arg branch "$branch" \
-    '.[] | select((.headRefName | startswith($stem)) and .headRefName != $branch)
+    '.[] | select((.headRefName | startswith($stem))
+        and (.headRefName | ltrimstr($stem) | test("^[0-9a-f]{8}$"))
+        and .headRefName != $branch)
       | "\(.number) \(.headRefName)"' <<<"$open")
 
   step='updating the lock'
@@ -260,7 +267,15 @@ for input in "$@"; do
   while read -r number older_branch; do
     if [ -n "$number" ]; then
       "$pr" pr close "$number" --comment "Replaced by $opened, which locks $input at $short."
-      git push --quiet origin --delete "$older_branch"
+      # Its branch goes only while it holds the tool's one commit on
+      # main, so work someone pushed onto it stays.
+      if git fetch --quiet origin "refs/heads/$older_branch" &&
+        theirs=$(git rev-parse FETCH_HEAD) &&
+        [ "$(git rev-list --count origin/main.."$theirs")" = 1 ] &&
+        [[ "$(git log -1 --format=%s "$theirs")" == "build($input): lock $input "* ]]; then
+        git push --quiet --force-with-lease="refs/heads/$older_branch:$theirs" \
+          origin --delete "$older_branch"
+      fi
       closed=$(jq -c --argjson number "$number" '. + [$number]' <<<"$closed")
     fi
   done <<<"$older"

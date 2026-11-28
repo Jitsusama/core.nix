@@ -4,10 +4,11 @@
 # upstream is a repository git reaches in GitHub's place, and gh and nix
 # are stand-ins. gh keeps its pull requests in a JSON file and opens one
 # only for a branch origin has; nix's `flake update INPUT` locks INPUT at
-# what upstream's HEAD is, touching nothing else. Five cases: up to date
+# what upstream's HEAD is, touching nothing else. Six cases: up to date
 # does nothing; behind opens one; behind with one open does nothing; newer
-# opens the newer and closes the older; a failed fetch exits non-zero and
-# writes its line.
+# opens the newer and closes the older; newest closes only its own older,
+# not another input's or a fork's, and keeps a branch someone pushed
+# work onto; a failed fetch exits non-zero and writes its line.
 #
 #   lock-follows-test.sh LOCK-FOLLOWS
 set -euo pipefail
@@ -39,9 +40,10 @@ echo "gh \$*" >>$here/gh-said
 [ "\$1" = pr ] || { echo "gh stand-in: asked \$*" >&2; exit 1; }
 case \$2 in
 list)
-  [ "\$*" = "pr list --state open --limit 100 --json number,headRefName,url" ] ||
+  [ "\$*" = "pr list --state open --limit 100 --json number,headRefName,url,isCrossRepository" ] ||
     { echo "gh stand-in: listed by \$*" >&2; exit 1; }
-  jq -c 'map(select(.state == "open") | {number, headRefName, url})' "\$prs"
+  jq -c 'map(select(.state == "open")
+    | {number, headRefName, url, isCrossRepository: (.isCrossRepository // false)})' "\$prs"
   ;;
 create)
   [ "\$3 \$4 \$5 \$6 \$8" = "--draft --base main --head --title" ] ||
@@ -269,6 +271,37 @@ fi
 gone=$(git -C "$here/origin.git" branch --list "$branch")
 if [ -n "$gone" ]; then
   fail "newer: the older's branch is still on origin"
+fi
+
+# Someone pushes work onto the newer's branch; another input whose name
+# extends mycelium's has a draft open, and a fork has one on a branch
+# named like the tool's. Upstream merges again.
+newer_branch=lock-follows/mycelium-${third:0:8}
+work=$here/work
+git clone --quiet --branch "$newer_branch" "$here/origin.git" "$work"
+git -C "$work" commit --quiet --allow-empty --message "someone's work"
+git -C "$work" push --quiet origin "$newer_branch"
+jq '. + [
+  {number: 3, headRefName: "lock-follows/mycelium-relay-abcdef12", state: "open",
+    url: "https://example.com/pull/3"},
+  {number: 4, headRefName: "lock-follows/mycelium-deadbeef", state: "open",
+    isCrossRepository: true, url: "https://example.com/pull/4"}
+]' "$prs" >"$prs.new"
+mv "$prs.new" "$prs"
+git -C "$upstream" commit --quiet --allow-empty --message "the newest change"
+
+run "newest" 0 opened
+states=$(jq -r 'map(.state) | join(" ")' "$prs")
+if [ "$states" != "closed closed open open open" ]; then
+  fail "newest: it didn't close only its own older, leaving another input's and a fork's: $states"
+fi
+closed=$(jq -c .closed <<<"$line")
+if [ "$closed" != "[2]" ]; then
+  fail "newest: its line doesn't name only its own older as closed: $line"
+fi
+kept=$(git -C "$here/origin.git" branch --list "$newer_branch")
+if [ -z "$kept" ]; then
+  fail "newest: it deleted a branch someone had pushed work onto"
 fi
 
 # Origin can't be reached.
