@@ -11,6 +11,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::acts;
 use crate::air::Heard;
+use crate::boot;
 use crate::choose::{self, Against, Choice, Chooser, Other};
 use crate::fading::{self, Giving, Way, Why};
 use crate::learn::Learned;
@@ -20,9 +21,9 @@ use crate::state::{Joined, State};
 
 /// What comes back to the measuring loop (measure.rs) of a look or a
 /// move a card's chooser asked for. Each move answers once, named by the
-/// instant it was `asked` at, which its chooser began the give-way or
-/// trial at, so an answer to an earlier move to the same point can't be
-/// taken for a later one's.
+/// instant it was `asked` at, on the chooser's boot clock, which its
+/// chooser began the give-way or trial at, so an answer to an earlier move
+/// to the same point can't be taken for a later one's.
 #[derive(Debug, PartialEq)]
 pub enum Back {
     /// The card's look ended in time for it to be chosen for again.
@@ -32,7 +33,7 @@ pub enum Back {
     Answered {
         card: String,
         to: String,
-        asked: Instant,
+        asked: boot::Instant,
     },
     /// The card's move to `to` was refused as out of reach
     /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
@@ -43,7 +44,7 @@ pub enum Back {
     OutOfReach {
         card: String,
         to: String,
-        asked: Instant,
+        asked: boot::Instant,
     },
     /// The card's move to `to` was refused before it began: another move
     /// was under way, the card was off its network, or wpa_supplicant
@@ -53,7 +54,7 @@ pub enum Back {
     Refused {
         card: String,
         to: String,
-        asked: Instant,
+        asked: boot::Instant,
     },
 }
 
@@ -157,9 +158,11 @@ type Known<'a> = dyn Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a;
 /// and moves it there as the roam act does. What it hears is read here,
 /// less a point that warned it drops the card (`State::around_to_choose`),
 /// so no caller can hand the chooser a point that just shed the card.
+/// `now` is what's measured is timed by, and `booted` what the chooser
+/// and the hours are (boot.rs).
 pub fn choose(
     chooser: &mut Chooser,
-    (now, booted, hour): (Instant, Duration, u8),
+    (now, booted, hour): (Instant, boot::Instant, u8),
     (on, measured): (&Joined, &Measured),
     (lately, learned): (&Measures, &Learned),
     (asks, air, back): (
@@ -169,22 +172,22 @@ pub fn choose(
     ),
     call: bool,
 ) {
-    let known = known(lately, learned, (now, booted, hour));
+    let known = known(lately, learned, (now, booted.since_boot(), hour));
     let (around, warned) = {
         let air = air.borrow();
         let warned = air.warned_from(&on.card, now).map(str::to_owned);
-        (air.around_to_choose(&on.card, now), warned)
+        (air.around_to_choose(&on.card, (now, booted)), warned)
     };
     let choosable = (&*around, warned.as_deref());
-    let next = chosen(chooser, now, (on, measured), choosable, &known, call);
-    go(next, now, &on.card, (asks, air, back));
+    let next = chosen(chooser, booted, (on, measured), choosable, &known, call);
+    go(next, booted, &on.card, (asks, air, back));
 }
 
 /// Has a card do what its chooser chose next at `asked`, apart from the
 /// measuring loop, which hears back how a look or a move came out.
 fn go(
     next: Option<Next>,
-    asked: Instant,
+    asked: boot::Instant,
     card: &str,
     (asks, air, back): (
         &mpsc::Sender<Ask>,
@@ -208,10 +211,11 @@ fn go(
 /// network, where its link is fading (fading.rs), or look for one where
 /// it hears none, and says why. What it hears is read here, as `choose`
 /// reads it, so no caller can give a call way to a point that warned it
-/// drops the card.
+/// drops the card. `now` is what's measured is timed by, and `booted`
+/// what the chooser is (boot.rs).
 pub fn give_way(
     chooser: &mut Chooser,
-    now: Instant,
+    (now, booted): (Instant, boot::Instant),
     on: &Joined,
     lately: &Measures,
     (asks, air, back): (
@@ -221,8 +225,8 @@ pub fn give_way(
     ),
 ) {
     let measured = lately.lately(&on.point, now, fading::WINDOW);
-    let next = given_hearing(chooser, now, on, &air.borrow(), measured);
-    go(next, now, &on.card, (asks, air, back));
+    let next = given_hearing(chooser, (now, booted), on, &air.borrow(), measured);
+    go(next, booted, &on.card, (asks, air, back));
 }
 
 /// Where a card on a call goes next, as `given` says, from what it hears
@@ -236,7 +240,7 @@ pub fn give_way(
 /// never reached. Past that, any such move has had its time.
 fn given_hearing(
     chooser: &mut Chooser,
-    now: Instant,
+    (now, booted): (Instant, boot::Instant),
     on: &Joined,
     air: &State,
     measured: (usize, Option<i32>),
@@ -247,8 +251,8 @@ fn given_hearing(
     if heeding {
         return None;
     }
-    let around = air.around_to_choose(&on.card, now);
-    given(chooser, now, on, &around, measured)
+    let around = air.around_to_choose(&on.card, (now, booted));
+    given(chooser, booted, on, &around, measured)
 }
 
 /// Where a card on a call goes next from a link fading as `measured` says
@@ -258,7 +262,7 @@ fn given_hearing(
 /// reached is kept off and said.
 fn given(
     chooser: &mut Chooser,
-    now: Instant,
+    now: boot::Instant,
     on: &Joined,
     around: &[Heard],
     measured: (usize, Option<i32>),
@@ -399,7 +403,7 @@ enum Next {
 /// what it hears of its network, and says why where it moves.
 fn chosen(
     chooser: &mut Chooser,
-    now: Instant,
+    now: boot::Instant,
     (on, measured): (&Joined, &Measured),
     (around, warned): (&[Heard], Option<&str>),
     known: &Known<'_>,
@@ -534,7 +538,7 @@ async fn look(
 async fn roam(
     (asks, air): (mpsc::Sender<Ask>, watch::Receiver<State>),
     card: String,
-    (to, asked): (String, Instant),
+    (to, asked): (String, boot::Instant),
     back: mpsc::Sender<Back>,
 ) {
     let answer = match acts::roam(&asks, air, &to).await {
@@ -658,7 +662,7 @@ fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> S
 /// point it tried: why, and whether it now keeps that point off.
 fn said_back(
     chooser: &mut Chooser,
-    now: Instant,
+    now: boot::Instant,
     (on, measured): (&Joined, &Measured),
     to: &str,
 ) -> String {
@@ -939,7 +943,7 @@ mod tests {
 
     /// Has a card move to the hall as asked at `asked`, the main loop
     /// refusing to ready it so, and says what came back of the move.
-    async fn refused_with(refused: Refused, asked: Instant) -> Option<Back> {
+    async fn refused_with(refused: Refused, asked: boot::Instant) -> Option<Back> {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (_state, air) = watch::channel(State::default());
@@ -958,7 +962,7 @@ mod tests {
         let busy = Refused::Failed {
             reason: "wlan0 is on its way back".into(),
         };
-        let asked = Instant::now();
+        let asked = boot::Instant::now();
 
         assert_eq!(
             refused_with(busy, asked).await,
@@ -983,7 +987,7 @@ mod tests {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (_state, air) = watch::channel(State::default());
-        let asked = Instant::now();
+        let asked = boot::Instant::now();
         let to = (HALL.into(), asked);
         let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
         let Some(Ask::Ready { done, .. }) = taken.recv().await else {
@@ -1013,7 +1017,7 @@ mod tests {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (state, air) = watch::channel(State::default());
-        let asked = Instant::now();
+        let asked = boot::Instant::now();
         let to = (HALL.into(), asked);
         let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
         let Some(Ask::Ready { done, .. }) = taken.recv().await else {
@@ -1058,7 +1062,7 @@ mod tests {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (_state, air) = watch::channel(State::default());
-        let asked = Instant::now();
+        let asked = boot::Instant::now();
         let to = (HALL.into(), asked);
         let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
         let Some(Ask::Ready { done, .. }) = taken.recv().await else {
@@ -1089,7 +1093,7 @@ mod tests {
         let (asks, mut taken) = mpsc::channel(1);
         let (back, mut came) = mpsc::channel(1);
         let (_state, air) = watch::channel(State::default());
-        let asked = Instant::now();
+        let asked = boot::Instant::now();
         let to = (HALL.into(), asked);
         let moving = tokio::spawn(roam((asks, air), "wlan0".into(), to, back));
         let Some(Ask::Ready { done, .. }) = taken.recv().await else {
@@ -1452,9 +1456,10 @@ mod tests {
         for _ in 0..10 {
             minute_on(&mut learned, (TRIED_AT_TEN, -50), (3, NINE), &carried(119));
         }
-        // The chooser goes by instants, and what's learned by the boot
-        // clock, so each time past nine is had on both.
-        let nine = Instant::now();
+        // What was measured lately goes by tokio's instants, the chooser by
+        // the boot clock and what's learned by time since boot, so each time
+        // past nine is had on all three.
+        let (nine, booted_at_nine) = (Instant::now(), boot::Instant::now());
         let past_nine = |minutes: u64, seconds: u64| Duration::from_secs(minutes * 60 + seconds);
         let lately = Measures::default();
         let wider = Heard {
@@ -1469,7 +1474,7 @@ mod tests {
             let on = joined(on);
             chosen(
                 &mut chooser,
-                now,
+                booted_at_nine + since_nine,
                 (&on, measured),
                 (&around, None),
                 &known,
@@ -1652,7 +1657,7 @@ mod tests {
 
     #[test]
     fn a_losing_call_gives_way_once_and_not_again_while_it_moves() {
-        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let (mut chooser, start) = (Chooser::default(), boot::Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
         let on = joined(DESK);
 
@@ -1670,20 +1675,21 @@ mod tests {
 
     #[test]
     fn a_losing_call_never_gives_way_to_the_point_that_warned_it_drops_the_card() {
-        let start = Instant::now();
+        let (start, booted) = (Instant::now(), boot::Instant::now());
         let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), booted);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), booted);
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
+        let now = (start, booted);
 
-        let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
+        let unwarned = given_hearing(&mut Chooser::default(), now, &on, &air, LOSING);
         air.warned_off(
             "wlan2",
             DESK,
             (Some(start), start + Duration::from_secs(600)),
         );
-        let warned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
+        let warned = given_hearing(&mut Chooser::default(), now, &on, &air, LOSING);
 
         assert_eq!(
             unwarned,
@@ -1699,10 +1705,10 @@ mod tests {
 
     #[test]
     fn a_losing_call_waits_on_the_warned_move_off_its_point_before_it_gives_way() {
-        let start = Instant::now();
+        let (start, booted) = (Instant::now(), boot::Instant::now());
         let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), booted);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), booted);
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         let on = joined(HALL);
         air.warned_off(
@@ -1715,11 +1721,12 @@ mod tests {
         let losing = (2, Some(-60));
 
         let mut chooser = Chooser::default();
-        let moving = given_hearing(&mut chooser, start, &on, &air, losing);
-        let late = start + fading::BETWEEN;
+        let moving = given_hearing(&mut chooser, (start, booted), &on, &air, losing);
+        let late = (start + fading::BETWEEN, booted + fading::BETWEEN);
+        let second = Duration::from_secs(1);
         let still = given_hearing(
             &mut chooser,
-            late - Duration::from_secs(1),
+            (late.0 - second, late.1 - second),
             &on,
             &air,
             losing,
@@ -1735,7 +1742,7 @@ mod tests {
             "a call gave way before its warned point's move had its time"
         );
         assert!(
-            !chooser.call_keeps_off(DESK, late, false),
+            !chooser.call_keeps_off(DESK, late.1, false),
             "the desk was kept off by a give-way never made"
         );
         assert_eq!(
@@ -1747,10 +1754,10 @@ mod tests {
 
     #[test]
     fn a_losing_call_let_go_from_its_warned_point_gives_way_at_once() {
-        let start = Instant::now();
+        let (start, booted) = (Instant::now(), boot::Instant::now());
         let mut air = State::default();
-        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), start);
-        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), start);
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)), booted);
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)), booted);
         air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
         // Looked first for the points named, then let go as its look found
         // none: no heed of wifid's is under way to wait on.
@@ -1758,7 +1765,8 @@ mod tests {
         air.warned_off("wlan2", HALL, (Some(start), until));
         air.warned_off("wlan2", HALL, (None, until));
 
-        let given = given_hearing(&mut Chooser::default(), start, &joined(HALL), &air, LOSING);
+        let now = (start, booted);
+        let given = given_hearing(&mut Chooser::default(), now, &joined(HALL), &air, LOSING);
 
         assert_eq!(
             given,
@@ -1777,11 +1785,11 @@ mod tests {
     #[test]
     fn a_losing_call_gives_way_at_once_once_its_warned_move_is_refused() {
         let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
-        let start = Instant::now();
+        let (start, booted) = (Instant::now(), boot::Instant::now());
         let warned = || {
             let mut air = State::default();
-            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)), start);
-            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)), start);
+            air.heard("/Interfaces/0/BSSs/1", Some(heard(desk, -40)), booted);
+            air.heard("/Interfaces/0/BSSs/2", Some(heard(hall, -60)), booted);
             air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
             air
         };
@@ -1790,7 +1798,8 @@ mod tests {
             let mut air = warned();
             Heed::Move(desk.into()).keep_warned(&mut air, ("wlan2", hall), false, heeded);
             Heed::move_refused(&mut air, arrivals, ("wlan2", hall));
-            let soon = start + Duration::from_secs(1);
+            let second = Duration::from_secs(1);
+            let soon = (start + second, booted + second);
             given_hearing(&mut Chooser::default(), soon, &joined(hall), &air, LOSING)
         };
         let mut resumed = Arrivals::default();
@@ -1824,7 +1833,7 @@ mod tests {
 
     #[test]
     fn a_losing_call_hearing_nowhere_looks_once_a_while() {
-        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let (mut chooser, start) = (Chooser::default(), boot::Instant::now());
         let around = [heard(DESK, -50)];
         let on = joined(DESK);
 
@@ -1841,7 +1850,7 @@ mod tests {
 
     #[test]
     fn a_faint_call_hearing_nowhere_holds_rather_than_look() {
-        let (start, around, on) = (Instant::now(), [heard(DESK, -50)], joined(DESK));
+        let (start, around, on) = (boot::Instant::now(), [heard(DESK, -50)], joined(DESK));
         let given_as = |measured| given(&mut Chooser::default(), start, &on, &around, measured);
 
         let faint = given_as((0, Some(-75)));
@@ -1863,7 +1872,7 @@ mod tests {
         // Gone back from the hall to the desk twice on the desk's usual,
         // so the hall is kept off an hour, yielding to a failing link at
         // once.
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let spurned = || choose::tests::back_twice_on_the_usual(start);
         let around = [heard(DESK, -50), heard(HALL, -50)];
         let on = joined(DESK);
@@ -1890,7 +1899,7 @@ mod tests {
 
     #[test]
     fn a_give_way_never_reached_is_kept_off_and_the_card_looks() {
-        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let (mut chooser, start) = (Chooser::default(), boot::Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
         let on = joined(DESK);
         given(&mut chooser, start, &on, &around, LOSING);
@@ -1909,7 +1918,7 @@ mod tests {
     #[test]
     fn a_call_losing_where_it_gave_way_for_loss_holds_rather_than_move_or_look() {
         const ROOM: &str = "02:00:00:00:a7:00";
-        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let (mut chooser, start) = (Chooser::default(), boot::Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -48), heard(ROOM, -50)];
         given(&mut chooser, start, &joined(DESK), &around, LOSING);
 
@@ -1928,7 +1937,7 @@ mod tests {
     #[test]
     fn a_fading_call_goes_back_to_no_point_it_lately_left() {
         const ROOM: &str = "02:00:00:00:a7:00";
-        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let (mut chooser, start) = (Chooser::default(), boot::Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -55), heard(ROOM, -60)];
         let faded = (0, Some(-75));
 
@@ -2115,7 +2124,7 @@ mod tests {
 
     #[test]
     fn a_card_going_back_from_a_point_found_worse_again_says_its_longer_keep_off() {
-        let (mut chooser, again) = choose::tests::found_worse_twice(Instant::now());
+        let (mut chooser, again) = choose::tests::found_worse_twice(boot::Instant::now());
 
         let line = said_back(&mut chooser, again, (&joined(DESK), &idle(775)), NEAR);
 
@@ -2150,7 +2159,7 @@ mod tests {
 
     #[test]
     fn a_card_sent_back_says_why_and_keeps_off_the_point_it_tried() {
-        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(boot::Instant::now());
         let line = said_back(&mut chooser, again, (&joined(HALL), &idle(50)), DESK);
 
         assert!(
@@ -2163,7 +2172,7 @@ mod tests {
 
     #[test]
     fn a_failing_link_held_after_a_back_and_a_keep_off_giving_way_are_each_said_once() {
-        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(boot::Instant::now());
         chooser.went_back();
         let failing = Measured {
             lost: 15.0,
@@ -2221,7 +2230,7 @@ mod tests {
 
     #[test]
     fn a_keep_off_a_trial_ends_is_said_once_naming_the_point_freed_and_the_one_left() {
-        let mut chooser = choose::tests::hall_freed(Instant::now());
+        let mut chooser = choose::tests::hall_freed(boot::Instant::now());
         let quick = idle(20);
         let on = joined(HALL);
 
@@ -2244,7 +2253,8 @@ mod tests {
         // What's left of an eight-hour keep-off when a move made a span
         // after its first hour misses, as the chooser gives it, from the
         // desk's 2.4 GHz radio its card was on.
-        let (mut chooser, _, _) = choose::tests::missed_ch52_through_its_keep_off(Instant::now());
+        let (mut chooser, _, _) =
+            choose::tests::missed_ch52_through_its_keep_off(boot::Instant::now());
         let (missed, left) = chooser.unreached().expect("the chooser said no miss");
         let longer = kept_off(&joined(NEAR), &missed, left);
         // A few seconds past the hour reads as the hour itself, so says it
@@ -2342,7 +2352,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &carried(9)),
             (&around, None),
             &known,
@@ -2366,7 +2376,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &idle(30)),
             (&around, None),
             &known,
@@ -2394,7 +2404,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &downloading),
             (&around, None),
             &known,
@@ -2429,7 +2439,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &idle(26)),
             (&around, None),
             &known,
@@ -2449,7 +2459,7 @@ mod tests {
 
         let next = chosen(
             &mut choose::tests::after_a_bad_minute(DESK),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &carried(52)),
             (&around, None),
             &known,
@@ -2473,7 +2483,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(DESK), &carried(30)),
             (&around, None),
             &known,
@@ -2488,6 +2498,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let learned = the_hall_at_eight(dir.path(), 10);
         let (lately, start) = (Measures::default(), Instant::now());
+        let booted = boot::Instant::now();
         let known = known(&lately, &learned, (start, Duration::ZERO, 20));
         // A trial of the hall, learned far quicker, carrying far worse
         // than the desk it left once there, which the card no longer
@@ -2497,14 +2508,14 @@ mod tests {
             let mut chooser = Chooser::default();
             let tried = chosen(
                 &mut chooser,
-                start,
+                booted,
                 (&joined(DESK), &idle(30)),
                 (&[heard(DESK, -50), heard(HALL, -50)], None),
                 &known,
                 false,
             );
             assert_eq!(tried, Some(Next::Move(HALL.into())), "the hall is tried");
-            let at = start + choose::TRIAL;
+            let at = booted + choose::TRIAL;
             let next = chosen(
                 &mut chooser,
                 at,
@@ -2523,8 +2534,8 @@ mod tests {
         // the trial's own settle, carrying as badly, the card stays a
         // settle from the refusal on the point it's on rather than move
         // again so soon after the warning.
-        let past_the_trial_s_settle = start + choose::SETTLE + Duration::from_secs(60);
-        let refused = start + choose::TRIAL;
+        let past_the_trial_s_settle = booted + choose::SETTLE + Duration::from_secs(60);
+        let refused = booted + choose::TRIAL;
         assert!(
             past_the_trial_s_settle < refused + choose::SETTLE,
             "the case's time was past the refusal's settle"
@@ -2576,7 +2587,7 @@ mod tests {
 
         let to = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(HALL), &carried(38)),
             (&around, None),
             &known,
@@ -2606,7 +2617,7 @@ mod tests {
 
         let next = chosen(
             &mut Chooser::default(),
-            now,
+            boot::Instant::now(),
             (&joined(HALL), &carried(38)),
             (&[crowded], None),
             &known,

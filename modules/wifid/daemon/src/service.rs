@@ -672,7 +672,7 @@ mod tests {
     #[tokio::test]
     async fn a_network_in_detail_is_answered_once_as_it_is() {
         let (wifi, state, _) = wifi();
-        let now = tokio::time::Instant::now();
+        let now = crate::boot::Instant::now();
         state.send_modify(|state| state.heard("/BSSs/0", Some(inn_heard()), now));
 
         let mut replies = wifi.detail(false, "Roadside Inn".into()).await;
@@ -692,7 +692,7 @@ mod tests {
 
         let mut replies = wifi.detail(true, "Roadside Inn".into()).await;
         let first = replies.next().await.unwrap();
-        let now = tokio::time::Instant::now();
+        let now = crate::boot::Instant::now();
         state.send_modify(|state| state.heard("/BSSs/0", Some(inn_heard()), now));
         let second = replies.next().await.unwrap();
         state.send_modify(|state| state.follow(&inn()));

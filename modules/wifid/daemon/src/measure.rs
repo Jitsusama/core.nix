@@ -43,6 +43,7 @@ use tokio::task::JoinSet;
 use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
 use crate::air::Heard;
+use crate::boot;
 use crate::calling::Calling;
 use crate::choose::{self, Chooser, Refusal};
 use crate::echo::{Class, Echoer, LOST, Late};
@@ -388,17 +389,17 @@ pub async fn follow(
                 let joined = state.borrow().joined();
                 echoers.retain(|card, _| joined.iter().any(|on| on.card == *card));
                 measure(&joined, &mut echoers, &mut kernel, &mut measures, &state).await;
-                let now = Instant::now();
+                let (now, booted) = (Instant::now(), boot::Instant::now());
                 if calling.borrow().on(now) {
                     for on in &joined {
                         let chooser = chooser_of(&mut choosers, on);
                         let with = (&asks, &state, &back);
-                        moves::give_way(chooser, now, on, &measures, with);
+                        moves::give_way(chooser, (now, booted), on, &measures, with);
                     }
                 }
             }
             _ = told.tick() => {
-                let (now, booted, hour) = (Instant::now(), learn::booted(), learn::hour_here());
+                let (now, booted, hour) = (Instant::now(), boot::Instant::now(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
                 keep_with_cards(&mut choosers, &joined, |card| state.borrow().has_card(card));
@@ -412,10 +413,10 @@ pub async fn follow(
                     let video = measures.video_of(&on.point, now);
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
-                    learn_from(&mut learned, &on, &carried, &around, (booted, hour));
+                    learn_from(&mut learned, &on, &carried, &around, (booted.since_boot(), hour));
                     let chooser = chooser_of(&mut choosers, &on);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
-                        chooser.took_minute(now, &on.point, &minute);
+                        chooser.took_minute(booted, &on.point, &minute);
                     }
                     moves::choose(
                         chooser,
@@ -428,10 +429,10 @@ pub async fn follow(
                 }
             }
             Some(answer) = came.recv() => {
-                let Some(card) = took_back(&mut choosers, answer, Instant::now()) else {
+                let Some(card) = took_back(&mut choosers, answer, boot::Instant::now()) else {
                     continue;
                 };
-                let (now, booted, hour) = (Instant::now(), learn::booted(), learn::hour_here());
+                let (now, booted, hour) = (Instant::now(), boot::Instant::now(), learn::hour_here());
                 let call = calling.borrow().on(now);
                 let joined = state.borrow().joined();
                 let Some(on) = joined.into_iter().find(|on| on.card == card) else {
@@ -441,7 +442,7 @@ pub async fn follow(
                     continue;
                 };
                 let chooser = chooser_of(&mut choosers, &on);
-                chooser.looked_over(now);
+                chooser.looked_over(booted);
                 moves::choose(
                     chooser,
                     (now, booted, hour),
@@ -488,11 +489,11 @@ fn chooser_of<'a>(choosers: &'a mut HashMap<String, Chooser>, on: &Joined) -> &'
 /// that undoes nothing is said as what it was, so it isn't lost unseen: of
 /// a card gone, whose chooser went with it; of a trial's way back; or of
 /// an earlier move than the chooser's last, or one the card is on already.
-/// `now` is when it came back.
+/// `now` is when it came back, on the boot clock the chooser keeps.
 fn took_back(
     choosers: &mut HashMap<String, Chooser>,
     answer: Back,
-    now: Instant,
+    now: boot::Instant,
 ) -> Option<String> {
     match answer {
         Back::Looked(card) => Some(card),
@@ -1904,7 +1905,7 @@ pub(crate) mod tests {
     #[test]
     fn each_minute_a_chooser_goes_with_its_card_and_forgets_where_it_was_found_unjoined() {
         let (desk, hall) = ("02:00:00:00:01:00", "02:00:00:00:02:00");
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let mut choosers = HashMap::from([
             ("wlan2".to_owned(), found_on_at(desk, start)),
             ("wlan3".to_owned(), found_on_at(hall, start)),
@@ -1933,7 +1934,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_move_refused_is_taken_back_by_its_card_s_chooser_as_never_asked() {
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let mut gave = Chooser::default();
         gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
         let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
@@ -1970,7 +1971,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_way_back_out_of_reach_is_taken_back_as_refused() {
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let (sent_back, back) = sent_back_from_the_hall(start);
         let mut choosers = HashMap::from([("wlan2".to_owned(), sent_back)]);
         let out_of_reach = Back::OutOfReach {
@@ -1996,7 +1997,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_give_way_out_of_reach_is_followed_as_one_never_reached() {
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let mut gave = Chooser::default();
         gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
         let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
@@ -2021,7 +2022,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_move_answered_is_followed_by_its_card_s_chooser_from_the_answer() {
-        let start = Instant::now();
+        let start = boot::Instant::now();
         let mut gave = Chooser::default();
         gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
         let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
