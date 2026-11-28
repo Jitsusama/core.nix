@@ -201,6 +201,9 @@
       madeUp = {
         said = pkgs.writeText "said" ''
           ./copied.txt:1:00:00:00:00:00:01
+          ./copied.txt:2:04:00:00:00:00:01
+          ./copied.txt:3:48:00:00:00:00:01
+          ./copied.txt:4:0C:00:00:00:00:01
           The addresses above could be a real device's. Write a made-up one, as
           02:00:00:00:a0:00, or RFC 7042's 00:00:5e:00:53:01; an address that needs
           a vendor's real prefix is kept on purpose in tests/repository/checks.nix.

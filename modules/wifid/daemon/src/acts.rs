@@ -7,7 +7,7 @@
 //! ```text
 //! {"id": 7, "ask": "act", "act": "leave", "network": "Lantern"}
 //! {"id": 7, "done": true}
-//! {"id": 9, "ask": "act", "act": "roam", "bssid": "02:00:00:00:a4:00"}
+//! {"id": 9, "ask": "act", "act": "roam", "bssid": "00:00:5e:00:53:01"}
 //! {"id": 9, "done": true}
 //! {"id": 8, "ask": "act", "act": "join", "network": "Lantern", "password": "..."}
 //! {"id": 8, "stage": "joining", "said": "connecting to Lantern\u{2026}", "done": false}

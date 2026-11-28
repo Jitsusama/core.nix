@@ -12,20 +12,27 @@
 # argument, one address a line: a vendor's real prefix that a vendor's name
 # is read from, under a device part plainly made up. It reads addresses
 # written with colons, six octets alone, so a longer run of octets, such
-# as a key, isn't taken for one, and it prints each address it refuses.
+# as a key, isn't taken for one, and it prints each address it refuses,
+# sorted, so two runs over one tree say the same.
 set -euo pipefail
 
 kept=$(realpath "$2")
 cd "$1"
 
 # The second hex digit of the first octet holds both bits: 0, 4, 8 or c
-# there is a maker's address for one device. The list of kept addresses
-# lives in the checks that give it, so that file isn't read.
-maker='(?<![0-9A-Fa-f:])[0-9A-Fa-f][048Cc](:[0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:])'
+# there is a maker's address for one device. An address is six whole
+# octets, so neither end may run on into a word or a further octet; a
+# colon may bound it, since ids such as mac:<address> and
+# device:<address>:map are written that way, but not one beyond which
+# stands an octet alone, which would make the run a longer one. The list of
+# kept addresses lives in the checks that give it, so that file isn't read.
+alone='(?![0-9A-Za-z])'
+maker="(?<![0-9A-Za-z])(?<!(?<![0-9A-Za-z])[0-9A-Fa-f]{2}:)"
+maker+="[0-9A-Fa-f][048Cc](:[0-9A-Fa-f]{2}){5}$alone(?!:[0-9A-Fa-f]{2}$alone)"
 status=0
 found=$(rg --pcre2 --hidden --only-matching --line-number --no-heading --with-filename \
   --glob '!flake.lock' --glob '!tests/repository/checks.nix' \
-  "$maker" .) || status=$?
+  --sort path "$maker" .) || status=$?
 if [ "$status" -eq 1 ]; then
   exit 0
 elif [ "$status" -ne 0 ]; then
